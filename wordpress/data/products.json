@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "source": {
     "name": "freeplast-catalog",
-    "provenance": "2026 Freeplast PDF catalog (structured specifications) + freeplast.cl product page (prose), captured 2026-09-03",
+    "provenance": "2026 Freeplast PDF catalog union per PRD #1 (four Caja Universal configurations, Traversa para Bins Tipo Romano, Caja Paltera) + freeplast.cl product pages and contact form, captured 2026-09-03. Raster PDF facts not transcribable in this environment render as Consultar pending review.",
     "retrieved_at": "2026-09-03T00:00:00Z"
   },
   "products": [
@@ -11,7 +11,9 @@
       "source_url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
       "lifecycle": "active",
       "slug": "caja-cosechera-3-4",
-      "legacy_paths": ["/producto/caja-cosechera-3-4/"],
+      "legacy_paths": [
+        "/producto/caja-cosechera-3-4/"
+      ],
       "title": "Caja Cosechera 3/4",
       "excerpt": "Caja cosechera 3/4 de PEAD reciclado para cosecha de uva y frutas en general.",
       "description": "Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general.",
@@ -35,15 +37,810 @@
         "quantity_step": null
       },
       "options": [],
-      "related_ids": [],
+      "related_ids": [
+        "fp-caja-tomatera",
+        "fp-caja-frutillera",
+        "fp-caja-frutera"
+      ],
       "featured": true,
       "featured_order": 1,
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose minus the 'Cantidad mínima de compra' sentence: units per pallet are packaging facts and the commercial minimum is unconfirmed (PRD #1).",
+          "Description reproduces the published freeplast.cl prose minus the “Cantidad mínima de compra” sentence: units per pallet are packaging facts and the commercial minimum is unconfirmed (PRD #1).",
           "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
           "Image derives from the prototype asset (live-site ficha crop); original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-cerrada-negra",
+      "source_url": "https://freeplast.cl/producto/caja-universal-negro/",
+      "lifecycle": "active",
+      "slug": "caja-universal-cerrada-negra",
+      "legacy_paths": [
+        "/producto/caja-universal-negro/"
+      ],
+      "title": "Caja Universal Cerrada Negra",
+      "excerpt": "Caja Universal cerrada de PEAD reciclado, 625 x 445 x 226 mm exteriores y 46 litros de capacidad, apilable y anidable.",
+      "description": "Caja Universal cerrada en color negro. Fabricada de polietileno de alta densidad (PEAD) reciclado. Sus medidas exteriores son de 625 x 445 x 226 mm. Tiene una capacidad de 46 lts. Destaca su gran resistencia. Son apilables y anidables. Posee múltiples usos como transporte de carne, pescado, cecinas, nueces, etc…",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-universal.webp",
+        "checksum": "sha256:d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Universal de plástico negro reciclado",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polietileno de alta densidad (PEAD) reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "625 x 445 x 226 mm (exteriores)",
+        "weight": "Consultar",
+        "use": "Transporte de carne, pescado, cecinas, nueces, entre otros usos",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-universal-ventilada-negra",
+        "fp-caja-universal-cerrada-color",
+        "fp-caja-universal-ventilada-color"
+      ],
+      "featured": true,
+      "featured_order": 2,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "The old site published one Caja Universal page; PRD #1 splits it into four distinct configurations (cerrada/ventilada × negra/color). This record carries the published page’s facts; the old “Cantidad. mínima de compra: 100 unidades” sentence is not presented (commercial minimum unconfirmed).",
+          "Weight and units per pallet were never published; they render as Consultar pending client confirmation.",
+          "Photography shows the black configuration and is shared provisionally by the four Universal records; per-configuration original media is pending."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-ventilada-negra",
+      "source_url": "https://freeplast.cl/producto/caja-universal-negro/",
+      "lifecycle": "active",
+      "slug": "caja-universal-ventilada-negra",
+      "legacy_paths": [],
+      "title": "Caja Universal Ventilada Negra",
+      "excerpt": "Caja Universal ventilada en color negro. Especificaciones detalladas pendientes de confirmación.",
+      "description": "Caja Universal ventilada en color negro, de construcción Freeplast. Sus especificaciones detalladas están pendientes de confirmación con el cliente.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-universal.webp",
+        "checksum": "sha256:d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Universal de plástico negro reciclado (fotografía referencial de la familia Universal)",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-universal-cerrada-negra",
+        "fp-caja-universal-cerrada-color",
+        "fp-caja-universal-ventilada-color"
+      ],
+      "featured": true,
+      "featured_order": 3,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Configuration created per PRD #1 (four distinct Caja Universal products); no published page or confirmed specs exist for it yet.",
+          "Neutral description derived from the configuration name only; every unconfirmed fact renders as Consultar.",
+          "Shares the old Universal photograph provisionally; original per-configuration media is pending."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-cerrada-color",
+      "source_url": "https://freeplast.cl/producto/caja-universal-negro/",
+      "lifecycle": "active",
+      "slug": "caja-universal-cerrada-color",
+      "legacy_paths": [],
+      "title": "Caja Universal Cerrada Color",
+      "excerpt": "Caja Universal cerrada en configuración de color: blanco, rojo, amarillo, azul o verde, sujetos a disponibilidad.",
+      "description": "Caja Universal cerrada en configuración de color. Los colores disponibles — blanco, rojo, amarillo, azul y verde — están sujetos a confirmación del cliente, al igual que sus especificaciones detalladas.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-universal.webp",
+        "checksum": "sha256:d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Universal cerrada a color (fotografía referencial en negro)",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [
+        {
+          "id": "blanco",
+          "label": "Blanco",
+          "group": "color"
+        },
+        {
+          "id": "rojo",
+          "label": "Rojo",
+          "group": "color"
+        },
+        {
+          "id": "amarillo",
+          "label": "Amarillo",
+          "group": "color"
+        },
+        {
+          "id": "azul",
+          "label": "Azul",
+          "group": "color"
+        },
+        {
+          "id": "verde",
+          "label": "Verde",
+          "group": "color"
+        }
+      ],
+      "related_ids": [
+        "fp-caja-universal-cerrada-negra",
+        "fp-caja-universal-ventilada-negra",
+        "fp-caja-universal-ventilada-color"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Color options are restricted to the supported vocabulary (blanco, rojo, amarillo, azul, verde) per PRD #1; availability remains subject to client confirmation.",
+          "No published page or confirmed specs exist for this configuration yet; every unconfirmed fact renders as Consultar.",
+          "Shares the old Universal photograph provisionally; original per-configuration media is pending."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-ventilada-color",
+      "source_url": "https://freeplast.cl/producto/caja-universal-negro/",
+      "lifecycle": "active",
+      "slug": "caja-universal-ventilada-color",
+      "legacy_paths": [],
+      "title": "Caja Universal Ventilada Color",
+      "excerpt": "Caja Universal ventilada en configuración de color: blanco, rojo, amarillo, azul o verde, sujetos a disponibilidad.",
+      "description": "Caja Universal ventilada en configuración de color. Los colores disponibles — blanco, rojo, amarillo, azul y verde — están sujetos a confirmación del cliente, al igual que sus especificaciones detalladas.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-universal.webp",
+        "checksum": "sha256:d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Universal ventilada a color (fotografía referencial en negro)",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [
+        {
+          "id": "blanco",
+          "label": "Blanco",
+          "group": "color"
+        },
+        {
+          "id": "rojo",
+          "label": "Rojo",
+          "group": "color"
+        },
+        {
+          "id": "amarillo",
+          "label": "Amarillo",
+          "group": "color"
+        },
+        {
+          "id": "azul",
+          "label": "Azul",
+          "group": "color"
+        },
+        {
+          "id": "verde",
+          "label": "Verde",
+          "group": "color"
+        }
+      ],
+      "related_ids": [
+        "fp-caja-universal-ventilada-negra",
+        "fp-caja-universal-cerrada-negra",
+        "fp-caja-universal-cerrada-color"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Color options are restricted to the supported vocabulary (blanco, rojo, amarillo, azul, verde) per PRD #1; availability remains subject to client confirmation.",
+          "No published page or confirmed specs exist for this configuration yet; every unconfirmed fact renders as Consultar.",
+          "Shares the old Universal photograph provisionally; original per-configuration media is pending."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-tomatera",
+      "source_url": "https://freeplast.cl/producto/caja-tomatera/",
+      "lifecycle": "active",
+      "slug": "caja-tomatera",
+      "legacy_paths": [
+        "/producto/caja-tomatera/"
+      ],
+      "title": "Caja Tomatera",
+      "excerpt": "Caja Tomatera de PP virgen y reciclado, 470 x 340 x 270 mm, 840 grms y resistencia de hasta 18 kgs.",
+      "description": "Caja Tomatera de material PP virgen y reciclado, sus medidas son 470 x 340 x 270 mm. Pesa 840 grms y resiste hasta 18 kgs. Ideal para el transporte de tomates, paltas, frutas y verduras en general.",
+      "category": "agricola",
+      "image": {
+        "file": "media/fp-tomatera.webp",
+        "checksum": "sha256:129415c500a8853384c180080ff348cc37a8406a1e08bb2ec09703dde02bd123",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Tomatera de plástico",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polipropileno (PP) virgen y reciclado",
+        "material_short": "PP virgen y reciclado",
+        "dimensions": "470 x 340 x 270 mm",
+        "weight": "840 grms",
+        "use": "Transporte de tomates, paltas, frutas y verduras en general",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-cosechera-3-4",
+        "fp-caja-frutillera",
+        "fp-caja-frutera"
+      ],
+      "featured": true,
+      "featured_order": 4,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose minus the price note and the “Cantidad mínima de compra: 128 unidades” sentence (commercial minimum unconfirmed per PRD #1).",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-frutillera",
+      "source_url": "https://freeplast.cl/producto/caja-frutillera-2/",
+      "lifecycle": "active",
+      "slug": "caja-frutillera",
+      "legacy_paths": [
+        "/producto/caja-frutillera-2/"
+      ],
+      "title": "Caja Frutillera",
+      "excerpt": "Caja frutillera de polipropileno reciclado, 500 x 300 x 110 mm aprox., para cosecha de frutillas.",
+      "description": "Caja frutillera. Fabricada de Polipropileno reciclado. Sus medidas son 500 x 300 x 110 mm aprox. Utilizada principalmente para la cosecha de frutillas.",
+      "category": "agricola",
+      "image": {
+        "file": "media/fp-frutillera.webp",
+        "checksum": "sha256:924bd5716ebdb0ce33297af67d6b634cb49e232c34ae0169b1bb90d22ba3119c",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Frutillera de plástico",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polipropileno reciclado",
+        "material_short": "PP reciclado",
+        "dimensions": "500 x 300 x 110 mm aprox.",
+        "weight": "Consultar",
+        "use": "Cosecha de frutillas",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-frutera",
+        "fp-caja-tomatera",
+        "fp-caja-cosechera-3-4"
+      ],
+      "featured": true,
+      "featured_order": 5,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose; weight and units per pallet were never published and render as Consultar.",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-frutera",
+      "source_url": "https://freeplast.cl/producto/caja-frutera/",
+      "lifecycle": "active",
+      "slug": "caja-frutera",
+      "legacy_paths": [
+        "/producto/caja-frutera/"
+      ],
+      "title": "Caja Frutera",
+      "excerpt": "Caja frutera de 44 lts y 1,45 kgs aprox., para transporte de frutas y hortalizas.",
+      "description": "Caja frutera de 44 lts. Peso aproximado de 1,45 kgs. Especial para el transporte de frutas y hortalizas.",
+      "category": "agricola",
+      "image": {
+        "file": "media/fp-frutera.webp",
+        "checksum": "sha256:8cccfb29b991e3d3f05b6510fb706f61ef1ab7082220ba2e59aaef7d9f2f88aa",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Frutera de plástico",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "1,45 kgs aprox.",
+        "use": "Transporte de frutas y hortalizas",
+        "units_per_pallet": 65,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-frutillera",
+        "fp-caja-tomatera",
+        "fp-caja-cosechera-3-4"
+      ],
+      "featured": true,
+      "featured_order": 6,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose minus the “Cantidad mínima de compra un pallet de 65 unidades” sentence: 65 units per pallet is kept as the packaging fact and the commercial minimum stays unconfirmed (PRD #1).",
+          "Material and dimensions were never published; they render as Consultar.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-paltera",
+      "source_url": "https://freeplast.cl/contacto/",
+      "lifecycle": "active",
+      "slug": "caja-paltera",
+      "legacy_paths": [],
+      "title": "Caja Paltera",
+      "excerpt": "Caja Paltera Freeplast. Especificaciones y fotografía pendientes de revisión con el cliente.",
+      "description": "Caja Paltera Freeplast. El producto figura en el formulario actual de freeplast.cl sin ficha publicada; sus especificaciones están pendientes de revisión con el cliente.",
+      "category": "agricola",
+      "image": {
+        "file": "media/fp-caja-paltera.png",
+        "checksum": "sha256:3cb9afe2a5b3c50340fdacb33285cb4b08a0c00b1aa50c61de3e3426b75406b2",
+        "width": 600,
+        "height": 600,
+        "alt": "Imagen referencial pendiente para la Caja Paltera",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-tomatera",
+        "fp-caja-frutera",
+        "fp-caja-cosechera-3-4"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "The product is named in the current freeplast.cl contact form but has no published product page; the 2026 PDF sheet was not transcribable in this environment, so every fact renders as Consultar.",
+          "Neutral description derived from the product name only; client review pending.",
+          "No photography exists; a neutral placeholder is used and visibly tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-merlucera",
+      "source_url": "https://freeplast.cl/producto/caja-merlucera/",
+      "lifecycle": "active",
+      "slug": "caja-merlucera",
+      "legacy_paths": [
+        "/producto/caja-merlucera/"
+      ],
+      "title": "Caja Merlucera",
+      "excerpt": "Caja Merlucera de PEAD virgen y reciclado para el transporte de merluza y peces en general.",
+      "description": "Caja Merlucera de material Polietileno de alta densidad virgen y reciclado. Posee múltiples usos, ideal para el transporte de merluza y peces en general.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-merlucera.webp",
+        "checksum": "sha256:61276792b35ad002d4c0e901cd2c6316be386bf0b1628b62610f1e32c25487b3",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Merlucera de plástico",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polietileno de alta densidad virgen y reciclado",
+        "material_short": "PEAD virgen y reciclado",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Transporte de merluza y peces en general",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-universal-cerrada-negra",
+        "fp-tote",
+        "fp-caja-pollera"
+      ],
+      "featured": true,
+      "featured_order": 8,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose minus the price note; dimensions, weight and units per pallet were never published and render as Consultar.",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-pollera",
+      "source_url": "https://freeplast.cl/producto/base-para-pediluvio/",
+      "lifecycle": "active",
+      "slug": "caja-pollera",
+      "legacy_paths": [
+        "/producto/base-para-pediluvio/"
+      ],
+      "title": "Caja Pollera",
+      "excerpt": "Caja Pollera de PEAD reciclado en negro, 600 x 400 x 170 mm exteriores, para transporte de carnes, pollo y cecinas.",
+      "description": "Caja Pollera hecha de polietileno de alta densidad reciclado, disponible en color negro. Sus medidas exteriores son de 600 x 400 x 170 y se usan principalmente para el transporte de carnes, pollo, cecinas, etc…",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-pollera.webp",
+        "checksum": "sha256:453c6c93192005e2c1b0184c6c950b3d5e3ef39f03826001951eb0a7ec63b948",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Pollera de plástico negro",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polietileno de alta densidad reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "600 x 400 x 170 mm (exteriores)",
+        "weight": "Consultar",
+        "use": "Transporte de carnes, pollo, cecinas",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-universal-cerrada-negra",
+        "fp-caja-merlucera",
+        "fp-tote"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose (the product page lives at the historical slug base-para-pediluvio); weight and units per pallet were never published and render as Consultar.",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-tote",
+      "source_url": "https://freeplast.cl/producto/totem/",
+      "lifecycle": "active",
+      "slug": "tote",
+      "legacy_paths": [
+        "/producto/totem/"
+      ],
+      "title": "Tote",
+      "excerpt": "Tote de PEAD color negro, 800 gramos y 500 x 280 x 190 mm exteriores.",
+      "description": "Tote fabricado de polietileno de alta densidad en color negro y peso de 800 gramos. Medidas exteriores: 500 x 280x 190 mm.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-tote.webp",
+        "checksum": "sha256:4721ffec1b911215e993ff54bc602a6bdca42f3d300c0599fee002d35ea9a683",
+        "width": 600,
+        "height": 600,
+        "alt": "Tote de plástico negro",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polietileno de alta densidad",
+        "material_short": "PEAD",
+        "dimensions": "500 x 280 x 190 mm (exteriores)",
+        "weight": "800 gramos",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-caja-universal-cerrada-negra",
+        "fp-caja-universal-ventilada-negra",
+        "fp-caja-pollera"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose, including its original spacing around the measures; use and units per pallet were never published and render as Consultar.",
+          "Canonical slug is the product name “tote”; the legacy path /producto/totem/ is retained for the future cutover.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-upc",
+      "source_url": "https://freeplast.cl/producto/traversas-para-bines/",
+      "lifecycle": "active",
+      "slug": "traversa-para-bins-tipo-upc",
+      "legacy_paths": [
+        "/producto/traversas-para-bines/"
+      ],
+      "title": "Traversa para Bins Tipo UPC",
+      "excerpt": "Traversa para reposición de patas de bins reutilizables; 2,02 kgs, gruesa y firme.",
+      "description": "Producto hecho para reposición de patas de los bines que pueden ser reutilizados. Las traversas son de muy buena calidad, gruesas y firmes. El peso de la traversa es de 2,02 kgs lo que la hace firme y maciza.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-traversa-upc.webp",
+        "checksum": "sha256:4a2175c9f3e11c189bfbf47f51b5807e7f8b9850bd7c204fb04b6e2f54bb9dc2",
+        "width": 600,
+        "height": 600,
+        "alt": "Traversa para bins Tipo UPC",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "2,02 kgs",
+        "use": "Reposición de patas de bins reutilizables",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-traversa-para-bins-tipo-g1",
+        "fp-traversa-para-bins-tipo-romano"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose; material, dimensions and units per pallet were never published and render as Consultar.",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-g1",
+      "source_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+      "lifecycle": "active",
+      "slug": "traversa-para-bins-tipo-g1",
+      "legacy_paths": [
+        "/producto/traversas-para-bins-tipo-w/"
+      ],
+      "title": "Traversa para Bins Tipo G1",
+      "excerpt": "Traversa para reposición de patas de bins reutilizables; 2,5 kgs, gruesa y firme.",
+      "description": "Traversas para reposición de patas de bins que pueden ser reutilizados. Producto de muy buena calidad. Las traversas son gruesas y firmes para resistir el embate de grúas y movimientos de bins. Su peso es de 2,5 kgs, lo que las hace macizas y firmes.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-traversa-g1.webp",
+        "checksum": "sha256:09a5fca731064482439021976e09d5e1e771143bc0e2d93f23780448eb430d08",
+        "width": 600,
+        "height": 600,
+        "alt": "Traversa para bins Tipo G1",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "2,5 kgs",
+        "use": "Reposición de patas de bins reutilizables",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-traversa-para-bins-tipo-upc",
+        "fp-traversa-para-bins-tipo-romano"
+      ],
+      "featured": true,
+      "featured_order": 7,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose (the page lives at the historical slug traversas-para-bins-tipo-w); material, dimensions and units per pallet were never published and render as Consultar.",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-romano",
+      "source_url": "https://freeplast.cl/",
+      "lifecycle": "active",
+      "slug": "traversa-para-bins-tipo-romano",
+      "legacy_paths": [],
+      "title": "Traversa para Bins Tipo Romano",
+      "excerpt": "Traversa para bins Tipo Romano. Nombre provisional; alias de revisión: Traversa Tipo G2.",
+      "description": "Traversa para bins Tipo Romano de Freeplast. El nombre detallado es provisional: se conserva «Traversa Tipo G2» como alias de revisión hasta que el cliente resuelva la designación. Sus especificaciones están pendientes de confirmación.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-traversa-romano.png",
+        "checksum": "sha256:0bd78c9fe03b6a70967b7ca1a8b4c80afb4c24584404bd94dce06e8865155204",
+        "width": 600,
+        "height": 600,
+        "alt": "Imagen referencial pendiente para la Traversa para Bins Tipo Romano",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-traversa-para-bins-tipo-g1",
+        "fp-traversa-para-bins-tipo-upc"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "PRD #1: the detailed name “Traversa para Bins Tipo Romano” is provisional and “Traversa Tipo G2” is retained as a review alias until the client resolves the conflict.",
+          "Weight and pallet dimensions are pending client facts; the 2026 PDF sheet was not transcribable in this environment, so every fact renders as Consultar.",
+          "No photography exists; a neutral placeholder is used and visibly tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-bases-plasticas-para-pediluvios",
+      "source_url": "https://freeplast.cl/producto/pediluvio/",
+      "lifecycle": "active",
+      "slug": "bases-plasticas-para-pediluvios",
+      "legacy_paths": [
+        "/producto/pediluvio/"
+      ],
+      "title": "Bases plásticas para pediluvios",
+      "excerpt": "Bases plásticas para pediluvios Freeplast; especificaciones pendientes de confirmación.",
+      "description": "Bases plásticas para pediluvios.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-pediluvio.webp",
+        "checksum": "sha256:fb19cb786ab8b528550e7588f34aed0586a3e6be145d225a32c9276a3f9d04b8",
+        "width": 600,
+        "height": 600,
+        "alt": "Base plástica para pediluvio",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-ladrillo-plastico",
+        "fp-tote",
+        "fp-caja-pollera"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Old-site-only product (absent from the 2026 PDF union per PRD #1): it stays public with its current limited content; the price note was dropped and every unconfirmed fact renders as Consultar.",
+          "Current client status and specifications are pending; no invented facts.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    },
+    {
+      "source_id": "fp-ladrillo-plastico",
+      "source_url": "https://freeplast.cl/producto/ladrillo-plastico/",
+      "lifecycle": "active",
+      "slug": "ladrillo-plastico",
+      "legacy_paths": [
+        "/producto/ladrillo-plastico/"
+      ],
+      "title": "Ladrillo plástico",
+      "excerpt": "Ladrillo plástico Freeplast; sin descripción publicada actualmente.",
+      "description": "Ladrillo plástico Freeplast. No existe descripción publicada en freeplast.cl; el contenido completo está pendiente de revisión con el cliente.",
+      "category": "otros",
+      "image": {
+        "file": "media/fp-ladrillo.webp",
+        "checksum": "sha256:def3b5160b7f29d51763240f4d058e026e9c44853fbb609621f65b02e60b5ced",
+        "width": 600,
+        "height": 600,
+        "alt": "Ladrillo plástico ensamblable",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Consultar",
+        "material_short": "Consultar",
+        "dimensions": "Consultar",
+        "weight": "Consultar",
+        "use": "Consultar",
+        "units_per_pallet": null,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [
+        "fp-bases-plasticas-para-pediluvios",
+        "fp-tote",
+        "fp-caja-pollera"
+      ],
+      "featured": false,
+      "featured_order": null,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Old-site-only product (absent from the 2026 PDF union per PRD #1): it stays public; the old page has no excerpt, so the description is a neutral placeholder derived from the product name only.",
+          "Current client status and specifications are pending; every unconfirmed fact renders as Consultar.",
+          "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
         ]
       }
     }
