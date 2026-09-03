@@ -1170,6 +1170,9 @@ test('the complete v6 content and navigation experience is governed, connected a
   assert.equal(tokens.typography.fontFamily, 'Manrope');
   assert.equal(tokens.obsolete.v5.status.includes('rejected'), true);
 
+  // Rows of the approved-sources table have the shape
+  //   | reference | `prototype file` | published url | `sha256` |
+  // — capture every (file, hash) pair that must still match on disk.
   const recorded = [...decisions.matchAll(/\|\s*`([^`|]+)`\s*\|[^|]+\|\s*`([0-9a-f]{64})`\s*\|/g)];
   assert.ok(recorded.length >= 6, 'DECISIONS.md must freeze every approved prototype file by hash');
   for (const [, file, hash] of recorded) {
@@ -1382,18 +1385,18 @@ test('the complete v6 content and navigation experience is governed, connected a
   const chooserPage = await get(PRODUCT_URL, MOBILE_UA);
   const nonce = chooserPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
   assert.ok(nonce, 'a chooser must be available to build a multi-line basket');
-  const addLine = (product, quantity, headers = {}) =>
+  const addLine = (product, quantity, extraHeaders = {}) =>
     postForm(
-      { action: 'fp_basket_add', fp_product: product, fp_quantity: quantity, fp_basket_nonce: nonce, _wp_http_referer: PRODUCT_URL, ...headers.fields },
-      headers.cookies
+      { action: 'fp_basket_add', fp_product: product, fp_quantity: quantity, fp_basket_nonce: nonce, _wp_http_referer: PRODUCT_URL },
+      extraHeaders
     );
   const firstLine = await addLine('fp-caja-cosechera-3-4', '5');
   assert.equal(firstLine.status, 302, 'the first line must add successfully');
   const token = firstLine.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
   assert.ok(token, 'the guest must own a session cookie');
-  const secondLine = await addLine('fp-caja-tomatera', '10', { cookies: { cookie: `fpcq_basket=${token}` } });
-  assert.equal(secondLine.status, 302, 'the second line must add successfully');
   const cookieHeader = { cookie: `fpcq_basket=${token}` };
+  const secondLine = await addLine('fp-caja-tomatera', '10', cookieHeader);
+  assert.equal(secondLine.status, 302, 'the second line must add successfully');
   const routes = [
     '/',
     '/nosotros/',
@@ -1416,8 +1419,8 @@ test('the complete v6 content and navigation experience is governed, connected a
   /* 13.11 — Migration 5 replaces exactly the legacy placeholder content;
      human edits survive. */
   const shellPages = JSON.parse(wp(['option', 'get', 'fp_shell_pages', '--format=json']).stdout);
-  const contactoId = shellPages['contacto'];
-  const privacyId = shellPages['politica-de-privacidad'];
+  const contactoId = String(shellPages['contacto']);
+  const privacyId = String(shellPages['politica-de-privacidad']);
   wp([
     'eval',
     `wp_update_post( array( "ID" => ${contactoId}, "post_content" => Freeplast_CQ_Shell::legacy_contacto_placeholder() ) );` +
@@ -1436,7 +1439,7 @@ test('the complete v6 content and navigation experience is governed, connected a
       'update_option( "fp_db_version", 4 );',
   ]);
   wp(['eval', 'Freeplast_CQ_Migrations::run();']);
-  const editedContent = wp(['post', 'get', String(privacyId), '--field=post_content']).stdout;
+  const editedContent = wp(['post', 'get', privacyId, '--field=post_content']).stdout;
   assertContains(editedContent, 'Edición humana que debe sobrevivir', 'a human edit must never be clobbered by the migration');
   wp(['eval', `wp_update_post( array( "ID" => ${privacyId}, "post_content" => Freeplast_CQ_Shell::privacy_content() ) );`]);
 

@@ -79,23 +79,12 @@ class Freeplast_CQ_Migrations {
 			// takeover (see class-basket.php and class-shell.php).
 			Freeplast_CQ_Basket::create_table();
 
-			$shell_pages = get_option( 'fp_shell_pages', array() );
-			if ( ! empty( $shell_pages['cotizacion'] ) ) {
-				$page = get_post( (int) $shell_pages['cotizacion'] );
-				if (
-					$page instanceof WP_Post &&
-					'page' === $page->post_type &&
-					'cotizacion' === $page->post_name &&
-					Freeplast_CQ_Shell::legacy_cotizacion_placeholder() === $page->post_content
-				) {
-					wp_update_post(
-						array(
-							'ID'           => $page->ID,
-							'post_content' => Freeplast_CQ_Shell::COTIZACION_CONTENT,
-						)
-					);
-				}
-			}
+			self::take_over_page(
+				get_option( 'fp_shell_pages', array() ),
+				'cotizacion',
+				Freeplast_CQ_Shell::legacy_cotizacion_placeholder(),
+				Freeplast_CQ_Shell::COTIZACION_CONTENT
+			);
 			$applied = 4;
 		}
 
@@ -105,35 +94,18 @@ class Freeplast_CQ_Migrations {
 			// only the exact legacy placeholder is replaced, so human edits made
 			// since issue #2 survive untouched.
 			$shell_pages = get_option( 'fp_shell_pages', array() );
-			$takeovers   = array(
-				'contacto'               => array(
-					'legacy'  => 'legacy_contacto_placeholder',
-					'content' => 'contacto_content',
-				),
-				'politica-de-privacidad' => array(
-					'legacy'  => 'legacy_privacy_placeholder',
-					'content' => 'privacy_content',
-				),
+			self::take_over_page(
+				$shell_pages,
+				'contacto',
+				Freeplast_CQ_Shell::legacy_contacto_placeholder(),
+				Freeplast_CQ_Shell::contacto_content()
 			);
-			foreach ( $takeovers as $slug => $methods ) {
-				if ( empty( $shell_pages[ $slug ] ) ) {
-					continue;
-				}
-				$page = get_post( (int) $shell_pages[ $slug ] );
-				if (
-					$page instanceof WP_Post &&
-					'page' === $page->post_type &&
-					$slug === $page->post_name &&
-					Freeplast_CQ_Shell::{$methods['legacy']}() === $page->post_content
-				) {
-					wp_update_post(
-						array(
-							'ID'           => $page->ID,
-							'post_content' => Freeplast_CQ_Shell::{$methods['content']}(),
-						)
-					);
-				}
-			}
+			self::take_over_page(
+				$shell_pages,
+				'politica-de-privacidad',
+				Freeplast_CQ_Shell::legacy_privacy_placeholder(),
+				Freeplast_CQ_Shell::privacy_content()
+			);
 			$applied = 5;
 		}
 
@@ -151,6 +123,37 @@ class Freeplast_CQ_Migrations {
 	   would write rules without the fp_product archive. */
 		if ( $changed ) {
 			update_option( 'fp_flush_rewrite_rules', 1 );
+		}
+	}
+
+	/**
+	 * Replace a seeded shell page's content, but only when the recorded page
+	 * still carries the exact legacy placeholder: a page edited by a human
+	 * is never clobbered by a migration.
+	 *
+	 * @param array  $shell_pages    The fp_shell_pages option (slug => page ID).
+	 * @param string $slug           Expected page slug.
+	 * @param string $legacy_content Placeholder content that may be replaced.
+	 * @param string $content        Replacement content.
+	 */
+	private static function take_over_page( array $shell_pages, string $slug, string $legacy_content, string $content ): void {
+		if ( empty( $shell_pages[ $slug ] ) ) {
+			return;
+		}
+
+		$page = get_post( (int) $shell_pages[ $slug ] );
+		if (
+			$page instanceof WP_Post &&
+			'page' === $page->post_type &&
+			$slug === $page->post_name &&
+			$legacy_content === $page->post_content
+		) {
+			wp_update_post(
+				array(
+					'ID'           => $page->ID,
+					'post_content' => $content,
+				)
+			);
 		}
 	}
 

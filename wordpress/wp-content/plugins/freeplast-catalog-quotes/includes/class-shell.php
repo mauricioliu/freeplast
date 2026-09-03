@@ -138,11 +138,11 @@ class Freeplast_CQ_Shell {
 			'nosotros'               => array(
 				'title'   => 'Nosotros',
 				'content' => self::block_heading( 'Somos los mejores en el mercado del plástico', 1 ) .
-					self::block_paragraph( 'Comercializamos productos de excelente calidad', array() ) .
+					self::block_paragraph( 'Comercializamos productos de excelente calidad' ) .
 					self::block_heading( 'Nuestra Misión', 2 ) .
-					self::block_paragraph( 'Promover una cultura de cuidado del medio ambiente y de compromiso con la sustentabilidad a través de la comercialización de productos hechos en base a plástico reciclado', array() ) .
+					self::block_paragraph( 'Promover una cultura de cuidado del medio ambiente y de compromiso con la sustentabilidad a través de la comercialización de productos hechos en base a plástico reciclado' ) .
 					self::block_heading( 'Nuestra Visión', 2 ) .
-					self::block_paragraph( 'Ser la principal empresa comercializadora de productos plásticos de Chile, vendiendo productos de alta calidad que ayuden al desarrollo sustentable de las actividades económicas de nuestro país.', array() ),
+					self::block_paragraph( 'Ser la principal empresa comercializadora de productos plásticos de Chile, vendiendo productos de alta calidad que ayuden al desarrollo sustentable de las actividades económicas de nuestro país.' ),
 			),
 			'contacto'               => array(
 				'title'   => 'Contacto',
