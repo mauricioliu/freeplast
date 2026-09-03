@@ -1,0 +1,47 @@
+<!-- freeplast.cl hotfix 2026-09-03: Elementor free 3.1.x HandlerBase contract vs
+     Elementor Pro 2.10.3 handlers. Pro handlers dereference this.$element (null)
+     inside isActive()/getModelCID() during __construct; the throw aborts
+     Elementor's per-element dispatch loop, so Pro widget JS (nav menu toggle,
+     slides/swiper) never binds. This snippet restores the pre-3.1 contract by
+     pre-assigning $element before __construct runs. Additive + reversible. -->
+<script>
+(function () {
+	"use strict";
+	if (window.__fpElementorContractFix) { return; }
+	window.__fpElementorContractFix = true;
+
+	var tryWrap = function () {
+		var m = window.elementorModules;
+		if (!m || !m.frontend || !m.frontend.handlers || !m.frontend.handlers.Base) { return false; }
+		var proto = m.frontend.handlers.Base.prototype;
+		if (proto.__fpWrapped) { return true; }
+		var origConstruct = proto.__construct;
+		proto.__construct = function (settings) {
+			if ((this.$element === undefined || this.$element === null) && settings && settings.$element) {
+				this.$element = settings.$element;
+			}
+			try {
+				return origConstruct.apply(this, arguments);
+			} catch (e) {
+				/* one broken handler must not abort the whole dispatch loop */
+				window.__fpElementorContractFixCaught = (window.__fpElementorContractFixCaught || 0) + 1;
+			}
+		};
+		proto.__fpWrapped = true;
+		return true;
+	};
+
+	try {
+		Object.defineProperty(window, "elementorModules", {
+			configurable: true,
+			get: function () { return window.__fpModulesValue; },
+			set: function (v) {
+				window.__fpModulesValue = v;
+				if (!tryWrap()) {
+					var t = setInterval(function () { if (tryWrap()) { clearInterval(t); } }, 0);
+				}
+			}
+		});
+	} catch (e) { /* never block the page */ }
+})();
+</script>
