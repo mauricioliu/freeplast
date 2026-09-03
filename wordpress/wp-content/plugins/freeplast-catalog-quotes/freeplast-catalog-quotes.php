@@ -44,8 +44,8 @@ add_action(
 			$header = get_file_data(
 				__FILE__,
 				array(
-					'version'     => 'Version',
-					'requires_wp' => 'Requires at least',
+					'version'      => 'Version',
+					'requires_wp'  => 'Requires at least',
 					'requires_php' => 'Requires PHP',
 				)
 			);

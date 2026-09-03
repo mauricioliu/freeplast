@@ -30,8 +30,8 @@ class Freeplast_CQ_Shell {
 	public static function seed(): void {
 		$pages = array(
 			'cotizacion'             => array(
-			'title'   => 'Cotización',
-			'content' => self::block_group(
+				'title'   => 'Cotización',
+				'content' => self::block_group(
 					self::block_heading( 'Tu cotización está vacía', 2 ) .
 					self::block_paragraph( 'Explora la tienda y agrega productos para solicitar una cotización mayorista.', array( 'fp-empty-note' ) ),
 					array( 'fp-empty' )
@@ -113,11 +113,12 @@ class Freeplast_CQ_Shell {
 	}
 
 	private static function block_group( string $inner, array $classes = array() ): string {
-		$class = $classes ? sprintf( ",\"className\":\"%s\"", esc_attr( implode( ' ', $classes ) ) ) : '';
+		$class_list = esc_attr( implode( ' ', $classes ) );
+		$attribute  = $classes ? sprintf( ",\"className\":\"%s\"", $class_list ) : '';
 		return sprintf(
 			"<!-- wp:group {%s\"layout\":{\"type\":\"constrained\"}} -->\n<div class=\"wp-block-group %s\">\n%s</div>\n<!-- /wp:group -->\n",
-			$class,
-			esc_attr( implode( ' ', $classes ) ),
+			$attribute,
+			$class_list,
 			$inner
 		);
 	}

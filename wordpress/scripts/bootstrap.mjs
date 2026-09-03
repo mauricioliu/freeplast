@@ -13,8 +13,8 @@
  * Idempotent when the build already exists (wordpress/.build/.provisioned.json).
  * Pass --fresh (or set FREEPLAST_KEEP_BUILD=0 after wiping) to rebuild.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +30,7 @@ const WPCLI = join(CACHE, 'wp-cli.phar');
 const SITE_URL = process.env.FREEPLAST_TEST_URL || 'http://127.0.0.1:8091';
 
 function sh(cmd, args, opts = {}) {
-  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', opts.inheritStderr ? 'inherit' : 'pipe'], ...opts });
+  return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 }
 
 function wp(args) {
@@ -65,7 +65,6 @@ syncContent();
 /* 4. SQLite drop-in */
 const sqliteSrc = join(CACHE, 'sqlite-database-integration');
 if (!existsSync(sqliteSrc)) {
-  rmSync(join(CACHE, 'sqlite-database-integration'), { recursive: true, force: true });
   execFileSync('unzip', ['-q', '-o', join(CACHE, 'sqlite-plugin.zip'), '-d', CACHE]);
 }
 cpSync(sqliteSrc, join(WP_DIR, 'wp-content', 'plugins', 'sqlite-database-integration'), { recursive: true });

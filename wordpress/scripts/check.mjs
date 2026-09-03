@@ -24,7 +24,7 @@
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
@@ -44,17 +44,16 @@ const KEEP_BUILD = process.env.FREEPLAST_KEEP_BUILD === '1' || process.argv.incl
 const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; 412px) AppleWebKit/537.36 Mobile Safari/537.36';
 const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64; 1440px) AppleWebKit/537.36 Chrome/126 Safari/537.36';
 
-const report = { startedAt: new Date().toISOString(), sections: [] };
 let server = null;
 let versions = null;
+let versionLines = [];
 
 function section(name, lines) {
-  report.sections.push({ name, lines });
   console.log(`\n── ${name} ${'─'.repeat(Math.max(1, 66 - name.length))}`);
   for (const line of lines) console.log(`  ${line}`);
 }
 
-function wp(args, opts = {}) {
+function wp(args) {
   const res = spawnSync(PHP_BIN, [WP_CLI, ...args, `--url=${SITE_URL}`, '--quiet'], {
     cwd: WP_DIR,
     encoding: 'utf8',
@@ -162,14 +161,15 @@ test('WordPress/PHP/database version expectations and plugin migration version a
   assert.ok(toNum(phpVersion) >= toNum(pluginRequiresPhp), `actual PHP ${phpVersion} must satisfy plugin Requires PHP ${pluginRequiresPhp}`);
   assert.ok(toNum(wpVersion) >= toNum(pluginRequiresWp), `actual WP ${wpVersion} must satisfy plugin Requires at least ${pluginRequiresWp}`);
 
-  versions = { wpVersion, phpVersion, dropin, sqliteVersion, themeVersion, themeRequiresWp, themeRequiresPhp, pluginVersion, pluginRequiresWp, pluginRequiresPhp, migrationVersion };
-  section('Version expectations', [
+  versions = { wpVersion, phpVersion, dropin, sqliteVersion };
+  versionLines = [
     `WordPress: ${wpVersion} (theme requires ≥ ${themeRequiresWp}, plugin requires ≥ ${pluginRequiresWp})`,
     `PHP:       ${phpVersion} (theme requires ≥ ${themeRequiresPhp}, plugin requires ≥ ${pluginRequiresPhp})`,
     `Database:  SQLite ${sqliteVersion} via sqlite-database-integration drop-in ${dropin} (disposable; MariaDB on staging, see BUILD-DECISIONS)`,
     `Theme:     freeplast ${themeVersion}`,
     `Plugin:    freeplast-catalog-quotes ${pluginVersion} — migration version fp_db_version=${migrationVersion}`,
-  ]);
+  ];
+  section('Version expectations', versionLines);
 });
 
 /* ─── 3. HTTP server ──────────────────────────────────────────────────── */
@@ -231,9 +231,9 @@ test('Home returns HTTP 200 and renders the approved v6 site shell at mobile and
 });
 
 test('shell navigation targets real routes', async () => {
-  for (const path of ['/nosotros/', '/tienda/', '/contacto/', '/cotizacion/']) {
-    const res = await get(path, MOBILE_UA);
-    assert.equal(res.status, 200, `${path} must return HTTP 200`);
+  for (const route of ['/nosotros/', '/tienda/', '/contacto/', '/cotizacion/']) {
+    const res = await get(route, MOBILE_UA);
+    assert.equal(res.status, 200, `${route} must return HTTP 200`);
   }
   section('Navigation routes', ['/, /nosotros/, /tienda/, /contacto/ and /cotizacion/ all return HTTP 200']);
 });
@@ -264,8 +264,8 @@ test('WooCommerce is absent', () => {
   const plugins = wp(['plugin', 'list', '--field=name']).stdout.split('\n');
   assert.ok(!plugins.includes('woocommerce'), 'WooCommerce must not be installed');
   assert.ok(!existsSync(join(WP_DIR, 'wp-content', 'plugins', 'woocommerce')), 'no woocommerce directory may exist');
-  const home = wp(['eval', 'echo class_exists("WooCommerce") ? "present" : "absent";']).stdout;
-  assert.equal(home, 'absent', 'WooCommerce class must not exist');
+  const runtime = wp(['eval', 'echo class_exists("WooCommerce") ? "present" : "absent";']).stdout;
+  assert.equal(runtime, 'absent', 'WooCommerce class must not exist');
   section('WooCommerce', ['WooCommerce is absent from the plugin list, wp-content and the runtime']);
 });
 
@@ -281,20 +281,20 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `| Check | Result |`,
     `| --- | --- |`,
   ];
-  const results = {
-    'Clean disposable database boots without manual editor changes': 'pass',
-    'Theme "freeplast" activates without warnings or fatal errors': 'pass',
-    'Plugin "freeplast-catalog-quotes" activates without warnings or fatal errors': 'pass',
-    'Home returns HTTP 200 with the v6 site shell (mobile and desktop user agents, identical document)': 'pass',
-    'Approved brand/navigation structure (INICIO · NOSOTROS · TIENDA · Cotiza Online → /cotizacion/)': 'pass',
-    'Non-functional-safe empty Cotización state; no submission forms or prototype endpoints': 'pass',
-    'Navigation routes /, /nosotros/, /tienda/, /contacto/, /cotizacion/ return HTTP 200': 'pass',
-    'WooCommerce absent (plugin list, wp-content, runtime)': 'pass',
-    'Version expectations and plugin migration version reported below': 'pass',
-  };
-  for (const [k, v] of Object.entries(results)) lines.push(`| ${k} | ${v} |`);
+  const passed = [
+    'Clean disposable database boots without manual editor changes',
+    'Theme "freeplast" activates without warnings or fatal errors',
+    'Plugin "freeplast-catalog-quotes" activates without warnings or fatal errors',
+    'Home returns HTTP 200 with the v6 site shell (mobile and desktop user agents, identical document)',
+    'Approved brand/navigation structure (INICIO · NOSOTROS · TIENDA · Cotiza Online → /cotizacion/)',
+    'Non-functional-safe empty Cotización state; no submission forms or prototype endpoints',
+    'Navigation routes /, /nosotros/, /tienda/, /contacto/, /cotizacion/ return HTTP 200',
+    'WooCommerce absent (plugin list, wp-content, runtime)',
+    'Version expectations and plugin migration version reported below',
+  ];
+  for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
-  for (const l of report.sections.find((s) => s.name === 'Version expectations')?.lines || []) lines.push(`- ${l}`);
+  for (const line of versionLines) lines.push(`- ${line}`);
   lines.push(
     ``,
     `## Notes`,
