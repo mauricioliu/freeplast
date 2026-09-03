@@ -1,0 +1,243 @@
+<!doctype html>
+<!-- PROTOTIPO DESECHABLE: tres variantes de ficha de producto, conmutables con ?variant=A|B|C. -->
+<html lang="es-CL">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Caja Cosechera 3/4 — prototipo Freeplast</title>
+    <meta name="description" content="Prototipo de ficha mayorista para Caja Cosechera 3/4." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#100090" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body data-variant="A">
+    <svg class="sprite" aria-hidden="true" focusable="false">
+      <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+      <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      <symbol id="box" viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10" /></symbol>
+      <symbol id="ruler" viewBox="0 0 24 24"><path d="m4 17 13-13 3 3L7 20l-3-3Zm10-10 3 3M11 10l2 2M8 13l3 3" /></symbol>
+      <symbol id="weight" viewBox="0 0 24 24"><path d="M7 8h10l3 12H4L7 8Zm2 0a3 3 0 1 1 6 0" /></symbol>
+      <symbol id="leaf" viewBox="0 0 24 24"><path d="M20 4C10 4 4 9 4 16c0 2 1 4 3 4 7 0 12-6 13-16ZM7 20c2-5 5-8 10-11" /></symbol>
+    </svg>
+
+    <a class="skip" href="#contenido">Ir al contenido</a>
+
+    <header class="nav-wrap">
+      <div class="nav-island">
+        <a class="brand" href="/freeplast/v6/" aria-label="Freeplast, volver al inicio">
+          <img src="assets/mark.svg" alt="" width="32" height="32" />
+          <span>Freeplast</span>
+        </a>
+        <nav aria-label="Navegación principal">
+          <a href="/freeplast/v6/">INICIO</a>
+          <a href="/freeplast/v6/#nosotros">NOSOTROS</a>
+          <a href="/freeplast/v6/#productos" aria-current="page">TIENDA</a>
+        </nav>
+        <a class="nav-cta" href="#cotizar">COTIZA ONLINE</a>
+      </div>
+    </header>
+
+    <main id="contenido">
+      <article class="variant variant-a" data-page-variant="A">
+        <div class="shell breadcrumbs" aria-label="Migas de pan">
+          <a href="/freeplast/v6/">Inicio</a><span>/</span>
+          <a href="/freeplast/v6/#productos">Tienda</a><span>/</span>
+          <span aria-current="page">Caja Cosechera 3/4</span>
+        </div>
+
+        <section class="a-hero shell">
+          <div class="a-gallery">
+            <div class="product-stage"><img src="assets/cosechera.webp" alt="Caja Cosechera 3/4 negra" width="600" height="600" /></div>
+            <div class="image-note"><svg><use href="#leaf" /></svg><span>Fabricada con plástico reciclado</span></div>
+          </div>
+          <div class="a-summary">
+            <p class="kicker">Venta mayorista</p>
+            <h1>Caja Cosechera 3/4</h1>
+            <p class="description">Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general. Cantidad mínima de compra 1 pallet de 70 cajas.</p>
+            <dl class="quick-specs">
+              <div><dt>Medidas</dt><dd>600 × 400 × 180 mm</dd></div>
+              <div><dt>Peso</dt><dd>1.250 gramos aprox.</dd></div>
+              <div><dt>Material</dt><dd>PEAD reciclado</dd></div>
+              <div class="minimum"><dt>Compra mínima</dt><dd>1 pallet · 70 cajas</dd></div>
+            </dl>
+            <a class="primary-button" href="#quote-a">Cotizar este producto <svg><use href="#arrow" /></svg></a>
+            <p class="contact-hint">¿Necesitas ayuda? <a href="tel:+56968444265">+56 9 6844 4265</a></p>
+          </div>
+        </section>
+
+        <section class="a-detail-band">
+          <div class="shell a-detail-grid">
+            <div>
+              <p class="section-label">Ficha del producto</p>
+              <h2>Información clara para decidir.</h2>
+              <div class="spec-table" role="table" aria-label="Especificaciones de Caja Cosechera 3/4">
+                <div role="row"><span role="rowheader">Material</span><strong role="cell">Polietileno de alta densidad reciclado</strong></div>
+                <div role="row"><span role="rowheader">Medidas</span><strong role="cell">600 × 400 × 180 mm</strong></div>
+                <div role="row"><span role="rowheader">Peso</span><strong role="cell">1.250 gramos aprox.</strong></div>
+                <div role="row"><span role="rowheader">Uso</span><strong role="cell">Cosecha de uva y frutas en general</strong></div>
+                <div role="row"><span role="rowheader">Pedido mínimo</span><strong role="cell">1 pallet de 70 cajas</strong></div>
+              </div>
+            </div>
+            <form class="quote-card demo-form" id="quote-a">
+              <p class="section-label">Cotización rápida</p>
+              <h2>¿Cuántas cajas necesitas?</h2>
+              <label for="quantity-a">Cantidad de cajas</label>
+              <div class="quantity-control">
+                <button type="button" data-step="-70" aria-label="Restar un pallet">−</button>
+                <input id="quantity-a" name="cantidad" type="number" min="70" step="70" value="70" inputmode="numeric" />
+                <button type="button" data-step="70" aria-label="Sumar un pallet">+</button>
+              </div>
+              <p class="pallet-readout" data-pallet-readout>1 pallet · 70 cajas</p>
+              <label for="email-a">Email</label>
+              <input id="email-a" name="email" type="email" autocomplete="email" placeholder="nombre@empresa.cl" required />
+              <button class="primary-button" type="submit">Solicitar cotización <svg><use href="#arrow" /></svg></button>
+              <p class="form-status" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </section>
+
+        <section class="related shell">
+          <div class="related-head"><div><p class="section-label">También puede interesarte</p><h2>Otros productos</h2></div><a href="/freeplast/v6/#productos">Ver todo el catálogo</a></div>
+          <div class="related-grid">
+            <a href="#"><img src="assets/frutera.webp" alt="" /><span>Caja Frutera</span></a>
+            <a href="#"><img src="assets/tomatera.webp" alt="" /><span>Caja Tomatera</span></a>
+            <a href="#"><img src="assets/universal.webp" alt="" /><span>Caja Universal</span></a>
+          </div>
+        </section>
+      </article>
+
+      <article class="variant variant-b" data-page-variant="B" hidden>
+        <section class="b-hero">
+          <div class="shell b-topline"><span>CATÁLOGO / CAJAS</span><span>VENTA MAYORISTA</span></div>
+          <div class="shell b-hero-grid">
+            <div class="b-title">
+              <p>CAJA COSECHERA</p>
+              <h1>3/4</h1>
+              <a href="#quote-b">SOLICITAR COTIZACIÓN <svg><use href="#arrow" /></svg></a>
+            </div>
+            <div class="b-image"><span class="b-index">01</span><img src="assets/cosechera.webp" alt="Caja Cosechera 3/4 negra" width="600" height="600" /></div>
+          </div>
+          <dl class="b-spec-strip shell">
+            <div><dt>01 / MATERIAL</dt><dd>PEAD RECICLADO</dd></div>
+            <div><dt>02 / MEDIDAS</dt><dd>600 × 400 × 180 MM</dd></div>
+            <div><dt>03 / PESO</dt><dd>1.250 G APROX.</dd></div>
+            <div><dt>04 / MÍNIMO</dt><dd>70 CAJAS</dd></div>
+          </dl>
+        </section>
+
+        <section class="b-body shell">
+          <div class="b-copy">
+            <p class="b-overline">DESCRIPCIÓN / 01</p>
+            <h2>Hecha para el trabajo de cosecha.</h2>
+            <p class="b-description">Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general. Cantidad mínima de compra 1 pallet de 70 cajas.</p>
+            <div class="b-use"><span>USO PRINCIPAL</span><strong>Cosecha de uva y frutas en general</strong></div>
+            <div class="b-note"><svg><use href="#leaf" /></svg><p>Producto fabricado con polietileno de alta densidad reciclado.</p></div>
+          </div>
+          <form class="b-quote demo-form" id="quote-b">
+            <p class="b-overline">COTIZAR / 02</p>
+            <h2>Arma tu solicitud</h2>
+            <div class="b-product-line"><span>Producto</span><strong>Caja Cosechera 3/4</strong></div>
+            <label for="quantity-b">Cantidad</label>
+            <div class="quantity-control dark-control">
+              <button type="button" data-step="-70" aria-label="Restar un pallet">−</button>
+              <input id="quantity-b" name="cantidad" type="number" min="70" step="70" value="70" inputmode="numeric" />
+              <button type="button" data-step="70" aria-label="Sumar un pallet">+</button>
+            </div>
+            <p class="pallet-readout" data-pallet-readout>1 pallet · 70 cajas</p>
+            <label for="company-b">Nombre empresa</label>
+            <input id="company-b" name="empresa" autocomplete="organization" placeholder="Empresa" required />
+            <label for="email-b">Email</label>
+            <input id="email-b" name="email" type="email" autocomplete="email" placeholder="nombre@empresa.cl" required />
+            <button class="b-submit" type="submit">ENVIAR SOLICITUD <svg><use href="#arrow" /></svg></button>
+            <p class="form-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="b-related">
+          <div class="shell">
+            <p class="b-overline">CONTINÚA EXPLORANDO / 03</p>
+            <div class="b-related-links">
+              <a href="#"><span>02</span><strong>Caja Frutera</strong><svg><use href="#arrow" /></svg></a>
+              <a href="#"><span>03</span><strong>Caja Tomatera</strong><svg><use href="#arrow" /></svg></a>
+              <a href="#"><span>04</span><strong>Caja Universal</strong><svg><use href="#arrow" /></svg></a>
+            </div>
+          </div>
+        </section>
+      </article>
+
+      <article class="variant variant-c" data-page-variant="C" hidden>
+        <section class="c-shell">
+          <div class="c-product">
+            <div class="c-back"><a href="/freeplast/v6/#productos">← Volver a productos</a><span>Venta mayorista</span></div>
+            <div class="c-product-card">
+              <div class="c-product-image"><img src="assets/cosechera.webp" alt="Caja Cosechera 3/4 negra" width="600" height="600" /></div>
+              <div class="c-product-copy">
+                <h1>Caja Cosechera 3/4</h1>
+                <p>Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general. Cantidad mínima de compra 1 pallet de 70 cajas.</p>
+                <div class="c-pills"><span>600 × 400 × 180 mm</span><span>1.250 g aprox.</span><span>PEAD reciclado</span></div>
+              </div>
+            </div>
+          </div>
+
+          <form class="c-wizard demo-form" id="quote-c">
+            <div class="c-wizard-head"><span>1 minuto</span><h2>Cotiza en 3 datos</h2><p>Producto preseleccionado: <strong>Caja Cosechera 3/4</strong></p></div>
+            <fieldset>
+              <legend><span>1</span> Elige la cantidad</legend>
+              <div class="amount-options">
+                <label><input type="radio" name="cantidad-rapida" value="70" checked /><span><strong>1 pallet</strong><small>70 cajas</small></span></label>
+                <label><input type="radio" name="cantidad-rapida" value="140" /><span><strong>2 pallets</strong><small>140 cajas</small></span></label>
+                <label><input type="radio" name="cantidad-rapida" value="210" /><span><strong>3 pallets</strong><small>210 cajas</small></span></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend><span>2</span> ¿Necesitas despacho?</legend>
+              <div class="choice-row">
+                <label><input type="radio" name="despacho" value="Si" checked /><span>Sí, con despacho</span></label>
+                <label><input type="radio" name="despacho" value="No" /><span>No, retiro</span></label>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend><span>3</span> ¿Dónde te contactamos?</legend>
+              <label for="email-c">Email</label>
+              <input id="email-c" type="email" name="email" autocomplete="email" placeholder="nombre@empresa.cl" required />
+              <label for="phone-c">Teléfono</label>
+              <input id="phone-c" type="tel" name="telefono" autocomplete="tel" placeholder="+56 9" required />
+            </fieldset>
+            <div class="c-summary"><span>Tu solicitud</span><strong data-c-summary>70 cajas · Con despacho</strong></div>
+            <button class="primary-button" type="submit">Solicitar cotización <svg><use href="#arrow" /></svg></button>
+            <p class="form-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <section class="c-details shell">
+          <p class="section-label">Antes de cotizar</p>
+          <h2>Lo esencial del producto</h2>
+          <div class="c-detail-grid">
+            <div><svg><use href="#ruler" /></svg><span>Medidas</span><strong>600 × 400 × 180 mm</strong></div>
+            <div><svg><use href="#weight" /></svg><span>Peso</span><strong>1.250 gramos aprox.</strong></div>
+            <div><svg><use href="#leaf" /></svg><span>Material</span><strong>Polietileno de alta densidad reciclado</strong></div>
+            <div><svg><use href="#box" /></svg><span>Compra mínima</span><strong>1 pallet de 70 cajas</strong></div>
+          </div>
+        </section>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell"><div><img src="assets/mark.svg" alt="" /><strong>Freeplast</strong></div><p>ventas@freeplast.cl · +56 9 6844 4265</p></div>
+    </footer>
+
+    <div class="mobile-product-cta" data-mobile-cta><a href="#quote-a">Cotizar este producto</a></div>
+
+    <div class="prototype-switcher" role="group" aria-label="Cambiar variante del prototipo">
+      <span class="prototype-tag">PROTOTIPO</span>
+      <button type="button" data-previous aria-label="Ver variante anterior">←</button>
+      <strong data-variant-label>A — Ficha dividida</strong>
+      <button type="button" data-next aria-label="Ver variante siguiente">→</button>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freeplast — Catálogo Industrial (propuesta)</title>
+    <meta
+      name="description"
+      content="Propuesta de rediseño para Freeplast: venta mayorista de productos de plástico reciclado. Cajas, traversas y soluciones para la industria, con cotización directa."
+    />
+    <meta name="theme-color" content="#09043F" />
+    <meta property="og:title" content="Freeplast — Plástico que vuelve a servir" />
+    <meta
+      property="og:description"
+      content="Venta mayorista de productos plásticos reciclados. Estamos en la VI Región y en Santiago. Cotización sin compromiso."
+    />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      @theme {
+        /* Paleta actual de freeplast.cl — sin tonos nuevos */
+        --color-fp-ink: #17181c;
+        --color-fp-body: #3a3a3a;
+        --color-fp-paper: #ffffff;
+        --color-fp-tint: #f4f5f7;
+        --color-fp-blue: #100090;
+        --color-fp-blue-head: #0b078c;
+        --color-fp-blue-dark: #0d075d;
+        --color-fp-blue-deep: #09043f;
+        --color-fp-blue-soft: #e9e7fb;
+        --color-fp-green: #306020;
+        --color-fp-green-soft: #558948;
+        --color-fp-green-mist: #edf4ea;
+
+        --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+      }
+
+      /* Archivo expandida para display industrial */
+      @utility font-wide {
+        font-stretch: 118%;
+      }
+      @utility font-narrow {
+        font-stretch: 76%;
+      }
+
+      /* Retícula blueprint sobre campo azul */
+      @utility bg-grid-dark {
+        background-image:
+          linear-gradient(to right, rgb(233 231 251 / 0.055) 1px, transparent 1px),
+          linear-gradient(to bottom, rgb(233 231 251 / 0.055) 1px, transparent 1px);
+        background-size: 44px 44px;
+      }
+      @utility bg-grid-light {
+        background-image:
+          linear-gradient(to right, rgb(23 24 28 / 0.045) 1px, transparent 1px),
+          linear-gradient(to bottom, rgb(23 24 28 / 0.045) 1px, transparent 1px);
+        background-size: 44px 44px;
+      }
+
+      @keyframes marquee {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(-50%);
+        }
+      }
+      @utility animate-marquee {
+        animation: marquee 30s linear infinite;
+      }
+
+      /* Revelado al hacer scroll (se desactiva con reduced motion) */
+      .reveal {
+        opacity: 0;
+        transform: translateY(22px);
+        transition:
+          opacity 0.7s cubic-bezier(0.32, 0.72, 0, 1),
+          transform 0.7s cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .reveal.is-in {
+        opacity: 1;
+        transform: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+        .animate-marquee {
+          animation: none;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+
+  <body class="bg-fp-paper font-display text-fp-body antialiased">
+    <a
+      href="#contenido"
+      class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-100 focus:bg-fp-green focus:px-4 focus:py-2 focus:font-mono focus:text-sm focus:text-white"
+      >Ir al contenido</a
+    >
+
+    <!-- ══════════════════════════ HEADER ══════════════════════════ -->
+    <header
+      class="sticky top-0 z-50 border-b border-fp-blue-soft/10 bg-fp-blue-deep/95 backdrop-blur-sm"
+    >
+      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
+        <a href="#inicio" aria-label="Freeplast, inicio" class="flex items-center gap-3">
+          <img
+            src="assets/logo.webp"
+            alt=""
+            width="365"
+            height="227"
+            class="h-9 w-auto brightness-0 invert"
+          />
+          <span class="sr-only">Freeplast</span>
+        </a>
+
+        <nav aria-label="Navegación principal" class="hidden items-center gap-8 md:flex">
+          <a href="#productos" class="font-mono text-[13px] tracking-wide text-fp-blue-soft/80 uppercase transition-colors hover:text-white"
+            >01 · Productos</a
+          >
+          <a href="#circular" class="font-mono text-[13px] tracking-wide text-fp-blue-soft/80 uppercase transition-colors hover:text-white"
+            >02 · Circular</a
+          >
+          <a href="#nosotros" class="font-mono text-[13px] tracking-wide text-fp-blue-soft/80 uppercase transition-colors hover:text-white"
+            >03 · Nosotros</a
+          >
+        </nav>
+
+        <div class="flex items-center gap-3">
+          <a
+            href="#contacto"
+            class="rounded-[2px] bg-white px-4 py-2 font-mono text-[13px] font-semibold tracking-wide text-fp-blue-deep uppercase transition-colors hover:bg-fp-blue-soft"
+            >Cotizar</a
+          >
+          <button
+            id="btn-menu"
+            type="button"
+            aria-label="Abrir menú"
+            aria-expanded="false"
+            aria-controls="menu-movil"
+            class="flex h-10 w-10 items-center justify-center rounded-[2px] border border-fp-blue-soft/25 text-white md:hidden"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" stroke-width="1.6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="menu-movil" hidden class="border-t border-fp-blue-soft/10 bg-fp-blue-deep md:hidden">
+        <nav aria-label="Navegación móvil" class="mx-auto max-w-6xl px-5 py-4">
+          <a href="#productos" class="block border-b border-fp-blue-soft/10 py-3 font-mono text-sm tracking-wide text-fp-blue-soft uppercase">01 · Productos</a>
+          <a href="#circular" class="block border-b border-fp-blue-soft/10 py-3 font-mono text-sm tracking-wide text-fp-blue-soft uppercase">02 · Circular</a>
+          <a href="#nosotros" class="block border-b border-fp-blue-soft/10 py-3 font-mono text-sm tracking-wide text-fp-blue-soft uppercase">03 · Nosotros</a>
+          <a href="#contacto" class="block py-3 font-mono text-sm tracking-wide text-white uppercase">04 · Cotizar →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="contenido">
+      <!-- ══════════════════════════ HERO ══════════════════════════ -->
+      <section id="inicio" class="relative overflow-hidden bg-fp-blue-deep text-white">
+        <div class="bg-grid-dark absolute inset-0" aria-hidden="true"></div>
+        <div
+          class="absolute -top-40 -right-40 h-[480px] w-[480px] rounded-full bg-fp-blue/60 blur-3xl"
+          aria-hidden="true"
+        ></div>
+
+        <div class="relative mx-auto max-w-6xl px-5 pt-14 pb-10 md:pt-24 md:pb-16">
+          <p class="reveal font-mono text-xs tracking-[0.22em] text-fp-green-soft uppercase">
+            Venta mayorista&nbsp;·&nbsp;Plástico reciclado&nbsp;·&nbsp;VI Región&nbsp;+&nbsp;Santiago
+          </p>
+
+          <h1
+            class="reveal mt-5 font-wide text-[2.9rem] leading-[0.94] font-black tracking-tight text-white uppercase md:text-8xl"
+          >
+            Plástico<br />
+            que
+            <span class="text-transparent" style="-webkit-text-stroke: 1.5px #e9e7fb">vuelve</span><br />
+            <span class="text-transparent" style="-webkit-text-stroke: 1.5px #e9e7fb">a servir.</span>
+          </h1>
+
+          <p class="reveal mt-6 max-w-md text-base leading-relaxed text-fp-blue-soft/90 md:text-lg">
+            Productos de alta resistencia hechos en base a plástico reciclado, listos para el
+            trabajo real de campo y planta. Se vende por pallet, con mínimo por producto.
+          </p>
+
+          <div class="reveal mt-8 flex flex-col gap-3 sm:flex-row">
+            <a
+              href="#contacto"
+              class="rounded-[2px] bg-fp-green px-7 py-4 text-center font-mono text-sm font-semibold tracking-widest text-white uppercase transition-colors hover:bg-fp-green-soft"
+            >
+              Cotizar mi pallet
+            </a>
+            <a
+              href="tel:+56968444265"
+              class="rounded-[2px] border border-fp-blue-soft/30 px-7 py-4 text-center font-mono text-sm font-semibold tracking-widest text-fp-blue-soft uppercase transition-colors hover:border-fp-blue-soft hover:text-white"
+            >
+              +56 9 6844 4265
+            </a>
+          </div>
+
+          <!-- Producto ancla: lámina de catálogo con anotaciones de ficha -->
+          <div class="reveal relative mt-12 md:mt-16">
+            <div class="relative mx-auto w-fit md:mx-0">
+              <p
+                class="bg-fp-blue-deep absolute -top-2.5 left-4 z-10 px-2 font-mono text-[10px] tracking-[0.25em] text-fp-green-soft uppercase"
+              >
+                Lámina 01 · Caja Universal
+              </p>
+              <div class="border border-fp-blue-soft/25 bg-white p-6 md:p-10">
+                <img
+                  src="assets/universal.webp"
+                  alt="Caja Universal de plástico negro reciclado, vista tres cuartos"
+                  width="900"
+                  height="900"
+                  class="w-52 md:w-72"
+                />
+              </div>
+              <span class="pointer-events-none absolute -bottom-px -left-px h-6 w-6 border-b-2 border-l-2 border-fp-green-soft" aria-hidden="true"></span>
+              <span class="pointer-events-none absolute -top-px -right-px h-6 w-6 border-r-2 border-t-2 border-fp-green-soft" aria-hidden="true"></span>
+            </div>
+            <!-- anotaciones solo en pantallas anchas -->
+            <div class="absolute right-0 bottom-10 hidden w-64 flex-col gap-10 lg:flex">
+              <div class="border-l-2 border-fp-green-soft/70 pl-4">
+                <p class="font-mono text-xs tracking-widest text-fp-green-soft uppercase">Caja Universal</p>
+                <p class="mt-2 font-mono text-sm text-fp-blue-soft/90">625 × 444 × 226 mm</p>
+                <p class="font-mono text-sm text-fp-blue-soft/90">1,87 kg · 100 u por pallet</p>
+              </div>
+              <div class="border-l-2 border-fp-blue-soft/40 pl-4">
+                <p class="font-mono text-xs tracking-widest text-fp-blue-soft/70 uppercase">Material</p>
+                <p class="mt-2 font-mono text-sm text-fp-blue-soft/90">PEAD reciclado</p>
+                <p class="font-mono text-sm text-fp-blue-soft/90">También en colores</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- specs en móvil -->
+          <dl class="reveal mt-6 grid grid-cols-2 gap-px border border-fp-blue-soft/15 bg-fp-blue-soft/15 font-mono text-sm lg:hidden">
+            <div class="bg-fp-blue-deep p-4">
+              <dt class="text-xs tracking-widest text-fp-blue-soft/60 uppercase">Producto</dt>
+              <dd class="mt-1 text-white">Caja Universal</dd>
+            </div>
+            <div class="bg-fp-blue-deep p-4">
+              <dt class="text-xs tracking-widest text-fp-blue-soft/60 uppercase">Medidas</dt>
+              <dd class="mt-1 text-white">625 × 444 × 226 mm</dd>
+            </div>
+            <div class="bg-fp-blue-deep p-4">
+              <dt class="text-xs tracking-widest text-fp-blue-soft/60 uppercase">Peso</dt>
+              <dd class="mt-1 text-white">1,87 kg</dd>
+            </div>
+            <div class="bg-fp-blue-deep p-4">
+              <dt class="text-xs tracking-widest text-fp-blue-soft/60 uppercase">Por pallet</dt>
+              <dd class="mt-1 text-white">100 u</dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- cinta -->
+        <div class="relative border-y border-fp-blue-soft/15 bg-fp-blue-dark/60 py-3" aria-hidden="true">
+          <div class="animate-marquee flex w-max">
+            <p class="font-mono text-xs tracking-[0.28em] whitespace-nowrap text-fp-blue-soft/70 uppercase">
+              &nbsp;PEAD reciclado&nbsp;&nbsp;✕&nbsp;&nbsp;Despacho a todo Chile&nbsp;&nbsp;✕&nbsp;&nbsp;San Francisco de Mostazal&nbsp;&nbsp;✕&nbsp;&nbsp;Santiago&nbsp;&nbsp;✕&nbsp;&nbsp;Mínimo por producto&nbsp;&nbsp;✕&nbsp;&nbsp;Cotización sin costo&nbsp;&nbsp;✕&nbsp;&nbsp;
+            </p>
+            <p class="font-mono text-xs tracking-[0.28em] whitespace-nowrap text-fp-blue-soft/70 uppercase">
+              &nbsp;PEAD reciclado&nbsp;&nbsp;✕&nbsp;&nbsp;Despacho a todo Chile&nbsp;&nbsp;✕&nbsp;&nbsp;San Francisco de Mostazal&nbsp;&nbsp;✕&nbsp;&nbsp;Santiago&nbsp;&nbsp;✕&nbsp;&nbsp;Mínimo por producto&nbsp;&nbsp;✕&nbsp;&nbsp;Cotización sin costo&nbsp;&nbsp;✕&nbsp;&nbsp;
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════ 01 · PRODUCTOS ══════════════════════════ -->
+      <section id="productos" class="bg-fp-paper">
+        <div class="mx-auto max-w-6xl px-5 py-16 md:py-24">
+          <div class="reveal flex items-baseline justify-between gap-6">
+            <h2 class="font-wide text-3xl font-black tracking-tight text-fp-blue-head uppercase md:text-5xl">
+              Catálogo
+            </h2>
+            <p class="font-mono text-xs tracking-widest text-fp-body/60 uppercase">01 / 12 productos</p>
+          </div>
+          <p class="reveal mt-4 max-w-xl text-fp-body">
+            Fichas reales: material, medidas, peso y unidades por pallet. Cada producto se puede
+            cotizar directo con su mínimo publicado.
+          </p>
+
+          <ul id="grilla-productos" class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-3">
+            <!-- Fila tipo ficha: imagen + datos -->
+            <!-- Producto -->
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Tote" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/tote.webp" alt="Tote de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Logística</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Tote</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>500 × 280 × 190 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>800 g</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>120 u · mín. 120</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Cosechera 3/4" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/cosechera.webp" alt="Caja Cosechera 3/4 de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Agrícola</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Cosechera 3/4</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>600 × 400 × 180 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>1,25 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>70 u · mín. 70</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Merlucera" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/merlucera.webp" alt="Caja Merlucera de plástico" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Pesca</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Merlucera</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD vir. + rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>660 × 445 × 145 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>2,26 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>75 u · mín. 75</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Universal" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/universal.webp" alt="Caja Universal negra de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Multipropósito</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Universal</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>625 × 444 × 226 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>1,87 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>100 u · mín. 100</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Traversas bins UPC" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/traversa-upc.webp" alt="Traversa para bins tipo UPC" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Bins</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Traversas bins UPC</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>largo de bin</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>2,02 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>132 u · mín. 50</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Traversas bins G1" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/traversa-g1.webp" alt="Traversa para bins tipo G1" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Bins</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Traversas bins G1</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>largo de bin</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>2,50 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>132 u · mín. 50</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Tomatera" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/tomatera.webp" alt="Caja Tomatera de plástico" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Agrícola</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Tomatera</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PP vir. + rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>470 × 340 × 270 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>840 g</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>128 u · mín. 128</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Pollera" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/pollera.webp" alt="Caja Pollera de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Avícola</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Pollera</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>600 × 400 × 170 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>1,4 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>90 u · mín. 90</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Bases para pediluvios" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/pediluvio.webp" alt="Base plástica para pediluvio" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Bioseguridad</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Bases p/ pediluvios</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>Polipropileno</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>680 × 500 × 35 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>1,004 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>300 u · mín. 10</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Frutillera" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/frutillera.webp" alt="Caja Frutillera de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Berries</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Frutillera</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PP rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>500 × 300 × 110 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>a consultar</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>200 u · mín. 2.000</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Caja Frutera" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/frutera.webp" alt="Caja Frutera de plástico reciclado" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Agrícola</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Caja Frutera</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>PEAD rec.</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Medidas</dt><dd>600 × 400 × 210 mm</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>1,45 kg</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>65 u · mín. 65</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+
+            <li class="reveal group border border-fp-ink/15 bg-white transition-colors hover:border-fp-blue">
+              <a href="#contacto" data-producto="Ladrillo plástico" class="cotizar-producto flex gap-4 p-4 md:block md:p-0">
+                <div class="bg-fp-tint flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden md:h-auto md:w-auto">
+                  <img src="assets/ladrillo.webp" alt="Ladrillo plástico ensamblable" width="600" height="600" loading="lazy" class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                </div>
+                <div class="min-w-0 md:p-5">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-mono text-[11px] tracking-widest text-fp-green uppercase">Construcción</p>
+                    <p class="font-mono text-[11px] text-fp-body/50 md:hidden">→</p>
+                  </div>
+                  <h3 class="mt-1 font-wide text-lg leading-tight font-extrabold text-fp-ink uppercase">Ladrillo plástico</h3>
+                  <dl class="mt-3 space-y-1 font-mono text-xs text-fp-body/80">
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Material</dt><dd>Plástico recuperado</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Formato</dt><dd>bloque ensamblable</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Peso</dt><dd>a consultar</dd></div>
+                    <div class="flex justify-between gap-3"><dt class="text-fp-body/50">Por pallet</dt><dd>a coordinar</dd></div>
+                  </dl>
+                  <p class="mt-4 hidden items-center gap-2 font-mono text-xs font-semibold tracking-widest text-fp-blue uppercase group-hover:text-fp-blue-head md:flex">
+                    Cotizar <span aria-hidden="true" class="transition-transform group-hover:translate-x-1">→</span>
+                  </p>
+                </div>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════ 02 · CIRCULAR ══════════════════════════ -->
+      <section id="circular" class="relative overflow-hidden bg-fp-green text-white">
+        <div
+          class="absolute -right-24 -bottom-24 h-[420px] w-[420px] opacity-[0.12]"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 64 64" fill="none" class="h-full w-full">
+            <path d="M17 31a16 16 0 0 1 27-11" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+            <path d="m41 11 6 10-12 1" fill="#fff" />
+            <path d="M47 33a16 16 0 0 1-27 11" stroke="#fff" stroke-width="5" stroke-linecap="round" />
+            <path d="m23 53-6-1 1-12" fill="#fff" />
+          </svg>
+        </div>
+
+        <div class="relative mx-auto max-w-6xl px-5 py-16 md:py-24">
+          <p class="reveal font-mono text-xs tracking-[0.22em] text-white/70 uppercase">02 / El material</p>
+          <h2 class="reveal mt-4 max-w-2xl font-wide text-3xl leading-[1.02] font-black tracking-tight uppercase md:text-6xl">
+            De pallet<br />a pallet.
+          </h2>
+          <p class="reveal mt-5 max-w-xl text-white/90 md:text-lg">
+            Comercializamos productos hechos en base a plástico reciclado: material que cumplió un
+            ciclo y vuelve al trabajo productivo con una nueva vida útil.
+          </p>
+
+          <ol class="mt-12 grid gap-px border border-white/25 bg-white/25 md:grid-cols-3">
+            <li class="reveal bg-fp-green p-6 md:p-8">
+              <p class="font-mono text-sm font-semibold tracking-widest text-white/60">PASO 01</p>
+              <h3 class="mt-3 font-wide text-xl font-extrabold uppercase">Se recupera</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/85">
+                Plástico post industrial y post consumo entra como materia para nuevos productos de
+                alta resistencia.
+              </p>
+            </li>
+            <li class="reveal bg-fp-green p-6 md:p-8">
+              <p class="font-mono text-sm font-semibold tracking-widest text-white/60">PASO 02</p>
+              <h3 class="mt-3 font-wide text-xl font-extrabold uppercase">Se moldea</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/85">
+                Cajas, traversas y bases con ficha técnica real: medidas, peso y resistencia para
+                trabajo pesado.
+              </p>
+            </li>
+            <li class="reveal bg-fp-green p-6 md:p-8">
+              <p class="font-mono text-sm font-semibold tracking-widest text-white/60">PASO 03</p>
+              <h3 class="mt-3 font-wide text-xl font-extrabold uppercase">Vuelve a servir</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/85">
+                Campo, planta, pesca y construcción reciben un producto duradero que repite el
+                ciclo.
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════ 03 · NOSOTROS ══════════════════════════ -->
+      <section id="nosotros" class="bg-fp-tint">
+        <div class="mx-auto max-w-6xl px-5 py-16 md:py-24">
+          <div class="grid items-center gap-10 md:grid-cols-2 md:gap-14">
+            <div class="reveal">
+              <p class="font-mono text-xs tracking-[0.22em] text-fp-body/60 uppercase">03 / La empresa</p>
+              <h2 class="mt-4 font-wide text-3xl leading-tight font-black tracking-tight text-fp-blue-head uppercase md:text-5xl">
+                Desde Mostazal<br />para todo Chile
+              </h2>
+              <p class="mt-5 leading-relaxed text-fp-body">
+                Estamos en la VI Región y en Santiago, con servicio rápido y confiable. Nuestra
+                misión es promover el cuidado del medio ambiente a través de la comercialización de
+                productos hechos en base a plástico reciclado.
+              </p>
+              <p class="mt-4 leading-relaxed text-fp-body">
+                Queremos ser la principal empresa comercializadora de productos plásticos de Chile,
+                con calidad que acompañe el desarrollo sustentable de las actividades económicas del
+                país.
+              </p>
+              <div class="mt-8 flex flex-wrap gap-3 font-mono text-xs tracking-widest uppercase">
+                <span class="border border-fp-ink/20 bg-white px-4 py-2 text-fp-body">Venta mayorista</span>
+                <span class="border border-fp-ink/20 bg-white px-4 py-2 text-fp-body">Retiro en bodega</span>
+                <span class="border border-fp-ink/20 bg-white px-4 py-2 text-fp-body">Despacho coordinado</span>
+              </div>
+            </div>
+            <figure class="reveal">
+              <img
+                src="assets/warehouse.webp"
+                alt="Carga de pallets encintados en la bodega de Freeplast, con montacargas al fondo"
+                width="1200"
+                height="800"
+                loading="lazy"
+                class="w-full border border-fp-ink/15 object-cover shadow-[0_24px_60px_rgb(23_24_28/0.12)]"
+              />
+              <figcaption class="mt-3 font-mono text-xs text-fp-body/60">
+                Bodega Freeplast · Camino El Arrayán 52, San Francisco de Mostazal
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════ 04 · CONTACTO ══════════════════════════ -->
+      <section id="contacto" class="relative overflow-hidden bg-fp-blue-deep text-white">
+        <div class="bg-grid-dark absolute inset-0" aria-hidden="true"></div>
+
+        <div class="relative mx-auto max-w-6xl px-5 py-16 md:py-24">
+          <div class="grid gap-12 md:grid-cols-[1fr_1.2fr] md:gap-16">
+            <div class="reveal">
+              <p class="font-mono text-xs tracking-[0.22em] text-fp-green-soft uppercase">04 / Contacto</p>
+              <h2 class="mt-4 font-wide text-3xl leading-[1.02] font-black tracking-tight uppercase md:text-5xl">
+                Cotiza sin<br />compromiso
+              </h2>
+              <p class="mt-5 max-w-md leading-relaxed text-fp-blue-soft/90">
+                Cuéntanos qué producto y cuántas unidades necesitas. Respondemos con precio,
+                disponibilidad y despacho.
+              </p>
+
+              <address class="mt-10 space-y-5 not-italic">
+                <div class="flex gap-4">
+                  <span class="mt-1 h-2 w-2 shrink-0 bg-fp-green-soft" aria-hidden="true"></span>
+                  <div>
+                    <p class="font-mono text-xs tracking-widest text-fp-blue-soft/60 uppercase">Bodega</p>
+                    <p class="mt-1 text-fp-blue-soft/95">Camino El Arrayán 52,<br />San Francisco de Mostazal, VI Región</p>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <span class="mt-1 h-2 w-2 shrink-0 bg-fp-green-soft" aria-hidden="true"></span>
+                  <div>
+                    <p class="font-mono text-xs tracking-widest text-fp-blue-soft/60 uppercase">Teléfono / WhatsApp</p>
+                    <a href="tel:+56968444265" class="mt-1 block text-fp-blue-soft/95 transition-colors hover:text-white">+56 9 6844 4265</a>
+                  </div>
+                </div>
+                <div class="flex gap-4">
+                  <span class="mt-1 h-2 w-2 shrink-0 bg-fp-green-soft" aria-hidden="true"></span>
+                  <div>
+                    <p class="font-mono text-xs tracking-widest text-fp-blue-soft/60 uppercase">Correo</p>
+                    <a href="mailto:ventas@freeplast.cl" class="mt-1 block text-fp-blue-soft/95 transition-colors hover:text-white">ventas@freeplast.cl</a>
+                  </div>
+                </div>
+              </address>
+            </div>
+
+            <!-- Formulario -->
+            <div class="reveal">
+              <form
+                id="form-cotizacion"
+                class="border border-fp-ink/15 bg-white p-6 text-fp-body shadow-[0_32px_80px_rgb(9_4_63/0.45)] md:p-8"
+                novalidate
+              >
+                <p class="font-mono text-xs tracking-widest text-fp-blue uppercase">Formulario de cotización</p>
+
+                <div class="mt-6 grid gap-5 sm:grid-cols-2">
+                  <div class="sm:col-span-1">
+                    <label for="f-nombre" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">
+                      Nombre <span class="text-fp-green" aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      id="f-nombre" name="nombre" type="text" autocomplete="name" required
+                      class="mt-2 w-full rounded-[2px] border border-fp-ink/25 px-3 py-2.5 text-sm text-fp-ink outline-none focus:border-fp-green focus:ring-2 focus:ring-fp-green/30 aria-invalid:border-fp-green"
+                      aria-describedby="e-nombre"
+                    />
+                    <p id="e-nombre" hidden class="mt-1.5 font-mono text-xs text-fp-green">Escribe tu nombre.</p>
+                  </div>
+
+                  <div class="sm:col-span-1">
+                    <label for="f-email" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">
+                      Email <span class="text-fp-green" aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      id="f-email" name="email" type="email" autocomplete="email" required
+                      class="mt-2 w-full rounded-[2px] border border-fp-ink/25 px-3 py-2.5 text-sm text-fp-ink outline-none focus:border-fp-green focus:ring-2 focus:ring-fp-green/30"
+                      aria-describedby="e-email"
+                    />
+                    <p id="e-email" hidden class="mt-1.5 font-mono text-xs text-fp-green">Revisa el formato del correo.</p>
+                  </div>
+
+                  <div class="sm:col-span-1">
+                    <label for="f-telefono" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">Teléfono</label>
+                    <input
+                      id="f-telefono" name="telefono" type="tel" autocomplete="tel" inputmode="tel" placeholder="+56 9 …"
+                      class="mt-2 w-full rounded-[2px] border border-fp-ink/25 px-3 py-2.5 text-sm text-fp-ink outline-none placeholder:text-fp-body/40 focus:border-fp-green focus:ring-2 focus:ring-fp-green/30"
+                      aria-describedby="e-telefono"
+                    />
+                    <p id="e-telefono" hidden class="mt-1.5 font-mono text-xs text-fp-green">Revisa el número (mínimo 8 dígitos).</p>
+                  </div>
+
+                  <div class="sm:col-span-1">
+                    <label for="f-cantidad" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">Cantidad (u)</label>
+                    <input
+                      id="f-cantidad" name="cantidad" type="number" min="1" inputmode="numeric" placeholder="100"
+                      class="mt-2 w-full rounded-[2px] border border-fp-ink/25 px-3 py-2.5 text-sm text-fp-ink outline-none placeholder:text-fp-body/40 focus:border-fp-green focus:ring-2 focus:ring-fp-green/30"
+                      aria-describedby="e-cantidad"
+                    />
+                    <p id="e-cantidad" hidden class="mt-1.5 font-mono text-xs text-fp-green">Ingresa una cantidad mayor a 0.</p>
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label for="f-producto" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">
+                      Producto <span class="text-fp-green" aria-hidden="true">*</span>
+                    </label>
+                    <select
+                      id="f-producto" name="producto" required
+                      class="mt-2 w-full rounded-[2px] border border-fp-ink/25 bg-white px-3 py-2.5 text-sm text-fp-ink outline-none focus:border-fp-green focus:ring-2 focus:ring-fp-green/30"
+                      aria-describedby="e-producto"
+                    >
+                      <option value="" selected>Selecciona un producto…</option>
+                      <option>Consulta general</option>
+                      <option>Tote</option>
+                      <option>Caja Cosechera 3/4</option>
+                      <option>Caja Merlucera</option>
+                      <option>Caja Universal</option>
+                      <option>Traversas bins UPC</option>
+                      <option>Traversas bins G1</option>
+                      <option>Caja Tomatera</option>
+                      <option>Caja Pollera</option>
+                      <option>Bases para pediluvios</option>
+                      <option>Caja Frutillera</option>
+                      <option>Caja Frutera</option>
+                      <option>Ladrillo plástico</option>
+                    </select>
+                    <p id="e-producto" hidden class="mt-1.5 font-mono text-xs text-fp-green">Elige un producto o consulta general.</p>
+                  </div>
+
+                  <div class="sm:col-span-2">
+                    <label for="f-mensaje" class="font-mono text-xs font-semibold tracking-widest text-fp-ink uppercase">Mensaje</label>
+                    <textarea
+                      id="f-mensaje" name="mensaje" rows="4" placeholder="Ciudad de despacho, colores, frecuencia de compra…"
+                      class="mt-2 w-full resize-y rounded-[2px] border border-fp-ink/25 px-3 py-2.5 text-sm text-fp-ink outline-none placeholder:text-fp-body/40 focus:border-fp-green focus:ring-2 focus:ring-fp-green/30"
+                    ></textarea>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  class="mt-7 w-full rounded-[2px] bg-fp-blue px-6 py-4 font-mono text-sm font-semibold tracking-widest text-white uppercase transition-colors hover:bg-fp-blue-head focus:ring-2 focus:ring-fp-green focus:ring-offset-2 focus:outline-none"
+                >
+                  Enviar solicitud de cotización
+                </button>
+
+                <p class="mt-4 font-mono text-[11px] leading-relaxed text-fp-body/60">
+                  Tus datos se usan solo para responder esta cotización.
+                </p>
+
+                <p
+                  id="form-status"
+                  role="status"
+                  aria-live="polite"
+                  class="mt-4 hidden border-l-2 border-fp-green bg-fp-green-mist px-4 py-3 font-mono text-xs leading-relaxed text-fp-green"
+                ></p>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ══════════════════════════ FOOTER ══════════════════════════ -->
+    <footer class="border-t border-fp-blue-soft/10 bg-fp-blue-deep text-fp-blue-soft/70">
+      <div class="mx-auto max-w-6xl px-5 py-10">
+        <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <img src="assets/logo.webp" alt="Freeplast" width="365" height="227" class="h-10 w-auto brightness-0 invert" />
+          <nav aria-label="Pie de página" class="flex flex-wrap gap-x-6 gap-y-2 font-mono text-xs tracking-widest uppercase">
+            <a href="#productos" class="transition-colors hover:text-white">Productos</a>
+            <a href="#circular" class="transition-colors hover:text-white">Circular</a>
+            <a href="#nosotros" class="transition-colors hover:text-white">Nosotros</a>
+            <a href="#contacto" class="transition-colors hover:text-white">Cotizar</a>
+          </nav>
+        </div>
+        <div class="mt-8 flex flex-col gap-2 border-t border-fp-blue-soft/10 pt-6 font-mono text-[11px] md:flex-row md:justify-between">
+          <p>© Freeplast · Plástico que vuelve a servir</p>
+          <p>Propuesta de diseño — página no oficial</p>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        "use strict";
+
+        /* ── Menú móvil ─────────────────────────────── */
+        var btnMenu = document.getElementById("btn-menu");
+        var menuMovil = document.getElementById("menu-movil");
+        btnMenu.addEventListener("click", function () {
+          var abierto = !menuMovil.hidden;
+          menuMovil.hidden = abierto;
+          btnMenu.setAttribute("aria-expanded", String(!abierto));
+          btnMenu.setAttribute("aria-label", abierto ? "Abrir menú" : "Cerrar menú");
+        });
+        menuMovil.addEventListener("click", function (e) {
+          if (e.target.closest("a")) {
+            menuMovil.hidden = true;
+            btnMenu.setAttribute("aria-expanded", "false");
+          }
+        });
+
+        /* ── Producto → formulario ──────────────────── */
+        var selectProducto = document.getElementById("f-producto");
+        document.querySelectorAll(".cotizar-producto").forEach(function (enlace) {
+          enlace.addEventListener("click", function () {
+            var nombre = enlace.getAttribute("data-producto");
+            for (var i = 0; i < selectProducto.options.length; i++) {
+              if (selectProducto.options[i].text === nombre) {
+                selectProducto.value = selectProducto.options[i].value || selectProducto.options[i].text;
+                selectProducto.options[i].selected = true;
+                break;
+              }
+            }
+            selectProducto.setAttribute("data-preseleccionado", "1");
+          });
+        });
+
+        /* ── Revelado al scroll ─────────────────────── */
+        var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var targets = document.querySelectorAll(".reveal");
+        if (reduceMotion || !("IntersectionObserver" in window)) {
+          targets.forEach(function (el) {
+            el.classList.add("is-in");
+          });
+        } else {
+          var io = new IntersectionObserver(
+            function (entries) {
+              entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add("is-in");
+                  io.unobserve(entry.target);
+                }
+              });
+            },
+            { rootMargin: "0px 0px -8% 0px", threshold: 0.08 }
+          );
+          targets.forEach(function (el) {
+            io.observe(el);
+          });
+        }
+
+        /* ── Validación de formulario ───────────────── */
+        var form = document.getElementById("form-cotizacion");
+        var status = document.getElementById("form-status");
+
+        function setError(id, mostrar) {
+          var campo = document.getElementById("f-" + id);
+          var error = document.getElementById("e-" + id);
+          if (!campo || !error) return true;
+          error.hidden = !mostrar;
+          campo.setAttribute("aria-invalid", mostrar ? "true" : "false");
+          return !mostrar;
+        }
+
+        function validar() {
+          var ok = true;
+          var primero = null;
+
+          var nombre = document.getElementById("f-nombre").value.trim();
+          if (!setError("nombre", nombre.length < 2)) {
+            ok = false;
+            primero = primero || document.getElementById("f-nombre");
+          }
+
+          var email = document.getElementById("f-email").value.trim();
+          if (!setError("email", !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email))) {
+            ok = false;
+            primero = primero || document.getElementById("f-email");
+          }
+
+          var tel = document.getElementById("f-telefono").value.trim();
+          var digitos = tel.replace(/\D/g, "");
+          if (tel !== "" && !setError("telefono", digitos.length < 8 || digitos.length > 15)) {
+            ok = false;
+            primero = primero || document.getElementById("f-telefono");
+          } else if (tel === "") {
+            setError("telefono", false);
+          }
+
+          var cantidad = document.getElementById("f-cantidad").value;
+          if (cantidad !== "" && !setError("cantidad", Number(cantidad) < 1)) {
+            ok = false;
+            primero = primero || document.getElementById("f-cantidad");
+          } else if (cantidad === "") {
+            setError("cantidad", false);
+          }
+
+          var producto = selectProducto.value;
+          if (!setError("producto", producto === "")) {
+            ok = false;
+            primero = primero || selectProducto;
+          }
+
+          if (primero) primero.focus();
+          return ok;
+        }
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          status.classList.add("hidden");
+          if (!validar()) return;
+
+          /* Propuesta: no se simula envío de red. En producción,
+             conectar aquí con el endpoint de ventas (correo/CRM). */
+          status.textContent =
+            "Solicitud validada localmente. Propuesta de diseño: el envío se conectará a ventas@freeplast.cl.";
+          status.classList.remove("hidden");
+          form.reset();
+          selectProducto.value = "";
+        });
+      })();
+    </script>
+  </body>
+</html>
