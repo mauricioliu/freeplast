@@ -409,27 +409,12 @@ class Freeplast_CQ_Catalog_Sync {
 			'_fp_image_provisional'  => $product['image']['provisional'] ? '1' : '0',
 		);
 
-		if ( null === $specs['minimum_quantity'] ) {
-			delete_post_meta( $post_id, '_fp_quote_min_qty' );
-		} else {
-			$meta['_fp_quote_min_qty'] = (string) $specs['minimum_quantity'];
-		}
-		if ( null === $specs['quantity_step'] ) {
-			delete_post_meta( $post_id, '_fp_quote_step' );
-		} else {
-			$meta['_fp_quote_step'] = (string) $specs['quantity_step'];
-		}
-		if ( null === $specs['units_per_pallet'] ) {
-			/* Unknown packaging facts are absent, never invented as 0. */
-			delete_post_meta( $post_id, '_fp_units_per_pallet' );
-		} else {
-			$meta['_fp_units_per_pallet'] = (string) $specs['units_per_pallet'];
-		}
-		if ( null === $product['featured_order'] ) {
-			delete_post_meta( $post_id, '_fp_featured_order' );
-		} else {
-			$meta['_fp_featured_order'] = (string) $product['featured_order'];
-		}
+		/* Nullable integers are deleted when the fact is unknown (never stored
+		   as 0) so the stored form equals the compared form byte for byte. */
+		self::put_nullable_int( $post_id, $meta, '_fp_quote_min_qty', $specs['minimum_quantity'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_quote_step', $specs['quantity_step'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_units_per_pallet', $specs['units_per_pallet'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_featured_order', $product['featured_order'] );
 
 		foreach ( $meta as $key => $value ) {
 			update_post_meta( $post_id, $key, $value );
@@ -518,6 +503,18 @@ class Freeplast_CQ_Catalog_Sync {
 
 	private static function nullable_int( $value ): string {
 		return null === $value ? '' : (string) $value;
+	}
+
+	/**
+	 * Store an integer meta value, or delete the key entirely when the source
+	 * fact is null — unknown facts are absent, never invented as 0.
+	 */
+	private static function put_nullable_int( int $post_id, array &$meta, string $key, $value ): void {
+		if ( null === $value ) {
+			delete_post_meta( $post_id, $key );
+		} else {
+			$meta[ $key ] = (string) $value;
+		}
 	}
 }
 

@@ -168,7 +168,6 @@ class Freeplast_CQ_Products {
 		$use            = $meta( '_fp_use' );
 		$units          = (int) $meta( '_fp_units_per_pallet' );
 		$units_known    = $units > 0;
-		$units_label    = $units_known ? esc_html( number_format_i18n( $units ) ) : 'Consultar';
 		$minimum        = $meta( '_fp_quote_min_qty' );
 		$provisional    = '1' === $meta( '_fp_image_provisional' );
 
@@ -200,7 +199,7 @@ class Freeplast_CQ_Products {
 						<div><dt>Medidas</dt><dd><?php echo esc_html( $dimensions ); ?></dd></div>
 						<div><dt>Peso</dt><dd><?php echo esc_html( $weight ); ?></dd></div>
 						<div><dt>Material</dt><dd><?php echo esc_html( $material_short ); ?></dd></div>
-						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo $units_label; /* escaped above */ ?></dd></div>
+						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo esc_html( self::units_label( $units ) ); ?></dd></div>
 					</dl>
 
 					<a class="fpcq-quote-cta" href="<?php echo esc_url( home_url( '/cotizacion/' ) ); ?>">Cotizar este producto</a>
@@ -218,7 +217,7 @@ class Freeplast_CQ_Products {
 						<tr><th scope="row">Medidas</th><td><?php echo esc_html( $dimensions ); ?></td></tr>
 						<tr><th scope="row">Peso</th><td><?php echo esc_html( $weight ); ?></td></tr>
 						<tr><th scope="row">Uso</th><td><?php echo esc_html( $use ); ?></td></tr>
-						<tr><th scope="row">Unidades por pallet</th><td><?php echo $units_label; /* escaped above */ ?></td></tr>
+						<tr><th scope="row">Unidades por pallet</th><td><?php echo esc_html( self::units_label( $units ) ); ?></td></tr>
 						<tr><th scope="row">Cantidad mínima</th><td><?php echo esc_html( self::minimum_label( $minimum ) ); ?></td></tr>
 					</tbody>
 				</table>
@@ -245,6 +244,11 @@ class Freeplast_CQ_Products {
 	 */
 	private static function minimum_label( string $minimum ): string {
 		return ( '' === $minimum || '0' === $minimum ) ? 'Consultar' : sprintf( '%s unidades', number_format_i18n( (int) $minimum ) );
+	}
+
+	/** Unconfirmed packaging facts are shown as "Consultar". */
+	private static function units_label( int $units ): string {
+		return $units > 0 ? number_format_i18n( $units ) : 'Consultar';
 	}
 
 	private static function render_related( array $related_ids ): string {

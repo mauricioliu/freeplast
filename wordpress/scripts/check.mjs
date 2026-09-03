@@ -65,9 +65,18 @@ const PRODUCTS = CATALOG.products;
 const PRODUCT_COUNT = PRODUCTS.length;
 const PRODUCT_SLUGS = PRODUCTS.map((p) => p.slug);
 const PRODUCT_URLS = PRODUCT_SLUGS.map((slug) => `/producto/${slug}/`);
+const PRODUCT_BY_SOURCE_ID = new Map(PRODUCTS.map((p) => [p.source_id, p]));
+const PRODUCT_BY_SLUG = new Map(PRODUCTS.map((p) => [p.slug, p]));
 const DISTINCT_IMAGES = new Set(PRODUCTS.map((p) => p.image.checksum)).size;
 const PRODUCT_SLUG = 'caja-cosechera-3-4';
 const PRODUCT_URL = `/producto/${PRODUCT_SLUG}/`;
+const UNIVERSAL_SLUGS = [
+  'caja-universal-cerrada-negra',
+  'caja-universal-ventilada-negra',
+  'caja-universal-cerrada-color',
+  'caja-universal-ventilada-color',
+];
+const SUPPORTED_COLOR_IDS = ['blanco', 'rojo', 'amarillo', 'azul', 'verde'];
 
 let server = null;
 let versions = null;
@@ -117,6 +126,15 @@ function catalogSync(extra = [], file = CATALOG_SOURCE) {
 
 function productCount() {
   return Number(wp(['post', 'list', '--post_type=fp_product', '--post_status=any', '--format=count']).stdout || '0');
+}
+
+function publishedProductCount() {
+  return wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout;
+}
+
+/** Snapshot of every record's last-modified timestamp (no-op detection). */
+function productsModifiedStamp() {
+  return wp(['post', 'list', '--post_type=fp_product', '--field=post_modified']).stdout;
 }
 
 function productIds() {
@@ -371,7 +389,7 @@ test('Catalog Source validates before mutation; dry run reports the difference a
   const dryRun = catalogSync(['--dry-run']);
   assert.equal(dryRun.status, 0, `dry run must succeed:\n${dryRun.stderr}`);
   assertContains(dryRun.stdout, 'version 2', 'dry run must report the source schema version');
-  assertContains(dryRun.stdout, `17 products`, 'dry run must report the complete product count');
+  assertContains(dryRun.stdout, `${PRODUCT_COUNT} products`, 'dry run must report the complete product count');
   assertContains(dryRun.stdout, 'fp-caja-cosechera-3-4: would create', 'dry run must report the deterministic per-product difference');
   assertContains(dryRun.stdout, 'fp-ladrillo-plastico: would create', 'dry run must include the old-site-only products');
   assertContains(dryRun.stdout, 'fp-traversa-para-bins-tipo-romano: would create', 'dry run must include the provisional Traversa Tipo Romano');
@@ -395,7 +413,7 @@ test('real synchronization creates the 17-product union with identity, options, 
 
   assert.equal(productCount(), 17, 'exactly 17 fp_product records must exist');
   assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout,
+    publishedProductCount(),
     '17',
     'all 15 PDF products plus Pediluvio and Ladrillo plástico must synchronize as Active (published) products'
   );
@@ -431,19 +449,16 @@ test('real synchronization creates the 17-product union with identity, options, 
 
   // The four Caja Universal configurations are distinct Products; the Color
   // ones carry the supported color options, the black ones none.
-  for (const slug of ['caja-universal-cerrada-negra', 'caja-universal-ventilada-negra', 'caja-universal-cerrada-color', 'caja-universal-ventilada-color']) {
+  for (const slug of UNIVERSAL_SLUGS) {
     assert.ok(PRODUCT_SLUGS.includes(slug), `the Universal configuration ${slug} must exist`);
   }
-  const sourceIdBySlug = new Map(PRODUCTS.map((p) => [p.slug, p.source_id]));
-  const cerradaColor = JSON.parse(productMeta(sourceIdBySlug.get('caja-universal-cerrada-color'), '_fp_options'));
-  const ventiladaColor = JSON.parse(productMeta(sourceIdBySlug.get('caja-universal-ventilada-color'), '_fp_options'));
-  const COLOR_IDS = ['blanco', 'rojo', 'amarillo', 'azul', 'verde'];
-  assert.deepEqual(cerradaColor.map((o) => o.id), COLOR_IDS, 'Color configurations must offer exactly the supported color options');
-  assert.deepEqual(ventiladaColor.map((o) => o.id), COLOR_IDS, 'Color configurations must offer exactly the supported color options');
-  assert.equal(productMeta(sourceIdBySlug.get('caja-universal-cerrada-negra'), '_fp_options'), '[]', 'black Universal configurations carry no options');
+  const optionIds = (slug) => JSON.parse(productMeta(PRODUCT_BY_SLUG.get(slug).source_id, '_fp_options')).map((o) => o.id);
+  assert.deepEqual(optionIds('caja-universal-cerrada-color'), SUPPORTED_COLOR_IDS, 'Color configurations must offer exactly the supported color options');
+  assert.deepEqual(optionIds('caja-universal-ventilada-color'), SUPPORTED_COLOR_IDS, 'Color configurations must offer exactly the supported color options');
+  assert.equal(productMeta(PRODUCT_BY_SLUG.get('caja-universal-cerrada-negra').source_id, '_fp_options'), '[]', 'black Universal configurations carry no options');
 
   // Traversa para Bins Tipo Romano is provisional with G2 retained as review alias.
-  const romano = PRODUCTS.find((p) => p.source_id === 'fp-traversa-para-bins-tipo-romano');
+  const romano = PRODUCT_BY_SOURCE_ID.get('fp-traversa-para-bins-tipo-romano');
   assert.ok(
     romano.review.notes.some((n) => n.includes('Traversa Tipo G2')),
     'the source must retain “Traversa Tipo G2” as the review alias for Tipo Romano'
@@ -466,12 +481,12 @@ test('real synchronization creates the 17-product union with identity, options, 
   // Media: one local attachment per distinct checksum; unchanged (shared)
   // media is reused, never duplicated — the four Universal records share one.
   assert.equal(attachmentCount(), DISTINCT_IMAGES, `exactly ${DISTINCT_IMAGES} catalog attachments must exist (one per distinct image)`);
-  const thumb = (slug) => productMeta(sourceIdBySlug.get(slug), '_thumbnail_id');
-  const universalThumbs = ['caja-universal-cerrada-negra', 'caja-universal-ventilada-negra', 'caja-universal-cerrada-color', 'caja-universal-ventilada-color'].map(thumb);
+  const thumb = (slug) => productMeta(PRODUCT_BY_SLUG.get(slug).source_id, '_thumbnail_id');
+  const universalThumbs = UNIVERSAL_SLUGS.map(thumb);
   assert.ok(universalThumbs.every((t) => t === universalThumbs[0] && /^\d+$/.test(t)), 'the four Universal configurations must reuse one shared attachment');
   assert.equal(
     wp(['post', 'meta', 'get', universalThumbs[0], '_fp_image_checksum']).stdout,
-    PRODUCTS.find((p) => p.slug === 'caja-universal-cerrada-negra').image.checksum,
+    PRODUCT_BY_SLUG.get('caja-universal-cerrada-negra').image.checksum,
     'the shared attachment must be checksum-keyed'
   );
   assert.equal(wp(['post', 'meta', 'get', universalThumbs[0], '_fp_image_provisional']).stdout, '1', 'provisional media must be flagged on the attachment');
@@ -485,17 +500,13 @@ test('real synchronization creates the 17-product union with identity, options, 
   );
 
   // Deterministic no-op: a second complete sync changes nothing.
-  const modifiedBefore = wp(['post', 'list', '--post_type=fp_product', '--field=post_modified']).stdout;
+  const modifiedBefore = productsModifiedStamp();
   const second = catalogSync();
   assert.equal(second.status, 0, `second synchronization must succeed:\n${second.stderr}`);
   assertContains(second.stdout, 'fp-caja-cosechera-3-4: unchanged', 'second run must report the first product as unchanged');
   assertContains(second.stdout, 'Summary: created=0 updated=0 unchanged=17 warnings=0 errors=0', 'second run must report zero changes');
   assert.equal(attachmentCount(), DISTINCT_IMAGES, 'the no-op run must not import any additional media');
-  assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--field=post_modified']).stdout,
-    modifiedBefore,
-    'the no-op run must not touch any record'
-  );
+  assert.equal(productsModifiedStamp(), modifiedBefore, 'the no-op run must not touch any record');
 
   section('Catalog synchronization', [
     'Real sync created the 17-product union (15 PDF products + Pediluvio + Ladrillo plástico) as Active records',
@@ -517,13 +528,15 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
   assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '2', 'migration 2 (catalog slice) must be applied');
 
-  // Every canonical product URL answers HTTP 200.
+  // Every canonical product URL answers HTTP 200 (mobile first).
+  const pages = new Map();
   for (const url of PRODUCT_URLS) {
     const res = await get(url, MOBILE_UA);
     assert.equal(res.status, 200, `${url} must return HTTP 200`);
+    pages.set(url, res);
   }
 
-  const page = await get(PRODUCT_URL, MOBILE_UA);
+  const page = pages.get(PRODUCT_URL);
   assert.equal((await get(PRODUCT_URL, DESKTOP_UA)).status, 200, `${PRODUCT_URL} must return HTTP 200 for desktop too`);
   assertContains(page.body, 'rel="canonical"', 'the product page must carry a canonical URL');
   assertContains(page.body, PRODUCT_URL, 'the canonical URL must be the clean /producto/ path');
@@ -564,29 +577,29 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
 
   // Structured facts without contradictory old-site values: the published
   // Caja Universal page keeps its facts only for the Cerrada Negra record.
-  const cerradaNegra = await get('/producto/caja-universal-cerrada-negra/', MOBILE_UA);
+  const cerradaNegra = pages.get('/producto/caja-universal-cerrada-negra/');
   assert.equal(cerradaNegra.status, 200, 'the Cerrada Negra configuration must be public');
   assertContains(cerradaNegra.body, '625 x 445 x 226 mm', 'published Universal dimensions must render for the Cerrada Negra record');
   assertContains(cerradaNegra.body, '46 lts', 'the published capacity prose must render');
   assertAbsent(cerradaNegra.body, 'mínima de compra: 100', 'the contradictory old-site minimum must not be presented');
 
-  const ventiladaNegra = await get('/producto/caja-universal-ventilada-negra/', MOBILE_UA);
+  const ventiladaNegra = pages.get('/producto/caja-universal-ventilada-negra/');
   assertContains(ventiladaNegra.body, 'Consultar', 'unconfirmed Universal configuration facts must render as Consultar');
 
-  const colorPage = await get('/producto/caja-universal-cerrada-color/', MOBILE_UA);
+  const colorPage = pages.get('/producto/caja-universal-cerrada-color/');
   assert.equal(colorPage.status, 200, 'the Color configuration must be a distinct public Product');
 
   // Traversa para Bins Tipo Romano keeps the G2 review alias visible.
-  const romano = await get('/producto/traversa-para-bins-tipo-romano/', MOBILE_UA);
+  const romano = pages.get('/producto/traversa-para-bins-tipo-romano/');
   assertContains(romano.body, 'Traversa Tipo G2', 'the provisional Romano page must retain the G2 review alias');
   assertContains(romano.body, 'Consultar', 'unconfirmed Romano facts must render as Consultar');
 
   // Pediluvio and Ladrillo stay public with their limited content + Consultar.
-  const pediluvio = await get('/producto/bases-plasticas-para-pediluvios/', MOBILE_UA);
+  const pediluvio = pages.get('/producto/bases-plasticas-para-pediluvios/');
   assert.equal(pediluvio.status, 200, 'Bases plásticas para pediluvios must remain public');
   assertContains(pediluvio.body, 'Bases plásticas para pediluvios', 'the current limited content must render');
   assertContains(pediluvio.body, 'Consultar', 'missing pediluvio details must render as Consultar');
-  const ladrillo = await get('/producto/ladrillo-plastico/', MOBILE_UA);
+  const ladrillo = pages.get('/producto/ladrillo-plastico/');
   assert.equal(ladrillo.status, 200, 'Ladrillo plástico must remain public');
   assertContains(ladrillo.body, 'Ladrillo plástico', 'the current limited content must render');
   assertContains(ladrillo.body, 'Consultar', 'missing ladrillo details must render as Consultar');
@@ -603,8 +616,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   const tiendaPage2 = await get('/tienda/page/2/', MOBILE_UA);
   assert.equal(tiendaPage2.status, 200, '/tienda/page/2/ must return HTTP 200 while the archive paginates');
   const listed = new Set([tienda.body, tiendaPage2.body].join('\n').match(/\/producto\/[a-z0-9-]+\//g) || []);
-  assert.equal(listed.size, 17, 'the archive must list exactly the 17 Active Products across its pagination');
-  assert.ok(listed.has(PRODUCT_URL), 'the archive must link the canonical product URL');
+  assert.equal(listed.size, PRODUCT_COUNT, 'the archive must list exactly the 17 Active Products across its pagination');
   for (const url of PRODUCT_URLS) {
     assert.ok(listed.has(url), `the archive must list the Active Product at ${url}`);
   }
@@ -624,7 +636,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
 
 test('invalid sources return non-zero without partial mutation; missing products warn, lifecycle changes are explicit, changed media imports once', () => {
   const countBefore = productCount();
-  const modifiedBefore = wp(['post', 'list', '--post_type=fp_product', '--field=post_modified']).stdout;
+  const modifiedBefore = productsModifiedStamp();
   assert.equal(countBefore, 17);
 
   const cases = [];
@@ -665,24 +677,22 @@ test('invalid sources return non-zero without partial mutation; missing products
   badColor.products.find((p) => p.slug === 'caja-universal-cerrada-color').options[0].id = 'morado';
   cases.push(['unsupported color option', writeFullFixture('bad-color.json', badColor)]);
 
+  const rejections = new Map();
   for (const [label, file] of cases) {
     const res = catalogSync([], file);
+    rejections.set(label, res);
     assert.notEqual(res.status, 0, `${label}: synchronization must return non-zero`);
     const output = `${res.stdout}\n${res.stderr}`.toLowerCase();
     assert.ok(output.includes('error'), `${label}: the failure must be reported as an error`);
   }
   assertContains(
-    catalogSync([], join(BUILD_DIR, 'fixtures', 'bad-color.json')).stderr,
+    rejections.get('unsupported color option').stderr,
     'unsupported color',
     'the color vocabulary rejection must name the problem'
   );
 
   assert.equal(productCount(), countBefore, 'rejected sources must not mutate the catalog');
-  assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--field=post_modified']).stdout,
-    modifiedBefore,
-    'rejected sources must leave every record untouched'
-  );
+  assert.equal(productsModifiedStamp(), modifiedBefore, 'rejected sources must leave every record untouched');
 
   // Products missing from the source are warnings only — never archived implicitly.
   const empty = cloneSourceDoc();
@@ -693,7 +703,7 @@ test('invalid sources return non-zero without partial mutation; missing products
   assertContains(missing.stdout, 'warnings=17', 'every missing product must be counted as a warning');
   assert.equal(productCount(), countBefore, 'missing products must never be withdrawn');
   assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout,
+    publishedProductCount(),
     '17',
     'the missing products must remain published (explicit lifecycle change required to archive)'
   );
@@ -711,7 +721,7 @@ test('invalid sources return non-zero without partial mutation; missing products
     'an archived Product must leave the public catalog'
   );
   assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout,
+    publishedProductCount(),
     '16',
     'only the explicitly archived Product may leave the published catalog'
   );
@@ -749,20 +759,20 @@ test('invalid sources return non-zero without partial mutation; missing products
   assertContains(restore.stdout, 'Summary: created=0 updated=2 unchanged=15 warnings=0 errors=0', 'the restore run must reactivate exactly the two changed records');
   assert.equal(productMeta('fp-caja-paltera', '_fp_lifecycle'), 'active', 'the explicit reactivation must restore the active state');
   assert.equal(
-    wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout,
+    publishedProductCount(),
     '17',
     'all 17 Products must be active again after the restore'
   );
   assert.equal(attachmentCount(), DISTINCT_IMAGES + 1, 'the original tote media must be reused by checksum, not re-imported');
   assert.equal(
     productMeta('fp-tote', '_fp_image_checksum'),
-    PRODUCTS.find((p) => p.source_id === 'fp-tote').image.checksum,
+    PRODUCT_BY_SOURCE_ID.get('fp-tote').image.checksum,
     'the record must track the restored checksum'
   );
 
   // Final deterministic no-op against the reviewed source.
-  const final = catalogSync();
-  assertContains(final.stdout, 'Summary: created=0 updated=0 unchanged=17 warnings=0 errors=0', 'the final run must be a no-op');
+  const finalRun = catalogSync();
+  assertContains(finalRun.stdout, 'Summary: created=0 updated=0 unchanged=17 warnings=0 errors=0', 'the final run must be a no-op');
 
   section('Rejected sources, lifecycle and media', [
     'Unknown keys, duplicate source_id/slug, invalid slug, missing media, checksum mismatch and unsupported colors all exit non-zero',
