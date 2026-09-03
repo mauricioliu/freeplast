@@ -83,7 +83,7 @@ class Freeplast_CQ_Migrations {
 					wp_update_post(
 						array(
 							'ID'           => $page->ID,
-							'post_content' => "<!-- wp:freeplast/basket /-->\n",
+							'post_content' => Freeplast_CQ_Shell::COTIZACION_CONTENT,
 						)
 					);
 				}

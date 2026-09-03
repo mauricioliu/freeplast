@@ -2,7 +2,7 @@
 /**
  * Static checks for the Freeplast WordPress shell:
  *   - php -l on every theme/plugin PHP file (uses the disposable PHP toolchain)
- *   - node --check on the repository scripts and theme JS
+ *   - node --check on the repository scripts, theme JS and plugin JS
  *   - JSON validation for theme.json and the catalog source stub
  */
 import { spawnSync } from 'node:child_process';

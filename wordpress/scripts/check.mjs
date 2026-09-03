@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2, #3, #4 and #5:
+ * verifies the acceptance criteria of issues #2 through #6:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.

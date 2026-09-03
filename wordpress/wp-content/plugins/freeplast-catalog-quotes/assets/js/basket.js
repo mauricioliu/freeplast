@@ -25,15 +25,19 @@
 		node.textContent = text;
 	}
 
-	/* Mirror the authoritative server state onto the visible widgets. */
+	/* Mirror the authoritative server state onto the visible widgets. A
+	   recoverable failure answers with a message only — the count and the
+	   mini basket keep their last state until a successful add returns them. */
 	function apply( payload ) {
-		var label = LABEL_START + payload.count + ')';
-		document.querySelectorAll( '[data-fpcq-basket-count]' ).forEach( function ( el ) {
-			el.textContent = label;
-		} );
-		document.querySelectorAll( '[data-fpcq-basket-mini]' ).forEach( function ( el ) {
-			el.innerHTML = payload.mini;
-		} );
+		if ( payload.ok ) {
+			var label = LABEL_START + payload.count + ')';
+			document.querySelectorAll( '[data-fpcq-basket-count]' ).forEach( function ( el ) {
+				el.textContent = label;
+			} );
+			document.querySelectorAll( '[data-fpcq-basket-mini]' ).forEach( function ( el ) {
+				el.innerHTML = payload.mini;
+			} );
+		}
 		document.querySelectorAll( '.fpcq-basket-widget' ).forEach( function ( widget ) {
 			statusFor( widget, payload.message || '' );
 		} );
@@ -45,7 +49,7 @@
 
 	document.addEventListener( 'submit', function ( event ) {
 		var form = event.target;
-		if ( ! form || ! form.classList || ! form.classList.contains( 'fpcq-basket-add' ) ) {
+		if ( ! ( form instanceof HTMLFormElement ) || ! form.classList.contains( 'fpcq-basket-add' ) ) {
 			return;
 		}
 		if ( ! window.fetch || ! window.FormData ) {

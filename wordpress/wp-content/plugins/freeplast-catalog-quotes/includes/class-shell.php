@@ -25,6 +25,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Freeplast_CQ_Shell {
 
 	/**
+	 * The /cotizacion/ page content since migration 4: the quote-basket
+	 * view block. Seeded for fresh installs and swapped in by migration 4
+	 * from the same single source.
+	 */
+	public const COTIZACION_CONTENT = "<!-- wp:freeplast/basket /-->\n";
+
+	/**
 	 * The pre-basket /cotizacion/ placeholder content (issues #2–#5), built
 	 * by the same helpers that seeded it. Migration 4 replaces exactly this
 	 * content with the basket block — any human edit made meanwhile is
@@ -46,7 +53,7 @@ class Freeplast_CQ_Shell {
 		$pages = array(
 			'cotizacion'             => array(
 				'title'   => 'Cotización',
-				'content' => "<!-- wp:freeplast/basket /-->\n",
+				'content' => self::COTIZACION_CONTENT,
 			),
 			'tienda'                 => array(
 				'title'   => 'Tienda',
