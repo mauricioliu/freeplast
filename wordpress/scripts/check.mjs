@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#6).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#7).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #6:
+ * verifies the acceptance criteria of issues #2 through #7:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -50,6 +50,17 @@
  *      Product/quantity and a route to the full Cotización view across
  *      refreshes, and invalid nonce/session/Product/quantity mutate nothing
  *      and return recoverable messages (JSON for the JS enhancement).
+ *  13. The Quote Basket is fully editable: Color Caja Universal choosers
+ *      require one currently supported color option, the same Product+option
+ *      merges quantities while different options stay separate lines, lines
+ *      update and remove through nonce-guarded operations with JavaScript
+ *      enabled or disabled, header count/mini basket/full view agree after
+ *      every mutation, malformed or inactive Product/option submissions are
+ *      rejected without mutation, confirmed minimum/step rules are enforced
+ *      when present, logged-in staff browsers keep using the anonymous
+ *      cookie basket (no user linking), and sessions expire 30 days after
+ *      last activity (cookie cleared, empty state routes back to Tienda,
+ *      daily sweep collects expired rows).
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -184,6 +195,16 @@ function pluginSection(html, marker, message) {
   return html.slice(start, html.indexOf('</section>', start));
 }
 
+/** The basket nonce of the form posting one admin-post action. */
+function formNonce(html, action) {
+  for (const form of html.split('<form ')) {
+    if (form.includes(`name="action" value="${action}"`)) {
+      return form.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+    }
+  }
+  return undefined;
+}
+
 /** Occurrences of a literal substring. */
 function countMatches(haystack, needle) {
   return haystack.split(needle).length - 1;
@@ -213,7 +234,7 @@ function productIds() {
 
 function deleteProducts() {
   const ids = productIds();
-  if (ids) wp(['post', 'delete', ids, '--force']);
+  if (ids) wp(['post', 'delete', ...ids.split(/\s+/), '--force']);
 }
 
 /** Write a catalog-source fixture and return its path. */
@@ -1143,11 +1164,364 @@ test('a guest can add Products to a persistent, secure Quote Basket', { timeout:
   ]);
 });
 
-/* ─── 13. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ── 13. Quote Basket editing, options, expiry (issue #7) ─────────── */
+
+test('a guest can edit the Quote Basket: options, update/remove, expiry and staff-browser anonymity', { timeout: 180_000 }, async () => {
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const COLOR_ID = 'fp-caja-universal-cerrada-color';
+  const COLOR_URL = '/producto/caja-universal-cerrada-color/';
+
+  // Universal Color choosers require one currently supported color option.
+  const colorPage = await get(COLOR_URL, MOBILE_UA);
+  assertContains(colorPage.body, 'class="fpcq-add-options"', 'the Color chooser must render a required option group');
+  for (const color of SUPPORTED_COLOR_IDS) {
+    assertContains(colorPage.body, `name="fp_option" value="${color}"`, `the supported color ${color} must be offered`);
+  }
+  assertAbsent(colorPage.body, 'name="fp_option" value="morado"', 'unsupported colors must not be offered');
+  assertContains(colorPage.body, 'name="fp_option" value="blanco" required', 'the color choice must be required (one supported color per line)');
+  const colorAddNonce = colorPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(colorAddNonce, 'the Color chooser must carry a nonce');
+
+  const tiendaPage = await get('/tienda/', MOBILE_UA);
+  assert.equal(
+    countMatches(tiendaPage.body, 'class="fpcq-add-options"'),
+    2,
+    'the two Color Universal card choosers on Tienda must offer the color group'
+  );
+  const blackPage = await get('/producto/caja-universal-cerrada-negra/', MOBILE_UA);
+  assertAbsent(blackPage.body, 'name="fp_option"', 'a Product without reviewed options must not offer an option chooser');
+
+  // A fresh anonymous guest session for this section.
+  const productPage = await get(PRODUCT_URL, MOBILE_UA);
+  const addNonce = productPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const add = (over = {}, headers = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_add',
+        fp_product: 'fp-caja-cosechera-3-4',
+        fp_quantity: '5',
+        fp_basket_nonce: addNonce,
+        _wp_http_referer: PRODUCT_URL,
+        ...over,
+      },
+      headers
+    );
+  const seeded = await add();
+  assert.equal(noticeOf(seeded), 'added');
+  const token = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(token, 'the editing section needs its own guest session');
+
+  // Header count, mini basket and full view agree after every mutation.
+  const agrees = async (n, snippets = [], absent = []) => {
+    for (const route of ['/', '/tienda/', '/cotizacion/']) {
+      const page = await get(route, MOBILE_UA, cookieHeader(token));
+      assertContains(page.body, `Cotización (${n})`, `header count on ${route} must be ${n}`);
+      for (const snippet of snippets) assertContains(page.body, snippet, `${route} must show ${snippet}`);
+      for (const snippet of absent) assertAbsent(page.body, snippet, `${route} must not show ${snippet}`);
+    }
+  };
+
+  // Different options produce separate lines; the same option merges quantities.
+  const addColor = (over = {}, headers = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_add',
+        fp_product: COLOR_ID,
+        fp_option: 'blanco',
+        fp_quantity: '10',
+        fp_basket_nonce: colorAddNonce,
+        _wp_http_referer: COLOR_URL,
+        ...over,
+      },
+      headers
+    );
+  assert.equal(noticeOf(await addColor({ fp_quantity: '10' }, cookieHeader(token))), 'added');
+  assert.equal(noticeOf(await addColor({ fp_quantity: '4' }, cookieHeader(token))), 'added', 're-adding the same option must merge');
+  assert.equal(noticeOf(await addColor({ fp_option: 'rojo', fp_quantity: '6' }, cookieHeader(token))), 'added', 'a different option must become its own line');
+  await agrees(3, ['option">Blanco', '14 unidades', 'option">Rojo', '6 unidades', '5 unidades']);
+
+  // Missing, unsupported and foreign options are rejected without mutation.
+  const basketSnapshot = () => basketRows().map((row) => `${row.session_hash}|${row.lines}`).join(';');
+  const before = basketSnapshot();
+  for (const over of [{ fp_option: '' }, { fp_option: 'morado' }, { fp_option: 'negro-uv' }]) {
+    const res = await addColor(over, cookieHeader(token));
+    assert.equal(noticeOf(res), 'option', `the color submission ${JSON.stringify(over.fp_option)} must be rejected`);
+  }
+  assert.equal(noticeOf(await add({ fp_option: 'blanco' })), 'option', 'a Product without reviewed options must not accept one');
+  assert.equal(basketSnapshot(), before, 'invalid option submissions must not mutate the basket');
+
+  // Updating a line: plain POST → POST-redirect-GET (JavaScript disabled parity).
+  const editPage = async () => await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  let html = (await editPage()).body;
+  const updateNonce = formNonce(html, 'fp_basket_update');
+  const removeNonce = formNonce(html, 'fp_basket_remove');
+  assert.ok(updateNonce && removeNonce, 'every basket line must expose nonce-guarded update/remove forms');
+  const update = (over = {}, headers = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_update',
+        fp_product: COLOR_ID,
+        fp_option: 'blanco',
+        fp_quantity: '20',
+        fp_basket_nonce: updateNonce,
+        _wp_http_referer: '/cotizacion/',
+        ...over,
+      },
+      headers
+    );
+  const updated = await update({}, cookieHeader(token));
+  assert.equal(updated.status, 302, 'the update must answer the browser with a redirect');
+  assert.equal(noticeOf(updated), 'updated');
+  await agrees(3, ['option">Blanco', '20 unidades', 'option">Rojo', '6 unidades'], ['14 unidades']);
+
+  // Removing a line: plain POST → POST-redirect-GET.
+  const remove = (over = {}, headers = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_remove',
+        fp_product: COLOR_ID,
+        fp_option: 'rojo',
+        fp_basket_nonce: removeNonce,
+        _wp_http_referer: '/cotizacion/',
+        ...over,
+      },
+      headers
+    );
+  const removed = await remove({}, cookieHeader(token));
+  assert.equal(removed.status, 302, 'the remove must answer the browser with a redirect');
+  assert.equal(noticeOf(removed), 'removed');
+  await agrees(2, ['option">Blanco', '20 unidades', '5 unidades'], ['option">Rojo']);
+
+  // Malformed update/remove submissions are rejected without mutation.
+  const beforeEdits = basketSnapshot();
+  const tomateraId = PRODUCT_BY_SLUG.get('caja-tomatera').source_id;
+  for (const [label, over] of [
+    ['zero quantity', { fp_quantity: '0' }],
+    ['fractional quantity', { fp_quantity: '2.5' }],
+    ['unknown product', { fp_product: 'fp-no-existe' }],
+    ['unsupported option', { fp_option: 'morado' }],
+    ['line not in basket', { fp_product: tomateraId, fp_option: '' }],
+    ['bad nonce', { fp_basket_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef' }],
+  ]) {
+    const res = await update(over, cookieHeader(token));
+    assert.ok(['quantity', 'product', 'option', 'line', 'nonce'].includes(noticeOf(res)), `${label}: rejected with a recoverable message`);
+  }
+  assert.equal(noticeOf(await remove({ fp_product: tomateraId, fp_option: '' }, cookieHeader(token))), 'line', 'removing an absent line must be rejected');
+  assert.equal(noticeOf(await remove({ fp_option: 'morado' }, cookieHeader(token))), 'option', 'removing an unsupported option must be rejected');
+  assert.equal(noticeOf(await remove({ fp_product: 'fp-no-existe' }, cookieHeader(token))), 'product', 'removing an unknown product must be rejected');
+  assert.equal(basketSnapshot(), beforeEdits, 'malformed edit submissions must not mutate the basket');
+
+  // Archived products cannot be edited into the basket either.
+  const polleraId = PRODUCT_BY_SLUG.get('caja-pollera').source_id;
+  const polleraPostId = wp([
+    'eval',
+    `echo get_posts( array( "post_type" => "fp_product", "post_status" => "any", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_source_id", "meta_value" => "${polleraId}" ) )[0];`,
+  ]).stdout;
+  wp(['post', 'update', polleraPostId, '--post_status=draft']);
+  const archivedAdd = await postForm({
+    action: 'fp_basket_add',
+    fp_product: polleraId,
+    fp_quantity: '3',
+    fp_basket_nonce: addNonce,
+    _wp_http_referer: PRODUCT_URL,
+  });
+  wp(['post', 'update', polleraPostId, '--post_status=publish']);
+  assert.equal(noticeOf(archivedAdd), 'product', 'an archived Product must not be added');
+  assert.equal(basketSnapshot(), beforeEdits, 'archived adds must not mutate the basket');
+
+  // JavaScript enhancement: the same handlers answer JSON state in place.
+  const enhancedUpdate = await postForm(
+    {
+      action: 'fp_basket_update',
+      fp_product: 'fp-caja-cosechera-3-4',
+      fp_option: '',
+      fp_quantity: '1',
+      fp_basket_nonce: updateNonce,
+      _wp_http_referer: '/cotizacion/',
+      fp_enhanced: '1',
+    },
+    { ...cookieHeader(token), 'x-requested-with': 'fetch' }
+  );
+  assert.equal(enhancedUpdate.status, 200, 'the enhanced update answers in place');
+  let payload = JSON.parse(enhancedUpdate.body);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.count, 2, 'the payload carries the distinct-line count');
+  assert.ok(payload.message.includes('actualiz'), 'the payload carries the update message');
+  assert.ok(payload.mini.includes('1 unidad'), 'the mini-basket payload reflects the new quantity');
+  assert.ok(payload.view.includes('1 unidad'), 'the view payload reflects the new quantity');
+
+  const enhancedRemove = await remove({ fp_option: 'blanco', fp_enhanced: '1' }, { ...cookieHeader(token), 'x-requested-with': 'fetch' });
+  payload = JSON.parse(enhancedRemove.body);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.count, 1, 'the enhanced remove answers JSON state');
+  assert.ok(payload.message.includes('quit'), 'the payload carries the removal message');
+  assert.ok(payload.view.includes('Caja Cosechera 3/4'), 'the view payload keeps the remaining line');
+  assertAbsent(payload.view, 'Caja Universal', 'the removed line must leave the view payload');
+
+  // Removing the last line returns the empty state with a route back to Tienda.
+  const lastRemove = await postForm(
+    {
+      action: 'fp_basket_remove',
+      fp_product: 'fp-caja-cosechera-3-4',
+      fp_option: '',
+      fp_basket_nonce: removeNonce,
+      _wp_http_referer: '/cotizacion/',
+    },
+    cookieHeader(token)
+  );
+  assert.equal(noticeOf(lastRemove), 'removed');
+  await agrees(0, ['Tu cotización está vacía']);
+  const empty = await editPage();
+  assertContains(empty.body, 'Explorar la tienda', 'the empty state must route back to Tienda');
+
+  // Confirmed minimum/step rules are enforced when present (fixture sync).
+  const minDoc = cloneSourceDoc();
+  const pollera = minDoc.products.find((p) => p.source_id === polleraId);
+  pollera.specs.minimum_quantity = 10;
+  pollera.specs.quantity_step = 5;
+  const minRun = catalogSync([], writeFullFixture('minstep.json', minDoc));
+  assert.equal(minRun.status, 0, `the confirmed-rules sync must succeed:\n${minRun.stderr}`);
+  assertContains(minRun.stdout, 'Summary: created=0 updated=1 unchanged=16 warnings=0 errors=0', 'only the confirmed rules may change');
+  const polleraPage = await get('/producto/caja-pollera/', MOBILE_UA);
+  assertContains(polleraPage.body, '>10 unidades</td>', 'a confirmed minimum is presented as such');
+
+  const minSession = await postForm({
+    action: 'fp_basket_add',
+    fp_product: polleraId,
+    fp_quantity: '10',
+    fp_basket_nonce: addNonce,
+    _wp_http_referer: '/producto/caja-pollera/',
+  });
+  const minToken = minSession.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(minToken, 'the confirmed-rules flow needs its own session');
+  const minSnapshot = () => basketRows().find((row) => row.session_hash === createHash('sha256').update(minToken).digest('hex')).lines;
+  assert.equal(minSnapshot(), JSON.stringify([{ product: polleraId, option: '', quantity: 10 }]));
+  for (const quantity of ['5', '9', '12']) {
+    const below = await postForm(
+      {
+        action: 'fp_basket_add',
+        fp_product: polleraId,
+        fp_quantity: quantity,
+        fp_basket_nonce: addNonce,
+        _wp_http_referer: '/producto/caja-pollera/',
+      },
+      cookieHeader(minToken)
+    );
+    assert.equal(noticeOf(below), 'quantity', `quantity ${quantity} violates the confirmed minimum/step rules`);
+  }
+  assert.equal(minSnapshot(), JSON.stringify([{ product: polleraId, option: '', quantity: 10 }]), 'rejected quantities must not mutate');
+  const minHtml = (await get('/cotizacion/', MOBILE_UA, cookieHeader(minToken))).body;
+  const minUpdate = formNonce(minHtml, 'fp_basket_update');
+  const toFifteen = await postForm(
+    {
+      action: 'fp_basket_update',
+      fp_product: polleraId,
+      fp_option: '',
+      fp_quantity: '15',
+      fp_basket_nonce: minUpdate,
+      _wp_http_referer: '/cotizacion/',
+    },
+    cookieHeader(minToken)
+  );
+  assert.equal(noticeOf(toFifteen), 'updated', 'an on-step update must succeed');
+  const offStep = await postForm(
+    {
+      action: 'fp_basket_update',
+      fp_product: polleraId,
+      fp_option: '',
+      fp_quantity: '11',
+      fp_basket_nonce: minUpdate,
+      _wp_http_referer: '/cotizacion/',
+    },
+    cookieHeader(minToken)
+  );
+  assert.equal(noticeOf(offStep), 'quantity', 'an off-step update must be rejected');
+  assert.equal(
+    minSnapshot(),
+    JSON.stringify([{ product: polleraId, option: '', quantity: 15 }]),
+    'the confirmed rules must hold after the update'
+  );
+  const restoreRules = catalogSync();
+  assert.equal(restoreRules.status, 0, `restoring the reviewed source must succeed:\n${restoreRules.stderr}`);
+  assert.equal(productMeta(polleraId, '_fp_quote_min_qty'), '', 'the unconfirmed minimum must be deleted again (no minimum claim)');
+
+  // A logged-in staff browser still uses the anonymous cookie basket.
+  const staffCookie = wp([
+    'eval',
+    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+  ]).stdout;
+  assert.ok(staffCookie.includes('='), 'a staff auth cookie must be generated');
+  const staffHeaders = { cookie: `${staffCookie}; fpcq_basket=${token}` };
+  assert.equal((await get('/wp-admin/profile.php', MOBILE_UA, { cookie: staffCookie })).status, 200, 'the staff cookie must authenticate');
+  const staffCotizacion = await get('/cotizacion/', MOBILE_UA, staffHeaders);
+  assertContains(staffCotizacion.body, 'Tu cotización está vacía', 'the logged-in staff browser sees its anonymous basket');
+  const staffPage = await get(PRODUCT_URL, MOBILE_UA, staffHeaders);
+  const staffNonce = staffPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(staffNonce, 'the chooser must render for the logged-in staff browser');
+  const rowsBefore = basketRows().length;
+  const staffAdd = await postForm(
+    {
+      action: 'fp_basket_add',
+      fp_product: 'fp-caja-cosechera-3-4',
+      fp_quantity: '7',
+      fp_basket_nonce: staffNonce,
+      _wp_http_referer: PRODUCT_URL,
+    },
+    { cookie: `${staffCookie}; fpcq_basket=${token}` }
+  );
+  assert.equal(noticeOf(staffAdd), 'added', 'the staff browser adds through the same anonymous session');
+  assert.equal(basketRows().length, rowsBefore, 'no new session may be created for the logged-in staff browser');
+  assertContains((await get('/cotizacion/', MOBILE_UA, staffHeaders)).body, '7 unidades', 'the anonymous basket carries the staff-added line');
+  const linked = wp([
+    'eval',
+    'global $wpdb; echo (int) $wpdb->get_var( \'SELECT COUNT(*) FROM \' . $wpdb->prefix . \'usermeta WHERE meta_key LIKE "%basket%"\' );',
+  ]).stdout;
+  assert.equal(linked, '0', 'no customer user linking or merge behavior may exist');
+
+  // Anonymous sessions expire 30 days after the last activity.
+  const expiredHash = createHash('sha256').update(token).digest('hex');
+  wp([
+    'eval',
+    `global $wpdb; $old = gmdate( "Y-m-d H:i:s", time() - 40 * DAY_IN_SECONDS ); $wpdb->query( 'UPDATE ' . $wpdb->prefix . 'basket_sessions SET created_at = "' . $old . '", last_activity = "' . $old . '" WHERE session_hash = "${expiredHash}"' );`,
+  ]);
+  const expired = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assert.equal(expired.status, 302, 'an expired session must resolve as absent (recoverable redirect)');
+  const expiredLocation = expired.headers.get('location');
+  assert.equal(new URL(expiredLocation, SITE_URL).searchParams.get('fpcq_notice'), 'expired');
+  assert.ok(
+    expired.headers.getSetCookie().some((cookie) => /fpcq_basket=(deleted;|;)/.test(cookie)),
+    'the expired cookie must be cleared so the guest starts fresh'
+  );
+  const afterExpiry = await get(expiredLocation.replace(SITE_URL, ''), MOBILE_UA);
+  assertContains(afterExpiry.body, 'Tu cotización está vacía', 'the expired basket state must show the empty state');
+  assertContains(afterExpiry.body, 'expir', 'the expired basket state must explain itself');
+  assertContains(afterExpiry.body, 'Explorar la tienda', 'the expired basket state must route back to Tienda');
+
+  const collected = Number(wp(['eval', 'echo Freeplast_CQ_Basket::gc();']).stdout || '0');
+  assert.ok(collected >= 1, 'the expiry sweep must collect expired sessions');
+  assert.equal(
+    basketRows().filter((row) => row.session_hash === expiredHash).length,
+    0,
+    'the expired session row must be gone after the sweep'
+  );
+
+  section('Quote Basket editing and options (issue #7)', [
+    'Color Caja Universal choosers require one currently supported color (cards + product page); missing/unsupported/foreign options are rejected without mutation',
+    'Different options produce separate lines; the same product+option merges quantities; header count, mini basket and full view agree after every mutation and refresh',
+    'Lines update and remove through nonce-guarded admin-post operations with JavaScript enabled (JSON state) or disabled (POST-redirect-GET)',
+    'Malformed update/remove submissions (quantity, product, option, line, nonce, archived products) are rejected without mutation',
+    'Confirmed minimum/step rules are enforced when present; unknown rules accept any positive whole unit and make no minimum claim',
+    'A logged-in staff browser still uses the anonymous cookie basket; no user linking or merge exists',
+    'Sessions expire 30 days after last activity: the cookie is cleared, the empty state routes back to Tienda, and the sweep collects expired rows',
+  ]);
+});
+
+/* ─── 14. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket (issues #2–#6)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket (issues #2–#7)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -1186,6 +1560,13 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'The session cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
     'The basket survives refresh and navigation; the header counts distinct lines (Cotización (n)); the mini basket shows Product, quantity and a route to /cotizacion/',
     'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages; the JavaScript enhancement receives JSON state',
+    'Color Caja Universal choosers require one currently supported color (cards + product page); missing/unsupported/foreign options are rejected without mutation',
+    'Different options produce separate lines; the same product+option merges; header count, mini basket and full view agree after every mutation and refresh',
+    'Lines update and remove through nonce-guarded operations with JavaScript enabled (JSON state) or disabled (POST-redirect-GET)',
+    'Malformed update/remove submissions (quantity, product, option, line, nonce, archived products) are rejected without mutation',
+    'Confirmed minimum/step rules are enforced when present; unknown rules accept any positive whole unit and make no minimum claim',
+    'A logged-in staff browser still uses the anonymous cookie basket; no user linking or merge exists',
+    'Sessions expire 30 days after last activity: cookie cleared, empty state routes back to Tienda, daily sweep collects expired rows',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -1199,7 +1580,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- Catalog facts come exclusively from the reviewed versioned Catalog Source (wordpress/data/products.json, schema v2); unconfirmed commercial minimums and packaging facts render as “Consultar” and no contradictory old-site values are copied.`,
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
-    `- The Quote Basket is an anonymous cookie-backed server session (issue #6): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation revalidates nonce, session, Product lifecycle/visibility and whole-unit quantity. Line editing/removal, option lines, expiry enforcement and the submission form arrive with issues #7/#8.`,
+    `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

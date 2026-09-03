@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Freeplast Catalog & Quotes
  * Plugin URI: https://freeplast.mliu.site/
- * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer, the catalog discovery blocks (Home featured, Tienda grid/filter, search) and the persistent anonymous Quote Basket (quantity choosers, secure cookie session, header count and mini basket); later slices add basket editing/options and the request submission.
- * Version: 0.4.0
+ * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer, the catalog discovery blocks (Home featured, Tienda grid/filter, search) and the editable persistent anonymous Quote Basket (quantity/option choosers, secure cookie session, header count, mini basket, line update/remove, expiry sweep); a later slice adds the request submission.
+ * Version: 0.5.0
  * Requires at least: 7.0
  * Requires PHP: 8.1
  * Author: Freeplast
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_CQ_VERSION', '0.4.0' );
+define( 'FREEPLAST_CQ_VERSION', '0.5.0' );
 define( 'FREEPLAST_CQ_DB_VERSION', 4 );
 define( 'FREEPLAST_CQ_FILE', __FILE__ );
 

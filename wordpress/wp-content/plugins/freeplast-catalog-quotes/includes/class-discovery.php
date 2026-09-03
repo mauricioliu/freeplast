@@ -292,17 +292,21 @@ class Freeplast_CQ_Discovery {
 				esc_html( $category ),
 				esc_html( get_the_title( $post ) ),
 				esc_html( wp_trim_words( get_the_excerpt( $post ), 24, '…' ) ),
-				self::render_card_chooser( (string) get_post_meta( $post->ID, '_fp_source_id', true ) )
+				self::render_card_chooser( $post )
 			);
 		}
 		return $cards;
 	}
 
 	/** One card quotation action: a disclosure that opens the quantity chooser. */
-	private static function render_card_chooser( string $source_id ): string {
+	private static function render_card_chooser( WP_Post $post ): string {
+		$options   = json_decode( (string) get_post_meta( $post->ID, '_fp_options', true ), true );
+		$reviewed  = is_array( $options ) ? array_values( array_filter( $options, 'is_array' ) ) : array();
+		$source_id = (string) get_post_meta( $post->ID, '_fp_source_id', true );
+
 		return sprintf(
 			'<details class="fpcq-card-cta"><summary>Cotizar</summary>%s</details>',
-			Freeplast_CQ_Basket::render_add_form( $source_id, Freeplast_CQ_Basket::current_url() )
+			Freeplast_CQ_Basket::render_add_form( $source_id, Freeplast_CQ_Basket::current_url(), $reviewed )
 		);
 	}
 }

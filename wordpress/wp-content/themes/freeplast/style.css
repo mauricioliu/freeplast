@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.4.0
+Version: 0.5.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -870,6 +870,53 @@ a {
   border-radius: var(--fp-r-sm);
 }
 
+/* Required option group (Caja Universal Color): one supported color per line. */
+.fpcq-add-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-2);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.fpcq-add-options-legend {
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-add-option {
+  display: flex;
+  align-items: center;
+  gap: var(--fp-s-2);
+  min-height: 44px;
+  padding: 0 var(--fp-s-2);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-sm);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fpcq-add-option:has(input:checked) {
+  border-color: var(--fp-green);
+  background: var(--fp-green-soft);
+}
+
+.fpcq-add-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fp-green);
+}
+
+.fpcq-add-option:focus-within {
+  outline: 2px solid var(--fp-blue);
+  outline-offset: 2px;
+}
+
 .fpcq-add-label {
   display: flex;
   flex-direction: column;
@@ -979,7 +1026,7 @@ a {
   text-decoration: underline;
 }
 
-/* Full Cotización view (read-only in this slice). */
+/* Full Cotización view: every line is editable (update quantity, remove). */
 .fpcq-basketview {
   padding-block: var(--fp-s-5);
 }
@@ -999,11 +1046,17 @@ a {
 
 .fpcq-basketview-line {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  flex-direction: column;
   gap: var(--fp-s-2);
   padding: var(--fp-s-3) 0;
   border-bottom: 1px solid var(--fp-line);
+}
+
+.fpcq-basketview-line-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fp-s-2);
 }
 
 .fpcq-basketview-line-title {
@@ -1027,6 +1080,80 @@ a {
   color: var(--fp-ink);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.fpcq-basketview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--fp-s-2);
+}
+
+.fpcq-basket-update,
+.fpcq-basket-remove {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--fp-s-2);
+  margin: 0;
+}
+
+.fpcq-edit-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-1);
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-edit-qty {
+  min-height: 44px;
+  width: 96px;
+  padding: var(--fp-s-2) var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+.fpcq-edit-submit,
+.fpcq-remove-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-4);
+  border: none;
+  border-radius: var(--fp-r-sm);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-edit-submit {
+  background: var(--fp-green);
+  color: #fff;
+}
+
+.fpcq-edit-submit:hover {
+  background: var(--fp-green-soft);
+}
+
+.fpcq-remove-submit {
+  background: none;
+  border: 1px solid var(--fp-line-strong);
+  color: var(--fp-muted);
+}
+
+.fpcq-remove-submit:hover {
+  border-color: var(--fp-blue);
+  color: var(--fp-blue);
 }
 
 .fpcq-basketview-note {

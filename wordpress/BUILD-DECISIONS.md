@@ -6,6 +6,57 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-03 — Issue #7: complete Quote Basket editing and options
+
+The basket becomes fully editable and option-aware: Color Caja Universal
+lines require one supported color, quantities update, lines remove, and
+sessions expire — with or without JavaScript. Decisions:
+
+1. **Options are a required chooser, not free text.** A Product whose
+   reviewed source declares options (the two Caja Universal Color
+   configurations) renders a required radio group (blanco, rojo, amarillo,
+   azul, verde — source order) inside the shared chooser, on catalog cards
+   and the product page alike. The handler enforces the same rule
+   server-side: a Product with options must receive exactly one reviewed
+   option; a Product without options accepts none. Line identity is
+   Product+option: re-adding the same pair merges quantities while
+   different options stay separate lines.
+
+2. **Editing is the same authoritative pattern as adding.** Two new
+   nonce-guarded admin-post operations (`fp_basket_update`,
+   `fp_basket_remove`) share the add handler's validate-everything-first
+   prelude (nonce → session → published Product → option, then quantity for
+   updates), then rewrite the whole stored line list in one authoritative
+   write — header count, mini basket and full view always agree because
+   they all render from the same rows. Each line of `/cotizacion/` carries
+   its own update (Cantidad + Actualizar) and remove (Quitar) forms, so
+   editing works with JavaScript disabled; the enhancement POSTs the same
+   forms with `fp_enhanced=1` and mirrors the returned JSON (count, mini
+   basket, message and the re-rendered view with fresh nonces) in place.
+
+3. **Failures stay recoverable and mutation-free.** Malformed submissions
+   (bad nonce, dead session, unknown or archived Product, unsupported or
+   missing option, non-positive/fractional quantity, absent line) are
+   rejected with a message (`fpcq_notice` codes incl. new updated/removed/
+   line/expired) before anything is written. Confirmed minimum/step rules
+   are enforced whenever the source carries them (proven by a fixture sync
+   with minimum_quantity 10 / quantity_step 5); while they stay absent any
+   positive whole unit is accepted and no minimum is claimed.
+
+4. **Sessions expire 30 days after last activity, visibly.** Expired
+   sessions already resolve as absent; now a front-end request presenting a
+   dead cookie is cleared once and bounced to the same URL with
+   `fpcq_notice=expired`, so the guest lands on the empty state (which
+   routes back to Tienda) instead of a silently invisible basket. A daily
+   `fpcq_basket_gc` sweep deletes the expired rows so anonymous sessions
+   never accumulate forever (Quote Requests, arriving with issue #8, are
+   business records and never expire this way).
+
+5. **Staff browsers stay anonymous.** A logged-in WordPress browser keeps
+   using the cookie basket: choosers render user-scoped nonces and the add
+   still targets the same anonymous session row — verified end to end with
+   a real auth cookie pair. No usermeta basket linking exists.
+
 ## 2026-09-03 — Issue #6: add Products to a persistent Quote Basket
 
 The first basket slice: a guest selects a quantity and adds a synchronized

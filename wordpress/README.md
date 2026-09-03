@@ -54,7 +54,7 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   mobile and desktop user agents, with mobile-first (min-width-only) CSS;
 - `/cotizacion/` renders the quote-basket view (empty state, no request form
   — submission is issue #8) and the only forms anywhere are the basket
-  quantity choosers (fpcq-basket-add);
+  choosers and line-edit forms (fpcq-basket-add/update/remove);
 - WooCommerce is absent;
 - WordPress/PHP/SQLite versions and the plugin migration version
   (`fp_db_version`) are reported against the declared expectations;
@@ -93,6 +93,17 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   refreshes, invalid nonce/session/Product/quantity mutate nothing and return
   recoverable messages, and the progressive JavaScript enhancement receives
   JSON state from the same authoritative handler;
+- the Quote Basket is fully editable: Color Caja Universal choosers require
+  one currently supported color option, the same Product+option merges
+  quantities while different options stay separate lines, every line on
+  `/cotizacion/` updates and removes through its own nonce-guarded operation
+  with JavaScript enabled or disabled, header count/mini basket/full view
+  agree after every mutation and refresh, malformed or inactive
+  Product/option submissions are rejected without mutation, confirmed
+  minimum/step rules are enforced when present, logged-in staff browsers keep
+  using the anonymous cookie basket (no user linking), and sessions expire
+  30 days after last activity (dead cookie cleared once, empty state routes
+  back to Tienda, daily sweep collects expired rows);
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle
