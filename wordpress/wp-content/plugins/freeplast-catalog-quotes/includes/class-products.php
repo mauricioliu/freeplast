@@ -98,6 +98,7 @@ class Freeplast_CQ_Products {
 			'_fp_related_ids',
 			'_fp_options',
 			'_fp_lifecycle',
+			'_fp_legacy_paths',
 		);
 
 		foreach ( $string_keys as $key ) {
@@ -129,7 +130,6 @@ class Freeplast_CQ_Products {
 				'single'            => true,
 				'show_in_rest'      => false,
 				'sanitize_callback' => 'absint',
-				'default'           => 0,
 			)
 		);
 
@@ -137,10 +137,11 @@ class Freeplast_CQ_Products {
 			'fp_product',
 			'_fp_featured',
 			array(
-				'type'              => 'boolean',
-				'single'            => true,
-				'show_in_rest'      => false,
-				'sanitize_callback' => static fn( $value ) => (bool) $value,
+				'type'         => 'boolean',
+				'single'       => true,
+				'show_in_rest' => false,
+				/* No sanitize callback: the synchronizer owns the value and stores
+			   the WordPress '1'/'0' string convention byte for byte. */
 			)
 		);
 	}
@@ -166,6 +167,7 @@ class Freeplast_CQ_Products {
 		$weight         = $meta( '_fp_weight_text' );
 		$use            = $meta( '_fp_use' );
 		$units          = (int) $meta( '_fp_units_per_pallet' );
+		$units_known    = $units > 0;
 		$minimum        = $meta( '_fp_quote_min_qty' );
 		$provisional    = '1' === $meta( '_fp_image_provisional' );
 
@@ -197,7 +199,7 @@ class Freeplast_CQ_Products {
 						<div><dt>Medidas</dt><dd><?php echo esc_html( $dimensions ); ?></dd></div>
 						<div><dt>Peso</dt><dd><?php echo esc_html( $weight ); ?></dd></div>
 						<div><dt>Material</dt><dd><?php echo esc_html( $material_short ); ?></dd></div>
-						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo esc_html( number_format_i18n( $units ) ); ?></dd></div>
+						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo esc_html( self::units_label( $units ) ); ?></dd></div>
 					</dl>
 
 					<a class="fpcq-quote-cta" href="<?php echo esc_url( home_url( '/cotizacion/' ) ); ?>">Cotizar este producto</a>
@@ -215,11 +217,13 @@ class Freeplast_CQ_Products {
 						<tr><th scope="row">Medidas</th><td><?php echo esc_html( $dimensions ); ?></td></tr>
 						<tr><th scope="row">Peso</th><td><?php echo esc_html( $weight ); ?></td></tr>
 						<tr><th scope="row">Uso</th><td><?php echo esc_html( $use ); ?></td></tr>
-						<tr><th scope="row">Unidades por pallet</th><td><?php echo esc_html( number_format_i18n( $units ) ); ?></td></tr>
+						<tr><th scope="row">Unidades por pallet</th><td><?php echo esc_html( self::units_label( $units ) ); ?></td></tr>
 						<tr><th scope="row">Cantidad mínima</th><td><?php echo esc_html( self::minimum_label( $minimum ) ); ?></td></tr>
 					</tbody>
 				</table>
-				<p class="fpcq-pallet-note">Las unidades por pallet son un dato de embalaje; no constituyen un mínimo de compra confirmado.</p>
+				<?php if ( $units_known ) : ?>
+					<p class="fpcq-pallet-note">Las unidades por pallet son un dato de embalaje; no constituyen un mínimo de compra confirmado.</p>
+				<?php endif; ?>
 			</section>
 		</article>
 		<?php
@@ -240,6 +244,11 @@ class Freeplast_CQ_Products {
 	 */
 	private static function minimum_label( string $minimum ): string {
 		return ( '' === $minimum || '0' === $minimum ) ? 'Consultar' : sprintf( '%s unidades', number_format_i18n( (int) $minimum ) );
+	}
+
+	/** Unconfirmed packaging facts are shown as "Consultar". */
+	private static function units_label( int $units ): string {
+		return $units > 0 ? number_format_i18n( $units ) : 'Consultar';
 	}
 
 	private static function render_related( array $related_ids ): string {

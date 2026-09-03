@@ -12,7 +12,7 @@ WooCommerce is not installed.
 wordpress/
   BUILD-DECISIONS.md          slice-by-slice decisions (read this first)
   VERIFICATION.md             generated mechanical proof (npm test)
-  data/products.json          versioned catalog source (schema v1)
+  data/products.json          versioned catalog source (schema v2, 17 products)
   data/media/                 reviewed local media referenced by the source
   scripts/                    toolchain fetch, bootstrap, checks
   wp-content/
@@ -57,21 +57,25 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
 - WooCommerce is absent;
 - WordPress/PHP/SQLite versions and the plugin migration version
   (`fp_db_version`) are reported against the declared expectations;
-- the versioned Catalog Source (`data/products.json`, schema v1, Caja
-  Cosechera 3/4) validates before mutation, and `wp freeplast catalog sync
+- the versioned Catalog Source (`data/products.json`, schema v2, the complete
+  17-product union) validates before mutation, and `wp freeplast catalog sync
   --dry-run` reports the deterministic difference without touching
   WordPress;
-- real synchronization creates the Product (`fp_product`), its metadata
-  and local media-library copies of the reviewed images; a second run
-  against unchanged source reports zero changes;
-- the product lives at the clean canonical URL `/producto/caja-cosechera-3-4/`
-  with `rel=canonical`, is absent from WordPress editor menus, and its page
-  follows approved v7 variant A: source-supported description and specs,
-  pallet facts as packaging facts (“Cantidad mínima: Consultar”), no forms,
-  no prototype controls;
-- unknown keys, duplicate identity, invalid slugs and failed media imports
-  exit non-zero with no partial catalog mutation; products missing from
-  the source are warnings only.
+- real synchronization creates all 17 Active Products — the 15 PDF products
+  (including the four Caja Universal configurations and the provisional
+  Traversa para Bins Tipo Romano) plus the old-site-only Pediluvio and Ladrillo
+  plástico — with source identity, Product Category, canonical slugs, retained
+  legacy paths, reviewed options and local media-library copies of the
+  reviewed images; a second run against unchanged source reports zero changes;
+- every product lives at a clean canonical URL `/producto/<slug>/` with
+  `rel=canonical`, is absent from WordPress editor menus, and its page follows
+  approved v7 variant A: source-supported description and specs, pallet facts
+  as packaging facts (“Cantidad mínima: Consultar”), honest “Consultar” for
+  every unconfirmed fact, no forms, no prototype controls;
+- unknown keys, duplicate identity, invalid slugs, unsupported color options
+  and failed media imports exit non-zero with no partial catalog mutation;
+  products missing from the source are warnings only, only explicit lifecycle
+  changes archive/reactivate records, and changed media imports exactly once.
 
 Synchronizing the catalog by hand against the disposable site:
 
@@ -88,17 +92,28 @@ Pixel-level visual fidelity at 412 px and desktop widths is human Gate 3
 (RUNBOOK.md) — the automated check verifies the served document and
 responsive stylesheet, not rendered pixels.
 
-## Catalog source (schema v1)
+## Catalog source (schema v2)
 
 `data/products.json` is the reviewed, version-controlled authority for
-catalog content. It is validated completely before any mutation: unknown
-keys, duplicate source IDs/slugs, invalid URLs/paths, misaligned
-minimums/steps, unknown related-product IDs and missing or checksum-mismatched
-media are all rejected (non-zero exit) before WordPress is touched. Product
-identity is the immutable `source_id` (never the slug), lifecycle is explicit
-(`active`/`archived`), units-per-pallet are packaging facts, and unconfirmed
-commercial minimums are `null` (rendered as “Consultar”). Media lives in
+catalog content: the 17-product union of the 2026 PDF catalog and the current
+freeplast.cl offering — 15 PDF products (including the four Caja Universal
+configurations and the provisional Traversa para Bins Tipo Romano) plus the
+old-site-only Bases plásticas para pediluvios and Ladrillo plástico, all
+Active until the client explicitly archives one. It is validated completely
+before any mutation: unknown keys, duplicate source IDs/slugs, invalid
+URLs/paths, misaligned minimums/steps, unknown related-product IDs,
+unsupported color options and missing or checksum-mismatched media are all
+rejected (non-zero exit) before WordPress is touched. Product identity is the
+immutable `source_id` (never the slug), lifecycle is explicit
+(`active`/`archived`), canonical slugs are clean while old `legacy_paths` are
+retained as data for the future production cutover, units-per-pallet are
+packaging facts (null when unconfirmed), and unconfirmed commercial minimums
+are `null` (rendered as “Consultar”). Color options are restricted to the
+supported vocabulary (blanco, rojo, amarillo, azul, verde). Media lives in
 `data/media/`, is imported into the local media library by the synchronizer
-and tracked as provisional while original photography is pending. Extending
-the catalog (issue #4/#5) means adding products to this file — never editing
-WordPress.
+and tracked as provisional while original photography is pending. The 2026
+PDF is raster-only: facts that could not be transcribed in this environment
+(notably the Universal ventilada/color configurations, Tipo Romano and Caja
+Paltera sheets) render as “Consultar” pending client review. The
+customer-facing discovery journey (issue #5) consumes this file — content is
+never duplicated into the theme.

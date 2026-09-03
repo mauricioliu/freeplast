@@ -6,6 +6,65 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-03 — Issue #4: synchronize all 17 Products
+
+The proven Catalog seam extended to the complete union. Decisions:
+
+1. **The Catalog Source is the 17-product union per PRD #1.** 15 PDF
+   products — the 10 shared with freeplast.cl, the Caja Universal split into
+   four distinct configurations (Cerrada/Ventilada × Negra/Color) and the
+   provisional Traversa para Bins Tipo Romano (with Caja Paltera, which is
+   named in the current contact form but has no published ficha) — plus the
+   old-site-only Bases plásticas para pediluvios and Ladrillo plástico. All
+   17 sync as Active; only an explicit source lifecycle change archives one.
+
+2. **Schema v2: honest absence instead of invented facts.**
+   `units_per_pallet` becomes nullable (the packaging fact is known only for
+   Caja Cosechera 3/4 = 70 and Caja Frutera = 65; unknown values are deleted,
+   never stored as 0, and render as “Consultar”). Options may declare a
+   `group: "color"`; color-group ids are restricted to the supported
+   vocabulary (blanco, rojo, amarillo, azul, verde) so Color configurations
+   cannot offer unsupported colors. A schema-version bump rejects stale
+   v1 files explicitly.
+
+3. **The raster 2026 PDF is not transcribable in this environment.** Every
+   fact is therefore taken from verifiable sources only: the published
+   freeplast.cl excerpts (fetched 2026-09-03, matching the captured
+   prototypes) plus the PRD’s structural decisions. Products whose sheets
+   could not be transcribed (the ventilada/color Universal configurations,
+   Tipo Romano, Caja Paltera) carry neutral name-derived descriptions,
+   “Consultar” specs and explicit review notes; nothing is invented. Old-site
+   commercial minimums (Universal 100, Tomatera 128) are NOT copied: PRD #1
+   keeps every minimum unconfirmed.
+
+4. **Legacy paths are retained as synchronized data.** `_fp_legacy_paths`
+   stores the old `/producto/<historical-slug>/` paths (e.g. the Caja
+   Pollera page that actually lives at `base-para-pediluvio`) separately
+   from the clean canonical slug, ready for the future production redirect
+   slice; staging routing is untouched.
+
+5. **Stored JSON must be unescaped.** `update_post_meta` unslashes scalar
+   values, so escaped JSON (`\/`) would never compare equal to the packed
+   source form and every sync would report phantom updates. `pack()` now
+   encodes with `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`; nullable
+   integer meta (`units_per_pallet`, `featured_order`, minimum/step) is
+   deleted when null and `_fp_featured` keeps the raw '1'/'0' convention
+   (no boolean sanitize callback) — the stored form equals the compared
+   form byte for byte, which is what makes the no-op second run honest.
+
+6. **Media: shared, checksum-keyed, provisional.** The four Universal
+   configurations reference one reviewed photograph (one attachment reused
+   by checksum); Caja Paltera and Tipo Romano have no photography at all and
+   use visibly neutral placeholders. All staging media is tracked as
+   provisional (`Imagen provisional`) pending original unwatermarked
+   photography.
+
+7. **Provenance is tracked per product.** `_fp_source_url` keeps the published
+   freeplast.cl ficha URL where one exists, the contact page for Caja
+   Paltera and the site root for Tipo Romano; `_fp_source_checked_at` keeps
+   the retrieval timestamp. “Traversa Tipo G2” is retained as the review
+   alias inside the Romano record per PRD #1.
+
 ## 2026-09-03 — Issue #3: synchronize and render the first Product
 
 First complete Catalog seam, proven with Caja Cosechera 3/4: reviewed source

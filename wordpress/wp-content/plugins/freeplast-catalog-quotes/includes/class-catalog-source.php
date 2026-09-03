@@ -7,13 +7,15 @@
  * versioned schema and validates the ENTIRE input before the synchronizer is
  * allowed to touch WordPress:
  *
- *   - unknown keys are rejected at every object level (schema version 1);
+ *   - unknown keys are rejected at every object level (schema version 2);
  *   - duplicate source IDs and duplicate slugs are rejected (identity);
  *   - clean canonical slugs are enforced (lowercase URL-safe segments);
  *   - URLs must be absolute http(s), legacy paths must be clean absolute paths;
- *   - quantities must be positive integers, and a confirmed minimum must be
- *     aligned with its step;
+ *   - quantities must be positive integers, a confirmed minimum must be
+ *     aligned with its step, and units-per-pallet may be null while the
+ *     packaging fact is unconfirmed (rendered as "Consultar");
  *   - related-product IDs must exist in the same source (max three, no self);
+ *   - color options must come from the supported color vocabulary; and
  *   - referenced local media must exist with a matching sha256 checksum.
  *
  * Schema version history:
@@ -21,6 +23,10 @@
  *       title, excerpt/description, category, local image metadata, structured
  *       specs (incl. units-per-pallet and unconfirmed minimum/step), options,
  *       related IDs, featured state/order and review flags.
+ *   2 — full catalog union (issue #4): units-per-pallet becomes nullable
+ *       (unknown packaging facts are honestly absent instead of invented)
+ *       and options may declare a "color" group whose ids are restricted to
+ *       the supported color vocabulary (blanco, rojo, amarillo, azul, verde).
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -31,10 +37,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Freeplast_CQ_Catalog_Source {
 
-	public const SCHEMA_VERSION = 1;
+	public const SCHEMA_VERSION = 2;
 
 	/** Product categories exposed to customers (Todos is a view filter only). */
 	public const CATEGORIES = array( 'agricola', 'otros' );
+
+	/** Supported color options for Color configurations (PRD #1). */
+	public const SUPPORTED_COLORS = array( 'blanco', 'rojo', 'amarillo', 'azul', 'verde' );
 
 	/** @var array Raw decoded source document. */
 	private array $document;
@@ -263,13 +272,30 @@ class Freeplast_CQ_Catalog_Source {
 			if ( ! is_array( $option ) ) {
 				throw self::error( "$at.options entries must be objects" );
 			}
-			$this->expect_keys( $option, array( 'id', 'label' ), "$at.options[]" );
+			$this->expect_keys( $option, array( 'id', 'label', 'group' ), "$at.options[]" );
 			$option_id = (string) $option['id'];
 			if ( ! self::is_token( $option_id ) ) {
 				throw self::error( sprintf( '%s.options[].id must be a lowercase identifier (got "%s")', $at, $option_id ) );
 			}
 			if ( '' === trim( (string) $option['label'] ) ) {
 				throw self::error( "$at.options[].label must not be empty" );
+			}
+			/* Color configurations require a supported color option: an option
+		   grouped as a color must come from the reviewed vocabulary. */
+			if ( array_key_exists( 'group', $option ) ) {
+				if ( 'color' !== $option['group'] ) {
+					throw self::error( sprintf( '%s.options[].group must be "color" when present (got "%s")', $at, (string) $option['group'] ) );
+				}
+				if ( ! in_array( $option_id, self::SUPPORTED_COLORS, true ) ) {
+					throw self::error(
+						sprintf(
+							'%s.options contains the unsupported color "%s" (supported: %s)',
+							$at,
+							$option_id,
+							implode( ', ', self::SUPPORTED_COLORS )
+						)
+					);
+				}
 			}
 			if ( in_array( $option_id, $option_ids, true ) ) {
 				throw self::error( sprintf( '%s.options contains the duplicate id "%s"', $at, $option_id ) );
@@ -391,8 +417,8 @@ class Freeplast_CQ_Catalog_Source {
 		}
 
 		$units = $specs['units_per_pallet'];
-		if ( ! is_int( $units ) || 1 > $units ) {
-			throw self::error( "$at.units_per_pallet must be a positive integer (a packaging fact)" );
+		if ( null !== $units && ( ! is_int( $units ) || 1 > $units ) ) {
+			throw self::error( "$at.units_per_pallet must be null (unconfirmed) or a positive integer (a packaging fact)" );
 		}
 
 		$minimum = $specs['minimum_quantity'];

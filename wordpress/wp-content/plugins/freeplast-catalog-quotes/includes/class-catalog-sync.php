@@ -274,6 +274,7 @@ class Freeplast_CQ_Catalog_Sync {
 			'dimensions'  => array( $get( '_fp_dimensions' ), $specs['dimensions'] ),
 			'weight'      => array( $get( '_fp_weight_text' ), $specs['weight'] ),
 			'use'         => array( $get( '_fp_use' ), $specs['use'] ),
+			'legacy'      => array( $get( '_fp_legacy_paths' ), self::pack( $product['legacy_paths'] ) ),
 			'specs'       => array(
 				self::pack( array( $get( '_fp_material_short' ), (string) $get( '_fp_units_per_pallet' ), $get( '_fp_quote_min_qty' ), $get( '_fp_quote_step' ) ) ),
 				self::pack( array( $specs['material_short'], (string) $specs['units_per_pallet'], self::nullable_int( $specs['minimum_quantity'] ), self::nullable_int( $specs['quantity_step'] ) ) ),
@@ -397,28 +398,23 @@ class Freeplast_CQ_Catalog_Sync {
 			'_fp_dimensions'         => $specs['dimensions'],
 			'_fp_weight_text'        => $specs['weight'],
 			'_fp_use'                => $specs['use'],
-			'_fp_units_per_pallet'   => (string) $specs['units_per_pallet'],
 			'_fp_lifecycle'          => $product['lifecycle'],
+			'_fp_legacy_paths'       => self::pack( $product['legacy_paths'] ),
 			'_fp_options'            => self::pack( $product['options'] ),
 			'_fp_related_ids'        => self::pack( $product['related_ids'] ),
 			'_fp_featured'           => $product['featured'] ? '1' : '0',
-			'_fp_featured_order'     => self::nullable_int( $product['featured_order'] ),
 			'_fp_image_checksum'     => $product['image']['checksum'],
 			'_fp_image_source'       => 'catalog-source:' . $product['source_id'],
 			'_fp_image_alt'          => $product['image']['alt'],
 			'_fp_image_provisional'  => $product['image']['provisional'] ? '1' : '0',
 		);
 
-		if ( null === $specs['minimum_quantity'] ) {
-			delete_post_meta( $post_id, '_fp_quote_min_qty' );
-		} else {
-			$meta['_fp_quote_min_qty'] = (string) $specs['minimum_quantity'];
-		}
-		if ( null === $specs['quantity_step'] ) {
-			delete_post_meta( $post_id, '_fp_quote_step' );
-		} else {
-			$meta['_fp_quote_step'] = (string) $specs['quantity_step'];
-		}
+		/* Nullable integers are deleted when the fact is unknown (never stored
+		   as 0) so the stored form equals the compared form byte for byte. */
+		self::put_nullable_int( $post_id, $meta, '_fp_quote_min_qty', $specs['minimum_quantity'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_quote_step', $specs['quantity_step'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_units_per_pallet', $specs['units_per_pallet'] );
+		self::put_nullable_int( $post_id, $meta, '_fp_featured_order', $product['featured_order'] );
 
 		foreach ( $meta as $key => $value ) {
 			update_post_meta( $post_id, $key, $value );
@@ -499,11 +495,26 @@ class Freeplast_CQ_Catalog_Sync {
 	/* ------------------------------------------------------------------ */
 
 	private static function pack( $value ): string {
-		return (string) wp_json_encode( $value );
+		/* Unescaped JSON survives the metadata API (update_post_meta unslashes
+		   scalar values), so the stored form equals the compared form byte for
+		   byte on every later run. */
+		return (string) wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 	}
 
 	private static function nullable_int( $value ): string {
 		return null === $value ? '' : (string) $value;
+	}
+
+	/**
+	 * Store an integer meta value, or delete the key entirely when the source
+	 * fact is null — unknown facts are absent, never invented as 0.
+	 */
+	private static function put_nullable_int( int $post_id, array &$meta, string $key, $value ): void {
+		if ( null === $value ) {
+			delete_post_meta( $post_id, $key );
+		} else {
+			$meta[ $key ] = (string) $value;
+		}
 	}
 }
 
