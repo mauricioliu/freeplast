@@ -1,0 +1,76 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/theme.json",
+  "version": 3,
+  "settings": {
+    "appearanceTools": true,
+    "layout": {
+      "contentSize": "680px",
+      "wideSize": "1152px"
+    },
+    "color": {
+      "palette": [
+        { "slug": "blue", "color": "#100090", "name": "Freeplast Blue" },
+        { "slug": "blue-heading", "color": "#0b078c", "name": "Blue Heading" },
+        { "slug": "green", "color": "#306020", "name": "Freeplast Green" },
+        { "slug": "green-soft", "color": "#558948", "name": "Green Soft" },
+        { "slug": "ink", "color": "#17181c", "name": "Ink" },
+        { "slug": "text", "color": "#3a3a3a", "name": "Text" },
+        { "slug": "tint", "color": "#f4f5f7", "name": "Tint" },
+        { "slug": "muted", "color": "#6b6b72", "name": "Muted" },
+        { "slug": "paper", "color": "#ffffff", "name": "Paper" }
+      ]
+    },
+    "typography": {
+      "fluid": true,
+      "fontFamilies": [
+        {
+          "fontFamily": "Manrope, ui-sans-serif, system-ui, sans-serif",
+          "slug": "primary",
+          "name": "Manrope"
+        }
+      ],
+      "fontSizes": [
+        { "slug": "small", "size": "14px", "name": "Small" },
+        { "slug": "medium", "size": "16px", "name": "Medium" },
+        { "slug": "large", "size": "20px", "name": "Large" },
+        { "slug": "x-large", "size": "28px", "name": "Extra Large" },
+        { "slug": "xx-large", "size": "40px", "name": "Huge" }
+      ]
+    },
+    "spacing": {
+      "units": ["px", "rem", "%", "vh"],
+      "spacingSizes": [
+        { "slug": "20", "size": "8px", "name": "1" },
+        { "slug": "30", "size": "12px", "name": "2" },
+        { "slug": "40", "size": "16px", "name": "3" },
+        { "slug": "50", "size": "24px", "name": "4" },
+        { "slug": "60", "size": "32px", "name": "5" },
+        { "slug": "70", "size": "48px", "name": "6" },
+        { "slug": "80", "size": "64px", "name": "7" }
+      ]
+    }
+  },
+  "styles": {
+    "color": {
+      "background": "var(--wp--preset--color--paper)",
+      "text": "var(--wp--preset--color--text)"
+    },
+    "typography": {
+      "fontFamily": "var(--wp--preset--font-family--primary)",
+      "fontSize": "var(--wp--preset--font-size--medium)",
+      "lineHeight": "1.5"
+    },
+    "elements": {
+      "heading": {
+        "typography": {
+          "fontWeight": "800"
+        }
+      },
+      "link": {
+        "color": {
+          "text": "var(--wp--preset--color--blue)"
+        }
+      }
+    }
+  }
+}

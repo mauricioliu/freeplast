@@ -1,0 +1,16 @@
+{
+  "name": "freeplast",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Freeplast — WordPress catalog and quote-request staging site (see docs/agents/freeplast-wordpress/)",
+  "scripts": {
+    "bootstrap": "node wordpress/scripts/bootstrap.mjs",
+    "test": "node wordpress/scripts/check.mjs",
+    "check": "node wordpress/scripts/check.mjs",
+    "typecheck": "node wordpress/scripts/typecheck.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

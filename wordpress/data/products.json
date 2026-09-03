@@ -1,0 +1,8 @@
+{
+  "version": 0,
+  "source": {
+    "note": "Reviewed catalog source. Filled by the catalog slices (issues #3/#4); its versioned JSON schema lands with them. Kept as an empty stub for the shell baseline.",
+    "retrieved_at": null
+  },
+  "products": []
+}

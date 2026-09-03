@@ -46,9 +46,12 @@ and `http://mliu:4173/product-page-prototype/?variant=A` for the product-page pr
 
 ## Agent runbook
 
-**WordPress build:** when provisioning the OpenClaw catalog, implementing the v5 design or
+**WordPress build:** when provisioning the OpenClaw catalog, implementing the v6 design or
 building the private catalog/quote plugin, start at
 `docs/agents/freeplast-wordpress/RUNBOOK.md`.
+
+**WordPress shell baseline:** `npm test` boots the disposable WordPress installation under
+`wordpress/` and runs the automated acceptance checks — see `wordpress/README.md`.
 
 ## Implementation note
 
