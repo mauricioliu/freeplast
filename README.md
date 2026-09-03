@@ -53,6 +53,9 @@ building the private catalog/quote plugin, start at
 **WordPress shell baseline:** `npm test` boots the disposable WordPress installation under
 `wordpress/` and runs the automated acceptance checks — see `wordpress/README.md`.
 
+**Live `freeplast.cl` performance:** when diagnosing or fixing slowness on the current
+production WooCommerce site, read `docs/agents/freeplast-wordpress/LIVE-PERFORMANCE.md`.
+
 ## Implementation note
 
 These are front-end proposals. The forms validate and demonstrate their completion state, but
