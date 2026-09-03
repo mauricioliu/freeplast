@@ -73,7 +73,10 @@ const PRODUCT_SLUGS = PRODUCTS.map((p) => p.slug);
 const PRODUCT_URLS = PRODUCT_SLUGS.map((slug) => `/producto/${slug}/`);
 const PRODUCT_BY_SOURCE_ID = new Map(PRODUCTS.map((p) => [p.source_id, p]));
 const PRODUCT_BY_SLUG = new Map(PRODUCTS.map((p) => [p.slug, p]));
-const FEATURED_SLUGS = [...PRODUCTS].filter((p) => p.featured).sort((a, b) => a.featured_order - b.featured_order).map((p) => p.slug);
+const FEATURED_SLUGS = [...PRODUCTS]
+  .filter((p) => p.featured)
+  .sort((a, b) => a.featured_order - b.featured_order)
+  .map((p) => p.slug);
 const CATEGORY_SLUGS = (category) => PRODUCTS.filter((p) => p.category === category).map((p) => p.slug);
 const DISTINCT_IMAGES = new Set(PRODUCTS.map((p) => p.image.checksum)).size;
 const PRODUCT_SLUG = 'caja-cosechera-3-4';
@@ -125,6 +128,23 @@ function assertAbsent(haystack, needle, message) {
     !haystack.toLowerCase().includes(needle.toLowerCase()),
     `${message}\nExpected response NOT to contain: ${JSON.stringify(needle)}`
   );
+}
+
+/** Slugs of every canonical /producto/<slug>/ link, in order of appearance. */
+function productLinks(html) {
+  return [...html.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
+}
+
+/** Markup of the plugin-rendered <section> that carries the marker class. */
+function pluginSection(html, marker, message) {
+  const start = html.indexOf(marker);
+  assert.ok(start !== -1, message);
+  return html.slice(start, html.indexOf('</section>', start));
+}
+
+/** Occurrences of a literal substring. */
+function countMatches(haystack, needle) {
+  return haystack.split(needle).length - 1;
 }
 
 /** Run the public catalog synchronization command. */
@@ -474,7 +494,7 @@ test('real synchronization creates the 17-product union with identity, options, 
   assertContains(productMeta('fp-traversa-para-bins-tipo-romano', '_fp_description'), 'Traversa Tipo G2', 'the Romano record must render the G2 alias');
 
   // Featured set matches the approved eight in source-controlled order.
-  const featured = [...PRODUCTS].filter((p) => p.featured).sort((a, b) => a.featured_order - b.featured_order).map((p) => p.title);
+  const featured = FEATURED_SLUGS.map((slug) => PRODUCT_BY_SLUG.get(slug).title);
   assert.deepEqual(featured, [
     'Caja Cosechera 3/4',
     'Caja Universal Cerrada Negra',
@@ -621,10 +641,10 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   const tienda = await get('/tienda/', MOBILE_UA);
   assert.equal(tienda.status, 200, '/tienda/ must remain HTTP 200 under the archive');
   assertAbsent(tienda.body, 'El catálogo se está preparando', 'the seeded placeholder copy must be retired');
-  const listed = new Set(tienda.body.match(/\/producto\/[a-z0-9-]+\//g) || []);
+  const listed = new Set(productLinks(tienda.body));
   assert.equal(listed.size, PRODUCT_COUNT, 'the Tienda grid must list exactly the 17 Active Products on one page');
-  for (const url of PRODUCT_URLS) {
-    assert.ok(listed.has(url), `the grid must list the Active Product at ${url}`);
+  for (const slug of PRODUCT_SLUGS) {
+    assert.ok(listed.has(slug), `the grid must list the Active Product at /producto/${slug}/`);
   }
 
   section('Product pages (v7 variant A)', [
@@ -795,12 +815,10 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
   // Home renders the approved eight Featured Products in source-controlled order.
   const home = await get('/', MOBILE_UA);
   assert.equal(home.status, 200, 'Home must return HTTP 200');
-  const featuredStart = home.body.indexOf('class="fpcq-featured"');
-  assert.ok(featuredStart !== -1, 'Home must render the Featured Products section');
-  const featuredSection = home.body.slice(featuredStart, home.body.indexOf('</section>', featuredStart));
-  const featuredOrder = [...featuredSection.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
+  const featuredSection = pluginSection(home.body, 'class="fpcq-featured"', 'Home must render the Featured Products section');
+  const featuredOrder = productLinks(featuredSection);
   assert.deepEqual(featuredOrder, FEATURED_SLUGS, 'Home must render exactly the approved eight Featured Products in source-controlled order');
-  assert.equal((featuredSection.match(/class="fpcq-card-cta"/g) || []).length, FEATURED_SLUGS.length, 'each Featured card must carry a quotation action');
+  assert.equal(countMatches(featuredSection, 'class="fpcq-card-cta"'), FEATURED_SLUGS.length, 'each Featured card must carry a quotation action');
   assertContains(featuredSection, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'the card quotation action must lead to the sole quotation surface');
   assertContains(home.body, 'Ver todo el catálogo', 'Home must link into the full Tienda grid');
   assert.ok(!featuredOrder.includes('ladrillo-plastico'), 'non-featured Products must not appear in the Featured section');
@@ -809,28 +827,28 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
   const tienda = await get('/tienda/', MOBILE_UA);
   assert.equal(tienda.status, 200, '/tienda/ must return HTTP 200');
   assertContains(tienda.body, '<ul class="fpcq-cards"', 'the catalog grid must render as a semantic list');
-  assert.equal((tienda.body.match(/class="fpcq-card-cta"/g) || []).length, PRODUCT_COUNT, 'every Active Product card must carry a quotation action');
+  assert.equal(countMatches(tienda.body, 'class="fpcq-card-cta"'), PRODUCT_COUNT, 'every Active Product card must carry a quotation action');
   assertContains(tienda.body, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'card quotation actions must lead to the sole quotation surface');
 
   // Todos / Agrícola / Otros filters: accessible controls with meaningful URLs.
   assertContains(tienda.body, 'Filtrar productos por categoría', 'the category filter must be an accessible labelled control group');
   assertContains(tienda.body, '>Todos</a>', 'the Todos view filter must be offered');
   assert.ok(tienda.body.includes(`href="${SITE_URL}/tienda/" aria-current="true"`), 'Todos must be the active filter on the unfiltered grid');
-  const agricola = await get('/tienda/categoria/agricola/', MOBILE_UA);
-  assert.equal(agricola.status, 200, '/tienda/categoria/agricola/ must return HTTP 200');
-  assert.deepEqual(
-    [...new Set([...agricola.body.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]))],
-    CATEGORY_SLUGS('agricola'),
-    'the Agrícola filter must list exactly the agricola Products'
-  );
-  assert.ok(agricola.body.includes(`href="${SITE_URL}/tienda/categoria/agricola/" aria-current="true"`), 'the active filter must be marked with aria-current');
-  const otros = await get('/tienda/categoria/otros/', MOBILE_UA);
-  assert.equal(otros.status, 200, '/tienda/categoria/otros/ must return HTTP 200');
-  assert.deepEqual(
-    [...new Set([...otros.body.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]))],
-    CATEGORY_SLUGS('otros'),
-    'the Otros filter must list exactly the otros Products'
-  );
+  const assertCategoryFilter = async (key) => {
+    const res = await get(`/tienda/categoria/${key}/`, MOBILE_UA);
+    assert.equal(res.status, 200, `/tienda/categoria/${key}/ must return HTTP 200`);
+    assert.deepEqual(
+      [...new Set(productLinks(res.body))],
+      CATEGORY_SLUGS(key),
+      `the ${key} category filter must list exactly the ${key} Products`
+    );
+    assert.ok(
+      res.body.includes(`href="${SITE_URL}/tienda/categoria/${key}/" aria-current="true"`),
+      'the active filter must be marked with aria-current'
+    );
+  };
+  await assertCategoryFilter('agricola');
+  await assertCategoryFilter('otros');
   assert.equal((await get('/tienda/categoria/inexistente/', MOBILE_UA)).status, 404, 'an unknown category must resolve as 404, not an empty grid');
 
   // Search includes Products and standard pages with a clear no-result behavior.
@@ -852,10 +870,8 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
 
   // Related Products: up to three explicit reviewed ids in reviewed order.
   const cosechera = await get(PRODUCT_URL, MOBILE_UA);
-  const relatedStart = cosechera.body.indexOf('class="fpcq-related"');
-  assert.ok(relatedStart !== -1, 'the product page must render its related Products');
-  const relatedSection = cosechera.body.slice(relatedStart, cosechera.body.indexOf('</section>', relatedStart));
-  const relatedOrder = [...relatedSection.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
+  const relatedSection = pluginSection(cosechera.body, 'class="fpcq-related"', 'the product page must render its related Products');
+  const relatedOrder = productLinks(relatedSection);
   assert.deepEqual(
     relatedOrder,
     PRODUCT_BY_SOURCE_ID.get('fp-caja-cosechera-3-4').related_ids.map((id) => PRODUCT_BY_SOURCE_ID.get(id).slug),
@@ -872,7 +888,7 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
 
   const tiendaHidden = await get('/tienda/', MOBILE_UA);
   assertAbsent(tiendaHidden.body, '/producto/caja-merlucera/', 'an archived Product must leave the Tienda grid');
-  assert.equal((tiendaHidden.body.match(/class="fpcq-card-cta"/g) || []).length, PRODUCT_COUNT - 1, 'the archived Product must take its quotation action with it');
+  assert.equal(countMatches(tiendaHidden.body, 'class="fpcq-card-cta"'), PRODUCT_COUNT - 1, 'the archived Product must take its quotation action with it');
   const homeHidden = await get('/', MOBILE_UA);
   assertAbsent(homeHidden.body, '/producto/caja-merlucera/', 'an archived Featured Product must leave the Home section');
   const categoryHidden = await get('/tienda/categoria/otros/', MOBILE_UA);

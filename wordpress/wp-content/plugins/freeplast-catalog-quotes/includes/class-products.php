@@ -251,6 +251,11 @@ class Freeplast_CQ_Products {
 		return $units > 0 ? number_format_i18n( $units ) : 'Consultar';
 	}
 
+	/**
+	 * Up to three related Products in the reviewed related_ids order —
+	 * never query or runtime order. Archived (draft) or missing ids drop
+	 * out silently.
+	 */
 	private static function render_related( array $related_ids ): string {
 		$related = get_posts(
 			array(
@@ -269,16 +274,11 @@ class Freeplast_CQ_Products {
 			)
 		);
 
-		if ( array() === $related ) {
-			return '';
-		}
-
-		/* Render the reviewed order from the Catalog Source — never query or
-	   runtime order. Archived (draft) related Products drop out silently. */
 		$by_source_id = array();
 		foreach ( $related as $post ) {
 			$by_source_id[ (string) get_post_meta( $post->ID, '_fp_source_id', true ) ] = $post;
 		}
+
 		$ordered = array();
 		foreach ( $related_ids as $id ) {
 			if ( isset( $by_source_id[ $id ] ) ) {

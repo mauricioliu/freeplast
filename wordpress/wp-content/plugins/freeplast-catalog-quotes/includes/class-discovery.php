@@ -81,7 +81,7 @@ class Freeplast_CQ_Discovery {
 	 * to the reviewed category vocabulary; anything else falls through to a
 	 * 404 instead of an empty grid.
 	 */
-	public static function register_routes(): void {
+	private static function register_routes(): void {
 		add_rewrite_rule(
 			sprintf( '^tienda/categoria/(%s)/?$', implode( '|', array_keys( self::CATEGORY_LABELS ) ) ),
 			sprintf( 'index.php?post_type=fp_product&%s=$matches[1]', self::CATEGORY_QUERY_VAR ),
@@ -158,7 +158,7 @@ class Freeplast_CQ_Discovery {
 
 		$filters  = self::filter_link( home_url( '/tienda/' ), 'Todos', null === $category );
 		foreach ( self::CATEGORY_LABELS as $key => $label ) {
-			$filters .= self::filter_link( home_url( '/tienda/categoria/' . $key . '/' ), $label, $category === $key );
+			$filters .= self::filter_link( self::category_url( $key ), $label, $category === $key );
 		}
 
 		if ( array() === $products ) {
@@ -181,7 +181,6 @@ class Freeplast_CQ_Discovery {
 	 */
 	public static function render_search(): string {
 		$term = get_search_query();
-		$html = sprintf( '<h1 class="fpcq-search-title">%s</h1>', 'Resultados de búsqueda' );
 
 		$found = '' === $term ? array() : get_posts(
 			array(
@@ -194,23 +193,42 @@ class Freeplast_CQ_Discovery {
 			)
 		);
 
+		$html = sprintf( '<h1 class="fpcq-search-title">%s</h1>', 'Resultados de búsqueda' );
+		if ( array() === $found ) {
+			$html .= self::render_search_empty( $term );
+		} else {
+			$html .= self::render_search_hits( $term, $found );
+		}
+
+		return sprintf( '<section class="fpcq-search" data-fpcq-version="1">%s</section>', $html );
+	}
+
+	/**
+	 * The no-result state: name the term (or invite one) and recover into
+	 * the catalog and the contact page.
+	 */
+	private static function render_search_empty( string $term ): string {
+		$message = '' === $term
+			? 'Escribe qué estás buscando para encontrar productos y páginas.'
+			: sprintf( 'No encontramos resultados para «%s».', esc_html( $term ) );
+
+		return sprintf(
+			'<p class="fpcq-search-empty">%s</p><p class="fpcq-search-hint">%s</p><ul class="fpcq-search-suggestions"><li><a href="%s">Todo el catálogo</a></li><li><a href="%s">Agrícola</a></li><li><a href="%s">Otros</a></li><li><a href="%s">Contáctanos</a></li></ul>',
+			$message,
+			'Prueba con otro término o explora el catálogo:',
+			esc_url( home_url( '/tienda/' ) ),
+			esc_url( self::category_url( 'agricola' ) ),
+			esc_url( self::category_url( 'otros' ) ),
+			esc_url( home_url( '/contacto/' ) )
+		);
+	}
+
+	/** Product hits as catalog cards plus standard pages as links. */
+	private static function render_search_hits( string $term, array $found ): string {
 		$products = array_values( array_filter( $found, static fn( WP_Post $post ) => 'fp_product' === $post->post_type ) );
 		$pages    = array_values( array_filter( $found, static fn( WP_Post $post ) => 'page' === $post->post_type ) );
 
-		if ( array() === $found ) {
-			$html .= sprintf( '<p class="fpcq-search-empty">%s</p>', '' === $term ? 'Escribe qué estás buscando para encontrar productos y páginas.' : sprintf( 'No encontramos resultados para «%s».', esc_html( $term ) ) );
-			$html .= sprintf( '<p class="fpcq-search-hint">%s</p>', 'Prueba con otro término o explora el catálogo:' );
-			$html .= sprintf(
-				'<ul class="fpcq-search-suggestions"><li><a href="%s">Todo el catálogo</a></li><li><a href="%s">Agrícola</a></li><li><a href="%s">Otros</a></li><li><a href="%s">Contáctanos</a></li></ul>',
-				esc_url( home_url( '/tienda/' ) ),
-				esc_url( home_url( '/tienda/categoria/agricola/' ) ),
-				esc_url( home_url( '/tienda/categoria/otros/' ) ),
-				esc_url( home_url( '/contacto/' ) )
-			);
-			return sprintf( '<section class="fpcq-search" data-fpcq-version="1">%s</section>', $html );
-		}
-
-		$html .= sprintf( '<p class="fpcq-search-count">%d resultado%s para «%s»</p>', count( $found ), 1 === count( $found ) ? '' : 's', esc_html( $term ) );
+		$html = sprintf( '<p class="fpcq-search-count">%d resultado%s para «%s»</p>', count( $found ), 1 === count( $found ) ? '' : 's', esc_html( $term ) );
 
 		if ( array() !== $products ) {
 			$html .= sprintf( '<h2 class="fpcq-search-sub">Productos</h2><ul class="fpcq-cards">%s</ul>', self::render_cards( $products, 3 ) );
@@ -223,7 +241,7 @@ class Freeplast_CQ_Discovery {
 			$html .= sprintf( '<h2 class="fpcq-search-sub">Páginas</h2><ul class="fpcq-search-pages">%s</ul>', $items );
 		}
 
-		return sprintf( '<section class="fpcq-search" data-fpcq-version="1">%s</section>', $html );
+		return $html;
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -234,6 +252,11 @@ class Freeplast_CQ_Discovery {
 	private static function current_category(): ?string {
 		$value = (string) get_query_var( self::CATEGORY_QUERY_VAR );
 		return isset( self::CATEGORY_LABELS[ $value ] ) ? $value : null;
+	}
+
+	/** The meaningful URL of one reviewed category filter. */
+	private static function category_url( string $category ): string {
+		return home_url( '/tienda/categoria/' . $category . '/' );
 	}
 
 	/** One accessible filter control: a link whose active state is the URL itself. */
@@ -252,13 +275,14 @@ class Freeplast_CQ_Discovery {
 	 * All server-rendered from synchronized metadata only.
 	 */
 	private static function render_cards( array $posts, int $heading_level ): string {
+		$heading = (string) $heading_level;
+		$format  = '<li class="fpcq-card"><a class="fpcq-card-main" href="%1$s">%2$s<p class="fpcq-card-category">%3$s</p><h' . $heading . ' class="fpcq-card-title">%4$s</h' . $heading . '><p class="fpcq-card-excerpt">%5$s</p></a><a class="fpcq-card-cta" href="%6$s">Cotizar</a></li>';
+
 		$cards = '';
 		foreach ( $posts as $post ) {
 			$category_key = (string) get_post_meta( $post->ID, '_fp_category', true );
 			$category     = self::CATEGORY_LABELS[ $category_key ] ?? '';
 			$image        = get_the_post_thumbnail( $post, 'medium', array( 'class' => 'fpcq-card-image', 'loading' => 'lazy' ) );
-
-			$format = '<li class="fpcq-card"><a class="fpcq-card-main" href="%1$s">%2$s<p class="fpcq-card-category">%3$s</p><h' . $heading_level . ' class="fpcq-card-title">%4$s</h' . $heading_level . '><p class="fpcq-card-excerpt">%5$s</p></a><a class="fpcq-card-cta" href="%6$s">Cotizar</a></li>';
 
 			$cards .= sprintf(
 				$format,
