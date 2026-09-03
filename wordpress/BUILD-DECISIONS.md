@@ -6,6 +6,74 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-03 — Issue #3: synchronize and render the first Product
+
+First complete Catalog seam, proven with Caja Cosechera 3/4: reviewed source
+→ validated → synchronized → rendered at the clean canonical URL.
+
+Decisions:
+
+1. **Catalog Source schema v1 lives in the plugin, enforced completely
+   before mutation.** `Freeplast_CQ_Catalog_Source` owns the versioned
+   schema (`version: 1`) and validates the ENTIRE file first: unknown keys at
+   every object level, duplicate source IDs/slugs, clean canonical slugs,
+   absolute http(s) source URLs, clean absolute legacy paths, positive
+   integer quantities with minimum aligned to step, options, related IDs
+   (≤ 3, no self, same file), featured order, review flags, and local media
+   existence + sha256 checksum. Any failure rejects the whole file (non-zero
+   exit) — one valid product next to one invalid product still creates
+   nothing.
+
+2. **Identity is the immutable `source_id`, never the slug.** Products are
+   matched by `_fp_source_id` meta; titles and slugs can change freely.
+   `fp-caja-cosechera-3-4` is the first identity; the canonical slug stays
+   `caja-cosechera-3-4` with `/producto/caja-cosechera-3-4/` as the URL and
+   the old-site path kept as `legacy_paths` data for the future cutover.
+
+3. **Pallet facts are packaging facts, never minimums.** The published
+   description's “Cantidad mínima de compra 1 pallet de 70 cajas” sentence is
+   NOT ported to the public page: the source stores `units_per_pallet: 70`
+   and `minimum_quantity: null` (client confirmation pending per PRD #1), so
+   the page shows “Unidades por pallet: 70” and “Cantidad mínima: Consultar”
+   with an explicit packaging-fact note. Nothing is invented.
+
+4. **`fp_product` has no editor UI anywhere** (`show_ui`/`show_in_menu`
+   false) with public routing (`/producto/<slug>/` single, `tienda`
+   archive, REST exposed, search included). Catalog mutations exist only
+   through `wp freeplast catalog sync`.
+
+5. **Migration 2 retires the `/tienda/` placeholder page** (trashed, never
+   deleted, only the exact page recorded in `fp_shell_pages`) and the fp_product
+   archive takes over the route. Rewrite flushes are flag-based on `init`
+   after post types are registered — flushing inside a late
+   `wp plugin activate` would write rules without the archive and 404
+   `/tienda/`.
+
+6. **Media is imported, checksum-keyed.** The reviewed webp lives in
+   `data/media/`, is verified by sha256 at validation, imported into the
+   local media library on change, and reused (never re-imported) when the
+   checksum already exists. Provisional media is visibly tracked on the
+   product page (“Imagen provisional”) and in attachment meta. The frontend
+   never hotlinks source media.
+
+7. **Deterministic reports, no-op second run.** Sync prints one line per
+   product (`would create/update` + changed fields, or `unchanged`) plus
+   `Summary: created=N updated=N unchanged=N warnings=N errors=N`. A second
+   run against unchanged input reports zero changes without touching
+   `post_modified`. Products missing from the source are warnings only;
+   archiving requires an explicit source lifecycle change. Media imports run
+   before any post mutation; on failure, imports made during the run are
+   deleted and nothing is kept.
+
+8. **Public rendering: plugin block `freeplast/product-detail`, theme owns
+   presentation.** The plugin renders semantic, minimally-styled markup
+   (versioned `fpcq-` classes) from synchronized metadata only — v7 variant A
+   structure (breadcrumb, gallery + summary, description, four quick specs,
+   quote action into `/cotizacion/`, specification table, related products
+   when reviewed). The freeplast theme styles it with v6 tokens, mobile-first
+   min-width-only. No forms, no quantity controls, no prototype variant
+   switching — the basket/quantity slice owns those (issues #6/#7).
+
 ## 2026-09-03 — Issue #2: boot the WordPress shell
 
 Disposable baseline for every later slice. No OpenClaw resources are touched

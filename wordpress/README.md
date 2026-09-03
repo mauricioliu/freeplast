@@ -12,12 +12,14 @@ WooCommerce is not installed.
 wordpress/
   BUILD-DECISIONS.md          slice-by-slice decisions (read this first)
   VERIFICATION.md             generated mechanical proof (npm test)
-  data/products.json          catalog source (stub — catalog slices fill it)
+  data/products.json          versioned catalog source (schema v1)
+  data/media/                 reviewed local media referenced by the source
   scripts/                    toolchain fetch, bootstrap, checks
   wp-content/
-    themes/freeplast/         standalone block theme — v6 shell
+    themes/freeplast/         standalone block theme — v6 shell + v7-A product
     plugins/freeplast-catalog-quotes/
-                              private plugin — shell routes, migrations
+                              private plugin — shell routes, migrations,
+                              fp_product records, catalog synchronization
   .tools/                     pinned downloadable toolchain (gitignored)
   .build/                     disposable WordPress site (gitignored)
 ```
@@ -30,7 +32,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 acceptance criteria.
+                      # verify the issue-#2 and issue-#3 acceptance criteria.
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -54,8 +56,49 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   exists anywhere in the shell (submission is issue #8);
 - WooCommerce is absent;
 - WordPress/PHP/SQLite versions and the plugin migration version
-  (`fp_db_version`) are reported against the declared expectations.
+  (`fp_db_version`) are reported against the declared expectations;
+- the versioned Catalog Source (`data/products.json`, schema v1, Caja
+  Cosechera 3/4) validates before mutation, and `wp freeplast catalog sync
+  --dry-run` reports the deterministic difference without touching
+  WordPress;
+- real synchronization creates the Product (`fp_product`), its metadata
+  and local media-library copies of the reviewed images; a second run
+  against unchanged source reports zero changes;
+- the product lives at the clean canonical URL `/producto/caja-cosechera-3-4/`
+  with `rel=canonical`, is absent from WordPress editor menus, and its page
+  follows approved v7 variant A: source-supported description and specs,
+  pallet facts as packaging facts (“Cantidad mínima: Consultar”), no forms,
+  no prototype controls;
+- unknown keys, duplicate identity, invalid slugs and failed media imports
+  exit non-zero with no partial catalog mutation; products missing from
+  the source are warnings only.
+
+Synchronizing the catalog by hand against the disposable site:
+
+```bash
+node wordpress/scripts/bootstrap.mjs   # ensure the disposable site is up
+cd wordpress/.build/wp
+../../.tools/php/php ../../.tools/cache/wp-cli.phar \
+  freeplast catalog sync --file=../../data/products.json --dry-run
+../../.tools/php/php ../../.tools/cache/wp-cli.phar \
+  freeplast catalog sync --file=../../data/products.json
+```
 
 Pixel-level visual fidelity at 412 px and desktop widths is human Gate 3
 (RUNBOOK.md) — the automated check verifies the served document and
 responsive stylesheet, not rendered pixels.
+
+## Catalog source (schema v1)
+
+`data/products.json` is the reviewed, version-controlled authority for
+catalog content. It is validated completely before any mutation: unknown
+keys, duplicate source IDs/slugs, invalid URLs/paths, misaligned
+minimums/steps, unknown related-product IDs and missing or checksum-mismatched
+media are all rejected (non-zero exit) before WordPress is touched. Product
+identity is the immutable `source_id` (never the slug), lifecycle is explicit
+(`active`/`archived`), units-per-pallet are packaging facts, and unconfirmed
+commercial minimums are `null` (rendered as “Consultar”). Media lives in
+`data/media/`, is imported into the local media library by the synchronizer
+and tracked as provisional while original photography is pending. Extending
+the catalog (issue #4/#5) means adding products to this file — never editing
+WordPress.

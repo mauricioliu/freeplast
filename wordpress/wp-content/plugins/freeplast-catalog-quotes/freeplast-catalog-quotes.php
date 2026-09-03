@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Freeplast Catalog & Quotes
  * Plugin URI: https://freeplast.mliu.site/
- * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This baseline registers the shell routes and the versioned migration boundary; later slices add the catalog, basket and request behavior.
- * Version: 0.1.0
+ * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type and the WP-CLI catalog synchronizer; later slices add the basket and request behavior.
+ * Version: 0.2.0
  * Requires at least: 7.0
  * Requires PHP: 8.1
  * Author: Freeplast
@@ -18,11 +18,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_CQ_VERSION', '0.1.0' );
-define( 'FREEPLAST_CQ_DB_VERSION', 1 );
+define( 'FREEPLAST_CQ_VERSION', '0.2.0' );
+define( 'FREEPLAST_CQ_DB_VERSION', 2 );
 
 require_once __DIR__ . '/includes/class-migrations.php';
 require_once __DIR__ . '/includes/class-shell.php';
+require_once __DIR__ . '/includes/class-products.php';
+require_once __DIR__ . '/includes/class-catalog-source.php';
+require_once __DIR__ . '/includes/class-catalog-sync.php';
+
+/**
+ * Register the product record type, its metadata, the public product-detail
+ * block and the catalog synchronization command.
+ */
+add_action( 'init', array( 'Freeplast_CQ_Products', 'register' ) );
+Freeplast_CQ_Catalog_Sync::register();
 
 /**
  * Run migrations and seed the shell state on activation.
@@ -30,8 +40,20 @@ require_once __DIR__ . '/includes/class-shell.php';
 function freeplast_cq_activate() {
 	Freeplast_CQ_Migrations::run();
 	Freeplast_CQ_Shell::seed();
+	/* Request a rewrite flush: during a late plugin activation the
+	   fp_product post type is not yet registered in the running process,
+	   so the flush must happen on the next init instead (migration 2 gives
+	   the /tienda/ archive to fp_product). */
+	update_option( 'fp_flush_rewrite_rules', 1 );
 }
 register_activation_hook( __FILE__, 'freeplast_cq_activate' );
+
+/**
+ * Keep the schema current even when the plugin files are updated without a
+ * reactivation (migrations are idempotent and version-guarded).
+ */
+add_action( 'init', array( 'Freeplast_CQ_Migrations', 'run' ), 1 );
+add_action( 'init', array( 'Freeplast_CQ_Migrations', 'flush_if_needed' ), 99 );
 
 /**
  * Record the declared version expectations for operational reporting.

@@ -6,9 +6,9 @@
  * navigation. Pages are seeded once and never overwritten: content edits
  * remain possible, and later slices take ownership of their routes:
  *
- *   - /tienda/            becomes the fp_product archive (issue #3/#5) —
- *                          the placeholder page is retired by that slice's
- *                          migration.
+ *   - /tienda/            owned by the fp_product archive since migration 2
+ *                          (issue #3). The placeholder page is retired by
+ *                          that migration and never seeded again.
  *   - /cotizacion/        stays a WordPress page whose content is later
  *                          owned by the plugin's quote-request block
  *                          (issue #7/#8). Until then it renders a
@@ -72,6 +72,11 @@ class Freeplast_CQ_Shell {
 
 		$seeded = get_option( 'fp_shell_pages', array() );
 
+		/* Since migration 2 the fp_product archive owns /tienda/. */
+		if ( (int) get_option( 'fp_db_version', 0 ) >= 2 ) {
+			unset( $pages['tienda'] );
+		}
+
 		foreach ( $pages as $slug => $page ) {
 			if ( self::page_exists( $slug ) ) {
 				continue;
@@ -95,7 +100,10 @@ class Freeplast_CQ_Shell {
 
 		update_option( 'fp_shell_pages', $seeded );
 
-		flush_rewrite_rules();
+		/* No direct flush here: a late plugin activation (wp plugin activate)
+	   runs this hook before the fp_product post type is registered in the
+	   running process. The activation hook requests a flag-based flush that
+	   runs on init (Freeplast_CQ_Migrations::flush_if_needed). */
 	}
 
 	private static function page_exists( string $slug ): bool {

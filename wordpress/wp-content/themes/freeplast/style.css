@@ -1,9 +1,9 @@
 /*
-Theme Name: Freeplast
+/* Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
-Description: Standalone block theme that reproduces the approved v6 storefront shell (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.1.0
+Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
+Version: 0.2.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -362,6 +362,276 @@ a {
   color: var(--fp-muted);
 }
 
+/* ---------- Product page (approved v7 variant A, plugin markup fpcq-*) ---------- */
+
+.fpcq-product {
+  max-width: var(--fp-shell);
+  margin-inline: auto;
+  padding: var(--fp-s-4) var(--fp-s-4) 0;
+}
+
+.fpcq-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fp-s-2);
+  color: var(--fp-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fpcq-breadcrumb a {
+  color: var(--fp-muted);
+  text-decoration: none;
+}
+
+.fpcq-breadcrumb a:hover {
+  color: var(--fp-blue);
+}
+
+.fpcq-breadcrumb [aria-current] {
+  color: var(--fp-text);
+}
+
+.fpcq-hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--fp-s-6);
+  padding-block: var(--fp-s-6) var(--fp-s-7);
+}
+
+.fpcq-gallery {
+  margin: 0;
+}
+
+.fpcq-image {
+  width: 100%;
+  height: auto;
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+}
+
+.fpcq-image-note {
+  margin-top: var(--fp-s-3);
+  color: var(--fp-muted);
+  font-size: 13px;
+}
+
+.fpcq-kicker {
+  color: var(--fp-green);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fpcq-title {
+  margin: var(--fp-s-2) 0 var(--fp-s-4);
+  font-size: 30px;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.fpcq-description {
+  max-width: var(--fp-measure);
+  line-height: 1.6;
+}
+
+.fpcq-quick-specs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fp-s-4) var(--fp-s-5);
+  margin: var(--fp-s-5) 0;
+  padding: var(--fp-s-5);
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+}
+
+.fpcq-quick-specs div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fpcq-quick-specs dt {
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-quick-specs dd {
+  margin: 0;
+  color: var(--fp-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fpcq-quote-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--fp-s-3) var(--fp-s-5);
+  background: var(--fp-green);
+  border: none;
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-quote-cta:hover {
+  background: var(--fp-green-soft);
+  color: #fff;
+}
+
+.fpcq-contact-hint {
+  margin-top: var(--fp-s-3);
+  color: var(--fp-muted);
+  font-size: 14px;
+}
+
+.fpcq-detail {
+  padding-block: var(--fp-s-7);
+  border-top: 1px solid var(--fp-line);
+}
+
+.fpcq-section-label {
+  color: var(--fp-green);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.fpcq-detail-title {
+  margin: var(--fp-s-2) 0 var(--fp-s-4);
+  font-size: 22px;
+}
+
+.fpcq-spec-table {
+  width: 100%;
+  max-width: 560px;
+  border-collapse: collapse;
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+}
+
+.fpcq-spec-table th,
+.fpcq-spec-table td {
+  padding: var(--fp-s-3) var(--fp-s-4);
+  border-bottom: 1px solid var(--fp-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.fpcq-spec-table tr:last-child th,
+.fpcq-spec-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fpcq-spec-table th {
+  width: 45%;
+  color: var(--fp-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fpcq-spec-table td {
+  color: var(--fp-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fpcq-pallet-note {
+  margin-top: var(--fp-s-3);
+  max-width: var(--fp-measure);
+  color: var(--fp-muted);
+  font-size: 13px;
+}
+
+.fpcq-related {
+  padding-block: var(--fp-s-7);
+  border-top: 1px solid var(--fp-line);
+}
+
+.fpcq-related-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--fp-s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fpcq-related-item a {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-3);
+  padding: var(--fp-s-4);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+  color: var(--fp-blue-heading);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-related-image {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--fp-r-sm);
+}
+
+/* ---------- Tienda archive (minimal until the catalog slice, issue #5) ---------- */
+
+.fp-shop-page {
+  max-width: var(--fp-shell);
+  margin-inline: auto;
+  padding: var(--fp-s-8) var(--fp-s-4);
+}
+
+.fp-shop-page > h1 {
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--fp-s-4);
+}
+
+.fp-shop-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--fp-s-5);
+  margin-top: var(--fp-s-5);
+}
+
+.fp-shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-2);
+  padding: var(--fp-s-4);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+}
+
+.fp-shop-card .wp-block-post-featured-image img {
+  border-radius: var(--fp-r-sm);
+}
+
+.fp-shop-card h2 {
+  font-size: 18px;
+}
+
+.fp-shop-card .wp-block-post-excerpt__excerpt {
+  margin: 0;
+  color: var(--fp-muted);
+  font-size: 14px;
+}
+
 /* ---------- Footer (v6 foot) ---------- */
 
 .fp-foot {
@@ -457,6 +727,35 @@ a {
     font-size: 36px;
   }
 
+  .fp-shop-page > h1 {
+    font-size: 36px;
+  }
+
+  .fpcq-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--fp-s-7);
+  }
+
+  .fpcq-title {
+    font-size: 40px;
+  }
+
+  .fpcq-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--fp-s-7);
+    align-items: start;
+  }
+
+  .fpcq-related-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .fp-shop-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .fp-foot-grid {
     display: grid;
     grid-template-columns: 1.2fr 1fr 1.2fr;
@@ -471,6 +770,14 @@ a {
 
   .fp-hero-section {
     padding-block: var(--fp-s-9) var(--fp-s-9);
+  }
+
+  .fpcq-title {
+    font-size: 44px;
+  }
+
+  .fp-shop-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 

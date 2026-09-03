@@ -1,8 +1,51 @@
 {
-  "version": 0,
+  "version": 1,
   "source": {
-    "note": "Reviewed catalog source. Filled by the catalog slices (issues #3/#4); its versioned JSON schema lands with them. Kept as an empty stub for the shell baseline.",
-    "retrieved_at": null
+    "name": "freeplast-catalog",
+    "provenance": "2026 Freeplast PDF catalog (structured specifications) + freeplast.cl product page (prose), captured 2026-09-03",
+    "retrieved_at": "2026-09-03T00:00:00Z"
   },
-  "products": []
+  "products": [
+    {
+      "source_id": "fp-caja-cosechera-3-4",
+      "source_url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
+      "lifecycle": "active",
+      "slug": "caja-cosechera-3-4",
+      "legacy_paths": ["/producto/caja-cosechera-3-4/"],
+      "title": "Caja Cosechera 3/4",
+      "excerpt": "Caja cosechera 3/4 de PEAD reciclado para cosecha de uva y frutas en general.",
+      "description": "Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general.",
+      "category": "agricola",
+      "image": {
+        "file": "media/fp-caja-cosechera-3-4.webp",
+        "checksum": "sha256:7d808d71de2f0cd6510d6ac0844a5f7164f42e534c773bea029351df8e4fa57e",
+        "width": 600,
+        "height": 600,
+        "alt": "Caja Cosechera 3/4 de plástico negro reciclado",
+        "provisional": true
+      },
+      "specs": {
+        "material": "Polietileno de alta densidad reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "600 x 400 x 180 mm",
+        "weight": "1.250 gramos aprox.",
+        "use": "Cosecha de uva y frutas en general",
+        "units_per_pallet": 70,
+        "minimum_quantity": null,
+        "quantity_step": null
+      },
+      "options": [],
+      "related_ids": [],
+      "featured": true,
+      "featured_order": 1,
+      "review": {
+        "description_approved": false,
+        "notes": [
+          "Description reproduces the published freeplast.cl prose minus the 'Cantidad mínima de compra' sentence: units per pallet are packaging facts and the commercial minimum is unconfirmed (PRD #1).",
+          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "Image derives from the prototype asset (live-site ficha crop); original unwatermarked photography is pending, so the media is tracked as provisional."
+        ]
+      }
+    }
+  ]
 }

@@ -1,0 +1,35 @@
+<!-- wp:template-part {"slug":"header","tagName":"header"} /-->
+
+<!-- wp:group {"tagName":"main","className":"fp-shop-page","layout":{"type":"constrained"}} -->
+<main class="wp-block-group fp-shop-page">
+	<!-- wp:heading {"level":1} -->
+	<h1 class="wp-block-heading">Tienda</h1>
+	<!-- /wp:heading -->
+
+	<!-- wp:paragraph -->
+	<p>Catálogo mayorista de Freeplast. Consulta las fichas y arma tu cotización.</p>
+	<!-- /wp:paragraph -->
+
+	<!-- wp:query -->
+	<div class="wp-block-query">
+		<!-- wp:post-template {"className":"fp-shop-grid","layout":{"type":"default"}} -->
+		<!-- wp:group {"className":"fp-shop-card","layout":{"type":"default"}} -->
+		<div class="wp-block-group fp-shop-card">
+			<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"1"} /-->
+			<!-- wp:post-title {"level":2,"isLink":true} /-->
+			<!-- wp:post-excerpt {"excerptLength":30} /-->
+		</div>
+		<!-- /wp:group -->
+		<!-- /wp:post-template -->
+
+		<!-- wp:query-no-results -->
+		<!-- wp:paragraph -->
+		<p>Los productos de Freeplast se publicarán aquí pronto. Mientras tanto, contáctanos directamente.</p>
+		<!-- /wp:paragraph -->
+		<!-- /wp:query-no-results -->
+	</div>
+	<!-- /wp:query -->
+</main>
+<!-- /wp:group -->
+
+<!-- wp:template-part {"slug":"footer","tagName":"footer"} /-->
