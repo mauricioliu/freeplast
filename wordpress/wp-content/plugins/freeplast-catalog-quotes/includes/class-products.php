@@ -26,12 +26,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Freeplast_CQ_Products {
 
-	/** Customer-facing categories (Todos is a view filter, not a category). */
-	public const CATEGORY_LABELS = array(
-		'agricola' => 'Agrícola',
-		'otros'    => 'Otros',
-	);
-
 	public static function register(): void {
 		register_post_type(
 			'fp_product',
@@ -86,7 +80,27 @@ class Freeplast_CQ_Products {
 			);
 		};
 
-		foreach ( array( '_fp_source_id', '_fp_source_url', '_fp_source_checked_at', '_fp_description', '_fp_category', '_fp_material', '_fp_material_short', '_fp_dimensions', '_fp_weight_text', '_fp_use', '_fp_image_checksum', '_fp_image_source', '_fp_image_alt', '_fp_image_provisional', '_fp_related_ids', '_fp_options', '_fp_lifecycle' ) as $key ) {
+		$string_keys = array(
+			'_fp_source_id',
+			'_fp_source_url',
+			'_fp_source_checked_at',
+			'_fp_description',
+			'_fp_category',
+			'_fp_material',
+			'_fp_material_short',
+			'_fp_dimensions',
+			'_fp_weight_text',
+			'_fp_use',
+			'_fp_image_checksum',
+			'_fp_image_source',
+			'_fp_image_alt',
+			'_fp_image_provisional',
+			'_fp_related_ids',
+			'_fp_options',
+			'_fp_lifecycle',
+		);
+
+		foreach ( $string_keys as $key ) {
 			$string_meta( $key );
 		}
 
@@ -102,6 +116,7 @@ class Freeplast_CQ_Products {
 				)
 			);
 		};
+
 		foreach ( array( '_fp_quote_min_qty', '_fp_quote_step', '_fp_featured_order' ) as $key ) {
 			$integer_meta( $key );
 		}
@@ -143,16 +158,16 @@ class Freeplast_CQ_Products {
 
 		$meta = static fn( string $key ) => (string) get_post_meta( $post->ID, $key, true );
 
-		$title       = get_the_title( $post );
-		$description = $meta( '_fp_description' );
-		$material    = $meta( '_fp_material' );
-		$material_s  = $meta( '_fp_material_short' ) ?: $material;
-		$dimensions  = $meta( '_fp_dimensions' );
-		$weight      = $meta( '_fp_weight_text' );
-		$use         = $meta( '_fp_use' );
-		$units       = (int) $meta( '_fp_units_per_pallet' );
-		$minimum     = $meta( '_fp_quote_min_qty' );
-		$provisional = '1' === $meta( '_fp_image_provisional' );
+		$title          = get_the_title( $post );
+		$description    = $meta( '_fp_description' );
+		$material       = $meta( '_fp_material' );
+		$material_short = $meta( '_fp_material_short' ) ?: $material;
+		$dimensions     = $meta( '_fp_dimensions' );
+		$weight         = $meta( '_fp_weight_text' );
+		$use            = $meta( '_fp_use' );
+		$units          = (int) $meta( '_fp_units_per_pallet' );
+		$minimum        = $meta( '_fp_quote_min_qty' );
+		$provisional    = '1' === $meta( '_fp_image_provisional' );
 
 		ob_start();
 		?>
@@ -181,7 +196,7 @@ class Freeplast_CQ_Products {
 					<dl class="fpcq-quick-specs">
 						<div><dt>Medidas</dt><dd><?php echo esc_html( $dimensions ); ?></dd></div>
 						<div><dt>Peso</dt><dd><?php echo esc_html( $weight ); ?></dd></div>
-						<div><dt>Material</dt><dd><?php echo esc_html( $material_s ); ?></dd></div>
+						<div><dt>Material</dt><dd><?php echo esc_html( $material_short ); ?></dd></div>
 						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo esc_html( number_format_i18n( $units ) ); ?></dd></div>
 					</dl>
 

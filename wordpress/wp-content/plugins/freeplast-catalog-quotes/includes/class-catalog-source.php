@@ -197,7 +197,7 @@ class Freeplast_CQ_Catalog_Source {
 
 		/* Identity */
 		$source_id = (string) $product['source_id'];
-		if ( ! preg_match( '/^[a-z0-9][a-z0-9-]{0,63}$/', $source_id ) ) {
+		if ( ! self::is_token( $source_id ) ) {
 			throw self::error( "$at.source_id must be a lowercase identity of up to 64 URL-safe characters" );
 		}
 		if ( isset( $seen_ids[ $source_id ] ) ) {
@@ -252,7 +252,7 @@ class Freeplast_CQ_Catalog_Source {
 		$this->validate_image( $product['image'], "$at.image" );
 
 		/* Structured specifications */
-		$specs = $this->validate_specs( $product['specs'], "$at.specs" );
+		$this->validate_specs( $product['specs'], "$at.specs" );
 
 		/* Options (e.g. Universal colors; empty for Caja Cosechera 3/4) */
 		if ( ! is_array( $product['options'] ) ) {
@@ -321,10 +321,6 @@ class Freeplast_CQ_Catalog_Source {
 			}
 		}
 
-		$product['source_id_normalized'] = $source_id;
-		$product['slug_normalized']      = $slug;
-		$product['specs_normalized']     = $specs;
-
 		$this->products[ $source_id ] = $product;
 	}
 
@@ -368,7 +364,7 @@ class Freeplast_CQ_Catalog_Source {
 		}
 	}
 
-	private function validate_specs( $specs, string $at ): array {
+	private function validate_specs( $specs, string $at ): void {
 		if ( ! is_array( $specs ) ) {
 			throw self::error( "$at must be an object" );
 		}
@@ -412,8 +408,6 @@ class Freeplast_CQ_Catalog_Source {
 		if ( null !== $minimum && null !== $step && 0 !== $minimum % $step ) {
 			throw self::error( sprintf( '%s.minimum_quantity (%d) must align with quantity_step (%d)', $at, $minimum, $step ) );
 		}
-
-		return compact( 'units', 'minimum', 'step' );
 	}
 
 	/* ------------------------------------------------------------------ */

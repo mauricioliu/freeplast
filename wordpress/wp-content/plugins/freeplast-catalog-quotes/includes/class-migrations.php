@@ -29,7 +29,8 @@ class Freeplast_CQ_Migrations {
 	 * Idempotent: already-applied migrations never run twice.
 	 */
 	public static function run(): void {
-		$applied = (int) get_option( 'fp_db_version', 0 );
+		$previous = (int) get_option( 'fp_db_version', 0 );
+		$applied  = $previous;
 
 		if ( $applied < 1 ) {
 			// Migration 1 — baseline marker; no schema yet.
@@ -53,7 +54,7 @@ class Freeplast_CQ_Migrations {
 			$applied = FREEPLAST_CQ_DB_VERSION;
 		}
 
-		$changed = (int) get_option( 'fp_db_version', 0 ) !== $applied;
+		$changed = $previous !== $applied;
 		update_option( 'fp_db_version', $applied );
 
 		/* Migrations that change routing request a rewrite flush; the flush

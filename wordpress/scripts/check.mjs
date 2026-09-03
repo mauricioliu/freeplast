@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issue #2).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2 and #3).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -320,8 +320,6 @@ test('WooCommerce is absent', () => {
   section('WooCommerce', ['WooCommerce is absent from the plugin list, wp-content and the runtime']);
 });
 
-/* ─── 7. Write VERIFICATION.md and clean up ───────────────────────────── */
-
 /* ─── 7. Catalog Source validation + dry run (issue #3) ───────────────── */
 
 test('Catalog Source validates before mutation; dry run reports the difference and changes nothing', () => {
@@ -528,6 +526,8 @@ test('invalid sources return non-zero without partial catalog mutation; missing 
     'Products absent from the source produce warnings only and stay published',
   ]);
 });
+
+/* ─── 11. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [

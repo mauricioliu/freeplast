@@ -54,13 +54,15 @@ class Freeplast_CQ_Catalog_Sync {
 			WP_CLI::error( 'Catalog source rejected: ' . $e->getMessage() );
 		}
 
+		$products = $source->products();
+
 		WP_CLI::line(
 			sprintf(
 				'Catalog source: %s (version %d, %d product%s, retrieved %s)',
 				$file,
 				$source->version(),
-				count( $source->products() ),
-				1 === count( $source->products() ) ? '' : 's',
+				count( $products ),
+				1 === count( $products ) ? '' : 's',
 				$source->provenance()['retrieved_at']
 			)
 		);
@@ -133,7 +135,8 @@ class Freeplast_CQ_Catalog_Sync {
 			'errors'    => 0,
 		);
 
-		$planned = array();
+		$planned     = array();
+		$planned_ids = array();
 
 		foreach ( $source->products() as $product ) {
 			$id   = $product['source_id'];
@@ -159,6 +162,7 @@ class Freeplast_CQ_Catalog_Sync {
 				'action'  => $action,
 				'diff'    => $diff,
 			);
+			$planned_ids[ $id ] = true;
 
 			if ( 'create' === $action ) {
 				$summary['created']++;
@@ -172,10 +176,6 @@ class Freeplast_CQ_Catalog_Sync {
 		}
 
 		/* Products present in WordPress but absent from the source: warning only. */
-		$planned_ids = array();
-		foreach ( $planned as $entry ) {
-			$planned_ids[ $entry['product']['source_id'] ] = true;
-		}
 		foreach ( $existing as $id => $post ) {
 			if ( ! isset( $planned_ids[ $id ] ) ) {
 				$summary['warnings']++;
@@ -430,6 +430,7 @@ class Freeplast_CQ_Catalog_Sync {
 
 		return (int) $post_id;
 	}
+
 	/**
 	 * Import the reviewed local media file into the media library, or reuse
 	 * an existing attachment with the same checksum. The frontend never
