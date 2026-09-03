@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.3.0
+Version: 0.4.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -757,6 +757,302 @@ a {
   color: #fff;
 }
 
+/* ---------- Quote Basket (plugin markup fpcq-* v1: header widget, choosers, Cotización view) ---------- */
+
+/* Header widget: Cotización (n) opens the mini basket (native details). */
+.fpcq-basket-widget {
+  position: relative;
+  margin-left: auto;
+}
+
+.fpcq-basket-toggle {
+  list-style: none;
+}
+
+.fpcq-basket-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.fpcq-basket[open] > .fpcq-basket-toggle {
+  background: var(--fp-green-soft);
+}
+
+.fpcq-basket-mini {
+  position: absolute;
+  top: calc(100% + var(--fp-s-2));
+  right: 0;
+  z-index: 70;
+  width: min(320px, calc(100vw - 32px));
+  padding: var(--fp-s-4);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-md);
+}
+
+.fpcq-basket-empty {
+  margin: 0 0 var(--fp-s-3);
+  color: var(--fp-muted);
+  font-size: 14px;
+}
+
+.fpcq-basket-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-2);
+  margin: 0 0 var(--fp-s-3);
+  padding: 0;
+  list-style: none;
+}
+
+.fpcq-basket-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fp-s-2);
+}
+
+.fpcq-basket-line-title {
+  color: var(--fp-blue);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-basket-line-title:hover {
+  text-decoration: underline;
+}
+
+.fpcq-basket-line-option {
+  color: var(--fp-muted);
+  font-size: 12px;
+}
+
+.fpcq-basket-line-qty {
+  margin-left: auto;
+  color: var(--fp-ink);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fpcq-basket-view {
+  color: var(--fp-blue);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.fpcq-basket-status {
+  position: absolute;
+  top: calc(100% + var(--fp-s-2));
+  right: 0;
+  z-index: 75;
+  max-width: 320px;
+  margin: 0;
+  padding: var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-green);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-green);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Shared quantity chooser (cards + product page): Cantidad + Agregar a cotización. */
+.fpcq-basket-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-3);
+  margin-top: var(--fp-s-3);
+  padding: var(--fp-s-3);
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-sm);
+}
+
+.fpcq-add-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-1);
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-add-qty {
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+.fpcq-add-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-4);
+  background: var(--fp-green);
+  border: none;
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-add-submit:hover {
+  background: var(--fp-green-soft);
+  color: #fff;
+}
+
+/* Card chooser: the Cotizar disclosure replaces the plain CTA link. */
+.fpcq-card-cta {
+  display: block;
+  margin: 0 var(--fp-s-4) var(--fp-s-4);
+}
+
+.fpcq-card-cta > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  background: var(--fp-green);
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-card-cta > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fpcq-card-cta > summary:hover,
+.fpcq-card-cta[open] > summary {
+  background: var(--fp-green-soft);
+  color: #fff;
+}
+
+.fpcq-card-cta .fpcq-basket-add {
+  margin-top: var(--fp-s-3);
+}
+
+/* Product page chooser (v7-A summary column). */
+.fpcq-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-2);
+  margin-top: var(--fp-s-4);
+}
+
+.fpcq-chooser .fpcq-basket-add {
+  margin-top: 0;
+  padding: var(--fp-s-4);
+}
+
+.fpcq-chooser .fpcq-add-qty {
+  max-width: 160px;
+}
+
+.fpcq-chooser .fpcq-add-submit {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.fpcq-view-basket {
+  color: var(--fp-blue);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+/* Full Cotización view (read-only in this slice). */
+.fpcq-basketview {
+  padding-block: var(--fp-s-5);
+}
+
+.fpcq-basketview-title {
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.fpcq-basketview-lines {
+  display: flex;
+  flex-direction: column;
+  margin: var(--fp-s-4) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fpcq-basketview-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fp-s-2);
+  padding: var(--fp-s-3) 0;
+  border-bottom: 1px solid var(--fp-line);
+}
+
+.fpcq-basketview-line-title {
+  color: var(--fp-blue);
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-basketview-line-title:hover {
+  text-decoration: underline;
+}
+
+.fpcq-basketview-option {
+  color: var(--fp-muted);
+  font-size: 13px;
+}
+
+.fpcq-basketview-qty {
+  margin-left: auto;
+  color: var(--fp-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fpcq-basketview-note {
+  color: var(--fp-muted);
+}
+
+.fpcq-basketview-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: var(--fp-s-3);
+  padding: var(--fp-s-3) var(--fp-s-5);
+  background: var(--fp-green);
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-basketview-cta:hover {
+  background: var(--fp-green-soft);
+  color: #fff;
+}
+
 /* Search results (plugin block + core search form) */
 
 .fpcq-search-title {
@@ -931,7 +1227,8 @@ a {
     display: none;
   }
 
-  .fp-island-cta {
+  .fp-island-cta,
+  .fpcq-basket-widget {
     margin-left: 0;
   }
 

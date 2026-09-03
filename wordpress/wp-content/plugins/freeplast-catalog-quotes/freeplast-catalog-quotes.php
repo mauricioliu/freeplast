@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Freeplast Catalog & Quotes
  * Plugin URI: https://freeplast.mliu.site/
- * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer and the catalog discovery blocks (Home featured, Tienda grid/filter, search); later slices add the basket and request behavior.
- * Version: 0.3.0
+ * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer, the catalog discovery blocks (Home featured, Tienda grid/filter, search) and the persistent anonymous Quote Basket (quantity choosers, secure cookie session, header count and mini basket); later slices add basket editing/options and the request submission.
+ * Version: 0.4.0
  * Requires at least: 7.0
  * Requires PHP: 8.1
  * Author: Freeplast
@@ -18,8 +18,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_CQ_VERSION', '0.3.0' );
-define( 'FREEPLAST_CQ_DB_VERSION', 3 );
+define( 'FREEPLAST_CQ_VERSION', '0.4.0' );
+define( 'FREEPLAST_CQ_DB_VERSION', 4 );
+define( 'FREEPLAST_CQ_FILE', __FILE__ );
 
 require_once __DIR__ . '/includes/class-migrations.php';
 require_once __DIR__ . '/includes/class-shell.php';
@@ -27,14 +28,16 @@ require_once __DIR__ . '/includes/class-products.php';
 require_once __DIR__ . '/includes/class-catalog-source.php';
 require_once __DIR__ . '/includes/class-catalog-sync.php';
 require_once __DIR__ . '/includes/class-discovery.php';
+require_once __DIR__ . '/includes/class-basket.php';
 
 /**
  * Register the product record type, its metadata, the public
- * product-detail and catalog-discovery blocks, and the catalog
- * synchronization command.
+ * product-detail, catalog-discovery and quote-basket blocks, and the
+ * catalog synchronization command.
  */
 add_action( 'init', array( 'Freeplast_CQ_Products', 'register' ) );
 add_action( 'init', array( 'Freeplast_CQ_Discovery', 'register' ) );
+add_action( 'init', array( 'Freeplast_CQ_Basket', 'register' ) );
 Freeplast_CQ_Catalog_Sync::register();
 
 /**

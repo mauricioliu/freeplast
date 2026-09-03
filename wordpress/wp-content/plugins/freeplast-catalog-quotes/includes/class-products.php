@@ -15,7 +15,8 @@
  * `freeplast/product-detail`, which reads only synchronized post metadata.
  * The markup is semantic and unstyled under a stock block theme; the
  * freeplast theme provides the final v7-variant-A presentation through the
- * versioned public class prefix `fpcq-` (v1).
+ * versioned public class prefix `fpcq-` (v1). The page exposes its own
+ * quantity chooser into the quote basket (issue #6).
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -148,8 +149,9 @@ class Freeplast_CQ_Products {
 
 	/**
 	 * Render the product detail page (approved v7 variant A structure) from
-	 * synchronized metadata only. No forms, no prototype controls: the quote
-	 * action links the sole quotation surface /cotizacion/.
+	 * synchronized metadata only. No prototype controls and no quote-request
+	 * form: the only form is the quantity chooser into the quote basket
+	 * (issue #6), which keeps /cotizacion/ the sole quotation surface.
 	 */
 	public static function render_detail(): string {
 		$post = get_post();
@@ -202,7 +204,14 @@ class Freeplast_CQ_Products {
 						<div class="fpcq-quick-pallet"><dt>Unidades por pallet</dt><dd><?php echo esc_html( self::units_label( $units ) ); ?></dd></div>
 					</dl>
 
-					<a class="fpcq-quote-cta" href="<?php echo esc_url( home_url( '/cotizacion/' ) ); ?>">Cotizar este producto</a>
+					<div class="fpcq-chooser">
+						<?php
+						/* The v7 variant A quantity chooser (issue #6): an authoritative
+						   POST form — the buyer always sees the quantity being added. */
+						echo Freeplast_CQ_Basket::render_add_form( $meta( '_fp_source_id' ), (string) get_permalink( $post ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
+						?>
+						<a class="fpcq-view-basket" href="<?php echo esc_url( home_url( '/cotizacion/' ) ); ?>">Ver tu cotización</a>
+					</div>
 					<p class="fpcq-contact-hint">¿Necesitas ayuda? <a href="tel:+56968444265">+56 9 6844 4265</a></p>
 				</div>
 			</section>

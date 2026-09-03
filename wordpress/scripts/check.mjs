@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#5).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#6).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -40,6 +40,16 @@
  *      Todos/Agrícola/Otros filters, search over Products and standard pages
  *      with a clear no-result state, reviewed related-product order, and
  *      Archived Products absent from every discovery surface.
+ *  12. The Quote Basket is a persistent, secure, anonymous session: the
+ *      Agregar a cotización quantity chooser (cards + product page) adds the
+ *      first synchronized Product through an authoritative nonce-guarded
+ *      admin-post operation, the browser keeps only an opaque
+ *      Secure/HttpOnly/SameSite=Lax cookie (never basket data, only its
+ *      sha256 hash stored server-side), the header counts distinct lines
+ *      (Cotización (n)) regardless of unit quantity, the mini basket shows
+ *      Product/quantity and a route to the full Cotización view across
+ *      refreshes, and invalid nonce/session/Product/quantity mutate nothing
+ *      and return recoverable messages (JSON for the JS enhancement).
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -48,6 +58,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, cpSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { request as httpRequest } from 'node:http';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -107,13 +118,44 @@ function wp(args) {
   return { stdout: (res.stdout || '').trim(), stderr: (res.stderr || '').trim(), status: res.status };
 }
 
-async function get(pathname, ua) {
+async function get(pathname, ua, extraHeaders = {}) {
   const res = await fetch(SITE_URL + pathname, {
-    headers: ua ? { 'user-agent': ua } : {},
+    headers: { ...(ua ? { 'user-agent': ua } : {}), ...extraHeaders },
     redirect: 'manual',
   });
   const body = await res.text();
   return { status: res.status, body, headers: res.headers };
+}
+
+/** Raw same-origin POST that does NOT follow redirects (PRG observation). */
+function postForm(fields, extraHeaders = {}) {
+  const site = new URL(SITE_URL);
+  const data = Buffer.from(new URLSearchParams(fields).toString(), 'utf8');
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: site.hostname,
+        port: site.port || 80,
+        path: '/wp-admin/admin-post.php',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'content-length': data.length,
+          'user-agent': MOBILE_UA,
+          ...extraHeaders,
+        },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () =>
+          resolve({ status: res.statusCode, headers: res.headers, body, setCookies: [].concat(res.headers['set-cookie'] || []) })
+        );
+      }
+    );
+    req.on('error', reject);
+    req.end(data);
+  });
 }
 
 function assertContains(haystack, needle, message) {
@@ -208,6 +250,18 @@ function attachmentCount() {
       'echo count( get_posts( array( "post_type" => "attachment", "post_status" => "inherit", "posts_per_page" => -1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_image_checksum" ) ) );',
     ]).stdout || '0'
   );
+}
+
+/** Server-side basket sessions: opaque-token hashes + stored lines + activity. */
+function basketRows() {
+  return JSON.parse(
+    wp([
+      'eval',
+      // NB: no `AS lines` alias — "lines" is a reserved MySQL keyword and the
+      // SQLite drop-in fails such queries silently (empty result set).
+      'global $wpdb; echo wp_json_encode( $wpdb->get_results( "SELECT session_hash, basket_lines, created_at, last_activity FROM {$wpdb->prefix}basket_sessions", ARRAY_A ) );',
+    ]).stdout || '[]'
+  ).map((row) => ({ ...row, lines: row.basket_lines }));
 }
 
 function cloneSourceDoc() {
@@ -383,14 +437,25 @@ test('Cotización renders a non-functional-safe empty state', async () => {
   assert.doesNotMatch(res.body, /<form[\s>]/i, '/cotizacion/ must not contain a submission form yet (issue #8 owns submission)');
   assert.doesNotMatch(res.body, /action="mailto:/i, 'no mailto form action may be treated as a submission endpoint');
 
+  // Basket entry points elsewhere are quantity choosers, never quote-request forms.
   const home = await get('/', MOBILE_UA);
-  assert.doesNotMatch(home.body, /<form[\s>]/i, 'Home must not contain the prototype quote form');
   assert.doesNotMatch(home.body, /action="mailto:/i, 'Home must not treat the prototype mailto form as a submission endpoint');
-  assert.doesNotMatch(home.body, /api\.whatsapp\.com\/send\?phone=[^"]*"\s*data-submit/i, 'no WhatsApp prototype endpoints as submission');
+  assert.doesNotMatch(
+    home.body,
+    /api\.whatsapp\.com\/send\?phone=[^"]*"\s*data-submit/i,
+    'no WhatsApp prototype endpoints as submission'
+  );
+  const formCount = (html) => (html.match(/<form[\s>]/gi) || []).length;
+  const chooserCount = (html) => (html.match(/<form class="fpcq-basket-add"/g) || []).length;
+  assert.equal(
+    formCount(home.body),
+    chooserCount(home.body),
+    'every form on Home must be a basket quantity chooser — the quote-request form does not exist yet (issue #8)'
+  );
 
   section('Cotización state', [
     '/cotizacion/ renders "Tu cotización está vacía" — empty, non-functional and safe',
-    'No <form> anywhere in the shell; prototype mailto/WhatsApp behavior is not a submission endpoint',
+    'No quote-request submission form anywhere; basket choosers are the only forms; prototype mailto/WhatsApp behavior is not a submission endpoint',
   ]);
 });
 
@@ -554,7 +619,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '3', 'migration 3 (catalog discovery) must be applied');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '4', 'migration 4 (quote basket sessions) must be applied');
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -584,14 +649,17 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assertContains(page.body, 'Unidades por pallet', 'pallet facts must render as a distinct fact');
   assertContains(page.body, 'Cantidad mínima', 'the specification table must address the commercial minimum');
   assertContains(page.body, 'Consultar', 'unconfirmed facts must render as Consultar');
-  assertContains(page.body, 'Cotizar este producto', 'the v7-A quote action must render');
-  assertContains(page.body, `href="${SITE_URL}/cotizacion/"`, 'the quote action must lead to the sole quotation surface');
+  // v7 variant A exposes its own quantity chooser (issue #6): an authoritative
+  // POST form — never an unseen-quantity add or a fake submission.
+  assertContains(page.body, 'class="fpcq-basket-add"', 'the product page must expose its own quantity chooser');
+  assertContains(page.body, 'name="fp_quantity"', 'the chooser must let the buyer pick the quantity');
+  assertContains(page.body, 'Agregar a cotización', 'the v7-A quote action must be the add-to-basket submit');
+  assertContains(page.body, `name="fp_basket_nonce"`, 'the add operation must be nonce-guarded');
+  assertContains(page.body, `href="${SITE_URL}/cotizacion/"`, 'the product page keeps a route to the sole quotation surface');
   assertContains(page.body, '/wp-content/uploads/', 'the product image must be served from the local media library');
   assertContains(page.body, 'Imagen provisional', 'provisional staging media must be visibly tracked');
 
-  // No prototype controls, no fake submission, no invented minimum.
-  assert.doesNotMatch(page.body, /<form[\s>]/i, 'the product page must not contain a submission form');
-  assert.doesNotMatch(page.body, /<input[\s>]/i, 'the product page must not contain prototype quantity controls');
+  // No prototype controls, no fake quote-request submission, no invented minimum.
   assertAbsent(page.body, 'PROTOTIPO', 'the prototype switcher must not be ported');
   assertAbsent(page.body, 'data-variant', 'variant switching must not be ported');
   assertAbsent(page.body, 'Compra mínima', 'no invented commercial minimum may be presented');
@@ -819,7 +887,13 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
   const featuredOrder = productLinks(featuredSection);
   assert.deepEqual(featuredOrder, FEATURED_SLUGS, 'Home must render exactly the approved eight Featured Products in source-controlled order');
   assert.equal(countMatches(featuredSection, 'class="fpcq-card-cta"'), FEATURED_SLUGS.length, 'each Featured card must carry a quotation action');
-  assertContains(featuredSection, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'the card quotation action must lead to the sole quotation surface');
+  assert.equal(
+    countMatches(featuredSection, '<form class="fpcq-basket-add"'),
+    FEATURED_SLUGS.length,
+    'each Featured card must open a quantity chooser'
+  );
+  assertContains(featuredSection, '>Cotizar</summary>', 'the card action opens a chooser instead of adding an unseen quantity');
+  assertContains(featuredSection, 'name="fp_quantity"', 'the card chooser must let the buyer pick the quantity');
   assertContains(home.body, 'Ver todo el catálogo', 'Home must link into the full Tienda grid');
   assert.ok(!featuredOrder.includes('ladrillo-plastico'), 'non-featured Products must not appear in the Featured section');
 
@@ -828,7 +902,18 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
   assert.equal(tienda.status, 200, '/tienda/ must return HTTP 200');
   assertContains(tienda.body, '<ul class="fpcq-cards"', 'the catalog grid must render as a semantic list');
   assert.equal(countMatches(tienda.body, 'class="fpcq-card-cta"'), PRODUCT_COUNT, 'every Active Product card must carry a quotation action');
-  assertContains(tienda.body, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'card quotation actions must lead to the sole quotation surface');
+  assert.equal(
+    countMatches(tienda.body, '<form class="fpcq-basket-add"'),
+    PRODUCT_COUNT,
+    'every Active Product card must open a quantity chooser'
+  );
+  for (const slug of [PRODUCT_SLUG, 'caja-tomatera']) {
+    assertContains(
+      tienda.body,
+      `name="fp_product" value="${PRODUCT_BY_SLUG.get(slug).source_id}"`,
+      `the ${slug} chooser must address its own reviewed Product identity`
+    );
+  }
 
   // Todos / Agrícola / Otros filters: accessible controls with meaningful URLs.
   assertContains(tienda.body, 'Filtrar productos por categoría', 'the category filter must be an accessible labelled control group');
@@ -908,7 +993,7 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
 
   section('Catalog discovery (issue #5)', [
     'Home renders the approved eight Featured Products in source-controlled order with quotation actions',
-    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and /cotizacion/',
+    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and opens a quantity chooser',
     'Todos / Agrícola / Otros filters: labelled link controls, meaningful /tienda/categoria/<categoria>/ URLs, aria-current state; unknown categories 404',
     'Search finds Products (as cards with quotation actions) and standard pages, with a clear no-result state back into the catalog',
     'Related Products render up to three reviewed ids in reviewed order',
@@ -916,11 +1001,153 @@ test('the Catalog is discoverable: Home featured eight, full Tienda grid, catego
   ]);
 });
 
-/* ─── 12. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ─── 12. Quote Basket (issue #6) ─────────────────────────────────────── */
+
+test('a guest can add Products to a persistent, secure Quote Basket', { timeout: 120_000 }, async () => {
+  // Agregar a cotización opens a quantity chooser: the product page exposes its
+  // own chooser (section 9) and every card one (section 11). Here the
+  // authoritative POST flow is exercised end to end.
+  const page = await get(PRODUCT_URL, MOBILE_UA);
+  const nonce = page.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(nonce, 'the product-page chooser must carry a nonce');
+  assertContains(page.body, `action="${SITE_URL}/wp-admin/admin-post.php"`, 'the add operation must POST to the authoritative handler');
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const addFields = (over = {}) => ({
+    action: 'fp_basket_add',
+    fp_product: 'fp-caja-cosechera-3-4',
+    fp_quantity: '5',
+    fp_basket_nonce: nonce,
+    _wp_http_referer: PRODUCT_URL,
+    ...over,
+  });
+
+  // A valid positive whole-unit quantity adds Caja Cosechera 3/4 (POST-redirect-GET).
+  const added = await postForm(addFields());
+  assert.equal(added.status, 302, 'the add operation must answer the browser with a redirect');
+  assert.ok((added.headers.location || '').includes('fpcq_notice=added'), 'a successful add redirects back with a confirmation');
+  const [sessionCookie] = added.setCookies;
+  assert.ok(sessionCookie, 'the browser must receive a session cookie');
+
+  // The cookie is a random opaque 256-bit token: Secure, HttpOnly, SameSite=Lax,
+  // 30-day expiry — and it carries no basket data whatsoever.
+  const token = sessionCookie.match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(token, 'the cookie must carry the 64-hex-char opaque token');
+  const cookieAttributes = sessionCookie.toLowerCase(); // PHP writes `secure` lowercase
+  for (const attribute of ['secure', 'httponly', 'samesite=lax']) {
+    assert.ok(cookieAttributes.includes(attribute), `the session cookie must be ${attribute}`);
+  }
+  assert.match(sessionCookie, /expires=/i, 'the cookie must outlive the visit (30-day persistence)');
+
+  // Only a hash of the opaque token is persisted server-side.
+  const rows = basketRows();
+  assert.equal(rows.length, 1, 'exactly one server-side session must exist');
+  assert.equal(rows[0].session_hash, createHash('sha256').update(token).digest('hex'), 'the stored value must be the sha256 of the opaque token');
+  assert.notEqual(rows[0].session_hash, token, 'the opaque token itself must never be stored');
+  assert.match(rows[0].created_at, /^\d{4}-\d{2}-\d{2} \d{2}:/, 'session creation must be tracked');
+  assert.match(rows[0].last_activity, /^\d{4}-\d{2}-\d{2} \d{2}:/, 'session activity must be tracked');
+  const stored = JSON.parse(rows[0].lines);
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].product, 'fp-caja-cosechera-3-4', 'the line must store Product identity');
+  assert.equal(stored[0].quantity, 5, 'the line must store the whole-unit quantity');
+
+  // The basket survives refresh and navigation: header count, mini basket, full view.
+  const back = await get(added.headers.location.replace(SITE_URL, ''), MOBILE_UA, cookieHeader(token));
+  assertContains(back.body, 'Cotización (1)', 'the header must display the distinct-line count');
+  assertContains(back.body, 'se agregó a tu cotización', 'the confirmation must be visible after the redirect');
+  assertContains(back.body, 'Caja Cosechera 3/4', 'the mini basket must show the Product');
+  assertContains(back.body, '5 unidades', 'the mini basket must show the quantity');
+  assertContains(back.body, `href="${SITE_URL}/cotizacion/"`, 'the mini basket must route to the full Cotización page');
+
+  assertContains((await get('/', MOBILE_UA, cookieHeader(token))).body, 'Cotización (1)', 'the basket must survive navigation to Home');
+  assertContains((await get('/tienda/', MOBILE_UA, cookieHeader(token))).body, 'Cotización (1)', 'the basket must survive navigation to Tienda');
+  const cotizacion = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(cotizacion.body, 'Caja Cosechera 3/4', 'the full Cotización view must list the Product');
+  assertContains(cotizacion.body, '5 unidades', 'the full view must show the quantity');
+
+  // The header counts distinct lines, not units: re-adding the same Product
+  // merges quantities into that one line.
+  const merged = await postForm(addFields({ fp_quantity: '3', _wp_http_referer: '/tienda/' }), cookieHeader(token));
+  assert.equal(merged.status, 302, 'the second add must succeed');
+  const cotMerged = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(cotMerged.body, 'Cotización (1)', 'one distinct line keeps the header count at (1)');
+  assertContains(cotMerged.body, '8 unidades', 're-adding the same Product merges quantities');
+  assertAbsent(cotMerged.body, '5 unidades', 'the stale un-merged quantity must not linger');
+
+  // Invalid nonce, session, Product and quantity mutate nothing, with recoverable messages.
+  const basketSnapshot = () => basketRows().map((row) => `${row.session_hash}|${row.lines}`).join(';');
+  const before = basketSnapshot();
+
+  const badNonce = await postForm(addFields({ fp_basket_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef' }), cookieHeader(token));
+  assert.equal(badNonce.status, 302, 'an invalid nonce is recoverable (redirect), not a dead end');
+  assert.ok(badNonce.headers.location.includes('fpcq_notice=nonce'), 'the invalid nonce must produce a message');
+  assert.equal(basketSnapshot(), before, 'an invalid nonce must not mutate the basket');
+
+  const staleToken = 'a'.repeat(64);
+  const badSession = await postForm(addFields(), cookieHeader(staleToken));
+  assert.equal(badSession.status, 302, 'an invalid session is recoverable (redirect), not a dead end');
+  assert.ok(badSession.headers.location.includes('fpcq_notice=session'), 'the invalid session must produce a message');
+  assert.ok(
+    badSession.setCookies.some((cookie) => /fpcq_basket=(deleted;|;)/.test(cookie)),
+    'the stale cookie must be cleared so the guest can simply retry'
+  );
+  assert.equal(basketSnapshot(), before, 'an invalid session must not create or mutate anything');
+
+  const unknownProduct = await postForm(addFields({ fp_product: 'fp-no-existe' }), cookieHeader(token));
+  assert.ok(unknownProduct.headers.location.includes('fpcq_notice=product'), 'an unknown Product must be rejected with a message');
+  const merluceraId = wp([
+    'eval',
+    'echo get_posts( array( "post_type" => "fp_product", "post_status" => "any", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_source_id", "meta_value" => "fp-caja-merlucera" ) )[0];',
+  ]).stdout;
+  wp(['post', 'update', merluceraId, '--post_status=draft']);
+  const archivedProduct = await postForm(addFields({ fp_product: 'fp-caja-merlucera' }), cookieHeader(token));
+  wp(['post', 'update', merluceraId, '--post_status=publish']);
+  assert.ok(archivedProduct.headers.location.includes('fpcq_notice=product'), 'an archived (unpublished) Product must be rejected');
+  assert.equal(basketSnapshot(), before, 'invalid Products must not mutate the basket');
+
+  for (const quantity of ['0', '-4', '2.5', 'abc', '']) {
+    const badQuantity = await postForm(addFields({ fp_quantity: quantity }), cookieHeader(token));
+    assert.ok(
+      badQuantity.headers.location.includes('fpcq_notice=quantity'),
+      `the quantity ${JSON.stringify(quantity)} must be rejected with a message`
+    );
+  }
+  assert.equal(basketSnapshot(), before, 'invalid quantities must not mutate the basket');
+
+  // JavaScript enhancement: the same authoritative handler answers JSON state.
+  const enhanced = await postForm(addFields({ fp_quantity: '5', fp_enhanced: '1' }), { ...cookieHeader(token), 'x-requested-with': 'fetch' });
+  assert.equal(enhanced.status, 200, 'the enhanced flow answers in place (no redirect)');
+  assert.ok((enhanced.headers['content-type'] || '').includes('application/json'), 'the enhanced flow answers JSON');
+  const payload = JSON.parse(enhanced.body);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.count, 1, 'the visible count still reflects distinct lines');
+  assert.ok(payload.mini.includes('Caja Cosechera 3/4'), 'the mini basket payload names the Product');
+  assert.ok(payload.message.includes('agregó'), 'the payload carries the confirmation message');
+
+  // Each guest gets a distinct random token (no shared or predictable session id).
+  const guestA = await postForm(addFields({ fp_quantity: '1' }));
+  const guestB = await postForm(addFields({ fp_quantity: '1' }));
+  const tokenA = guestA.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  const tokenB = guestB.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(tokenA && tokenB, 'each guest must receive an opaque session cookie');
+  assert.notEqual(tokenA, tokenB, 'session tokens must be random per guest');
+  assert.equal(basketRows().length, 3, 'each guest owns a separate server-side session');
+
+  section('Quote Basket (issue #6)', [
+    'Agregar a cotización opens a quantity chooser (cards + product page) — never an unseen-quantity add',
+    'A positive whole-unit quantity adds Caja Cosechera 3/4 through the authoritative nonce-guarded admin-post operation (POST-redirect-GET)',
+    'The cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
+    'The basket survives refresh and navigation; the header counts distinct lines (Cotización (1)) regardless of unit quantity; re-adds merge into the line',
+    'The mini basket shows Product, quantity and a route to the full Cotización view',
+    'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages (stale cookies cleared for retry)',
+    'The JavaScript enhancement receives JSON state and updates the visible count/mini basket; the server remains authoritative',
+  ]);
+});
+
+/* ─── 13. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery (issues #2–#5)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket (issues #2–#6)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -949,11 +1176,16 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Invalid schema/identity/slug/color/media sources exit non-zero with no partial mutation; missing products are warnings only',
     'Only explicit lifecycle changes archive/reactivate Products; changed media imports exactly once',
     'Home renders the approved eight Featured Products in source-controlled order with quotation actions',
-    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and /cotizacion/',
+    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and opens a quantity chooser',
     'Todos/Agrícola/Otros filters: labelled link controls with meaningful /tienda/categoria/<categoria>/ URLs and aria-current state; unknown categories 404',
     'Search finds Products (as cards with quotation actions) and standard pages, with a clear no-result state',
     'Related Products render up to three reviewed ids in reviewed order',
     'An archived Product disappears from Home, Tienda, categories, search and related lists, and its URL stops resolving',
+    'Agregar a cotización opens a quantity chooser on catalog cards and the product page — never an unseen-quantity add',
+    'A positive whole-unit quantity adds Caja Cosechera 3/4 through the authoritative nonce-guarded admin-post operation',
+    'The session cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
+    'The basket survives refresh and navigation; the header counts distinct lines (Cotización (n)); the mini basket shows Product, quantity and a route to /cotizacion/',
+    'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages; the JavaScript enhancement receives JSON state',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -966,7 +1198,8 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- Pixel-accurate browser rendering at 412 px and desktop widths is intentionally not claimed by this automated check.`,
     `- Catalog facts come exclusively from the reviewed versioned Catalog Source (wordpress/data/products.json, schema v2); unconfirmed commercial minimums and packaging facts render as “Consultar” and no contradictory old-site values are copied.`,
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
-    `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and card quotation actions lead to the sole quotation surface /cotizacion/ (basket behavior arrives with issues #6/#7).`,
+    `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
+    `- The Quote Basket is an anonymous cookie-backed server session (issue #6): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation revalidates nonce, session, Product lifecycle/visibility and whole-unit quantity. Line editing/removal, option lines, expiry enforcement and the submission form arrive with issues #7/#8.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

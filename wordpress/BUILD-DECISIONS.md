@@ -6,6 +6,70 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-03 — Issue #6: add Products to a persistent Quote Basket
+
+The first basket slice: a guest selects a quantity and adds a synchronized
+Product (Caja Cosechera 3/4 proven) to a secure server-side basket, then
+inspects it through the header count and mini basket across refreshes.
+Decisions:
+
+1. **The basket is plugin-owned and anonymous.** A new `Freeplast_CQ_Basket`
+   class (fpcq- v1) owns the session, the add operation and the two new
+   server-rendered blocks: `freeplast/basket-button` (the header widget:
+   `Cotización (n)` + mini basket, placed in the theme header part) and
+   `freeplast/basket` (the full `/cotizacion/` view). No user linking, no
+   guest-to-login merge — even for a logged-in staff browser the basket is
+   the anonymous cookie session.
+
+2. **Sessions are opaque cookies over a versioned table.** The browser
+   receives only a random 256-bit hex token (`fpcq_basket`, Secure,
+   HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is persisted in
+   migration 4's `basket_sessions` table (columns: session_hash,
+   basket_lines JSON, created_at, last_activity; expiry = 30 days after
+   last activity). The cookie never carries product, option or customer
+   data. NB: the lines column is named `basket_lines` because `lines` is a
+   reserved MySQL keyword that the SQLite drop-in fails to parse.
+
+3. **Adding is authoritative and fully validated before any mutation.**
+   `Agregar a cotización` is a plain POST form to admin-post.php
+   (`action=fp_basket_add`) guarded by a nonce. The handler validates nonce →
+   session (a presented-but-dead cookie is rejected AND cleared so a retry
+   starts fresh) → Product (published only; archived/unknown rejected) →
+   option (must be one of the reviewed options) → positive whole-unit
+   quantity (confirmed minimum/step enforced when present; unconfirmed
+   minimums accept any positive integer, per PRD #1). Only then is a session
+   created and the line merged. Re-adding the same product/option merges
+   quantities; the header counts distinct lines, never units.
+
+4. **The chooser is server-rendered, never an unseen quantity.** Catalog
+   cards wrap the shared chooser in a native `<details>` disclosure
+   (clicking “Cotizar” reveals Cantidad + Agregar a cotización — no
+   JavaScript needed); the product page exposes its own chooser directly
+   (approved v7-A). POST-redirect-GET returns a recoverable, non-blocking
+   notice (`fpcq_notice` codes, rendered in the header widget with
+   `role=status`); invalid input mutates nothing.
+
+5. **JavaScript mirrors, the server decides.** A small progressive plugin
+   script (`assets/js/basket.js`) intercepts the same form, POSTs with
+   `fp_enhanced=1`, and mirrors the returned JSON (count, mini-basket
+   markup, message) in place; any fetch/parse failure falls back to the
+   plain form POST. The server handler answers both flows and remains the
+   single source of truth.
+
+6. **`/cotizacion/` becomes the basket view.** Migration 4 replaces exactly
+   the seeded empty-state placeholder (byte-compared via
+   `Freeplast_CQ_Shell::legacy_cotizacion_placeholder()` — human edits are
+   never clobbered) with the `freeplast/basket` block: read-only lines plus
+   a route into Tienda. Line editing/removal, option choosers, expiry
+   cleanup and the submission form arrive with issues #7/#8 on this same
+   sole quotation surface.
+
+7. **The disposable-server router now serves real PHP endpoints.**
+   `router.php` previously forced everything through index.php, so
+   `/wp-admin/admin-post.php` 404'd; existing PHP files now execute
+   directly (static files still stream, pretty permalinks still route
+   through WordPress).
+
 ## 2026-09-03 — Issue #5: make the Catalog discoverable
 
 The customer-facing discovery journey across Home, Tienda, search and

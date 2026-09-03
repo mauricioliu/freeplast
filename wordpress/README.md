@@ -32,7 +32,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#5 acceptance criteria.
+                      # verify the issue-#2 through issue-#6 acceptance criteria.
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -52,8 +52,9 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
 - Home `/` returns HTTP 200 and renders the approved v6 shell — brand,
   INICIO/NOSOTROS/TIENDA navigation, Cotiza Online CTA, hero copy — for
   mobile and desktop user agents, with mobile-first (min-width-only) CSS;
-- `/cotizacion/` renders a non-functional-safe empty state and no form
-  exists anywhere in the shell (submission is issue #8);
+- `/cotizacion/` renders the quote-basket view (empty state, no request form
+  — submission is issue #8) and the only forms anywhere are the basket
+  quantity choosers (fpcq-basket-add);
 - WooCommerce is absent;
 - WordPress/PHP/SQLite versions and the plugin migration version
   (`fp_db_version`) are reported against the declared expectations;
@@ -74,13 +75,24 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   every unconfirmed fact, no forms, no prototype controls;
 - the discovery journey renders from the synchronized catalog only: Home
   shows the approved eight Featured Products in source-controlled order,
-  `/tienda/` lists all 17 Active Products on one page (canonical links plus a
-  “Cotizar” action per card), the Todos/Agrícola/Otros filters are accessible
-  links with meaningful `/tienda/categoria/<categoria>/` URLs (unknown
-  categories 404), search finds Products and standard pages with a clear
-  no-result state, related products render the reviewed ids in reviewed
-  order, and an explicitly archived Product disappears from every discovery
-  surface (its URL stops resolving);
+  `/tienda/` lists all 17 Active Products on one page (canonical links, and a
+  “Cotizar” action per card that opens the shared quantity chooser), the
+  Todos/Agrícola/Otros filters are accessible links with meaningful
+  `/tienda/categoria/<categoria>/` URLs (unknown categories 404), search finds
+  Products and standard pages with a clear no-result state, related products
+  render the reviewed ids in reviewed order, and an explicitly archived
+  Product disappears from every discovery surface (its URL stops resolving);
+- the Quote Basket is a persistent, secure, anonymous session: “Agregar a
+  cotización” opens a quantity chooser on cards and on the product page, a
+  positive whole-unit quantity adds Caja Cosechera 3/4 through the
+  nonce-guarded authoritative POST (admin-post), the browser keeps only an
+  opaque 256-bit Secure/HttpOnly/SameSite=Lax cookie while the server stores
+  only its sha256 hash (migration 4's `basket_sessions` table), the header
+  count reflects distinct lines (Cotización (n)), the mini basket shows
+  Product/quantity and routes to the full `/cotizacion/` view across
+  refreshes, invalid nonce/session/Product/quantity mutate nothing and return
+  recoverable messages, and the progressive JavaScript enhancement receives
+  JSON state from the same authoritative handler;
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle
@@ -125,4 +137,6 @@ PDF is raster-only: facts that could not be transcribed in this environment
 (notably the Universal ventilada/color configurations, Tipo Romano and Caja
 Paltera sheets) render as “Consultar” pending client review. The
 customer-facing discovery journey (issue #5) consumes this file — content is
-never duplicated into the theme.
+never duplicated into the theme, and every “Cotizar” action opens the shared
+quote-basket quantity chooser (issue #6), which never assumes an unseen
+quantity.

@@ -271,12 +271,13 @@ class Freeplast_CQ_Discovery {
 
 	/**
 	 * Catalog cards: canonical product links, Product Category label,
-	 * excerpt and a quotation action into the sole quotation surface.
-	 * All server-rendered from synchronized metadata only.
+	 * excerpt and a quotation action that opens the shared quantity chooser
+	 * (issue #6) — an unseen quantity is never added. All server-rendered
+	 * from synchronized metadata only.
 	 */
 	private static function render_cards( array $posts, int $heading_level ): string {
 		$heading = (string) $heading_level;
-		$format  = '<li class="fpcq-card"><a class="fpcq-card-main" href="%1$s">%2$s<p class="fpcq-card-category">%3$s</p><h' . $heading . ' class="fpcq-card-title">%4$s</h' . $heading . '><p class="fpcq-card-excerpt">%5$s</p></a><a class="fpcq-card-cta" href="%6$s">Cotizar</a></li>';
+		$format  = '<li class="fpcq-card"><a class="fpcq-card-main" href="%1$s">%2$s<p class="fpcq-card-category">%3$s</p><h' . $heading . ' class="fpcq-card-title">%4$s</h' . $heading . '><p class="fpcq-card-excerpt">%5$s</p></a>%6$s</li>';
 
 		$cards = '';
 		foreach ( $posts as $post ) {
@@ -291,9 +292,17 @@ class Freeplast_CQ_Discovery {
 				esc_html( $category ),
 				esc_html( get_the_title( $post ) ),
 				esc_html( wp_trim_words( get_the_excerpt( $post ), 24, '…' ) ),
-				esc_url( home_url( '/cotizacion/' ) )
+				self::render_card_chooser( (string) get_post_meta( $post->ID, '_fp_source_id', true ) )
 			);
 		}
 		return $cards;
+	}
+
+	/** One card quotation action: a disclosure that opens the quantity chooser. */
+	private static function render_card_chooser( string $source_id ): string {
+		return sprintf(
+			'<details class="fpcq-card-cta"><summary>Cotizar</summary>%s</details>',
+			Freeplast_CQ_Basket::render_add_form( $source_id, Freeplast_CQ_Basket::current_url() )
+		);
 	}
 }

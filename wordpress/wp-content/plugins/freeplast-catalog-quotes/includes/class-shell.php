@@ -9,10 +9,11 @@
  *   - /tienda/            owned by the fp_product archive since migration 2
  *                          (issue #3). The placeholder page is retired by
  *                          that migration and never seeded again.
- *   - /cotizacion/        stays a WordPress page whose content is later
- *                          owned by the plugin's quote-request block
- *                          (issue #7/#8). Until then it renders a
- *                          non-functional-safe empty state with no form.
+ *   - /cotizacion/        stays a WordPress page whose content is owned by
+ *                          the plugin's freeplast/basket block since
+ *                          migration 4 (issue #6): the full quote-basket
+ *                          view. The quote-request form is added by the
+ *                          submission slice (issue #8) on this same page.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -24,6 +25,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Freeplast_CQ_Shell {
 
 	/**
+	 * The pre-basket /cotizacion/ placeholder content (issues #2–#5), built
+	 * by the same helpers that seeded it. Migration 4 replaces exactly this
+	 * content with the basket block — any human edit made meanwhile is
+	 * left untouched.
+	 */
+	public static function legacy_cotizacion_placeholder(): string {
+		return self::block_group(
+			self::block_heading( 'Tu cotización está vacía', 2 ) .
+			self::block_paragraph( 'Explora la tienda y agrega productos para solicitar una cotización mayorista.', array( 'fp-empty-note' ) ),
+			array( 'fp-empty' )
+		);
+	}
+
+	/**
 	 * Seed the shell pages. Idempotent: existing slugs are never duplicated
 	 * or overwritten.
 	 */
@@ -31,11 +46,7 @@ class Freeplast_CQ_Shell {
 		$pages = array(
 			'cotizacion'             => array(
 				'title'   => 'Cotización',
-				'content' => self::block_group(
-					self::block_heading( 'Tu cotización está vacía', 2 ) .
-					self::block_paragraph( 'Explora la tienda y agrega productos para solicitar una cotización mayorista.', array( 'fp-empty-note' ) ),
-					array( 'fp-empty' )
-				),
+				'content' => "<!-- wp:freeplast/basket /-->\n",
 			),
 			'tienda'                 => array(
 				'title'   => 'Tienda',

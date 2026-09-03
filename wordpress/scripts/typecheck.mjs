@@ -53,6 +53,7 @@ for (const file of phpFiles) {
 const jsFiles = [
   ...walk(join(WORDPRESS_DIR, 'scripts'), '.mjs'),
   ...walk(join(WORDPRESS_DIR, 'wp-content', 'themes'), '.js'),
+  ...walk(join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes'), '.js'),
 ];
 for (const file of jsFiles) {
   run(`node --check ${file.replaceAll(WORDPRESS_DIR + '/', '')}`, process.execPath, ['--check', file]);
