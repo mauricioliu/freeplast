@@ -54,7 +54,7 @@ class Freeplast_CQ_Basket {
 	public const COOKIE_NAME = 'fpcq_basket';
 
 	/** Nonce action guarding the add operation. */
-	public const NONCE_ACTION = 'fp_basket_add';
+	public const NONCE_ADD_ACTION = 'fp_basket_add';
 
 	/** Nonce action guarding the update-line operation. */
 	public const NONCE_UPDATE_ACTION = 'fp_basket_update';
@@ -426,11 +426,11 @@ class Freeplast_CQ_Basket {
 	/**
 	 * The shared validate-everything-first prelude: nonce → session (a
 	 * presented-but-dead cookie is rejected AND cleared so a retry starts
-	 * fresh) → Product (published only) → option. Returns the session (null
-	 * when no cookie was presented at all), the Product, its source id and
-	 * the validated option id; a failing step never returns.
+	 * fresh) → Product (published only) → option. Returns the validated
+	 * pieces (the session is null when no cookie was presented at all); a
+	 * failing step never returns.
 	 *
-	 * @return array{0: array|null, 1: WP_Post, 2: string, 3: string}
+	 * @return array{session: array|null, product: WP_Post, product_id: string, option_id: string}
 	 */
 	private static function begin( string $nonce_action, bool $enhanced ): array {
 		/* 1. Nonce — every state change is nonce-guarded (recoverable, never a die page). */
@@ -461,12 +461,21 @@ class Freeplast_CQ_Basket {
 		   accepts none. */
 		$option_id = isset( $_POST['fp_option'] ) ? sanitize_text_field( wp_unslash( $_POST['fp_option'] ) ) : '';
 		$options   = self::product_options( $product );
-		$known     = '' !== $option_id && '' !== self::option_label( $product, $option_id );
-		if ( ( array() === $options && '' !== $option_id ) || ( array() !== $options && ! $known ) ) {
+		if ( array() === $options ) {
+			$option_valid = '' === $option_id;
+		} else {
+			$option_valid = '' !== $option_id && '' !== self::option_label( $product, $option_id );
+		}
+		if ( ! $option_valid ) {
 			self::fail( 'option', $enhanced );
 		}
 
-		return array( $session, $product, $product_id, $option_id );
+		return array(
+			'session'    => $session,
+			'product'    => $product,
+			'product_id' => $product_id,
+			'option_id'  => $option_id,
+		);
 	}
 
 	/** 5. Quantity — a positive whole unit (confirmed rules when present). */
@@ -482,7 +491,12 @@ class Freeplast_CQ_Basket {
 	public static function handle_add(): void {
 		$enhanced = self::is_enhanced();
 
-		list( $session, $product, $product_id, $option_id ) = self::begin( self::NONCE_ACTION, $enhanced );
+		[
+			'session'    => $session,
+			'product'    => $product,
+			'product_id' => $product_id,
+			'option_id'  => $option_id,
+		] = self::begin( self::NONCE_ADD_ACTION, $enhanced );
 		$quantity = self::validated_quantity( $product, $enhanced );
 
 		/* Everything validated: only now is any state created or changed. */
@@ -500,7 +514,12 @@ class Freeplast_CQ_Basket {
 	public static function handle_update(): void {
 		$enhanced = self::is_enhanced();
 
-		list( $session, $product, $product_id, $option_id ) = self::begin( self::NONCE_UPDATE_ACTION, $enhanced );
+		[
+			'session'    => $session,
+			'product'    => $product,
+			'product_id' => $product_id,
+			'option_id'  => $option_id,
+		] = self::begin( self::NONCE_UPDATE_ACTION, $enhanced );
 		if ( null === $session ) {
 			self::fail( 'session', $enhanced );
 		}
@@ -518,7 +537,11 @@ class Freeplast_CQ_Basket {
 	public static function handle_remove(): void {
 		$enhanced = self::is_enhanced();
 
-		list( $session, , $product_id, $option_id ) = self::begin( self::NONCE_REMOVE_ACTION, $enhanced );
+		[
+			'session'    => $session,
+			'product_id' => $product_id,
+			'option_id'  => $option_id,
+		] = self::begin( self::NONCE_REMOVE_ACTION, $enhanced );
 		if ( null === $session ) {
 			self::fail( 'session', $enhanced );
 		}
@@ -596,11 +619,10 @@ class Freeplast_CQ_Basket {
 		if ( null === self::current_token() || null !== self::resolve() ) {
 			return;
 		}
-		if ( isset( $_GET['fpcq_notice'] ) ) {
-			self::clear_cookie();
-			return; /* never loop the bounce */
-		}
 		self::clear_cookie();
+		if ( isset( $_GET['fpcq_notice'] ) ) {
+			return; /* this URL is already the bounce — never loop it */
+		}
 		wp_safe_redirect( add_query_arg( array( 'fpcq_notice' => 'expired' ), self::current_url() ) );
 		exit;
 	}
@@ -656,17 +678,15 @@ class Freeplast_CQ_Basket {
 	 * options (the Caja Universal Color configurations) also requires one
 	 * reviewed option — the radio group is required, so no Color line is
 	 * ever added without identifying its color.
-	 *
-	 * @param array $options Reviewed options ({id, label, group}), source order.
 	 */
-	public static function render_add_form( string $source_id, string $return_url, array $options = array() ): string {
+	public static function render_add_form( WP_Post $product, string $return_url ): string {
 		return sprintf(
 			'<form class="fpcq-basket-add" method="post" action="%1$s"><label class="fpcq-add-label"><span>Cantidad</span><input class="fpcq-add-qty" type="number" name="fp_quantity" value="1" min="1" step="1" inputmode="numeric" autocomplete="off"></label>%2$s<input type="hidden" name="action" value="fp_basket_add"><input type="hidden" name="fp_product" value="%3$s"><input type="hidden" name="_wp_http_referer" value="%4$s"><input type="hidden" name="fp_basket_nonce" value="%5$s"><button class="fpcq-add-submit" type="submit">Agregar a cotización</button></form>',
 			esc_url( admin_url( 'admin-post.php' ) ),
-			self::render_option_chooser( $options ),
-			esc_attr( $source_id ),
+			self::render_option_chooser( self::product_options( $product ) ),
+			esc_attr( (string) get_post_meta( $product->ID, '_fp_source_id', true ) ),
 			esc_url( $return_url ),
-			esc_attr( wp_create_nonce( self::NONCE_ACTION ) )
+			esc_attr( wp_create_nonce( self::NONCE_ADD_ACTION ) )
 		);
 	}
 

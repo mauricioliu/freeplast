@@ -39,7 +39,7 @@
 	   recoverable failure answers with a message only — the count, the mini
 	   basket and the view keep their last state until a successful mutation
 	   returns them. */
-	function apply( payload, formClass ) {
+	function apply( payload, formKind ) {
 		if ( payload.ok ) {
 			var label = LABEL_START + payload.count + ')';
 			document.querySelectorAll( '[data-fpcq-basket-count]' ).forEach( function ( el ) {
@@ -57,7 +57,7 @@
 			statusFor( widget, payload.message || '' );
 		} );
 		/* The chooser served its purpose; the confirmation is visible in the header. */
-		if ( 'fpcq-basket-add' === formClass ) {
+		if ( 'fpcq-basket-add' === formKind ) {
 			document.querySelectorAll( 'details.fpcq-card-cta[open]' ).forEach( function ( details ) {
 				details.open = false;
 			} );

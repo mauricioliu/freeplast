@@ -300,13 +300,9 @@ class Freeplast_CQ_Discovery {
 
 	/** One card quotation action: a disclosure that opens the quantity chooser. */
 	private static function render_card_chooser( WP_Post $post ): string {
-		$options   = json_decode( (string) get_post_meta( $post->ID, '_fp_options', true ), true );
-		$reviewed  = is_array( $options ) ? array_values( array_filter( $options, 'is_array' ) ) : array();
-		$source_id = (string) get_post_meta( $post->ID, '_fp_source_id', true );
-
 		return sprintf(
 			'<details class="fpcq-card-cta"><summary>Cotizar</summary>%s</details>',
-			Freeplast_CQ_Basket::render_add_form( $source_id, Freeplast_CQ_Basket::current_url(), $reviewed )
+			Freeplast_CQ_Basket::render_add_form( $post, Freeplast_CQ_Basket::current_url() )
 		);
 	}
 }

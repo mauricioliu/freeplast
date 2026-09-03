@@ -1252,7 +1252,7 @@ test('a guest can edit the Quote Basket: options, update/remove, expiry and staf
   assert.equal(basketSnapshot(), before, 'invalid option submissions must not mutate the basket');
 
   // Updating a line: plain POST → POST-redirect-GET (JavaScript disabled parity).
-  const editPage = async () => await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  const editPage = () => get('/cotizacion/', MOBILE_UA, cookieHeader(token));
   let html = (await editPage()).body;
   const updateNonce = formNonce(html, 'fp_basket_update');
   const removeNonce = formNonce(html, 'fp_basket_remove');
@@ -1412,31 +1412,22 @@ test('a guest can edit the Quote Basket: options, update/remove, expiry and staf
   }
   assert.equal(minSnapshot(), JSON.stringify([{ product: polleraId, option: '', quantity: 10 }]), 'rejected quantities must not mutate');
   const minHtml = (await get('/cotizacion/', MOBILE_UA, cookieHeader(minToken))).body;
-  const minUpdate = formNonce(minHtml, 'fp_basket_update');
-  const toFifteen = await postForm(
-    {
-      action: 'fp_basket_update',
-      fp_product: polleraId,
-      fp_option: '',
-      fp_quantity: '15',
-      fp_basket_nonce: minUpdate,
-      _wp_http_referer: '/cotizacion/',
-    },
-    cookieHeader(minToken)
-  );
-  assert.equal(noticeOf(toFifteen), 'updated', 'an on-step update must succeed');
-  const offStep = await postForm(
-    {
-      action: 'fp_basket_update',
-      fp_product: polleraId,
-      fp_option: '',
-      fp_quantity: '11',
-      fp_basket_nonce: minUpdate,
-      _wp_http_referer: '/cotizacion/',
-    },
-    cookieHeader(minToken)
-  );
-  assert.equal(noticeOf(offStep), 'quantity', 'an off-step update must be rejected');
+  const minUpdateNonce = formNonce(minHtml, 'fp_basket_update');
+  const updatePollera = (over = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_update',
+        fp_product: polleraId,
+        fp_option: '',
+        fp_quantity: '15',
+        fp_basket_nonce: minUpdateNonce,
+        _wp_http_referer: '/cotizacion/',
+        ...over,
+      },
+      cookieHeader(minToken)
+    );
+  assert.equal(noticeOf(await updatePollera()), 'updated', 'an on-step update must succeed');
+  assert.equal(noticeOf(await updatePollera({ fp_quantity: '11' })), 'quantity', 'an off-step update must be rejected');
   assert.equal(
     minSnapshot(),
     JSON.stringify([{ product: polleraId, option: '', quantity: 15 }]),
@@ -1468,7 +1459,7 @@ test('a guest can edit the Quote Basket: options, update/remove, expiry and staf
       fp_basket_nonce: staffNonce,
       _wp_http_referer: PRODUCT_URL,
     },
-    { cookie: `${staffCookie}; fpcq_basket=${token}` }
+    staffHeaders
   );
   assert.equal(noticeOf(staffAdd), 'added', 'the staff browser adds through the same anonymous session');
   assert.equal(basketRows().length, rowsBefore, 'no new session may be created for the logged-in staff browser');

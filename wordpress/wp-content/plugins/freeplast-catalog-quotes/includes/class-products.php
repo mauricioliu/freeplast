@@ -209,8 +209,7 @@ class Freeplast_CQ_Products {
 						/* The v7 variant A quantity chooser (issue #6): an authoritative
 						   POST form — the buyer always sees the quantity being added. The
 						   Color configurations also require one reviewed color (issue #7). */
-						$options = json_decode( $meta( '_fp_options' ) ?: '[]', true );
-						echo Freeplast_CQ_Basket::render_add_form( $meta( '_fp_source_id' ), (string) get_permalink( $post ), is_array( $options ) ? $options : array() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
+						echo Freeplast_CQ_Basket::render_add_form( $post, (string) get_permalink( $post ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
 						?>
 						<a class="fpcq-view-basket" href="<?php echo esc_url( home_url( '/cotizacion/' ) ); ?>">Ver tu cotización</a>
 					</div>
