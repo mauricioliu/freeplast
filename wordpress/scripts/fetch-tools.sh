@@ -9,7 +9,7 @@
 # Requires: curl, tar, unzip, sha256sum.
 set -euo pipefail
 
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.tools" && pwd)"
+TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.tools"
 CACHE="$TOOLS_DIR/cache"
 mkdir -p "$CACHE"
 

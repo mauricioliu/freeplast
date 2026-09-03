@@ -6,6 +6,56 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-03 — Issue #5: make the Catalog discoverable
+
+The customer-facing discovery journey across Home, Tienda, search and
+related products — rendered from the synchronized Catalog, never from
+duplicated theme content. Decisions:
+
+1. **Discovery is plugin-rendered, not theme content.** Three new
+   server-rendered dynamic blocks (`Freeplast_CQ_Discovery`, versioned
+   `fpcq-` v1 classes) own the behavior: `freeplast/featured-products`
+   (Home's approved eight in `featured_order` sequence),
+   `freeplast/catalog` (the full Tienda grid) and
+   `freeplast/search-results`. The markup is semantic and functional under
+   a stock block theme; the freeplast theme supplies the final v6
+   presentation. Catalog cards carry exactly one canonical
+   `/producto/<slug>/` link plus a “Cotizar” action into the sole quotation
+   surface `/cotizacion/` (the card-level quantity chooser arrives with the
+   basket slice, issues #6/#7).
+
+2. **Tienda renders the complete grid on one page.** All 17 Active Products
+   (filtered views included) render without pagination — the plainly
+   paginated placeholder archive is retired.
+
+3. **The category filter state lives in the URL.** `Todos` / `Agrícola` /
+   `Otros` are plain accessible links backed by the rewrite rule
+   `/tienda/categoria/<categoria>/` (restricted to the reviewed vocabulary,
+   so unknown categories 404 instead of rendering an empty grid) with
+   `aria-current` marking the active filter. No JavaScript, shareable
+   URLs, and the query var degrades to `Todos` when an invalid value is
+   passed directly. Migration 3 bumps the flag-based rewrite flush that
+   makes the rule resolvable (no schema change).
+
+4. **Search is WordPress search over Products + pages.** The plugin block
+   queries `fp_product` and `page` (publish-only) for `?s=` and renders
+   product hits as catalog cards (quotation actions included) and page hits
+   as links; the no-result state names the term and recovers into the
+   catalog (Todos/Agrícola/Otros/Contacto). The core `wp:search` block on
+   Tienda, search and 404 provides the accessible form; the new
+   `templates/search.html` owns the route.
+
+5. **Archival hides a Product everywhere at once.** Archived Products are
+   draft records, so every discovery query is publish-only: the archived
+   Product leaves Home, Tienda, categories, search and related lists, its
+   URL stops resolving (404), and no quotation action survives. Restoring
+   the reviewed source returns it to discovery.
+
+6. **Related products render the reviewed order.** `render_related` now
+   re-orders the matched posts by the reviewed `related_ids` sequence
+   (never query/runtime order) and still drops archived or missing ids
+   silently — up to three explicit reviewed links, no runtime guessing.
+
 ## 2026-09-03 — Issue #4: synchronize all 17 Products
 
 The proven Catalog seam extended to the complete union. Decisions:

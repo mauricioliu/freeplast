@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Freeplast Catalog & Quotes
  * Plugin URI: https://freeplast.mliu.site/
- * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type and the WP-CLI catalog synchronizer; later slices add the basket and request behavior.
- * Version: 0.2.0
+ * Description: Private plugin for the Freeplast staging site. Owns product records, catalog synchronization, quote baskets, quote requests, notifications and the sales workflow. WooCommerce is not installed or required. This slice registers the shell routes, the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer and the catalog discovery blocks (Home featured, Tienda grid/filter, search); later slices add the basket and request behavior.
+ * Version: 0.3.0
  * Requires at least: 7.0
  * Requires PHP: 8.1
  * Author: Freeplast
@@ -18,20 +18,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_CQ_VERSION', '0.2.0' );
-define( 'FREEPLAST_CQ_DB_VERSION', 2 );
+define( 'FREEPLAST_CQ_VERSION', '0.3.0' );
+define( 'FREEPLAST_CQ_DB_VERSION', 3 );
 
 require_once __DIR__ . '/includes/class-migrations.php';
 require_once __DIR__ . '/includes/class-shell.php';
 require_once __DIR__ . '/includes/class-products.php';
 require_once __DIR__ . '/includes/class-catalog-source.php';
 require_once __DIR__ . '/includes/class-catalog-sync.php';
+require_once __DIR__ . '/includes/class-discovery.php';
 
 /**
- * Register the product record type, its metadata, the public product-detail
- * block and the catalog synchronization command.
+ * Register the product record type, its metadata, the public
+ * product-detail and catalog-discovery blocks, and the catalog
+ * synchronization command.
  */
 add_action( 'init', array( 'Freeplast_CQ_Products', 'register' ) );
+add_action( 'init', array( 'Freeplast_CQ_Discovery', 'register' ) );
 Freeplast_CQ_Catalog_Sync::register();
 
 /**

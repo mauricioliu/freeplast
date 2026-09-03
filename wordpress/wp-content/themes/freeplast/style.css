@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.2.0
+Version: 0.3.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -588,7 +588,7 @@ a {
   border-radius: var(--fp-r-sm);
 }
 
-/* ---------- Tienda archive (minimal until the catalog slice, issue #5) ---------- */
+/* ---------- Catalog discovery (plugin markup fpcq-* v1: Home featured, Tienda grid, search) ---------- */
 
 .fp-shop-page {
   max-width: var(--fp-shell);
@@ -602,34 +602,261 @@ a {
   margin-bottom: var(--fp-s-4);
 }
 
-.fp-shop-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--fp-s-5);
+.fp-shop-page > p {
+  max-width: var(--fp-measure);
+  color: var(--fp-muted);
+}
+
+/* Home featured section (the approved eight in source-controlled order) */
+
+.fpcq-featured {
+  max-width: var(--fp-shell);
+  margin-inline: auto;
+  padding: var(--fp-s-8) var(--fp-s-4) 0;
+}
+
+.fpcq-featured-title {
+  font-size: 26px;
+  letter-spacing: -0.01em;
+}
+
+.fpcq-featured-all {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--fp-s-5);
+  padding: var(--fp-s-2) var(--fp-s-4);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-blue);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-featured-all:hover {
+  border-color: var(--fp-blue);
+}
+
+/* Category filter — URL-backed state, server-rendered links */
+
+.fpcq-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fp-s-2);
   margin-top: var(--fp-s-5);
 }
 
-.fp-shop-card {
+.fpcq-filters a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-4);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-filters a:hover {
+  border-color: var(--fp-blue);
+  color: var(--fp-blue);
+}
+
+.fpcq-filters a[aria-current] {
+  background: var(--fp-blue);
+  border-color: var(--fp-blue);
+  color: #fff;
+}
+
+.fpcq-catalog-empty {
+  margin-top: var(--fp-s-5);
+  max-width: var(--fp-measure);
+  color: var(--fp-muted);
+}
+
+/* Catalog cards (Home featured, Tienda grid, search results) */
+
+.fpcq-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--fp-s-5);
+  margin: var(--fp-s-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fpcq-card {
   display: flex;
   flex-direction: column;
-  gap: var(--fp-s-2);
-  padding: var(--fp-s-4);
+  background: var(--fp-paper);
   border: 1px solid var(--fp-line);
   border-radius: var(--fp-r-md);
 }
 
-.fp-shop-card .wp-block-post-featured-image img {
+.fpcq-card-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: var(--fp-s-2);
+  padding: var(--fp-s-4);
+  text-decoration: none;
+}
+
+.fpcq-card-main:hover .fpcq-card-title {
+  color: var(--fp-blue);
+}
+
+.fpcq-card-image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--fp-tint);
   border-radius: var(--fp-r-sm);
 }
 
-.fp-shop-card h2 {
-  font-size: 18px;
+.fpcq-card-category {
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.fp-shop-card .wp-block-post-excerpt__excerpt {
-  margin: 0;
+.fpcq-card-title {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.fpcq-card-excerpt {
   color: var(--fp-muted);
   font-size: 14px;
+  line-height: 1.5;
+}
+
+.fpcq-card-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 0 var(--fp-s-4) var(--fp-s-4);
+  padding: var(--fp-s-2) var(--fp-s-4);
+  background: var(--fp-green);
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-card-cta:hover {
+  background: var(--fp-green-soft);
+  color: #fff;
+}
+
+/* Search results (plugin block + core search form) */
+
+.fpcq-search-title {
+  font-size: 28px;
+}
+
+.fpcq-search-count {
+  margin-top: var(--fp-s-2);
+  color: var(--fp-muted);
+}
+
+.fpcq-search-sub {
+  margin-top: var(--fp-s-6);
+  font-size: 20px;
+}
+
+.fpcq-search-pages,
+.fpcq-search-suggestions {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  gap: var(--fp-s-2);
+  margin: var(--fp-s-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fpcq-page-link,
+.fpcq-search-suggestions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-4);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-sm);
+  color: var(--fp-blue-heading);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.fpcq-page-link:hover,
+.fpcq-search-suggestions a:hover {
+  border-color: var(--fp-blue);
+}
+
+.fpcq-search-empty {
+  margin-top: var(--fp-s-4);
+  color: var(--fp-ink);
+  font-weight: 700;
+}
+
+.fpcq-search-hint {
+  margin-top: var(--fp-s-2);
+  color: var(--fp-muted);
+}
+
+.wp-block-search {
+  margin-top: var(--fp-s-5);
+}
+
+.wp-block-search__label {
+  color: var(--fp-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wp-block-search__inside-wrapper {
+  display: flex;
+  max-width: 480px;
+}
+
+.wp-block-search__input {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--fp-s-2) var(--fp-s-3);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-sm);
+  font-family: inherit;
+  font-size: 16px;
+}
+
+.wp-block-search__button {
+  min-height: 48px;
+  margin-left: var(--fp-s-2);
+  padding: var(--fp-s-2) var(--fp-s-4);
+  background: var(--fp-green);
+  border: none;
+  border-radius: var(--fp-r-sm);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.wp-block-search__button:hover {
+  background: var(--fp-green-soft);
+  color: #fff;
 }
 
 /* ---------- Footer (v6 foot) ---------- */
@@ -731,6 +958,19 @@ a {
     font-size: 36px;
   }
 
+  .fpcq-featured-title {
+    font-size: 32px;
+  }
+
+  .fpcq-search-title {
+    font-size: 36px;
+  }
+
+  .fpcq-search-pages,
+  .fpcq-search-suggestions {
+    flex-direction: row;
+  }
+
   .fpcq-hero {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
@@ -752,7 +992,11 @@ a {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .fp-shop-grid {
+  .fpcq-card-title {
+    font-size: 20px;
+  }
+
+  .fpcq-cards {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -776,7 +1020,7 @@ a {
     font-size: 44px;
   }
 
-  .fp-shop-grid {
+  .fpcq-cards {
     grid-template-columns: repeat(3, 1fr);
   }
 }

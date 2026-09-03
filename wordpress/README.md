@@ -32,7 +32,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 and issue-#3 acceptance criteria.
+                      # verify the issue-#2 through issue-#5 acceptance criteria.
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -72,6 +72,15 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   approved v7 variant A: source-supported description and specs, pallet facts
   as packaging facts (“Cantidad mínima: Consultar”), honest “Consultar” for
   every unconfirmed fact, no forms, no prototype controls;
+- the discovery journey renders from the synchronized catalog only: Home
+  shows the approved eight Featured Products in source-controlled order,
+  `/tienda/` lists all 17 Active Products on one page (canonical links plus a
+  “Cotizar” action per card), the Todos/Agrícola/Otros filters are accessible
+  links with meaningful `/tienda/categoria/<categoria>/` URLs (unknown
+  categories 404), search finds Products and standard pages with a clear
+  no-result state, related products render the reviewed ids in reviewed
+  order, and an explicitly archived Product disappears from every discovery
+  surface (its URL stops resolving);
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle

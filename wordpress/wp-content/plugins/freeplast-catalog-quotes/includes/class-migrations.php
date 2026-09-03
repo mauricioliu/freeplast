@@ -13,6 +13,11 @@
  *               (trashed, reversible). Only the page recorded in the
  *               fp_shell_pages option is ever touched — human content is
  *               never destroyed by a migration.
+ * Migration 3 — catalog discovery (issue #5): the Tienda category filter
+ *               routes /tienda/categoria/<categoria>/ (registered on init
+ *               by Freeplast_CQ_Discovery) become resolvable; this version
+ *               bump schedules the flag-based rewrite flush that writes
+ *               them. No schema or content changes.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -47,6 +52,12 @@ class Freeplast_CQ_Migrations {
 				}
 			}
 			$applied = 2;
+		}
+
+		if ( $applied < 3 ) {
+			// Migration 3 — catalog discovery routes (see class-discovery.php);
+			// the flush flag written below makes the rewrite rule resolvable.
+			$applied = 3;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {

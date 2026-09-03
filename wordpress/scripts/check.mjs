@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2, #3 and #4).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#5).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2, #3 and #4:
+ * verifies the acceptance criteria of issues #2, #3, #4 and #5:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -34,6 +34,12 @@
  *      failed media import and explicit lifecycle changes behave as specified:
  *      rejections return non-zero without partial mutation, missing products
  *      are warnings only, changed media imports exactly once.
+ *  11. The customer-facing discovery journey renders from the synchronized
+ *      Catalog: Home's approved eight Featured Products in source-controlled
+ *      order, the full Tienda grid with quotation actions, URL-backed
+ *      Todos/Agrícola/Otros filters, search over Products and standard pages
+ *      with a clear no-result state, reviewed related-product order, and
+ *      Archived Products absent from every discovery surface.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -67,6 +73,8 @@ const PRODUCT_SLUGS = PRODUCTS.map((p) => p.slug);
 const PRODUCT_URLS = PRODUCT_SLUGS.map((slug) => `/producto/${slug}/`);
 const PRODUCT_BY_SOURCE_ID = new Map(PRODUCTS.map((p) => [p.source_id, p]));
 const PRODUCT_BY_SLUG = new Map(PRODUCTS.map((p) => [p.slug, p]));
+const FEATURED_SLUGS = [...PRODUCTS].filter((p) => p.featured).sort((a, b) => a.featured_order - b.featured_order).map((p) => p.slug);
+const CATEGORY_SLUGS = (category) => PRODUCTS.filter((p) => p.category === category).map((p) => p.slug);
 const DISTINCT_IMAGES = new Set(PRODUCTS.map((p) => p.image.checksum)).size;
 const PRODUCT_SLUG = 'caja-cosechera-3-4';
 const PRODUCT_URL = `/producto/${PRODUCT_SLUG}/`;
@@ -526,7 +534,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '2', 'migration 2 (catalog slice) must be applied');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '3', 'migration 3 (catalog discovery) must be applied');
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -609,16 +617,14 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assertAbsent(ladrillo.body, 'dato de embalaje', 'the pallet note must not render without a confirmed packaging fact');
 
   // The /tienda/ placeholder retired: the fp_product archive owns the route
-  // and lists every Active Product across its pagination.
+  // and the discovery grid lists every Active Product on one page.
   const tienda = await get('/tienda/', MOBILE_UA);
   assert.equal(tienda.status, 200, '/tienda/ must remain HTTP 200 under the archive');
   assertAbsent(tienda.body, 'El catálogo se está preparando', 'the seeded placeholder copy must be retired');
-  const tiendaPage2 = await get('/tienda/page/2/', MOBILE_UA);
-  assert.equal(tiendaPage2.status, 200, '/tienda/page/2/ must return HTTP 200 while the archive paginates');
-  const listed = new Set([tienda.body, tiendaPage2.body].join('\n').match(/\/producto\/[a-z0-9-]+\//g) || []);
-  assert.equal(listed.size, PRODUCT_COUNT, 'the archive must list exactly the 17 Active Products across its pagination');
+  const listed = new Set(tienda.body.match(/\/producto\/[a-z0-9-]+\//g) || []);
+  assert.equal(listed.size, PRODUCT_COUNT, 'the Tienda grid must list exactly the 17 Active Products on one page');
   for (const url of PRODUCT_URLS) {
-    assert.ok(listed.has(url), `the archive must list the Active Product at ${url}`);
+    assert.ok(listed.has(url), `the grid must list the Active Product at ${url}`);
   }
 
   section('Product pages (v7 variant A)', [
@@ -628,7 +634,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
     'Units-per-pallet rendered as packaging facts where published; unconfirmed facts honestly show “Consultar”',
     'The four Caja Universal configurations are distinct public Products (published facts on Cerrada Negra only)',
     'Traversa para Bins Tipo Romano provisional with the G2 alias visible; Pediluvio and Ladrillo public with limited content',
-    '/tienda/ is the fp_product archive and lists all 17 Active Products (paginated)',
+    '/tienda/ is the fp_product archive and lists all 17 Active Products on one full grid page',
   ]);
 });
 
@@ -783,11 +789,122 @@ test('invalid sources return non-zero without partial mutation; missing products
   ]);
 });
 
-/* ─── 11. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ─── 11. Catalog discovery journey (issue #5) ───────────────────────── */
+
+test('the Catalog is discoverable: Home featured eight, full Tienda grid, category filters, search and related Products', { timeout: 120_000 }, async () => {
+  // Home renders the approved eight Featured Products in source-controlled order.
+  const home = await get('/', MOBILE_UA);
+  assert.equal(home.status, 200, 'Home must return HTTP 200');
+  const featuredStart = home.body.indexOf('class="fpcq-featured"');
+  assert.ok(featuredStart !== -1, 'Home must render the Featured Products section');
+  const featuredSection = home.body.slice(featuredStart, home.body.indexOf('</section>', featuredStart));
+  const featuredOrder = [...featuredSection.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
+  assert.deepEqual(featuredOrder, FEATURED_SLUGS, 'Home must render exactly the approved eight Featured Products in source-controlled order');
+  assert.equal((featuredSection.match(/class="fpcq-card-cta"/g) || []).length, FEATURED_SLUGS.length, 'each Featured card must carry a quotation action');
+  assertContains(featuredSection, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'the card quotation action must lead to the sole quotation surface');
+  assertContains(home.body, 'Ver todo el catálogo', 'Home must link into the full Tienda grid');
+  assert.ok(!featuredOrder.includes('ladrillo-plastico'), 'non-featured Products must not appear in the Featured section');
+
+  // Tienda lists all 17 Active Products on one page with usable quotation actions.
+  const tienda = await get('/tienda/', MOBILE_UA);
+  assert.equal(tienda.status, 200, '/tienda/ must return HTTP 200');
+  assertContains(tienda.body, '<ul class="fpcq-cards"', 'the catalog grid must render as a semantic list');
+  assert.equal((tienda.body.match(/class="fpcq-card-cta"/g) || []).length, PRODUCT_COUNT, 'every Active Product card must carry a quotation action');
+  assertContains(tienda.body, `class="fpcq-card-cta" href="${SITE_URL}/cotizacion/"`, 'card quotation actions must lead to the sole quotation surface');
+
+  // Todos / Agrícola / Otros filters: accessible controls with meaningful URLs.
+  assertContains(tienda.body, 'Filtrar productos por categoría', 'the category filter must be an accessible labelled control group');
+  assertContains(tienda.body, '>Todos</a>', 'the Todos view filter must be offered');
+  assert.ok(tienda.body.includes(`href="${SITE_URL}/tienda/" aria-current="true"`), 'Todos must be the active filter on the unfiltered grid');
+  const agricola = await get('/tienda/categoria/agricola/', MOBILE_UA);
+  assert.equal(agricola.status, 200, '/tienda/categoria/agricola/ must return HTTP 200');
+  assert.deepEqual(
+    [...new Set([...agricola.body.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]))],
+    CATEGORY_SLUGS('agricola'),
+    'the Agrícola filter must list exactly the agricola Products'
+  );
+  assert.ok(agricola.body.includes(`href="${SITE_URL}/tienda/categoria/agricola/" aria-current="true"`), 'the active filter must be marked with aria-current');
+  const otros = await get('/tienda/categoria/otros/', MOBILE_UA);
+  assert.equal(otros.status, 200, '/tienda/categoria/otros/ must return HTTP 200');
+  assert.deepEqual(
+    [...new Set([...otros.body.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]))],
+    CATEGORY_SLUGS('otros'),
+    'the Otros filter must list exactly the otros Products'
+  );
+  assert.equal((await get('/tienda/categoria/inexistente/', MOBILE_UA)).status, 404, 'an unknown category must resolve as 404, not an empty grid');
+
+  // Search includes Products and standard pages with a clear no-result behavior.
+  const searchProduct = await get('/?s=tomatera', MOBILE_UA);
+  assert.equal(searchProduct.status, 200, 'search must return HTTP 200');
+  assertContains(searchProduct.body, 'Resultados de búsqueda', 'search results must render a clear heading');
+  assertContains(searchProduct.body, `href="${SITE_URL}/producto/caja-tomatera/"`, 'search must include Products with canonical URLs');
+  assertContains(searchProduct.body, 'class="fpcq-card-cta"', 'searched Products keep their quotation action');
+  assertContains(searchProduct.body, 'role="search"', 'the search surface must expose a search form');
+  const searchPage = await get('/?s=nosotros', MOBILE_UA);
+  assert.equal(searchPage.status, 200, 'searching a page must return HTTP 200');
+  assertContains(searchPage.body, 'Páginas', 'search results must present standard pages');
+  assertContains(searchPage.body, `href="${SITE_URL}/nosotros/"`, 'the Nosotros page must be findable through search');
+  const searchNone = await get('/?s=zzzz-sin-resultados', MOBILE_UA);
+  assert.equal(searchNone.status, 200, 'a no-result search must return HTTP 200');
+  assertContains(searchNone.body, 'No encontramos resultados', 'a clear no-result behavior must render');
+  assertContains(searchNone.body, `href="${SITE_URL}/tienda/"`, 'the no-result state must recover into the catalog');
+  assertAbsent(searchNone.body, 'fpcq-card-cta', 'no Product cards may render without results');
+
+  // Related Products: up to three explicit reviewed ids in reviewed order.
+  const cosechera = await get(PRODUCT_URL, MOBILE_UA);
+  const relatedStart = cosechera.body.indexOf('class="fpcq-related"');
+  assert.ok(relatedStart !== -1, 'the product page must render its related Products');
+  const relatedSection = cosechera.body.slice(relatedStart, cosechera.body.indexOf('</section>', relatedStart));
+  const relatedOrder = [...relatedSection.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
+  assert.deepEqual(
+    relatedOrder,
+    PRODUCT_BY_SOURCE_ID.get('fp-caja-cosechera-3-4').related_ids.map((id) => PRODUCT_BY_SOURCE_ID.get(id).slug),
+    'related Products must render the reviewed ids in reviewed order without runtime guessing'
+  );
+  assert.ok(relatedOrder.length <= 3, 'at most three related Products may render');
+
+  // Archived Products leave discovery entirely, take no quotation actions and stop resolving.
+  const archivedDoc = cloneSourceDoc();
+  archivedDoc.products.find((p) => p.source_id === 'fp-caja-merlucera').lifecycle = 'archived';
+  const archiveRun = catalogSync([], writeFullFixture('discovery-archived.json', archivedDoc));
+  assert.equal(archiveRun.status, 0, `the discovery archive run must succeed:\n${archiveRun.stderr}`);
+  assertContains(archiveRun.stdout, 'Summary: created=0 updated=1 unchanged=16 warnings=0 errors=0', 'archiving for discovery must touch exactly one record');
+
+  const tiendaHidden = await get('/tienda/', MOBILE_UA);
+  assertAbsent(tiendaHidden.body, '/producto/caja-merlucera/', 'an archived Product must leave the Tienda grid');
+  assert.equal((tiendaHidden.body.match(/class="fpcq-card-cta"/g) || []).length, PRODUCT_COUNT - 1, 'the archived Product must take its quotation action with it');
+  const homeHidden = await get('/', MOBILE_UA);
+  assertAbsent(homeHidden.body, '/producto/caja-merlucera/', 'an archived Featured Product must leave the Home section');
+  const categoryHidden = await get('/tienda/categoria/otros/', MOBILE_UA);
+  assertAbsent(categoryHidden.body, '/producto/caja-merlucera/', 'an archived Product must leave the category filters');
+  const searchHidden = await get('/?s=merlucera', MOBILE_UA);
+  assertAbsent(searchHidden.body, 'class="fpcq-card-cta"', 'an archived Product must not appear in search');
+  assertContains(searchHidden.body, 'No encontramos resultados', 'searching an archived Product must show the no-result state');
+  assert.equal((await get('/producto/caja-merlucera/', MOBILE_UA)).status, 404, 'the archived Product URL must stop resolving');
+  const relatedHidden = await get('/producto/caja-pollera/', MOBILE_UA);
+  assertAbsent(relatedHidden.body, '/producto/caja-merlucera/', 'an archived Product must not render as a related Product');
+
+  // Restoring the reviewed source returns the Product to discovery.
+  const restoreRun = catalogSync();
+  assert.equal(restoreRun.status, 0, `the discovery restore run must succeed:\n${restoreRun.stderr}`);
+  assertContains(restoreRun.stdout, 'Summary: created=0 updated=1 unchanged=16 warnings=0 errors=0', 'the restore run must reactivate exactly one record');
+  assert.equal(publishedProductCount(), '17', 'all 17 Products must be active again');
+
+  section('Catalog discovery (issue #5)', [
+    'Home renders the approved eight Featured Products in source-controlled order with quotation actions',
+    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and /cotizacion/',
+    'Todos / Agrícola / Otros filters: labelled link controls, meaningful /tienda/categoria/<categoria>/ URLs, aria-current state; unknown categories 404',
+    'Search finds Products (as cards with quotation actions) and standard pages, with a clear no-result state back into the catalog',
+    'Related Products render up to three reviewed ids in reviewed order',
+    'An archived Product disappears from Home, Tienda, categories, search and related lists, and its URL stops resolving',
+  ]);
+});
+
+/* ─── 12. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + complete catalog (issues #2, #3, #4)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery (issues #2–#5)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -815,6 +932,12 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Local media imported once per distinct image (checksum-keyed reuse); a second complete sync reports zero changes',
     'Invalid schema/identity/slug/color/media sources exit non-zero with no partial mutation; missing products are warnings only',
     'Only explicit lifecycle changes archive/reactivate Products; changed media imports exactly once',
+    'Home renders the approved eight Featured Products in source-controlled order with quotation actions',
+    '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and /cotizacion/',
+    'Todos/Agrícola/Otros filters: labelled link controls with meaningful /tienda/categoria/<categoria>/ URLs and aria-current state; unknown categories 404',
+    'Search finds Products (as cards with quotation actions) and standard pages, with a clear no-result state',
+    'Related Products render up to three reviewed ids in reviewed order',
+    'An archived Product disappears from Home, Tienda, categories, search and related lists, and its URL stops resolving',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -827,6 +950,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- Pixel-accurate browser rendering at 412 px and desktop widths is intentionally not claimed by this automated check.`,
     `- Catalog facts come exclusively from the reviewed versioned Catalog Source (wordpress/data/products.json, schema v2); unconfirmed commercial minimums and packaging facts render as “Consultar” and no contradictory old-site values are copied.`,
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
+    `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and card quotation actions lead to the sole quotation surface /cotizacion/ (basket behavior arrives with issues #6/#7).`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

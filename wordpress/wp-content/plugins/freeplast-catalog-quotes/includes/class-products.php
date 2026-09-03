@@ -256,7 +256,7 @@ class Freeplast_CQ_Products {
 			array(
 				'post_type'        => 'fp_product',
 				'post_status'      => 'publish',
-				'posts_per_page'   => 3,
+				'posts_per_page'   => count( $related_ids ),
 				'no_found_rows'    => true,
 				'suppress_filters' => true,
 				'meta_query'       => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
@@ -273,8 +273,24 @@ class Freeplast_CQ_Products {
 			return '';
 		}
 
+		/* Render the reviewed order from the Catalog Source — never query or
+	   runtime order. Archived (draft) related Products drop out silently. */
+		$by_source_id = array();
+		foreach ( $related as $post ) {
+			$by_source_id[ (string) get_post_meta( $post->ID, '_fp_source_id', true ) ] = $post;
+		}
+		$ordered = array();
+		foreach ( $related_ids as $id ) {
+			if ( isset( $by_source_id[ $id ] ) ) {
+				$ordered[] = $by_source_id[ $id ];
+			}
+		}
+		if ( array() === $ordered ) {
+			return '';
+		}
+
 		$items = '';
-		foreach ( $related as $related_post ) {
+		foreach ( $ordered as $related_post ) {
 			$items .= sprintf(
 				'<li class="fpcq-related-item"><a href="%s">%s<span>%s</span></a></li>',
 				esc_url( get_permalink( $related_post ) ),

@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '0.2.0' );
+define( 'FREEPLAST_THEME_VERSION', '0.3.0' );
 
 /**
  * Enqueue the v6 shell stylesheet and the progressive navigation script.
