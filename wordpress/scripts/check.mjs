@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#6).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#12).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #6:
+ * verifies the acceptance criteria of issues #2 through #12:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -50,12 +50,24 @@
  *      Product/quantity and a route to the full Cotización view across
  *      refreshes, and invalid nonce/session/Product/quantity mutate nothing
  *      and return recoverable messages (JSON for the JS enhancement).
+ *  13. The complete v6 content and navigation experience is governed by a
+ *      frozen design contract (wordpress/design/): every navigation entry
+ *      point reaches its approved destination, Home keeps the concise v6
+ *      composition (Nosotros + contact sections, eight Featured Products,
+ *      a Quote Basket summary/CTA — never a second submission form),
+ *      Nosotros renders editable mission/vision page content, Contacto
+ *      renders the current contact surface with one CTA into Cotización
+ *      (no Inquiry record), Política de privacidad discloses
+ *      collection/submission without a consent checkbox, search/404 stay
+ *      usable, the header count and mini basket stay accurate on every
+ *      route, templates parse without block recovery, and the theme
+ *      contains no Catalog or Quote Request business logic.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, cpSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, cpSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request as httpRequest } from 'node:http';
@@ -619,7 +631,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '4', 'migration 4 (quote basket sessions) must be applied');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '5', 'migration 5 (v6 content takeover) must be applied');
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -1143,11 +1155,308 @@ test('a guest can add Products to a persistent, secure Quote Basket', { timeout:
   ]);
 });
 
-/* ─── 13. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ── 13. v6 content and navigation experience (issue #12) ───────────── */
+
+test('the complete v6 content and navigation experience is governed, connected and honest', { timeout: 120_000 }, async () => {
+  /* 13.1 — A frozen v6 design contract governs the presentation; the
+     obsolete v5 rules are not used. */
+  const designDir = join(WORDPRESS_DIR, 'design');
+  const decisions = readFileSync(join(designDir, 'DECISIONS.md'), 'utf8');
+  const tokens = JSON.parse(readFileSync(join(designDir, 'design-tokens.json'), 'utf8'));
+  assert.equal(tokens.frozen, true, 'the design contract must be declared frozen');
+  assert.equal(tokens.source.storefront.published, 'https://mliu.site/freeplast/v6/');
+  assert.equal(tokens.source.productPage.published, 'https://mliu.site/freeplast/v7/?variant=A');
+  assert.equal(tokens.color.roles.primaryAction, 'blue', 'the v6 contract makes blue the primary action color');
+  assert.equal(tokens.typography.fontFamily, 'Manrope');
+  assert.equal(tokens.obsolete.v5.status.includes('rejected'), true);
+
+  const recorded = [...decisions.matchAll(/\|\s*`([^`|]+)`\s*\|[^|]+\|\s*`([0-9a-f]{64})`\s*\|/g)];
+  assert.ok(recorded.length >= 6, 'DECISIONS.md must freeze every approved prototype file by hash');
+  for (const [, file, hash] of recorded) {
+    const actual = createHash('sha256').update(readFileSync(join(REPO_ROOT, file))).digest('hex');
+    assert.equal(actual, hash, `approved prototype ${file} must match its frozen SHA-256`);
+  }
+
+  // The theme implements the frozen tokens: the full v6 palette, Manrope and
+  // the blue primary control (the old v5 green-rectangular CTA is gone).
+  const themeDir = join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast');
+  const themeJson = readFileSync(join(themeDir, 'theme.json'), 'utf8');
+  const themeCss = readFileSync(join(themeDir, 'style.css'), 'utf8');
+  for (const [name, value] of Object.entries(tokens.color)) {
+    if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value)) {
+      assert.ok(themeJson.includes(value), `theme.json palette must carry the v6 ${name} token ${value}`);
+      assert.ok(themeCss.includes(value), `theme stylesheet must use the v6 ${name} token ${value}`);
+    }
+  }
+  assert.ok(themeCss.includes('Manrope'), 'the theme must set the frozen v6 typeface');
+  const primaryControl = themeCss.match(/\.fp-btn,\n\.wp-block-button__link \{[^}]*\}/)?.[0] || '';
+  assert.ok(primaryControl.includes('var(--fp-blue)'), 'the primary control must be the v6 blue button');
+  assert.ok(!primaryControl.includes('var(--fp-green)'), 'the obsolete v5 green primary CTA must not be used');
+  assert.ok(themeCss.includes('--fp-r-full: 9999px'), 'the v6 pill shape must be part of the token set');
+
+  // Obsolete v5 rules are gone from the governing implementation docs.
+  const target = readFileSync(join(REPO_ROOT, 'docs', 'agents', 'freeplast-wordpress', 'TARGET.md'), 'utf8');
+  const runbook = readFileSync(join(REPO_ROOT, 'docs', 'agents', 'freeplast-wordpress', 'RUNBOOK.md'), 'utf8');
+  for (const [name, doc] of [['TARGET.md', target], ['RUNBOOK.md', runbook]]) {
+    // A sentence may mention v5 only to reject it; prescribing it is the failure.
+    const prescribing = doc
+      .split('\n')
+      .filter((line) => /propuesta-editorial|Newsreader|Outfit/.test(line))
+      .filter((line) => !/reject/i.test(line));
+    assert.deepEqual(prescribing, [], `${name} must not prescribe the rejected v5 rules`);
+  }
+
+  /* 13.2 — Logo/Inicio, Nosotros, Tienda, Cotización count/CTA and Contacto
+     navigate to their approved destinations. */
+  const home = await get('/', MOBILE_UA);
+  assert.equal(home.status, 200, 'Home must return HTTP 200');
+  assertContains(home.body, 'class="fp-island-logo" href="/"', 'the logo must navigate Home');
+  for (const [label, href] of [
+    ['INICIO', '/'],
+    ['NOSOTROS', '/nosotros/'],
+    ['TIENDA', '/tienda/'],
+    ['CONTACTO', '/contacto/'],
+  ]) {
+    assertContains(home.body, `href="${href}">${label}</a>`, `the ${label} navigation link must target ${href}`);
+  }
+  assertContains(home.body, '<a href="/cotizacion/"><span>COTIZA ONLINE</span></a>', 'the mobile sheet must route the Cotiza Online CTA to Cotización');
+  assertContains(home.body, 'data-fpcq-basket-count', 'the header must render the Cotización count widget');
+  assertContains(home.body, 'Cotización (0)', 'the header count must be accurate on a fresh visit');
+  assertContains(home.body, 'Ver cotización completa', 'the mini basket must route to the full Cotización view');
+  assertContains(home.body, 'href="/politica-de-privacidad/"', 'the footer must link the privacy disclosure');
+  assertContains(home.body, 'href="/contacto/"', 'the footer must link the Contacto destination');
+  for (const route of ['/', '/nosotros/', '/tienda/', '/cotizacion/', '/contacto/', '/politica-de-privacidad/']) {
+    assert.equal((await get(route, DESKTOP_UA)).status, 200, `${route} must return HTTP 200 for a desktop user agent`);
+  }
+
+  /* 13.3 — Home retains the concise v6 composition: Nosotros + contact
+     sections, the eight Featured Products, and a Quote Basket summary/CTA
+     instead of a second submission form. */
+  assertContains(home.body, 'Somos los mejores en el mercado del plástico', 'Home must retain the concise v6 Nosotros headline');
+  assertContains(home.body, 'Comercializamos productos de excelente calidad', 'Home must retain the concise v6 Nosotros subheadline');
+  assertContains(home.body, 'Nuestra Misión', 'Home must summarize the current mission');
+  assertContains(home.body, 'Nuestra Visión', 'Home must summarize the current vision');
+  assertContains(home.body, 'href="/nosotros/"', 'the concise section must link the standalone Nosotros page');
+  assertContains(home.body, 'Nuestros Productos', 'Home must keep the Featured Products section');
+
+  const quoteSection = home.body.slice(home.body.indexOf('fp-home-quote'), home.body.indexOf('fp-home-contact'));
+  assert.ok(quoteSection.length > 0, 'Home must render the Cotiza Online basket section');
+  assertContains(quoteSection, 'Cotiza Online', 'the basket section must keep the v6 Cotiza Online title');
+  assertContains(quoteSection, 'cotización', 'the section must explain the shared Quote Basket');
+  assertContains(quoteSection, 'href="/cotizacion/"', 'the section CTA must enter the shared basket');
+  assertContains(quoteSection, 'href="/tienda/"', 'the section must offer the recovery path into Tienda');
+
+  const contactSection = home.body.slice(home.body.indexOf('fp-home-contact'), home.body.indexOf('fp-foot'));
+  assertContains(contactSection, 'tel:+56968444265', 'the concise contact section must offer the current phone');
+  assertContains(contactSection, 'mailto:ventas@freeplast.cl', 'the concise contact section must offer the current email');
+  assertContains(contactSection, 'api.whatsapp.com/send?phone=56968444265', 'the concise contact section must offer WhatsApp');
+  assertContains(contactSection, 'maps.app.goo.gl', 'the concise contact section must offer the warehouse map');
+  assertContains(contactSection, 'Lun a Vie 09:00 a 13:00 hrs y 14:00 a 18:00 hrs', 'the concise contact section must show the current hours');
+  assertContains(contactSection, 'href="/contacto/"', 'the concise section must link the standalone Contacto page');
+
+  const formCount = (html) => (html.match(/<form[\s>]/gi) || []).length;
+  const chooserCount = (html) => (html.match(/<form class="fpcq-basket-add"/g) || []).length;
+  assert.equal(formCount(home.body), chooserCount(home.body), 'Home must not carry a second submission form — basket choosers only');
+  assert.doesNotMatch(home.body, /action="mailto:/i, 'no mailto form action');
+
+  /* 13.4 — Nosotros renders the current mission and vision as editable
+     WordPress page content (baseline layout from the theme, never from
+     Site Editor overrides). */
+  const nosotros = await get('/nosotros/', MOBILE_UA);
+  assert.equal(nosotros.status, 200, '/nosotros/ must return HTTP 200');
+  assertContains(nosotros.body, 'Nuestra Misión', 'the Nosotros page must render the current mission');
+  assertContains(nosotros.body, 'Nuestra Visión', 'the Nosotros page must render the current vision');
+  assertContains(nosotros.body, 'Promover una cultura de cuidado del medio ambiente', 'the mission must be page content');
+  assertContains(nosotros.body, 'Ser la principal empresa comercializadora', 'the vision must be page content');
+  const nosotrosId = wp(['eval', 'echo (int) ( get_option( "fp_shell_pages", array() )["nosotros"] ?? 0 );']).stdout;
+  const originalContent = wp(['post', 'get', nosotrosId, '--field=post_content']).stdout;
+  wp(['post', 'update', nosotrosId, '--post_content=<!-- wp:paragraph --><p>Edición de verificación de contenido editable.</p><!-- /wp:paragraph -->']);
+  const edited = await get('/nosotros/', MOBILE_UA);
+  assertContains(edited.body, 'Edición de verificación de contenido editable', 'editing the page content must change the rendered page');
+  wp(['post', 'update', nosotrosId, `--post_content=${originalContent}`]);
+  assertContains((await get('/nosotros/', MOBILE_UA)).body, 'Nuestra Misión', 'the original mission must render after restoring the content');
+
+  /* 13.5 — Contacto renders the current contact surface with one CTA into
+     Cotización and creates no Inquiry record. */
+  const contacto = await get('/contacto/', MOBILE_UA);
+  assert.equal(contacto.status, 200, '/contacto/ must return HTTP 200');
+  assertContains(contacto.body, 'Visítanos', 'Contacto must render the warehouse section');
+  assertContains(contacto.body, 'href="https://maps.app.goo.gl/QtGSdagB55W7rnRj7"', 'the warehouse/map must link the location');
+  assertContains(contacto.body, 'href="tel:+56968444265"', 'Contacto must link the current phone');
+  assertContains(contacto.body, 'href="https://api.whatsapp.com/send?phone=56968444265"', 'Contacto must link WhatsApp');
+  assertContains(contacto.body, 'href="mailto:ventas@freeplast.cl"', 'Contacto must link the current email');
+  assertContains(contacto.body, 'Lun a Vie 09:00 a 13:00 hrs y 14:00 a 18:00 hrs', 'Contacto must show the current hours');
+  assert.equal(countMatches(contacto.body, '<div class="wp-block-button">'), 1, 'Contacto must carry exactly one CTA');
+  assertContains(contacto.body, `href="${SITE_URL}/cotizacion/"`, 'the single CTA must enter the Quote Basket');
+  assert.doesNotMatch(contacto.body, /<form[\s>]/i, 'Contacto must not create an Inquiry record — no form');
+  assertAbsent(contacto.body, 'type="checkbox"', 'no acknowledgement checkbox on Contacto');
+
+  /* 13.6 — Política de privacidad provides the basic collection/submission
+     disclosure without a standalone acknowledgement checkbox. */
+  const privacy = await get('/politica-de-privacidad/', MOBILE_UA);
+  assert.equal(privacy.status, 200, '/politica-de-privacidad/ must return HTTP 200');
+  assertContains(privacy.body, 'Qué información recopilamos', 'the disclosure must name what is collected');
+  assertContains(privacy.body, 'Para qué la usamos', 'the disclosure must name the purpose');
+  assertContains(privacy.body, 'ventas@freeplast.cl', 'the disclosure must name the recipient');
+  assertContains(privacy.body, '30 días', 'the disclosure must describe the anonymous basket session');
+  assert.doesNotMatch(privacy.body, /<form[\s>]/i, 'the privacy page must not render a form');
+  assertAbsent(privacy.body, 'type="checkbox"', 'no standalone privacy acknowledgement checkbox');
+
+  /* 13.7 — Search and 404 routes provide usable navigation and empty states. */
+  const notFound = await get('/esta-ruta-no-existe/', MOBILE_UA);
+  assert.equal(notFound.status, 404, 'an unknown URL must resolve as 404');
+  assertContains(notFound.body, 'Página no encontrada', 'the 404 route must explain the situation');
+  assertContains(notFound.body, 'role="search"', 'the 404 route must offer a search form');
+  assertContains(notFound.body, 'href="/tienda/"', 'the 404 route must recover into the catalog');
+  assertContains(notFound.body, 'href="/contacto/"', 'the 404 route must offer Contacto');
+  const searchEmpty = await get('/?s=zzzz-sin-resultados-v6', MOBILE_UA);
+  assertContains(searchEmpty.body, 'No encontramos resultados', 'search must keep its usable empty state');
+  assertContains(searchEmpty.body, 'href="/tienda/"', 'the search empty state must recover into the catalog');
+
+  /* 13.8 — Templates parse without block recovery. */
+  const parseReport = JSON.parse(
+    wp([
+      'eval',
+      '$theme = get_theme_file_path(); $out = array();' +
+        'foreach ( array_merge( glob( $theme . "/templates/*.html" ), glob( $theme . "/parts/*.html" ) ) as $file ) {' +
+        '$content = file_get_contents( $file ); $blocks = parse_blocks( $content ); $unparsed = 0;' +
+        'foreach ( $blocks as $b ) { if ( null === $b["blockName"] && false !== strpos( (string) $b["innerHTML"], "<!-- wp:" ) ) { $unparsed++; } }' +
+        '$opens = substr_count( $content, "<!-- wp:" );' +
+        '$selfclosed = substr_count( $content, "/-->" );' +
+        '$closes = substr_count( $content, "<!-- /wp:" );' +
+        '$out[ basename( dirname( $file ) ) . "/" . basename( $file ) ] = array( "unparsed" => $unparsed, "balance" => $opens - $selfclosed - $closes ); }' +
+        'echo wp_json_encode( $out );',
+    ]).stdout
+  );
+  const expectedTemplates = [
+    'templates/front-page.html',
+    'templates/index.html',
+    'templates/page.html',
+    'templates/search.html',
+    'templates/404.html',
+    'templates/archive-fp_product.html',
+    'templates/single-fp_product.html',
+    'parts/header.html',
+    'parts/footer.html',
+  ].sort();
+  assert.deepEqual(Object.keys(parseReport).sort(), expectedTemplates, 'every theme template and part must be inspected');
+  for (const [file, report] of Object.entries(parseReport)) {
+    assert.equal(report.unparsed, 0, `${file} must parse with no unparsed block markup (no block recovery)`);
+    assert.equal(report.balance, 0, `${file} must have balanced block delimiters`);
+  }
+
+  /* 13.9 — The theme contains no Catalog or Quote Request business logic. */
+  const walkFiles = (dir) => {
+    const out = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) out.push(...walkFiles(full));
+      else out.push(full);
+    }
+    return out;
+  };
+  const forbidden = [
+    'fp_product',
+    'WP_Query',
+    '$wpdb',
+    'get_posts',
+    'get_post_meta',
+    'update_post_meta',
+    'wp_insert_post',
+    'register_block_type',
+    'admin-post.php',
+    'basket_sessions',
+    'FREEPLAST_CQ',
+  ];
+  for (const file of walkFiles(themeDir)) {
+    if (statSync(file).isFile() && /\.(php|js|css|html|json)$/.test(file)) {
+      const content = readFileSync(file, 'utf8');
+      for (const token of forbidden) {
+        assert.ok(!content.includes(token), `${file.replace(themeDir + '/', '')} must not contain business logic (${token})`);
+      }
+      assert.ok(!content.includes('Newsreader') && !content.includes('Outfit'), `${file} must not use the rejected v5 typefaces`);
+    }
+  }
+
+  /* 13.10 — The header count and mini basket remain accurate on every route. */
+  const chooserPage = await get(PRODUCT_URL, MOBILE_UA);
+  const nonce = chooserPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(nonce, 'a chooser must be available to build a multi-line basket');
+  const addLine = (product, quantity, headers = {}) =>
+    postForm(
+      { action: 'fp_basket_add', fp_product: product, fp_quantity: quantity, fp_basket_nonce: nonce, _wp_http_referer: PRODUCT_URL, ...headers.fields },
+      headers.cookies
+    );
+  const firstLine = await addLine('fp-caja-cosechera-3-4', '5');
+  assert.equal(firstLine.status, 302, 'the first line must add successfully');
+  const token = firstLine.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(token, 'the guest must own a session cookie');
+  const secondLine = await addLine('fp-caja-tomatera', '10', { cookies: { cookie: `fpcq_basket=${token}` } });
+  assert.equal(secondLine.status, 302, 'the second line must add successfully');
+  const cookieHeader = { cookie: `fpcq_basket=${token}` };
+  const routes = [
+    '/',
+    '/nosotros/',
+    '/tienda/',
+    '/tienda/categoria/agricola/',
+    PRODUCT_URL,
+    '/cotizacion/',
+    '/contacto/',
+    '/politica-de-privacidad/',
+    '/?s=tomatera',
+    '/ruta-que-no-existe/',
+  ];
+  for (const route of routes) {
+    const res = await get(route, MOBILE_UA, cookieHeader);
+    assertContains(res.body, 'Cotización (2)', `${route}: the header count must show both distinct lines`);
+    assertContains(res.body, 'Caja Cosechera 3/4', `${route}: the mini basket must list the first line`);
+    assertContains(res.body, 'Caja Tomatera', `${route}: the mini basket must list the second line`);
+  }
+
+  /* 13.11 — Migration 5 replaces exactly the legacy placeholder content;
+     human edits survive. */
+  const shellPages = JSON.parse(wp(['option', 'get', 'fp_shell_pages', '--format=json']).stdout);
+  const contactoId = shellPages['contacto'];
+  const privacyId = shellPages['politica-de-privacidad'];
+  wp([
+    'eval',
+    `wp_update_post( array( "ID" => ${contactoId}, "post_content" => Freeplast_CQ_Shell::legacy_contacto_placeholder() ) );` +
+      `wp_update_post( array( "ID" => ${privacyId}, "post_content" => Freeplast_CQ_Shell::legacy_privacy_placeholder() ) );` +
+      'update_option( "fp_db_version", 4 );',
+  ]);
+  const migrated = wp(['eval', 'Freeplast_CQ_Migrations::run(); echo get_option( "fp_db_version" );']);
+  assert.equal(migrated.stdout, '5', 're-running the migrations must apply migration 5');
+  const contactoAfter = await get('/contacto/', MOBILE_UA);
+  assertContains(contactoAfter.body, 'api.whatsapp.com/send?phone=56968444265', 'migration 5 must upgrade the legacy Contacto content');
+  assertContains((await get('/politica-de-privacidad/', MOBILE_UA)).body, 'Qué información recopilamos', 'migration 5 must upgrade the legacy privacy content');
+
+  wp([
+    'eval',
+    `wp_update_post( array( "ID" => ${privacyId}, "post_content" => "<!-- wp:paragraph --><p>Edición humana que debe sobrevivir.</p><!-- /wp:paragraph -->" ) );` +
+      'update_option( "fp_db_version", 4 );',
+  ]);
+  wp(['eval', 'Freeplast_CQ_Migrations::run();']);
+  const editedContent = wp(['post', 'get', String(privacyId), '--field=post_content']).stdout;
+  assertContains(editedContent, 'Edición humana que debe sobrevivir', 'a human edit must never be clobbered by the migration');
+  wp(['eval', `wp_update_post( array( "ID" => ${privacyId}, "post_content" => Freeplast_CQ_Shell::privacy_content() ) );`]);
+
+  section('v6 content and navigation (issue #12)', [
+    'Frozen v6 design contract: design-tokens.json + DECISIONS.md hashes verified; theme implements the v6 palette/Manrope/blue controls; v5 rules removed from the governing docs',
+    'Logo/Inicio, Nosotros, Tienda, Cotización count/CTA and Contacto navigate to their approved destinations (desktop + mobile sheet + footer)',
+    'Home: concise Nosotros and contact sections, eight Featured Products, and a Quote Basket summary/CTA — no second submission form',
+    'Nosotros renders editable mission/vision page content; Contacto renders phone, email, WhatsApp, warehouse/map, hours + exactly one CTA into Cotización (no Inquiry record)',
+    'Política de privacidad carries the basic collection/submission disclosure without an acknowledgement checkbox',
+    'Search and 404 routes keep usable navigation and empty states; the header count (Cotización (2)) and mini basket stay accurate on every route',
+    'All nine templates/parts parse without block recovery; the theme contains no Catalog or Quote Request business logic',
+    'Migration 5 upgrades the legacy Contacto/privacy placeholders byte-safely; human edits survive',
+  ]);
+});
+
+/* ── 14. Write VERIFICATION.md and clean up ─────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket (issues #2–#6)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + v6 content (issues #2–#12)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -1186,6 +1495,14 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'The session cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
     'The basket survives refresh and navigation; the header counts distinct lines (Cotización (n)); the mini basket shows Product, quantity and a route to /cotizacion/',
     'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages; the JavaScript enhancement receives JSON state',
+    'Frozen v6 design contract (wordpress/design/): tokens + SHA-256-frozen approved prototypes verified; theme implements the v6 palette, Manrope and blue controls; v5 rules removed from the governing docs',
+    'Logo/Inicio, Nosotros, Tienda, Cotización count/CTA and Contacto navigate to their approved destinations',
+    'Home keeps the concise v6 composition: Nosotros + contact sections, eight Featured Products, Quote Basket summary/CTA — never a second submission form',
+    'Nosotros renders editable mission/vision page content; Contacto renders phone, email, WhatsApp, warehouse/map, hours and exactly one CTA into Cotización (no Inquiry record)',
+    'Política de privacidad provides the basic collection/submission disclosure without an acknowledgement checkbox',
+    'Search and 404 keep usable navigation and empty states; the header count and mini basket stay accurate on every route',
+    'All theme templates/parts parse without block recovery; the theme contains no Catalog or Quote Request business logic',
+    'Migration 5 upgrades the legacy Contacto/privacy placeholders byte-safely; human edits survive',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -1200,6 +1517,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issue #6): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation revalidates nonce, session, Product lifecycle/visibility and whole-unit quantity. Line editing/removal, option lines, expiry enforcement and the submission form arrive with issues #7/#8.`,
+    `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

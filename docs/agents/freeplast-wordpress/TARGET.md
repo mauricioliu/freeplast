@@ -15,16 +15,20 @@ is outside the dependency graph.
 
 ## Design contract
 
+Frozen in `wordpress/design/` (issue #12): `design-tokens.json` is the machine-readable v6
+contract, `DECISIONS.md` records the approved sources with SHA-256 hashes, `brief.md` the
+per-route behavior. The rejected v5 editorial direction must not be used.
+
 ### Storefront
 
-- Canonical prototype: `propuesta-editorial/index.html`
-- Published reference: `https://mliu.site/freeplast/v5/`
-- Tokens: `design-system/freeplast-editorial/MASTER.md`
-- Direction: Swiss/editorial catalog; paper surfaces, visible grid and hairline rules.
-- Typography: Newsreader for display headings; Outfit for UI/body.
-- Colors: locked Freeplast blue/green/neutrals plus validation red.
-- Shape: square geometry, no pills, no shadows.
-- Primary action: rectangular green button, at least 48px high.
+- Canonical prototype: `propuesta-textos-originales/` (the approved v6)
+- Published reference: `https://mliu.site/freeplast/v6/`
+- Tokens: `wordpress/design/design-tokens.json`
+- Direction: flat mobile-first storefront with the preserved Freeplast palette.
+- Typography: Manrope for display and UI/body (400–700), tabular numerals for data.
+- Colors: Freeplast blue `#100090` primary, green `#306020` accent, tint/dark bands.
+- Shape: soft radii (8 px controls, pills for island/chips, 24 px plates), glass island.
+- Primary action: blue button, 44 px minimum height, 8 px radius, gentle lift on hover.
 
 ### Product page
 
@@ -32,7 +36,7 @@ is outside the dependency graph.
 - Published reference: `https://mliu.site/freeplast/v7/?variant=A`
 - Keep: breadcrumb, large media, title/current description, four quick specs, quote action,
   specification table and related products.
-- Adapt: typography, geometry, header, spacing and CTA to v5 tokens.
+- Adapt: typography, geometry, header, spacing and CTA to the same v6 tokens and chrome.
 
 ### Content
 
@@ -45,12 +49,12 @@ copy.
 
 | Route | Owner and required state |
 |---|---|
-| `/` | theme: v5 home with current copy and dynamic product plates |
+| `/` | theme: v6 home — hero, concise Nosotros, eight Featured Products, Cotiza Online basket summary/CTA, concise contact |
 | `/tienda/` | plugin archive + theme template: full catalog and quote actions |
 | `/producto/<slug>/` | plugin record + theme product-A template |
 | `/cotizacion/` | plugin block: basket, quantity controls and request form |
 | `/nosotros/` | WordPress page: current mission and vision |
-| `/contacto/` | WordPress page: current details and contact form |
+| `/contacto/` | WordPress page: current details and one CTA into Cotización (no inquiry record) |
 | `/politica-de-privacidad/` | WordPress page: purpose, recipient and retention |
 | search/404 | theme: usable navigation and empty states |
 

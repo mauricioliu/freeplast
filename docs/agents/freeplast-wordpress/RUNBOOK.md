@@ -1,7 +1,7 @@
 # Freeplast WordPress catalog + quote build runbook
 
 Use this runbook to provision an isolated WordPress site on OpenClaw, implement the published
-**v5 editorial storefront** with the **product-page A structure**, and build a private catalog
+**v6 storefront** with the **product-page A structure**, and build a private catalog
 and quote-basket plugin.
 
 This is an execution recipe. Read [TARGET.md](TARGET.md) for the theme/plugin contract and
@@ -51,26 +51,26 @@ names, loopback port, hostname, volume names and rollback command in
 
 Open both approved sources:
 
-- v5 storefront: `propuesta-editorial/index.html`,
-  `design-system/freeplast-editorial/MASTER.md` and `https://mliu.site/freeplast/v5/`
+- v6 storefront: `propuesta-textos-originales/` and `https://mliu.site/freeplast/v6/`
 - product-page A: `product-page-prototype/?variant=A` and
   `https://mliu.site/freeplast/v7/?variant=A`
 
 Create `wordpress/design/` containing:
 
 - `brief.md`: pages, behavior and responsive intent;
-- `design-tokens.json`: v5 colors, typography, spacing, rules and buttons;
-- `approved/home.html`: immutable copy of v5;
-- `approved/product.html`: immutable copy of product-page A;
-- `DECISIONS.md`: source URLs, SHA-256 hashes and “A structure, v5 styling.”
+- `design-tokens.json`: the extracted v6 colors, typography, spacing, shape, controls,
+  navigation and interaction tokens;
+- `DECISIONS.md`: source URLs, SHA-256 hashes, “v6 tokens, v7-A structure” and the recorded
+  theme adaptations.
 
-The product page inherits **v5 tokens**—Newsreader, Outfit, square geometry, hairline rules,
-blue ink and green CTA. It inherits **A’s hierarchy**—gallery + summary, quick specs, quote
-action, detailed specification table and related products. Rounded cards, Manrope and the
-island navigation from A are outside the target.
+The product page inherits **v6 tokens**—Manrope, preserved Freeplast palette, soft radii
+and the island chrome—while keeping **A’s hierarchy**—gallery + summary, quick specs, quote
+action, detailed specification table and related products. Prototype switching, variants B/C
+and review-artifact links are outside the target. The earlier v5 editorial direction
+(`propuesta-editorial/`) was rejected and must not be used.
 
-**Done when:** both approved HTML hashes match, token JSON parses and DECISIONS records
-“A structure, v5 styling.”
+**Done when:** every approved-source hash matches, token JSON parses and DECISIONS records
+“v6 tokens, v7-A structure.” (Frozen 2026-09-03, issue #12.)
 
 ## Build sequence
 

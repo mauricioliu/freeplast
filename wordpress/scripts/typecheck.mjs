@@ -60,7 +60,11 @@ for (const file of jsFiles) {
 }
 
 /* JSON validity */
-for (const file of [join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast', 'theme.json'), join(WORDPRESS_DIR, 'data', 'products.json')]) {
+for (const file of [
+  join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast', 'theme.json'),
+  join(WORDPRESS_DIR, 'data', 'products.json'),
+  join(WORDPRESS_DIR, 'design', 'design-tokens.json'),
+]) {
   try {
     JSON.parse(readFileSync(file, 'utf8'));
     console.log(`ok   json ${file.replaceAll(WORDPRESS_DIR + '/', '')}`);

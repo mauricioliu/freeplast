@@ -24,6 +24,14 @@
  *               replaced by the freeplast/basket block. Only the exact
  *               seeded placeholder is replaced — human content edits are
  *               never clobbered.
+ * Migration 5 — v6 content and navigation (issue #12): the /contacto/ and
+ *               /politica-de-privacidad/ pages gain their complete
+ *               content — Contacto: current phone, email, WhatsApp,
+ *               warehouse/map and hours plus one CTA into Cotización (no
+ *               inquiry form); Política de privacidad: the basic
+ *               collection/submission disclosure without a consent
+ *               checkbox. Only the exact legacy placeholder is replaced;
+ *               no schema change.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -89,6 +97,44 @@ class Freeplast_CQ_Migrations {
 				}
 			}
 			$applied = 4;
+		}
+
+		if ( $applied < 5 ) {
+			// Migration 5 — the complete v6 Contacto and Política de
+			// privacidad content (see class-shell.php). Byte-compared takeovers:
+			// only the exact legacy placeholder is replaced, so human edits made
+			// since issue #2 survive untouched.
+			$shell_pages = get_option( 'fp_shell_pages', array() );
+			$takeovers   = array(
+				'contacto'               => array(
+					'legacy'  => 'legacy_contacto_placeholder',
+					'content' => 'contacto_content',
+				),
+				'politica-de-privacidad' => array(
+					'legacy'  => 'legacy_privacy_placeholder',
+					'content' => 'privacy_content',
+				),
+			);
+			foreach ( $takeovers as $slug => $methods ) {
+				if ( empty( $shell_pages[ $slug ] ) ) {
+					continue;
+				}
+				$page = get_post( (int) $shell_pages[ $slug ] );
+				if (
+					$page instanceof WP_Post &&
+					'page' === $page->post_type &&
+					$slug === $page->post_name &&
+					Freeplast_CQ_Shell::{$methods['legacy']}() === $page->post_content
+				) {
+					wp_update_post(
+						array(
+							'ID'           => $page->ID,
+							'post_content' => Freeplast_CQ_Shell::{$methods['content']}(),
+						)
+					);
+				}
+			}
+			$applied = 5;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {
