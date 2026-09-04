@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#15).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#20).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #15 (including
+ * verifies the acceptance criteria of issues #2 through #20 (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -138,6 +138,17 @@
  *      deterministically into dist/ with SHA-256 checksums verified by
  *      unzip -t and sha256sum -c, and the handoff never claims visual
  *      validation.
+ *  19. The theme markup is position-independent and block-safe (issue
+ *      #20): no template or part hardcodes an absolute wp-content theme
+ *      path — the header logo, footer brand mark and Home hero image
+ *      resolve through get_theme_file_uri() at render time (the
+ *      {{FREEPLAST_THEME_URL}} token the theme resolves), the same theme
+ *      sources are proven to render subdirectory-correct asset URLs when
+ *      the disposable installation boots under a /subdir site URL, and
+ *      every free-form (wp:html) block is balanced on its own (the header
+ *      wrap and island header are group block boundaries with the basket
+ *      button between them, so a Site Editor edit cannot split the v6
+ *      chrome across blocks).
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -4768,11 +4779,145 @@ test('the verification and operations handoff packages the build for independent
   ]);
 });
 
-/* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ─── 24. Position-independent theme assets and balanced free-form blocks (issue #20) ── */
+
+test('theme assets are position-independent and every free-form block is balanced (issue #20)', async () => {
+  const THEME_DIR = join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast');
+  const htmlFiles = ['templates', 'parts']
+    .flatMap((dir) => readdirSync(join(THEME_DIR, dir)).map((name) => `${dir}/${name}`))
+    .sort();
+
+  /* 24.1 — No hardcoded absolute theme-asset paths remain in the block
+     markup; the theme-owned images are referenced through the
+     {{FREEPLAST_THEME_URL}} token that functions.php resolves at render
+     time with get_theme_file_uri(). */
+  const tokenAssets = {
+    'parts/header.html': 'assets/img/mark.svg',
+    'parts/footer.html': 'assets/img/mark.svg',
+    'templates/front-page.html': 'assets/img/warehouse.webp',
+  };
+  const sources = new Map(htmlFiles.map((name) => [name, readFileSync(join(THEME_DIR, name), 'utf8')]));
+  for (const [name, content] of sources) {
+    assert.ok(!content.includes('/wp-content/themes/'), `${name} must not hardcode an absolute wp-content theme path`);
+  }
+  for (const [name, asset] of Object.entries(tokenAssets)) {
+    assert.ok(
+      sources.get(name).includes(`{{FREEPLAST_THEME_URL}}/${asset}`),
+      `${name} must reference ${asset} through the {{FREEPLAST_THEME_URL}} token`
+    );
+  }
+
+  /* 24.2 — Every free-form (wp:html) block is independently balanced: no
+     element may open in one block and close in another, so a Site Editor
+     edit can never silently corrupt the v6 chrome across a block
+     boundary. */
+  const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  const balanced = (fragment) => {
+    const stack = [];
+    for (const match of fragment
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .matchAll(/<(\/)?([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'>])*)(\/?)>/g)) {
+      const [, closing, rawTag, , selfClosing] = match;
+      const tag = rawTag.toLowerCase();
+      if (VOID_TAGS.has(tag) || selfClosing) continue;
+      if (closing) {
+        if (stack.pop() !== tag) return false;
+      } else {
+        stack.push(tag);
+      }
+    }
+    return stack.length === 0;
+  };
+  for (const [name, content] of sources) {
+    const blocks = [...content.matchAll(/<!-- wp:html -->([\s\S]*?)<!-- \/wp:html -->/g)];
+    for (const [index, block] of blocks.entries()) {
+      assert.ok(balanced(block[1]), `${name} free-form block #${index + 1} must be balanced on its own`);
+    }
+  }
+
+  /* 24.3 — At render time the token resolves through the WordPress theme
+     API and nothing unresolved reaches a served document; the resolved
+     assets are really served. */
+  const markUri = wp(['eval', 'echo wp_make_link_relative( get_theme_file_uri( "assets/img/mark.svg" ) );']).stdout;
+  const warehouseUri = wp(['eval', 'echo wp_make_link_relative( get_theme_file_uri( "assets/img/warehouse.webp" ) );']).stdout;
+  assert.match(markUri, /wp-content\/themes\/freeplast\/assets\/img\/mark\.svg$/, 'the logo URL must resolve from get_theme_file_uri()');
+  assert.match(warehouseUri, /wp-content\/themes\/freeplast\/assets\/img\/warehouse\.webp$/, 'the hero-image URL must resolve from get_theme_file_uri()');
+  /* The served <img> carries WordPress's lazy-loading attributes before
+     src, so match the resolved src within the tag instead of a fixed tag
+     prefix. */
+  const imgSrc = (uri) => new RegExp(`<img[^>]*src="${uri.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`);
+  for (const route of ['/', PRODUCT_URL, '/cotizacion/']) {
+    const res = await get(route, MOBILE_UA);
+    assert.equal(res.status, 200, `${route} must render to check the theme assets`);
+    assert.ok(!res.body.includes('{{FREEPLAST_THEME_URL}}'), `${route} must not leak the unresolved theme-URL token`);
+    assert.ok(imgSrc(markUri).test(res.body), `${route} must resolve the header logo through the theme API at render time`);
+  }
+  assert.ok(
+    imgSrc(warehouseUri).test((await get('/', MOBILE_UA)).body),
+    'Home must resolve the hero image through the theme API at render time'
+  );
+  /* The php -S built-in server sends no Content-Type for svg/webp, so the
+     "served as an image" proof is the byte signature of the response. */
+  const firstBytes = async (uri, bytes = 12) => {
+    const res = await fetch(SITE_URL + uri, { headers: { 'user-agent': MOBILE_UA } });
+    assert.equal(res.status, 200, `${uri} must be reachable at the resolved URL`);
+    return String.fromCharCode(...new Uint8Array((await res.arrayBuffer()).slice(0, bytes)));
+  };
+  assert.match(await firstBytes(markUri), /^<svg /, 'the resolved logo URL must really serve the SVG mark');
+  const webpHead = await firstBytes(warehouseUri);
+  assert.ok(webpHead.startsWith('RIFF') && webpHead.includes('WEBP'), 'the resolved hero-image URL must really serve the WebP image');
+
+  /* 24.4 — Position independence, proven: booting the same disposable
+     installation under a /subdir site URL renders subdirectory-correct
+     asset URLs from the unchanged theme sources, and the rendered parts
+     stay balanced as a whole. */
+  const subdirPhp = join(BUILD_DIR, 'issue-20-subdir-loader.php');
+  writeFileSync(
+    subdirPhp,
+    `<?php
+/* Same disposable database as wp-config.php, different site URL: what a
+   subdirectory install would render from the identical theme sources. */
+define( 'WP_HOME', '${SITE_URL}/subdir' );
+define( 'WP_SITEURL', '${SITE_URL}/subdir' );
+define( 'DB_NAME', 'freeplast_disposable' );
+define( 'DB_USER', 'db' );
+define( 'DB_PASSWORD', 'db' );
+define( 'DB_HOST', 'localhost' );
+define( 'DB_CHARSET', 'utf8mb4' );
+define( 'DB_COLLATE', '' );
+$table_prefix = 'fp_';
+define( 'ABSPATH', '${WP_DIR}/' );
+require ABSPATH . 'wp-settings.php';
+
+$rendered = '';
+foreach ( array( 'parts/header.html', 'parts/footer.html' ) as $part ) {
+	$rendered .= "\n" . do_blocks( file_get_contents( get_theme_file_path( $part ) ) );
+}
+echo $rendered;
+`
+  );
+  const subdir = spawnSync(PHP_BIN, [subdirPhp], { encoding: 'utf8' });
+  assert.equal(subdir.status, 0, `the subdirectory boot must succeed: ${subdir.stderr}`);
+  assert.ok(
+    subdir.stdout.includes('src="/subdir/wp-content/themes/freeplast/assets/img/mark.svg"'),
+    'the unchanged theme sources must render subdirectory-correct asset URLs (position independence)'
+  );
+  assert.ok(!subdir.stdout.includes('{{FREEPLAST_THEME_URL}}'), 'no unresolved theme-URL token may survive rendering');
+  assert.ok(!/src="\/wp-content\/themes\//.test(subdir.stdout), 'the subdirectory render must not fall back to root-absolute asset URLs');
+  assert.ok(balanced(subdir.stdout), 'the rendered header/footer parts must be balanced as a whole');
+
+  section('Position-independent assets and balanced free-form blocks (issue #20)', [
+    'No template/part hardcodes an absolute wp-content theme path; header logo, footer brand mark and Home hero image render through get_theme_file_uri() at render time (the {{FREEPLAST_THEME_URL}} token resolved by the theme)',
+    'The same theme sources render subdirectory-correct asset URLs when the disposable installation boots under a /subdir site URL; the resolved assets are reachable and served as images',
+    'Every free-form (wp:html) block in the theme is balanced on its own — the header wrap/island containers are group block boundaries with the basket button between them, and the rendered parts stay balanced as a whole',
+  ]);
+});
+
+/* ─── 25. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff (issues #2–#15)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + position-independent theme markup (issues #2–#20)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -4872,8 +5017,10 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'deploy.sh: umask 077, server-generated secrets into mode-0600/0400 files (never the repository or command output), Compose validation before up, es_CL + America/Santiago + approved HTTPS URLs + blog_public 0, catalog sync gated on a zero-change dry run, Nginx backed up before the vhost and nginx -t before reload',
     'verify.sh walks the acceptance matrix through HTTPS (301/401/owner+client 200s, every route, noindex at both layers, WordPress identity, catalog idempotence, non-live mail mode); backup.sh dumps + hashes + rehearses the restore into temporary project names; rollback.sh is bounded to the new resources with volumes retained unless the owner explicitly purges',
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
-    'Shipped artifacts (issue #15): theme freeplast 0.8.0 and plugin freeplast-catalog-quotes 0.8.0 recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)',
+    `Shipped artifacts (issue #15): theme ${checksumLines[0].replace(/^Theme:\s*/, '')} and plugin ${checksumLines[1].replace(/^Plugin:\s*/, '')} recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)`,
     'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',
+    'Theme assets are position-independent (issue #20): no template/part hardcodes an absolute wp-content theme path; the header logo, footer mark and Home hero image render through get_theme_file_uri() at render time, and a subdirectory boot of the same sources renders subdirectory-correct asset URLs',
+    'Every free-form (wp:html) block in the theme is balanced on its own (issue #20): the header wrap/island containers are group block boundaries with the basket button between them; the logo, navigation, burger and mobile sheet each stand in one self-contained block',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -4898,6 +5045,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
     `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
     `- The verification and operations handoff (issue #15) is wordpress/HANDOFF.md: it records where every verification dimension lives (including the on-server infrastructure/Nginx/browser-console steps that remain operator actions), the 17→17 catalog reconciliation with per-Product provisional facts, the Quote Request acceptance matrix with reproduction pointers, mechanical accessibility observations explicitly labelled as not human approval, the reproducible operator procedures, the Gate 3 review URLs and the exact pending owner/client actions. The shipped theme/plugin ZIPs and their SHA-256 manifest in dist/ are rebuilt deterministically by every npm test run and verified with unzip -t; nothing in the handoff claims visual validation.`,
+    `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

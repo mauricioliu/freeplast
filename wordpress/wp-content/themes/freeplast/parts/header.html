@@ -1,26 +1,36 @@
-<!-- wp:html -->
-<div class="fp-island-wrap">
-	<header class="fp-island">
+<!-- wp:group {"className":"fp-island-wrap"} -->
+<div class="wp-block-group fp-island-wrap">
+	<!-- wp:group {"tagName":"header","className":"fp-island"} -->
+	<header class="wp-block-group fp-island">
+		<!-- wp:html -->
 		<a class="fp-island-logo" href="/" aria-label="Freeplast — Inicio">
-			<img src="/wp-content/themes/freeplast/assets/img/mark.svg" alt="" width="40" height="40" />
+			<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark.svg" alt="" width="40" height="40" />
 			<span>Freeplast</span>
 		</a>
+		<!-- /wp:html -->
 
+		<!-- wp:html -->
 		<nav class="fp-island-links" aria-label="Navegación principal">
 			<a href="/">INICIO</a>
 			<a href="/nosotros/">NOSOTROS</a>
 			<a href="/tienda/">TIENDA</a>
 			<a href="/contacto/">CONTACTO</a>
 		</nav>
-<!-- /wp:html -->
-<!-- wp:freeplast/basket-button /-->
-<!-- wp:html -->
+		<!-- /wp:html -->
+
+		<!-- wp:freeplast/basket-button /-->
+
+		<!-- wp:html -->
 		<button class="fp-burger" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="fp-menu" data-fp-burger>
 			<span></span><span></span><span></span>
 		</button>
+		<!-- /wp:html -->
 	</header>
+	<!-- /wp:group -->
 </div>
+<!-- /wp:group -->
 
+<!-- wp:html -->
 <div class="fp-sheet" id="fp-menu" data-fp-sheet hidden>
 	<nav aria-label="Navegación móvil">
 		<a href="/"><span>INICIO</span></a>
