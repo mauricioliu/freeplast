@@ -138,8 +138,8 @@ class Freeplast_CQ_Admin {
 	 * (issue #11).
 	 */
 	private static function distance_summary( WP_Post $post ): string {
-		$distance = json_decode( (string) get_post_meta( $post->ID, Freeplast_CQ_Address::META_DISTANCE, true ), true );
-		if ( ! is_array( $distance ) ) {
+		$distance = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, Freeplast_CQ_Address::META_DISTANCE, true ) );
+		if ( array() === $distance ) {
 			return '—';
 		}
 		$status = (string) ( $distance['status'] ?? 'pending' );
@@ -186,14 +186,9 @@ class Freeplast_CQ_Admin {
 	/* Record access                                                       */
 	/* ------------------------------------------------------------------ */
 
-	private static function json_meta( int $post_id, string $key ): array {
-		$decoded = json_decode( (string) get_post_meta( $post_id, $key, true ), true );
-		return is_array( $decoded ) ? $decoded : array();
-	}
-
 	/** The immutable Submitted Details as stored at submission time. */
 	private static function submitted_details( int $post_id ): array {
-		return self::json_meta( $post_id, '_fpq_customer' );
+		return Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, '_fpq_customer', true ) );
 	}
 
 	/**
@@ -203,7 +198,7 @@ class Freeplast_CQ_Admin {
 	 * total either way).
 	 */
 	private static function current_details( int $post_id ): array {
-		$current = self::json_meta( $post_id, '_fpq_current' );
+		$current = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, '_fpq_current', true ) );
 		if ( array() !== $current ) {
 			return $current;
 		}
@@ -212,9 +207,9 @@ class Freeplast_CQ_Admin {
 
 	/** Append one history event (field names only — never PII values). */
 	private static function append_history( int $post_id, array $event ): void {
-		$history   = self::json_meta( $post_id, '_fpq_history' );
+		$history   = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, '_fpq_history', true ) );
 		$history[] = $event;
-		update_post_meta( $post_id, '_fpq_history', Freeplast_CQ_Request::encode_meta( $history ) );
+		update_post_meta( $post_id, '_fpq_history', Freeplast_CQ_Codec::encode( $history ) );
 	}
 
 	/** The acting staff identity (user id + display name). */
@@ -311,7 +306,7 @@ class Freeplast_CQ_Admin {
 			}
 		}
 
-		update_post_meta( $post->ID, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
+		update_post_meta( $post->ID, '_fpq_current', Freeplast_CQ_Codec::encode( $current ) );
 		update_post_meta( $post->ID, '_fpq_empresa', $current['empresa'] ); /* the list/search columns follow the current details */
 		update_post_meta( $post->ID, '_fpq_email', $current['email'] );
 		delete_transient( self::attempt_key( $post->ID ) );
@@ -336,12 +331,12 @@ class Freeplast_CQ_Admin {
 			self::redirect_detail( $post->ID, 'note_invalid' );
 		}
 
-		$notes   = self::json_meta( $post->ID, '_fpq_notes' );
+		$notes   = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_notes', true ) );
 		$notes[] = array_merge(
 			array( 'time' => current_time( 'mysql' ), 'text' => $text ),
 			self::staff_identity()
 		);
-		update_post_meta( $post->ID, '_fpq_notes', Freeplast_CQ_Request::encode_meta( $notes ) );
+		update_post_meta( $post->ID, '_fpq_notes', Freeplast_CQ_Codec::encode( $notes ) );
 		self::redirect_detail( $post->ID, 'note_added' );
 	}
 
@@ -610,7 +605,7 @@ class Freeplast_CQ_Admin {
 		$reference = (string) get_post_meta( $post->ID, '_fpq_reference', true );
 		$status    = (string) get_post_meta( $post->ID, '_fpq_status', true );
 		$customer  = self::submitted_details( $post->ID );
-		$items     = self::json_meta( $post->ID, '_fpq_items' );
+		$items     = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_items', true ) );
 
 		$dispatched = 'si' === (string) ( $customer['con_despacho'] ?? '' );
 
@@ -675,8 +670,9 @@ class Freeplast_CQ_Admin {
 		}
 
 		/* Historial (eventos sin valores de PII). */
+		$history      = array_reverse( Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_history', true ) ) );
 		$history_rows = '';
-		foreach ( array_reverse( self::json_meta( $post->ID, '_fpq_history' ) ) as $event ) {
+		foreach ( $history as $event ) {
 			$event = is_array( $event ) ? $event : array();
 			$history_rows .= sprintf(
 				'<tr><td>%1$s</td><td>%2$s</td><td>%3$s</td></tr>',
@@ -690,8 +686,9 @@ class Freeplast_CQ_Admin {
 		}
 
 		/* Notas internas. */
+		$notes     = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_notes', true ) );
 		$note_rows = '';
-		foreach ( self::json_meta( $post->ID, '_fpq_notes' ) as $note ) {
+		foreach ( $notes as $note ) {
 			$note = is_array( $note ) ? $note : array();
 			$note_rows .= sprintf(
 				'<tr><td>%1$s</td><td>%2$s</td><td>%3$s</td></tr>',

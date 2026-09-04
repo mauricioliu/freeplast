@@ -88,21 +88,6 @@ class Freeplast_CQ_Notifications {
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Persisted meta helpers                                              */
-	/* ------------------------------------------------------------------ */
-
-	/** One record's decoded JSON meta as an array (empty when absent or corrupt). */
-	private static function decoded_meta( int $post_id, string $key ): array {
-		$decoded = json_decode( (string) get_post_meta( $post_id, $key, true ), true );
-		return is_array( $decoded ) ? $decoded : array();
-	}
-
-	/** The JSON encoding every persisted notification meta value uses. */
-	private static function encode( array $data ): string {
-		return wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-	}
-
-	/* ------------------------------------------------------------------ */
 	/* The durable jobs                                                    */
 	/* ------------------------------------------------------------------ */
 
@@ -121,7 +106,7 @@ class Freeplast_CQ_Notifications {
 
 	/** The initial pending job state, encoded as stored meta (the submission insert and the migration backfill share it). */
 	public static function initial_state_json(): string {
-		return self::encode( self::initial_state() );
+		return Freeplast_CQ_Codec::encode( self::initial_state() );
 	}
 
 	/** Schedule the delivery event of one reference (fire-and-forget: a scheduling failure leaves the jobs pending for retries and the staff resend). */
@@ -133,7 +118,7 @@ class Freeplast_CQ_Notifications {
 
 	/** The persisted job state of one record (pre-slice records read as pending until migration 7 backfills them). */
 	public static function states( int $post_id ): array {
-		$decoded = self::decoded_meta( $post_id, self::META_JOBS );
+		$decoded = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, self::META_JOBS, true ) );
 
 		$states = array();
 		foreach ( self::CHANNELS as $channel ) {
@@ -158,7 +143,7 @@ class Freeplast_CQ_Notifications {
 	private static function update_channel( int $post_id, string $channel, array $fields ): void {
 		$states             = self::states( $post_id );
 		$states[ $channel ] = array_merge( $states[ $channel ], $fields );
-		update_post_meta( $post_id, self::META_JOBS, self::encode( $states ) );
+		update_post_meta( $post_id, self::META_JOBS, Freeplast_CQ_Codec::encode( $states ) );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -274,8 +259,8 @@ class Freeplast_CQ_Notifications {
 	 */
 	private static function message( WP_Post $post, string $channel ): array {
 		$reference = (string) get_post_meta( $post->ID, '_fpq_reference', true );
-		$customer  = self::decoded_meta( $post->ID, '_fpq_customer' );
-		$items     = self::decoded_meta( $post->ID, '_fpq_items' );
+		$customer  = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ) );
+		$items     = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_items', true ) );
 
 		$nombre   = (string) ( $customer['nombre'] ?? '' );
 		$email    = (string) ( $customer['email'] ?? '' );
@@ -488,7 +473,7 @@ class Freeplast_CQ_Notifications {
 	/* ------------------------------------------------------------------ */
 
 	private static function log_event( int $post_id, string $channel, string $state, string $code ): void {
-		$logs = self::decoded_meta( $post_id, self::META_LOG );
+		$logs = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, self::META_LOG, true ) );
 
 		$logs[] = array(
 			'time'    => time(),
@@ -499,7 +484,7 @@ class Freeplast_CQ_Notifications {
 		if ( count( $logs ) > self::LOG_MAX ) {
 			$logs = array_slice( $logs, -self::LOG_MAX );
 		}
-		update_post_meta( $post_id, self::META_LOG, self::encode( $logs ) );
+		update_post_meta( $post_id, self::META_LOG, Freeplast_CQ_Codec::encode( $logs ) );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -539,7 +524,7 @@ class Freeplast_CQ_Notifications {
 		$states = self::states( $post->ID );
 		$mode   = self::mode();
 
-		$customer = self::decoded_meta( $post->ID, '_fpq_customer' );
+		$customer = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ) );
 		$recipients = array(
 			'sales'    => self::sales_recipient(),
 			'customer' => (string) ( $customer['email'] ?? '' ),

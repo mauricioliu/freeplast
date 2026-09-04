@@ -6,6 +6,42 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #17: one JSON codec for stored meta
+
+Quote Request meta, Catalog Sync and Notifications each carried their
+own identical JSON encode/decode for stored meta (three encoders, two
+decoders) plus inline decoding in the Delivery Address flow (and the
+same flagged encode inline in the basket session store). Decisions:
+
+1. **One plugin-level codec pair owns the stored form.** New
+   `includes/class-codec.php` (`Freeplast_CQ_Codec::encode()/decode()`) is
+   the only place the stored JSON form is decided; every stored-meta
+   write/read now goes through it — Quote Request meta (`_fpq_*`),
+   Catalog Sync product meta, notification jobs/logs, `_fp_options` /
+   `_fp_related_ids` / `_fp_legacy_paths`, the basket session
+   `basket_lines` column and the Delivery Address destination/distance
+   meta (the inline decodes included). The retired per-class helpers
+   (`Freeplast_CQ_Request::encode_meta()`, Catalog Sync `pack()`,
+   Notifications `encode()/decoded_meta()`, Admin `json_meta()`) are
+   deleted, not wrapped.
+2. **The stored form stays byte-for-byte identical.** Encode keeps
+   `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE` — the documented
+   issue #4 decision: unescaped JSON survives the metadata API
+   unscathed (`update_post_meta` unslashes scalar values), so the
+   stored form equals the compared form on every later run. Decode
+   returns `array()` for absent/corrupt/non-array values, exactly the
+   semantics the removed helpers had. Non-meta JSON is deliberately
+   untouched: the catalog source document and the Google provider wire
+   bodies keep their own encodings.
+3. **Identity is proven, not assumed.** The check asserts the byte
+   form exactly, decodes absent/corrupt meta as empty, round-trips
+   every persisted meta key on the running installation back to its
+   own bytes, and re-runs the catalog dry run after the swap expecting
+   zero changes (`created=0 updated=0 unchanged=17 errors=0`).
+
+Notes for next iteration: no schema change, no migration — existing
+staging data reads and writes identically through the codec.
+
 ## 2026-09-04 — Issue #16: single-source the staging infrastructure constants
 
 The staging hostname, install root and loopback port lived as literals in

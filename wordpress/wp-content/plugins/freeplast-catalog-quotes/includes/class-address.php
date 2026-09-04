@@ -377,7 +377,7 @@ class Freeplast_CQ_Address {
 	 * @return array The stored distance state.
 	 */
 	public static function calculate_and_store( int $post_id ): array {
-		$destination = json_decode( (string) get_post_meta( $post_id, self::META_DESTINATION, true ), true );
+		$destination = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, self::META_DESTINATION, true ) );
 
 		$result = array(
 			'status'        => 'pending',
@@ -388,7 +388,7 @@ class Freeplast_CQ_Address {
 			'error'         => '',
 		);
 
-		if ( ! is_array( $destination ) || '' === (string) ( $destination['address'] ?? '' ) ) {
+		if ( array() === $destination || '' === (string) ( $destination['address'] ?? '' ) ) {
 			$result['error'] = 'destination_missing';
 		} else {
 			$client = self::client();
@@ -409,7 +409,7 @@ class Freeplast_CQ_Address {
 			}
 		}
 
-		update_post_meta( $post_id, self::META_DISTANCE, wp_json_encode( $result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post_id, self::META_DISTANCE, Freeplast_CQ_Codec::encode( $result ) );
 		return $result;
 	}
 
@@ -609,13 +609,12 @@ class Freeplast_CQ_Address {
 	 * internal sales fact — never presented as a shipping price.
 	 */
 	public static function render_admin_distance( WP_Post $post ): string {
-		$destination = json_decode( (string) get_post_meta( $post->ID, self::META_DESTINATION, true ), true );
-		if ( ! is_array( $destination ) ) {
+		$destination = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, self::META_DESTINATION, true ) );
+		if ( array() === $destination ) {
 			return '<h2>Distancia de despacho</h2><p class="description">Sin despacho solicitado — no aplica distancia.</p>';
 		}
 
-		$distance = json_decode( (string) get_post_meta( $post->ID, self::META_DISTANCE, true ), true );
-		$distance = is_array( $distance ) ? $distance : array();
+		$distance = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, self::META_DISTANCE, true ) );
 
 		$status = (string) ( $distance['status'] ?? 'pending' );
 		if ( 'ok' === $status ) {

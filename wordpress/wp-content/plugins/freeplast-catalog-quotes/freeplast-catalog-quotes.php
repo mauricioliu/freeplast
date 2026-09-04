@@ -22,6 +22,7 @@ define( 'FREEPLAST_CQ_VERSION', '0.8.0' );
 define( 'FREEPLAST_CQ_DB_VERSION', 7 );
 define( 'FREEPLAST_CQ_FILE', __FILE__ );
 
+require_once __DIR__ . '/includes/class-codec.php';
 require_once __DIR__ . '/includes/class-migrations.php';
 require_once __DIR__ . '/includes/class-shell.php';
 require_once __DIR__ . '/includes/class-products.php';
