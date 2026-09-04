@@ -283,6 +283,31 @@ function humanPaced(sessionToken, idemToken, seconds = 60) {
   ]).stdout;
 }
 
+/**
+ * A complete valid set of request-form fields (Con Despacho: No) shared
+ * by every issue #13 section that drives a submission. The older sections
+ * keep their own dispatch-oriented copies.
+ */
+const VALID_REQUEST_FIELDS = {
+  fp_nombre: 'María González',
+  fp_telefono: '+56 9 6844 4265',
+  fp_email: 'maria@acme.cl',
+  fp_empresa: 'Agrícola ACME SpA',
+  fp_rut: '76.335.888-6',
+  fp_giro: 'Comercialización de productos plásticos',
+  fp_despacho: 'no',
+  fp_direccion: '',
+  fp_mensaje: '',
+};
+
+/** Auth cookies of one user (auth + logged_in), for driving guarded admin surfaces. */
+function authCookie(userId = 1) {
+  return wp([
+    'eval',
+    `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "logged_in" );`,
+  ]).stdout;
+}
+
 /** Occurrences of a literal substring. */
 function countMatches(haystack, needle) {
   return haystack.split(needle).length - 1;
@@ -1516,10 +1541,7 @@ test('a guest can edit the Quote Basket: options, update/remove, expiry and staf
   assert.equal(productMeta(polleraId, '_fp_quote_min_qty'), '', 'the unconfirmed minimum must be deleted again (no minimum claim)');
 
   // A logged-in staff browser still uses the anonymous cookie basket.
-  const staffCookie = wp([
-    'eval',
-    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-  ]).stdout;
+  const staffCookie = authCookie();
   assert.ok(staffCookie.includes('='), 'a staff auth cookie must be generated');
   const staffHeaders = { cookie: `${staffCookie}; fpcq_basket=${token}` };
   assert.equal((await get('/wp-admin/profile.php', MOBILE_UA, { cookie: staffCookie })).status, 200, 'the staff cookie must authenticate');
@@ -2260,10 +2282,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   assert.equal(eligRecord.items[0].quantity, 7);
 
   /* 15.10 — Minimal capability-protected admin inspection. */
-  const adminCookie = wp([
-    'eval',
-    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-  ]).stdout;
+  const adminCookie = authCookie();
   assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
   const canManage = wp(['eval', 'echo user_can( 1, "manage_freeplast_quotes" ) ? "yes" : "no";']).stdout;
   assert.equal(canManage, 'yes', 'administrators receive the dedicated sales capability (migration 6)');
@@ -2291,10 +2310,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
     'echo (int) wp_insert_user( array( "user_login" => "fp_sinventas", "user_pass" => wp_generate_password( 24 ), "user_email" => "sinventas@example.test" ) );',
   ]).stdout;
   assert.ok(Number(subUserId) > 0, 'a capability-less user must be created for the denial check');
-  const subCookie = wp([
-    'eval',
-    `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "logged_in" );`,
-  ]).stdout;
+  const subCookie = authCookie(subUserId);
   const deniedList = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: subCookie });
   assert.notEqual(deniedList.status, 200, 'the Cotizaciones surface must deny users without the capability');
   assertAbsent(deniedList.body, 'Agrícola ACME SpA', 'no request data may reach a denied user');
@@ -2325,12 +2341,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
 /* ─── 16. Sales administration workflow (issue #9) ───────────────── */
 
 test('sales operates Quote Requests through the restricted Cotizaciones workflow', { timeout: 240_000 }, async () => {
-  const authCookie = (userId) =>
-    wp([
-      'eval',
-      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "logged_in" );`,
-    ]).stdout;
-  const adminCookie = authCookie(1);
+  const adminCookie = authCookie();
   const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpqa_notice');
   const quoteMeta = (id, key) => wp(['eval', `echo (string) get_post_meta( ${id}, "${key}", true );`]).stdout;
   const quoteJson = (id, key) => JSON.parse(wp(['eval', `echo (string) get_post_meta( ${id}, "${key}", true );`]).stdout || 'null');
@@ -2644,12 +2655,6 @@ test('sales and customer notifications are durable jobs delivered independently 
         (allow === null ? '' : ` update_option( "freeplast_cq_mail_allow", "${allow}" );`),
     ]);
   const runDelivery = (reference) => wp(['eval', `Freeplast_CQ_Notifications::process( "${reference}" );`]);
-  /** Auth cookies of one user (auth + logged_in), for driving guarded admin surfaces. */
-  const authCookie = (userId) =>
-    wp([
-      'eval',
-      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "logged_in" );`,
-    ]).stdout;
 
   /* The single external mail adapter seam: every delivery is recorded and
      answered per the configured behavior (ok | fail | fail:sales |
@@ -3293,10 +3298,7 @@ class FP_Fake_Google_Client {
     assert.equal(record4.distance.error, 'route_unavailable');
     fakeMode('ok');
 
-    const adminCookie = wp([
-      'eval',
-      'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-    ]).stdout;
+    const adminCookie = authCookie();
     assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
     const recordId4 = record4.id;
     const adminHeaders = { cookie: adminCookie };
@@ -3337,10 +3339,7 @@ class FP_Fake_Google_Client {
     assert.equal(badRetry.status, 403, 'a bad retry nonce must be rejected');
     const subUserId = wp(['eval', 'echo (int) get_user_by( "login", "fp_sinventas" )->ID;']).stdout;
     assert.ok(Number(subUserId) > 0, 'the capability-less user from section 15 must exist');
-    const subCookie = wp([
-      'eval',
-      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "logged_in" );`,
-    ]).stdout;
+    const subCookie = authCookie(subUserId);
     const deniedRetry = await postForm(
       { action: 'fp_distance_retry', p: String(recordId4), fp_distance_nonce: retryNonce, _wp_http_referer: '/wp-admin/' },
       { cookie: subCookie }
@@ -3419,22 +3418,11 @@ class FP_Fake_Google_Client {
   }
 });
 
-/* ─── 19. Hardened journey (issue #13) ───────────────────────────── */
+/* ─── 19-21. Hardened journey (issue #13) ─────────────────────────── */
 
 test('the complete one- and multi-Product journey passes with JavaScript enabled and disabled', { timeout: 180_000 }, async () => {
   const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
   const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
-  const validFields = {
-    fp_nombre: 'María González',
-    fp_telefono: '+56 9 6844 4265',
-    fp_email: 'maria@acme.cl',
-    fp_empresa: 'Agrícola ACME SpA',
-    fp_rut: '76.335.888-6',
-    fp_giro: 'Comercialización de productos plásticos',
-    fp_despacho: 'no',
-    fp_direccion: '',
-    fp_mensaje: '',
-  };
   const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
   const before = quoteCount();
 
@@ -3463,7 +3451,7 @@ test('the complete one- and multi-Product journey passes with JavaScript enabled
   assert.ok(oneCreds.nonce && oneCreds.token, 'the form carries its nonce and idempotency token');
   assert.equal(humanPaced(one, oneCreds.token), 'ok', 'the journey submission must be paced like a human fill');
   const oneSubmit = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_request_nonce: oneCreds.nonce, fp_request_token: oneCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: oneCreds.nonce, fp_request_token: oneCreds.token, _wp_http_referer: '/cotizacion/' },
     { cookie: `fpcq_basket=${one}` }
   );
   const oneRef = submittedRef(oneSubmit);
@@ -3523,7 +3511,7 @@ test('the complete one- and multi-Product journey passes with JavaScript enabled
   const multiCreds = requestCredentials(cotMulti.body);
   assert.equal(humanPaced(multi, multiCreds.token), 'ok', 'the multi-Product submission must be paced like a human fill');
   const multiSubmit = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_mensaje: 'Dos productos en un solo envío.', fp_request_nonce: multiCreds.nonce, fp_request_token: multiCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_mensaje: 'Dos productos en un solo envío.', fp_request_nonce: multiCreds.nonce, fp_request_token: multiCreds.token, _wp_http_referer: '/cotizacion/' },
     { cookie: `fpcq_basket=${multi}` }
   );
   const multiRef = submittedRef(multiSubmit);
@@ -3611,13 +3599,14 @@ test('keyboard operation, motion safety, control sizing and contrast meet mechan
   // The honeypot is programmatically hidden and keyboard-excluded.
   const honeypot = body.match(/<div class="fpcq-hp"[^>]*>/)?.[0] || '';
   assert.ok(/aria-hidden="true"/.test(honeypot), 'the honeypot is hidden from assistive technology');
-  assert.ok(/tabindex="-1"/.test(body.slice(body.indexOf('fpcq-hp'), body.indexOf('fpcq-hp') + 400)), 'the honeypot is removed from the tab order');
+  const honeypotAt = body.indexOf('fpcq-hp');
+  assert.ok(/tabindex="-1"/.test(body.slice(honeypotAt, honeypotAt + 400)), 'the honeypot is removed from the tab order');
 
   // Every visible form control is labelled; the error summary is focusable
   // and its links point at real field anchors.
   const form = pluginSection(body, 'class="fpcq-request-form"', 'the request form must render');
-  const labelled = [...form.matchAll(/<input [^>]*>/g)].map((m) => m[0]);
-  for (const input of labelled) {
+  const inputs = [...form.matchAll(/<input [^>]*>/g)].map((m) => m[0]);
+  for (const input of inputs) {
     const type = input.match(/type="([^"]+)"/)?.[1];
     if (type === 'hidden') continue;
     const id = input.match(/id="([^"]+)"/)?.[1];
@@ -3654,18 +3643,28 @@ test('keyboard operation, motion safety, control sizing and contrast meet mechan
     body: m[2],
   }));
   const ruleOf = (name) => rules.find((r) => r.selectors.includes(name))?.body || '';
-  const minHeightOf = (name) =>
+  /** The widest min-height declared by the rules that list the selector exactly. */
+  const exactMinHeight = (selector) =>
     Math.max(
       0,
       ...rules
-        .filter((r) => r.selectors.includes(name))
+        .filter((r) => r.selectors.includes(selector))
+        .map((r) => Number(r.body.match(/min-height:\s*(\d+)px/)?.[1] || 0))
+    );
+  /** The widest min-height declared by the rules that mention the selector
+      at all — compound selectors and media-query variants included. */
+  const mentionedMinHeight = (selector) =>
+    Math.max(
+      0,
+      ...rules
+        .filter((r) => r.selectors.some((s) => s.includes(selector)))
         .map((r) => Number(r.body.match(/min-height:\s*(\d+)px/)?.[1] || 0))
     );
   for (const control of ['.fp-btn', '.fp-btn-sm', '.fpcq-request-submit', '.fpcq-add-submit', '.fpcq-edit-submit', '.fpcq-remove-submit', '.fpcq-choice', '.fpcq-add-option', '.fpcq-filters a']) {
-    const px = Math.max(minHeightOf(control), ...rules.filter((r) => r.body.includes('min-height') && r.selectors.some((s) => s.includes(control))).map((r) => Number(r.body.match(/min-height:\s*(\d+)px/)?.[1] || 0)));
+    const px = mentionedMinHeight(control);
     assert.ok(px >= 24, `${control} must declare a minimum target height of at least 24px (found ${px}px)`);
   }
-  assert.ok(minHeightOf('.fp-btn') >= 44, 'primary controls must keep the 44px target');
+  assert.ok(exactMinHeight('.fp-btn') >= 44, 'primary controls must keep the 44px target');
   const burgerHeight = Number(ruleOf('.fp-burger').match(/height:\s*(\d+)px/)?.[1] || 0);
   assert.ok(burgerHeight >= 24, 'the burger trigger must meet the minimum target size');
 
@@ -3713,17 +3712,6 @@ test('keyboard operation, motion safety, control sizing and contrast meet mechan
 test('the honeypot, minimum completion time and bounded throttling reject abuse without blocking ordinary retries', { timeout: 180_000 }, async () => {
   const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
   const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
-  const validFields = {
-    fp_nombre: 'María González',
-    fp_telefono: '+56 9 6844 4265',
-    fp_email: 'maria@acme.cl',
-    fp_empresa: 'Agrícola ACME SpA',
-    fp_rut: '76.335.888-6',
-    fp_giro: 'Comercialización de productos plásticos',
-    fp_despacho: 'no',
-    fp_direccion: '',
-    fp_mensaje: '',
-  };
   const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
   const headers = (token) => ({ cookie: `fpcq_basket=${token}` });
   const seedSession = async () => {
@@ -3747,7 +3735,7 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
   assert.ok(hpCreds.nonce && hpCreds.token, 'the honeypot flow carries its form credentials');
   assertContains(honeypotPage.body, 'name="fp_referencia"', 'the honeypot field renders on the form');
   const spam = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_referencia: 'http://spam.example/offer', fp_request_nonce: hpCreds.nonce, fp_request_token: hpCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_referencia: 'http://spam.example/offer', fp_request_nonce: hpCreds.nonce, fp_request_token: hpCreds.token, _wp_http_referer: '/cotizacion/' },
     headers(honeypotToken)
   );
   assert.equal(noticeOf(spam), 'spam', 'a filled honeypot must be rejected as spam');
@@ -3761,7 +3749,7 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
   const fastPage = await get('/cotizacion/', MOBILE_UA, headers(fastToken));
   const fastCreds = requestCredentials(fastPage.body);
   const tooFast = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
     headers(fastToken)
   );
   assert.equal(noticeOf(tooFast), 'too_fast', 'a submission faster than a human fill must be rejected');
@@ -3774,7 +3762,7 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
 
   await new Promise((resolve) => setTimeout(resolve, 2400)); /* the plausible minimum (2s) plus margin */
   const human = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
     headers(fastToken)
   );
   assert.match(submittedRef(human), /^FP-\d{4}-\d{6}$/, 'the ordinary retry after the minimum time succeeds');
@@ -3797,7 +3785,7 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
     const creds = requestCredentials(page.body);
     assert.equal(humanPaced(floodToken, creds.token), 'ok', `throttling submission ${i + 1} must be paced like a human fill`);
     const res = await postForm(
-      { action: 'fp_request_submit', ...validFields, fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
+      { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
       headers(floodToken)
     );
     assert.match(submittedRef(res), /^FP-\d{4}-\d{6}$/, `submission ${i + 1} of the cap persists`);
@@ -3812,7 +3800,7 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
   const floodCreds = requestCredentials(floodPage.body);
   assert.equal(humanPaced(floodToken, floodCreds.token), 'ok', 'the over-cap attempt must still be paced like a human fill');
   const throttled = await postForm(
-    { action: 'fp_request_submit', ...validFields, fp_request_nonce: floodCreds.nonce, fp_request_token: floodCreds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: floodCreds.nonce, fp_request_token: floodCreds.token, _wp_http_referer: '/cotizacion/' },
     headers(floodToken)
   );
   assert.equal(noticeOf(throttled), 'throttled', 'a session past its persisted-request cap must be throttled');
@@ -3843,15 +3831,12 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
   ]);
 });
 
-/* ─── 19b. Guard matrix, dependency failures, maintenance, lifecycle, standards (issue #13) ── */
+/* ─── 22-23. Guard matrix, dependency failures, maintenance, lifecycle, standards (issue #13) ── */
 
 test('every guard rejects invalid input without partial mutation, and dependency failures never produce false success', { timeout: 120_000 }, async () => {
   const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
   const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
-  const adminCookie = wp([
-    'eval',
-    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-  ]).stdout;
+  const adminCookie = authCookie();
   const adminHeaders = { cookie: adminCookie };
   const before = quoteCount();
 
@@ -3917,7 +3902,7 @@ test('every guard rejects invalid input without partial mutation, and dependency
   /* Simulate the session store losing the row (database failure). */
   wp(['eval', `global $wpdb; $wpdb->delete( "{$wpdb->prefix}basket_sessions", array( "session_hash" => hash( "sha256", "${token}" ) ) );`]);
   const orphaned = await postForm(
-    { action: 'fp_request_submit', fp_nombre: 'María González', fp_telefono: '+56 9 6844 4265', fp_email: 'maria@acme.cl', fp_empresa: 'Agrícola ACME SpA', fp_rut: '76.335.888-6', fp_giro: 'Comercialización de productos plásticos', fp_despacho: 'no', fp_direccion: '', fp_mensaje: '', fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
+    { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
     headers
   );
   assert.equal(noticeOf(orphaned), 'session', 'a lost session must fail the session guard, never claim success');
@@ -3949,10 +3934,7 @@ test('every guard rejects invalid input without partial mutation, and dependency
 test('versioned migrations fail safely behind a clear public maintenance state that self-heals', { timeout: 120_000 }, async () => {
   const productTotal = () => Number(wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout || '0');
   const quoteTotal = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
-  const adminCookie = wp([
-    'eval',
-    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-  ]).stdout;
+  const adminCookie = authCookie();
   const productsBefore = productTotal();
   const quotesBefore = quoteTotal();
 
@@ -4017,10 +3999,7 @@ test('a stock block theme keeps minimal Catalog, basket, request and admin behav
     pages: Number(wp(['post', 'list', '--post_type=page', '--post_status=publish', '--format=count']).stdout || '0'),
   });
   const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
-  const adminCookie = wp([
-    'eval',
-    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-  ]).stdout;
+  const adminCookie = authCookie();
   const baseline = counts();
   assert.equal(baseline.products, PRODUCT_COUNT, 'the records under lifecycle pressure start complete');
 
@@ -4059,15 +4038,7 @@ test('a stock block theme keeps minimal Catalog, basket, request and admin behav
   const stockSubmit = await postForm(
     {
       action: 'fp_request_submit',
-      fp_nombre: 'María González',
-      fp_telefono: '+56 9 6844 4265',
-      fp_email: 'maria@acme.cl',
-      fp_empresa: 'Agrícola ACME SpA',
-      fp_rut: '76.335.888-6',
-      fp_giro: 'Comercialización de productos plásticos',
-      fp_despacho: 'no',
-      fp_direccion: '',
-      fp_mensaje: '',
+      ...VALID_REQUEST_FIELDS,
       fp_request_nonce: creds.nonce,
       fp_request_token: creds.token,
       _wp_http_referer: '/cotizacion/',
@@ -4217,7 +4188,7 @@ test('PHP syntax and coding-standard scans pass over the shipped theme and plugi
   ]);
 });
 
-/* ─── 19. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [

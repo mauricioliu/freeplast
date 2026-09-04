@@ -33,7 +33,8 @@ if ( is_array( $cron ) ) {
 			continue;
 		}
 		foreach ( $entries as $hook => $bins ) {
-			if ( ! is_string( $hook ) || 0 !== strpos( $hook, 'fpcq_' ) && 0 !== strpos( $hook, 'freeplast_cq_' ) ) {
+			$is_our_hook = is_string( $hook ) && ( str_starts_with( $hook, 'fpcq_' ) || str_starts_with( $hook, 'freeplast_cq_' ) );
+			if ( ! $is_our_hook ) {
 				continue;
 			}
 			foreach ( $bins as $bin ) {

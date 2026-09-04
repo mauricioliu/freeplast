@@ -247,7 +247,7 @@ class Freeplast_CQ_Migrations {
 
 		/* A completed catch-up ends the maintenance state (the flag is only
 		   ever set while a migration could not complete). */
-		if ( $applied >= FREEPLAST_CQ_DB_VERSION && false !== get_option( 'fp_maintenance', false ) ) {
+		if ( $applied >= FREEPLAST_CQ_DB_VERSION && self::in_maintenance() ) {
 			delete_option( 'fp_maintenance' );
 		}
 
@@ -306,7 +306,7 @@ class Freeplast_CQ_Migrations {
 	 * half-migrated state is ever rendered as a working store.
 	 */
 	private static function mark_maintenance(): void {
-		if ( false === get_option( 'fp_maintenance', false ) ) {
+		if ( ! self::in_maintenance() ) {
 			add_option(
 				'fp_maintenance',
 				array(
