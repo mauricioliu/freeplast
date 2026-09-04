@@ -6,6 +6,39 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #18: shared contact-field validators
+
+The public Quote Request form and the admin contact-correction flow
+validated Email, Teléfono and Rut Empresa with cloned regexes and
+duplicated error messages, even though the text-field contract
+(`Freeplast_CQ_Request::TEXT_FIELDS`) is already shared between them.
+Decisions:
+
+1. **One shared definition, on the class that owns the field contract.**
+   `Freeplast_CQ_Request::validated_contact_formats()` now owns the
+   acceptance patterns and user-facing messages of the three
+   format-checked contact fields, right next to the TEXT_FIELDS contract
+   both surfaces already iterate. The submission's `validated_fields()`
+   and the sales correction's `Freeplast_CQ_Admin::validated_contact()`
+   both delegate to it — adding or changing a contact-format rule is a
+   one-place edit, and identical inputs cannot produce different
+   outcomes on the two surfaces because there is only one code path.
+2. **Behavior-preserving by construction, proven by inspection.** The
+   extracted method body is the exact former Request block (the Admin
+   copies were byte-identical clones): same guard order (required →
+   length → format, earlier errors skip the format check), same
+   messages, same patterns, email stored in its WordPress-sanitized
+   form while Teléfono/Rut keep the entered text. The check scans the
+   plugin so each pattern/message exists in exactly one file, and drives
+   both surfaces' full validation paths (Reflection over the private
+   validators) with the same posted inputs across valid, invalid-format,
+   empty, boundary and overlong cases, requiring identical per-field
+   results.
+3. **No version bump, no schema change.** Stored data shapes are
+   untouched (only validation moves); following the issue #17 precedent
+   the plugin version stays 0.8.0 and the dist ZIP is rebuilt
+   deterministically by `npm test`.
+
 ## 2026-09-04 — Issue #20: position-independent theme assets and balanced free-form blocks
 
 Two hygiene fixes to the theme's header/footer parts and front-page template,

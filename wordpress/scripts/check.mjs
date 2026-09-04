@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#20).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,9 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #17, of the
- * issue #19 basket-cookie scheme fix and of the issue #20 theme markup
- * hardening (including
+ * verifies the acceptance criteria of issues #2 through #20 (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -167,6 +165,14 @@
  *      wrap and island header are group block boundaries with the basket
  *      button between them, so a Site Editor edit cannot split the v6
  *      chrome across blocks).
+ *  22. The contact-field validation (issue #18) is defined once: the
+ *      email, telephone and RUT acceptance patterns and their
+ *      user-facing messages live in the shared
+ *      Freeplast_CQ_Request::validated_contact_formats helper that both
+ *      the Quote Request intake and the sales contact correction apply,
+ *      so the outcomes and messages for the same inputs are identical
+ *      by construction; the text-field contract (TEXT_FIELDS) remains
+ *      the single field list both surfaces iterate.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -5257,11 +5263,173 @@ echo $rendered;
   ]);
 });
 
+/* ─── 23f. Shared contact-field validators (issue #18) ─────────── */
+
+test('email, telephone and RUT validation is defined once and shared by both surfaces (issue #18)', () => {
+  const pluginDir = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
+  const requestPath = join(pluginDir, 'includes', 'class-request.php');
+  const adminPath = join(pluginDir, 'includes', 'class-admin.php');
+  const request = readFileSync(requestPath, 'utf8');
+  const admin = readFileSync(adminPath, 'utf8');
+
+  /* Structural consolidation: the cloned acceptance patterns and error
+     messages are gone. Each contact rule is defined in exactly one
+     place — the shared Freeplast_CQ_Request helper — and both surfaces
+     (the Quote Request intake and the sales contact correction)
+     delegate to it. */
+  const scanDir = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      return entry.isDirectory() ? scanDir(full) : [full];
+    });
+  const phpFiles = scanDir(pluginDir).filter((file) => file.endsWith('.php'));
+  const contactRules = [
+    String.raw`/^\+?[0-9()\-\s.]{4,39}$/`,
+    String.raw`/^[0-9kK.\-\s]+$/`,
+    'Ingresa un email válido.',
+    'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).',
+    'Ingresa un RUT válido (por ejemplo 76.335.888-6).',
+  ];
+  for (const rule of contactRules) {
+    const sites = phpFiles.filter((file) => readFileSync(file, 'utf8').includes(rule));
+    assert.deepEqual(
+      sites,
+      [requestPath],
+      `the contact rule ${JSON.stringify(rule)} must be defined only in class-request.php, found in: ${sites.map((f) => f.replaceAll(pluginDir + '/', '')).join(', ') || 'nowhere'}`
+    );
+  }
+  assert.ok(
+    request.includes('public static function validated_contact_formats('),
+    'the single definition must be the public Freeplast_CQ_Request::validated_contact_formats helper'
+  );
+  assert.ok(
+    request.includes('self::validated_contact_formats( $values, $errors )'),
+    'the Quote Request intake must apply the shared definition'
+  );
+  assert.ok(
+    admin.includes('Freeplast_CQ_Request::validated_contact_formats( $values, $errors )'),
+    'the admin contact correction must apply the shared definition'
+  );
+  assert.ok(
+    !admin.includes('function validated_contact_formats'),
+    'the admin must not re-declare the shared validation'
+  );
+
+  /* The text-field contract stays the single field list both surfaces iterate. */
+  const declaring = phpFiles.filter((file) => readFileSync(file, 'utf8').includes('const TEXT_FIELDS ='));
+  assert.deepEqual(declaring, [requestPath], 'TEXT_FIELDS must remain declared exactly once (class-request.php)');
+  assert.ok(admin.includes('Freeplast_CQ_Request::TEXT_FIELDS'), 'the correction flow must keep iterating the shared TEXT_FIELDS contract');
+
+  /* Behavioral: drive both surfaces' full validation paths with the same
+     posted inputs (Reflection over the private validators) and require
+     identical per-field outcomes — acceptance, entered/normalized value
+     and the exact shared message. */
+  const contactKeys = ['nombre', 'telefono', 'email', 'empresa', 'rut', 'giro'];
+  const drive = (fields) => {
+    const posted = Object.entries({ ...fields, fp_despacho: 'no' })
+      .map(([key, value]) => `"${key}" => "${value}"`)
+      .join(', ');
+    const php =
+      '$rf = new ReflectionMethod( "Freeplast_CQ_Request", "validated_fields" );' +
+      '$rf->setAccessible( true );' +
+      '$af = new ReflectionMethod( "Freeplast_CQ_Admin", "validated_contact" );' +
+      '$af->setAccessible( true );' +
+      `$_POST = array( ${posted} );` +
+      '$req = $rf->invoke( null, null );' +
+      '$adm = $af->invoke( null );' +
+      '$out = array( "req" => array(), "adm" => array() );' +
+      `foreach ( array( ${contactKeys.map((key) => `"${key}"`).join(', ')} ) as $k ) {` +
+      '  $out["req"][$k] = array( "error" => isset( $req["errors"][$k] ) ? $req["errors"][$k] : null, "value" => (string) ( $req["values"][$k] ?? "" ) );' +
+      '  $out["adm"][$k] = array( "error" => isset( $adm["errors"][$k] ) ? $adm["errors"][$k] : null, "value" => (string) ( $adm["values"][$k] ?? "" ) );' +
+      '}' +
+      'echo wp_json_encode( $out );';
+    return JSON.parse(wp(['eval', php]).stdout || '{}');
+  };
+  const sameOutcomes = (name, out) => {
+    for (const key of contactKeys) {
+      assert.deepEqual(out.req[key], out.adm[key], `${name}: both surfaces must validate ${key} identically`);
+    }
+  };
+
+  /* All valid: no errors, and the email is stored in its
+     WordPress-sanitized form (identically on both surfaces). */
+  const valid = drive({
+    fp_nombre: 'María González',
+    fp_telefono: '+56 9 6844 4265',
+    fp_email: 'maria@ acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización de productos plásticos',
+  });
+  sameOutcomes('a valid contact', valid);
+  for (const key of contactKeys) {
+    assert.equal(valid.req[key].error, null, `a valid ${key} must carry no format error`);
+  }
+  assert.equal(valid.req.email.value, 'maria@acme.cl', 'a valid email must be stored sanitized (the entered interior space removed) on both surfaces');
+
+  /* All three formats invalid: the exact shared messages, entered values
+     kept for retention, identical on both surfaces. */
+  const invalid = drive({
+    fp_nombre: 'María González',
+    fp_telefono: 'llámame al 600',
+    fp_email: 'no-es-un-email',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: 'sin rut válido',
+    fp_giro: 'Comercialización',
+  });
+  sameOutcomes('an invalid contact', invalid);
+  assert.equal(invalid.req.email.error, 'Ingresa un email válido.', 'the shared email message must be exact');
+  assert.equal(invalid.req.telefono.error, 'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).', 'the shared telephone message must be exact');
+  assert.equal(invalid.req.rut.error, 'Ingresa un RUT válido (por ejemplo 76.335.888-6).', 'the shared RUT message must be exact');
+  assert.equal(invalid.req.email.value, 'no-es-un-email', 'an invalid value must be retained unchanged (identically on both surfaces)');
+
+  /* Empty: the required-message of the text-field contract, unchanged. */
+  const empty = drive({});
+  sameOutcomes('an empty contact', empty);
+  assert.equal(empty.req.email.error, 'Email es obligatorio.', 'the text-field contract message must be unchanged');
+  assert.equal(empty.req.rut.error, 'Rut Empresa es obligatorio.', 'the text-field contract message must be unchanged');
+
+  /* Boundary formats: below the telephone minimum rejects, the K
+     verifier letter accepts, email case is kept. */
+  const boundary = drive({
+    fp_nombre: 'María González',
+    fp_telefono: '12',
+    fp_email: 'MARIA@ACME.CL',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-K',
+    fp_giro: 'Comercialización',
+  });
+  sameOutcomes('a boundary contact', boundary);
+  assert.equal(boundary.req.telefono.error, 'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).', 'a telephone below the four-character minimum must be rejected');
+  assert.equal(boundary.req.email.error, null, 'uppercase email must be accepted');
+  assert.equal(boundary.req.email.value, 'MARIA@ACME.CL', 'email case must be kept as entered');
+  assert.equal(boundary.req.rut.error, null, 'the K verifier letter must be accepted');
+
+  /* Pre-carried length error: the text-field contract keeps precedence
+     over the shared format rule (the format check is skipped). */
+  const overlong = drive({
+    fp_nombre: 'María González',
+    fp_telefono: '9'.repeat(41),
+    fp_email: 'maria@acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización',
+  });
+  sameOutcomes('an overlong telephone', overlong);
+  assert.equal(overlong.req.telefono.error, 'Teléfono es demasiado largo (máximo 40 caracteres).', 'the length rule must keep precedence over the shared format rule');
+
+  section('Shared contact-field validators (issue #18)', [
+    'Email, Teléfono and Rut Empresa acceptance patterns and messages are defined exactly once (Freeplast_CQ_Request::validated_contact_formats) and applied by both surfaces — the Quote Request intake and the admin contact-correction flow',
+    'Identical outcomes for the same posted inputs: both surfaces\' full validation paths agree per field across valid, invalid-format, empty, boundary and overlong cases, with the exact shared messages and the sanitized email stored',
+    'The text-field contract (TEXT_FIELDS) remains the single field list both surfaces iterate',
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup (issues #2–#17, #19–#20)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + shared contact-field validators (issues #2–#20)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5368,6 +5536,9 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'One shared JSON codec (issue #17): every stored-meta write/read goes through Freeplast_CQ_Codec with the byte-identical unescaped stored form — the retired per-class helpers are gone, round-trip identity holds on the persisted staging data and the catalog dry run after the swap reports zero changes',
     'Theme assets are position-independent (issue #20): no template/part hardcodes an absolute wp-content theme path; the header logo, footer mark and Home hero image render through get_theme_file_uri() at render time, and a subdirectory boot of the same sources renders subdirectory-correct asset URLs',
     'Every free-form (wp:html) block in the theme is balanced on its own (issue #20): the header wrap/island containers are group block boundaries with the basket button between them; the logo, navigation, burger and mobile sheet each stand in one self-contained block',
+    'Contact-field validation is defined once (issue #18): the Email/Teléfono/Rut Empresa patterns and messages live in Freeplast_CQ_Request::validated_contact_formats, applied by both the Quote Request intake and the admin contact-correction flow',
+    'Both surfaces validate the contact fields identically for the same inputs (issue #18): per-field agreement across valid, invalid-format, empty, boundary and overlong cases, with the exact shared messages and the sanitized email stored',
+    'The text-field contract (TEXT_FIELDS) remains the single field list both surfaces iterate (issue #18)',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -5395,6 +5566,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The staging constants (issue #16) are single-sourced in infra/staging.sh and proven strictly behavior-preserving: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the deployed configuration from the issue #14 operator run; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-run (deploy.sh existing-stack path must be a no-op; verify.sh must still report “verification clean”) is recorded in DEPLOYMENT.md as the next on-server step.`,
     `- The basket cookie Secure flag follows the request scheme (issue #19): send_cookie() derives it from is_ssl() — the staging wp-config maps the Nginx-forwarded https scheme onto \$_SERVER['HTTPS'], so TLS responses keep the Secure cookie (staging behavior unchanged) and plain-HTTP installs keep a working basket. The disposable wp-config mirrors that mapping and the check presents both schemes at the real admin-post seam.`,
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
+    `- The contact-field validation (issue #18) is one shared definition: Freeplast_CQ_Request::validated_contact_formats owns the Email/Teléfono/Rut Empresa acceptance patterns and user-facing messages, and both the Quote Request intake (validated_fields) and the sales contact correction (Freeplast_CQ_Admin::validated_contact) delegate to it, so identical inputs cannot produce different outcomes. The check scans the plugin for the cloned patterns/messages (exactly one definition site) and drives both surfaces' full validation paths with the same posted inputs across valid, invalid-format, empty, boundary and overlong cases, requiring identical per-field results. Behavior-preserving: the text-field contract (TEXT_FIELDS) stays the single field list both surfaces iterate, the required/length messages are untouched, and the email keeps being stored in its WordPress-sanitized form.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));
