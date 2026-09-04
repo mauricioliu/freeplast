@@ -245,6 +245,13 @@ function wp(args) {
   return { stdout: (res.stdout || '').trim(), stderr: (res.stderr || '').trim(), status: res.status };
 }
 
+/** Every file under dir, recursively (directories descended depth-first). */
+const scanDir = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    return entry.isDirectory() ? scanDir(full) : [full];
+  });
+
 async function get(pathname, ua, extraHeaders = {}) {
   const res = await fetch(SITE_URL + pathname, {
     headers: { ...(ua ? { 'user-agent': ua } : {}), ...extraHeaders },
@@ -3505,11 +3512,6 @@ class FP_Fake_Google_Client {
 
     /* 16.10 — Credentials: environment-supplied, never in source or the
        database. */
-    const scanDir = (dir) =>
-      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const full = join(dir, entry.name);
-        return entry.isDirectory() ? scanDir(full) : [full];
-      });
     const scanned = [...scanDir(join(WORDPRESS_DIR, 'wp-content')), ...scanDir(HERE)].filter(
       (file) => /\.(php|js|mjs|json|css)$/.test(file) && !file.endsWith('check.mjs') /* the scanner carries its own pattern */
     );
@@ -4272,11 +4274,6 @@ test('PHP syntax and coding-standard scans pass over the shipped theme and plugi
     join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes'),
     join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast'),
   ];
-  const scanDir = (dir) =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = join(dir, entry.name);
-      return entry.isDirectory() ? scanDir(full) : [full];
-    });
   const phpFiles = sourceDirs.flatMap((dir) => scanDir(dir)).filter((file) => file.endsWith('.php'));
   assert.ok(phpFiles.length >= 12, 'the scan must cover the shipped PHP files');
 
@@ -4325,11 +4322,6 @@ test('one shared JSON codec serves every stored-meta read/write with byte-identi
      exactly one file, the retired per-class helpers are gone, and the
      only remaining json_decode sites are non-meta (the catalog source
      document and the Google provider wire responses). */
-  const scanDir = (dir) =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = join(dir, entry.name);
-      return entry.isDirectory() ? scanDir(full) : [full];
-    });
   const phpFiles = scanDir(pluginDir).filter((file) => file.endsWith('.php'));
   const code = Object.fromEntries(phpFiles.map((file) => [file, readFileSync(file, 'utf8')]));
   const flagFiles = phpFiles.filter((file) => code[file].includes('JSON_UNESCAPED_SLASHES'));
@@ -5269,20 +5261,18 @@ test('email, telephone and RUT validation is defined once and shared by both sur
   const pluginDir = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
   const requestPath = join(pluginDir, 'includes', 'class-request.php');
   const adminPath = join(pluginDir, 'includes', 'class-admin.php');
-  const request = readFileSync(requestPath, 'utf8');
-  const admin = readFileSync(adminPath, 'utf8');
+
+  /* Every plugin PHP file, read once — the scans below work off this map. */
+  const phpFiles = scanDir(pluginDir).filter((file) => file.endsWith('.php'));
+  const code = Object.fromEntries(phpFiles.map((file) => [file, readFileSync(file, 'utf8')]));
+  const request = code[requestPath];
+  const admin = code[adminPath];
 
   /* Structural consolidation: the cloned acceptance patterns and error
      messages are gone. Each contact rule is defined in exactly one
      place — the shared Freeplast_CQ_Request helper — and both surfaces
      (the Quote Request intake and the sales contact correction)
      delegate to it. */
-  const scanDir = (dir) =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = join(dir, entry.name);
-      return entry.isDirectory() ? scanDir(full) : [full];
-    });
-  const phpFiles = scanDir(pluginDir).filter((file) => file.endsWith('.php'));
   const contactRules = [
     String.raw`/^\+?[0-9()\-\s.]{4,39}$/`,
     String.raw`/^[0-9kK.\-\s]+$/`,
@@ -5291,7 +5281,7 @@ test('email, telephone and RUT validation is defined once and shared by both sur
     'Ingresa un RUT válido (por ejemplo 76.335.888-6).',
   ];
   for (const rule of contactRules) {
-    const sites = phpFiles.filter((file) => readFileSync(file, 'utf8').includes(rule));
+    const sites = phpFiles.filter((file) => code[file].includes(rule));
     assert.deepEqual(
       sites,
       [requestPath],
@@ -5316,7 +5306,7 @@ test('email, telephone and RUT validation is defined once and shared by both sur
   );
 
   /* The text-field contract stays the single field list both surfaces iterate. */
-  const declaring = phpFiles.filter((file) => readFileSync(file, 'utf8').includes('const TEXT_FIELDS ='));
+  const declaring = phpFiles.filter((file) => code[file].includes('const TEXT_FIELDS ='));
   assert.deepEqual(declaring, [requestPath], 'TEXT_FIELDS must remain declared exactly once (class-request.php)');
   assert.ok(admin.includes('Freeplast_CQ_Request::TEXT_FIELDS'), 'the correction flow must keep iterating the shared TEXT_FIELDS contract');
 
