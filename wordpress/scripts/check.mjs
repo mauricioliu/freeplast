@@ -237,6 +237,14 @@ function formNonce(html, action) {
   return undefined;
 }
 
+/** The submission nonce and idempotency token carried by one rendered request form. */
+function requestCredentials(html) {
+  return {
+    nonce: html.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1],
+    token: html.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1],
+  };
+}
+
 /** Occurrences of a literal substring. */
 function countMatches(haystack, needle) {
   return haystack.split(needle).length - 1;
@@ -1934,8 +1942,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   const requestSection = pluginSection(cot.body, 'class="fpcq-request"', 'the request form section must render');
   assert.doesNotMatch(requestSection, /name="fp_product"/i, 'products must never be request-form fields');
   assert.doesNotMatch(requestSection, /name="fp_quantity"/i, 'quantities must never be request-form fields');
-  let reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
-  let idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  let { nonce: reqNonce, token: idemToken } = requestCredentials(cot.body);
   assert.ok(reqNonce && idemToken, 'the form must be nonce-guarded and carry the idempotency token');
 
   const validFields = {
@@ -2116,20 +2123,16 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
 
   /* 15.7 — A second basket submits a second request without dispatch —
      the address is omitted, a fresh token is issued, the reference differs. */
-  const reAdd = await postForm(
+  const reAdd = await add(
     {
-      action: 'fp_basket_add',
       fp_product: 'fp-caja-tomatera',
       fp_quantity: '30',
-      fp_basket_nonce: addNonce,
-      _wp_http_referer: PRODUCT_URL,
     },
     cookieHeader(token)
   );
   assert.equal(noticeOf(reAdd), 'added', 'the session can build a new basket');
   cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
-  reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
-  idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  ({ nonce: reqNonce, token: idemToken } = requestCredentials(cot.body));
   assert.ok(reqNonce && idemToken, 'the fresh form carries its own nonce and token');
   const ok2 = await submit({ fp_despacho: 'no', fp_direccion: '', fp_mensaje: '' });
   const reference2 = submittedRef(ok2);
@@ -2145,20 +2148,10 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
 
   /* 15.8 — A persistence failure shows no success and retains basket and
      values (the record is created only by durable persistence). */
-  const failAdd = await postForm(
-    {
-      action: 'fp_basket_add',
-      fp_product: 'fp-caja-cosechera-3-4',
-      fp_quantity: '3',
-      fp_basket_nonce: addNonce,
-      _wp_http_referer: PRODUCT_URL,
-    },
-    cookieHeader(token)
-  );
+  const failAdd = await add({ fp_quantity: '3' }, cookieHeader(token));
   assert.equal(noticeOf(failAdd), 'added');
   cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
-  reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
-  idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  ({ nonce: reqNonce, token: idemToken } = requestCredentials(cot.body));
   const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
   mkdirSync(muDir, { recursive: true });
   writeFileSync(join(muDir, 'fp-test-no-persist.php'), "<?php\nadd_filter( 'freeplast_cq_request_persist', '__return_false' );\n");
@@ -2182,21 +2175,13 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
 
   /* 15.9 — Eligibility: an archived Product line drops out of the
      submission (the basket resolves against the live catalog). */
-  const eligibilitySession = await postForm({
-    action: 'fp_basket_add',
-    fp_product: 'fp-caja-cosechera-3-4',
-    fp_quantity: '7',
-    fp_basket_nonce: addNonce,
-    _wp_http_referer: PRODUCT_URL,
-  });
+  const eligibilitySession = await add({ fp_quantity: '7' });
   const eligToken = eligibilitySession.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
   assert.ok(eligToken, 'the eligibility flow needs its own session');
-  const secondAdd = await postForm(
+  const secondAdd = await add(
     {
-      action: 'fp_basket_add',
       fp_product: 'fp-caja-frutillera',
       fp_quantity: '9',
-      fp_basket_nonce: addNonce,
       _wp_http_referer: '/producto/caja-frutillera/',
     },
     cookieHeader(eligToken)
@@ -2210,8 +2195,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   const eligCot = await get('/cotizacion/', MOBILE_UA, cookieHeader(eligToken));
   assertContains(eligCot.body, 'Cotización (1)', 'the archived line drops out before submission');
   assertAbsent(eligCot.body, 'Caja Frutillera', 'the archived Product must not render');
-  const eligNonce = eligCot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
-  const eligTokenField = eligCot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  const { nonce: eligNonce, token: eligTokenField } = requestCredentials(eligCot.body);
   const eligSubmit = await postForm(
     {
       action: 'fp_request_submit',
@@ -2279,9 +2263,8 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   /* 15.11 — Nothing but the request was created: no customer account, no
      price, no order. */
   assert.equal(usersTotal(), usersBefore + 1, 'only the test denial user was created — submissions create no account');
-  const stored = quoteRecord(reference);
   assert.ok(
-    !JSON.stringify(stored.items).includes('price') && !JSON.stringify(stored.items).includes('precio'),
+    !JSON.stringify(record.items).includes('price') && !JSON.stringify(record.items).includes('precio'),
     'no price is ever stored'
   );
 

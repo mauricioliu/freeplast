@@ -65,14 +65,17 @@ class Freeplast_CQ_Request {
 	/** The dedicated sales capability protecting the admin surface. */
 	public const CAPABILITY = 'manage_freeplast_quotes';
 
-	/** Required single-line business fields: key => (label, max length). */
+	/**
+	 * Required single-line business fields: key => (label, max length,
+	 * input type, autocomplete).
+	 */
 	private const TEXT_FIELDS = array(
-		'nombre'   => array( 'label' => 'Nombre', 'max' => 120 ),
-		'telefono' => array( 'label' => 'Teléfono', 'max' => 40 ),
-		'email'    => array( 'label' => 'Email', 'max' => 190 ),
-		'empresa'  => array( 'label' => 'Nombre Empresa', 'max' => 190 ),
-		'rut'      => array( 'label' => 'Rut Empresa', 'max' => 20 ),
-		'giro'     => array( 'label' => 'Giro', 'max' => 190 ),
+		'nombre'   => array( 'label' => 'Nombre', 'max' => 120, 'type' => 'text', 'autocomplete' => 'name' ),
+		'telefono' => array( 'label' => 'Teléfono', 'max' => 40, 'type' => 'tel', 'autocomplete' => 'tel' ),
+		'email'    => array( 'label' => 'Email', 'max' => 190, 'type' => 'email', 'autocomplete' => 'email' ),
+		'empresa'  => array( 'label' => 'Nombre Empresa', 'max' => 190, 'type' => 'text', 'autocomplete' => 'organization' ),
+		'rut'      => array( 'label' => 'Rut Empresa', 'max' => 20, 'type' => 'text', 'autocomplete' => 'off' ),
+		'giro'     => array( 'label' => 'Giro', 'max' => 190, 'type' => 'text', 'autocomplete' => 'off' ),
 	);
 
 	private const MAX_DIRECCION = 400;
@@ -313,6 +316,9 @@ class Freeplast_CQ_Request {
 
 		$idempotency = hash( 'sha256', $token );
 
+		/* Retry with a fresh reference allocation: the sequence is derived,
+		   never reserved, so a concurrent submission may consume it between
+		   reading it and inserting. */
 		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
 			$reference = self::next_reference();
 			$post_id   = wp_insert_post(
@@ -566,12 +572,10 @@ class Freeplast_CQ_Request {
 		$token      = self::ensure_token( $session['hash'] );
 		$dispatched = 'si' === $values['despacho'];
 
-		$fields  = self::render_text_field( 'nombre', $values['nombre'], $errors['nombre'] ?? null );
-		$fields .= self::render_text_field( 'telefono', $values['telefono'], $errors['telefono'] ?? null );
-		$fields .= self::render_text_field( 'email', $values['email'], $errors['email'] ?? null );
-		$fields .= self::render_text_field( 'empresa', $values['empresa'], $errors['empresa'] ?? null );
-		$fields .= self::render_text_field( 'rut', $values['rut'], $errors['rut'] ?? null );
-		$fields .= self::render_text_field( 'giro', $values['giro'], $errors['giro'] ?? null );
+		$fields = '';
+		foreach ( array_keys( self::TEXT_FIELDS ) as $key ) {
+			$fields .= self::render_text_field( $key, $values[ $key ], $errors[ $key ] ?? null );
+		}
 		$fields .= self::render_despacho( $values['despacho'], $errors['despacho'] ?? null );
 		$fields .= self::render_direccion( $values['direccion'], $errors['direccion'] ?? null, $dispatched );
 		$fields .= self::render_mensaje( $values['mensaje'], $errors['mensaje'] ?? null );
@@ -600,30 +604,12 @@ class Freeplast_CQ_Request {
 		}
 
 		return sprintf(
-			'<div class="fpcq-form-errors" id="fpcq-form-errors" role="alert" tabindex="-1"><p class="fpcq-form-errors-title">%s</p>%s%s</div>',
+			'<div class="fpcq-form-errors" id="fpcq-form-errors" role="alert" tabindex="-1"><p class="fpcq-form-errors-title">%s</p><ul>%s</ul>%s</div>',
 			'Revisa tu solicitud antes de enviarla:',
 			$items,
 			'' !== $general ? sprintf( '<p class="fpcq-form-errors-general">%s</p>', esc_html( $general ) ) : ''
 		);
 	}
-
-	private const INPUT_TYPES = array(
-		'nombre'   => 'text',
-		'telefono' => 'tel',
-		'email'    => 'email',
-		'empresa'  => 'text',
-		'rut'      => 'text',
-		'giro'     => 'text',
-	);
-
-	private const AUTOCOMPLETE = array(
-		'nombre'   => 'name',
-		'telefono' => 'tel',
-		'email'    => 'email',
-		'empresa'  => 'organization',
-		'rut'      => 'off',
-		'giro'     => 'off',
-	);
 
 	/** One required single-line field with its inline error. */
 	private static function render_text_field( string $key, string $value, ?string $error ): string {
@@ -636,10 +622,10 @@ class Freeplast_CQ_Request {
 			null === $error ? '' : ' fpcq-field-invalid',
 			esc_attr( $key ),
 			esc_html( $field['label'] ),
-			esc_attr( self::INPUT_TYPES[ $key ] ),
+			esc_attr( $field['type'] ),
 			esc_attr( $value ),
 			$field['max'],
-			esc_attr( self::AUTOCOMPLETE[ $key ] ),
+			esc_attr( $field['autocomplete'] ),
 			$described,
 			$inline
 		);
@@ -797,16 +783,22 @@ class Freeplast_CQ_Request {
 
 		$dispatched = 'si' === (string) ( $customer['con_despacho'] ?? '' );
 
+		/* The entered telephone plus its normalized copy when one was derivable. */
+		$telefono     = (string) ( $customer['telefono'] ?? '' );
+		$normalizado  = (string) ( $customer['telefono_normalizado'] ?? '' );
+		$telefono_row = '' !== $normalizado ? trim( $telefono . ' (normalizado: ' . $normalizado . ')' ) : $telefono;
+		$mensaje      = (string) ( $customer['mensaje'] ?? '' );
+
 		$detail_rows = array(
 			array( 'Nombre', (string) ( $customer['nombre'] ?? '' ) ),
-			array( 'Teléfono', trim( ( (string) ( $customer['telefono'] ?? '' ) ) . ( '' !== (string) ( $customer['telefono_normalizado'] ?? '' ) ? sprintf( ' (normalizado: %s)', (string) $customer['telefono_normalizado'] ) : '' ) ) ),
+			array( 'Teléfono', $telefono_row ),
 			array( 'Email', (string) ( $customer['email'] ?? '' ) ),
 			array( 'Nombre Empresa', (string) ( $customer['empresa'] ?? '' ) ),
 			array( 'Rut Empresa', (string) ( $customer['rut'] ?? '' ) ),
 			array( 'Giro', (string) ( $customer['giro'] ?? '' ) ),
 			array( 'Con despacho', $dispatched ? 'Sí' : 'No' ),
 			array( 'Dirección de despacho', $dispatched ? (string) ( $customer['direccion_despacho'] ?? '' ) : '—' ),
-			array( 'Mensaje', '' !== (string) ( $customer['mensaje'] ?? '' ) ? (string) ( $customer['mensaje'] ?? '' ) : '—' ),
+			array( 'Mensaje', '' !== $mensaje ? $mensaje : '—' ),
 		);
 
 		$details = '';
@@ -816,9 +808,10 @@ class Freeplast_CQ_Request {
 
 		$lines = '';
 		foreach ( $items as $item ) {
-			$item   = is_array( $item ) ? $item : array();
-			$option = '' === (string) ( $item['option_label'] ?? '' ) ? '—' : (string) ( $item['option_label'] ?? '' );
-			$rules  = sprintf(
+			$item         = is_array( $item ) ? $item : array();
+			$option_label = (string) ( $item['option_label'] ?? '' );
+			$option       = '' !== $option_label ? $option_label : '—';
+			$rules        = sprintf(
 				'%s / %s',
 				null === ( $item['minimum'] ?? null ) ? 'sin mínimo confirmado' : sprintf( 'mínimo %d', (int) $item['minimum'] ),
 				null === ( $item['step'] ?? null ) ? 'sin paso confirmado' : sprintf( 'paso %d', (int) $item['step'] )
