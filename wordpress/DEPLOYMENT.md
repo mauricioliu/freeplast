@@ -154,20 +154,32 @@ the owner explicitly approves deletion.
 
 ## Post-deploy records (filled 2026-09-04, operator run by pi agent)
 
-Issue #16 single-sourcing re-run (pending, operator step): after the
-constants were moved into `infra/staging.sh`, the next `deploy.sh` run on
-the server must take the existing-stack path as a no-op (same secrets, same
-resolved Compose configuration — the loopback mapping is unchanged) and
-`verify.sh` must still report `verification clean`. The rendered vhost is
-proven byte-identical by `npm test`.
+Issue #16 single-sourcing re-run (executed 2026-09-04T18:11Z, operator
+run by pi agent): `deploy.sh` took the existing-stack path against the
+running stack — same secrets, same resolved Compose configuration, loopback
+mapping unchanged — and `verify.sh` reported `verification clean`.
+Preflight first needed one source fix, committed before the run: the
+loopback-port check was unconditionally fatal, so no re-deploy could ever
+pass while the stack held its own port; it now accepts the stack's own
+published mapping (`docker compose port`) under `ALLOW_EXISTING_STACK=1`
+and stays fatal for any foreign binding. The rendered vhost is proven
+byte-identical by `npm test`.
 
-Issue #23 origin-header strip re-run (pending, operator step): the vhost
-template now carries `proxy_hide_header X-Powered-By;` in the proxied
-`location /` block, so the next `deploy.sh` run re-renders and installs
-the vhost (`nginx -t` before the reload) and `verify.sh` — which now also
-asserts that an authenticated response carries no `X-Powered-By` — must
-still report `verification clean`. `npm test` proves the render
-byte-identical to the recorded expected configuration.
+Issue #23 origin-header strip re-run (executed in the same
+2026-09-04T18:11Z run): the vhost re-rendered from the template — the
+proxied `location /` carrying `proxy_hide_header X-Powered-By;` — and
+reinstalled (`nginx -t` before the reload, prior configuration backed
+up); an authenticated response through the edge now carries no
+`X-Powered-By` (verified independently after the run), and `verify.sh`
+asserts the same — `verification clean` with the origin-runtime row. The
+run also reinstalled theme `freeplast` 0.8.1 and the current plugin into
+the persistent volume; catalog synchronization reported zero changes.
+
+- [x] Re-run preflight output: all checks `ok` (port as redeploy note) —
+      `/root/freeplast-wordpress-backups/preflight-20260904T181152Z.txt`
+- [x] Re-run verify.sh output: all checks `ok`, including the new
+      `authenticated response carries no X-Powered-By` row; baseline
+      Compose projects unchanged (cutulab, frappe-lms, open-wearables)
 
 - [x] Preflight output: all checks `ok`, baseline recorded —
       `/root/freeplast-wordpress-backups/preflight-20260904T102325Z.txt`

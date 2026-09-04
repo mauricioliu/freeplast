@@ -11,8 +11,10 @@
 # changes nothing. deploy.sh runs it as its first step.
 #
 # Re-running against an already-deployed stack: export
-# ALLOW_EXISTING_STACK=1 to treat the stack's own resources as expected;
-# hostname/port/Nginx/TLS/DNS/health collisions stay fatal either way.
+# ALLOW_EXISTING_STACK=1 to treat the stack's own resources as expected
+# (including its published loopback origin); hostname/Nginx/TLS/DNS/health
+# collisions — and a loopback port bound by anything other than this
+# stack — stay fatal either way.
 #
 # TLS convention: pass TLS_CERT_PATH/TLS_KEY_PATH in the environment
 # (deploy.sh does); with a generated stack present they are also read
@@ -66,11 +68,16 @@ else
   ok "no enabled vhost references $SITE_HOSTNAME"
 fi
 
-# 3. Loopback port is unbound
-if ss -ltn | grep -Eq "[:.]${LOOPBACK_PORT}[[:space:]]"; then
-  miss "loopback port ${LOOPBACK_PORT} is already bound"
-else
+# 3. Loopback port is unbound — or, on a re-deploy, bound by this stack's
+#    own published origin (the running WordPress container's port mapping).
+#    A binding by anything else stays fatal: never adopt a foreign resource.
+PORT_OWNER="$(docker compose --project-name "$PROJECT" -f "$STACK_DIR/compose.yaml" --env-file "$STACK_DIR/.env" port wordpress 80 2>/dev/null || true)"
+if ! ss -ltn | grep -Eq "[:.]${LOOPBACK_PORT}[[:space:]]"; then
   ok "loopback port ${LOOPBACK_PORT} is unbound"
+elif existing_stack_allowed && [[ "$PORT_OWNER" == "127.0.0.1:${LOOPBACK_PORT}" ]]; then
+  skip "loopback port ${LOOPBACK_PORT} is this stack's published origin (redeploy)"
+else
+  miss "loopback port ${LOOPBACK_PORT} is already bound"
 fi
 
 # 4. Stack directory is new

@@ -190,8 +190,8 @@
  *      origin header — X-Powered-By — via proxy_hide_header (the site's
  *      behavior is otherwise unchanged), verify.sh walks an authenticated
  *      response through the HTTPS edge and fails if the header ever
- *      reappears, and the on-server re-run that installs the re-rendered
- *      vhost is recorded as the pending operator step in DEPLOYMENT.md.
+ *      reappears, and the on-server run that installed the re-rendered
+ *      vhost is recorded in DEPLOYMENT.md (executed 2026-09-04T18:11Z).
  *  25. The contact-field validation (issue #18) is defined once: the
  *      email, telephone and RUT acceptance patterns and their
  *      user-facing messages live in the shared
@@ -5416,8 +5416,8 @@ test('the staging hostname, install root and loopback port are single-sourced in
 
   /* 5. The render is reproducible byte-for-byte against the recorded
      expectation: the issue #14 deployed configuration plus the issue #23
-     origin-header strip (the operator re-run installing it is pending
-     per DEPLOYMENT.md). */
+     origin-header strip (installed on the server by the recorded
+     2026-09-04T18:11Z operator re-run). */
   let rendered = vhost;
   for (const [placeholder, value] of SUBSTITUTIONS) {
     rendered = rendered.split(placeholder).join(value);
@@ -5434,6 +5434,27 @@ test('the staging hostname, install root and loopback port are single-sourced in
     'the compose port requires the .env value (fail-loud) and resolves to 127.0.0.1:<port>→80'
   );
   assert.ok(!portLine.includes('8092'), 'the compose port line carries no literal');
+
+  /* 7. A re-deploy passes preflight while the running stack holds its own
+     loopback origin: the port check asks the stack for its published
+     mapping (docker compose port) and accepts it under
+     ALLOW_EXISTING_STACK — any other binding stays fatal. */
+  const preflight = text.get('preflight.sh');
+  assert.match(
+    preflight,
+    /docker compose[^\n]*-f "\$STACK_DIR\/compose\.yaml"[^\n]*port wordpress 80/,
+    'preflight asks the running stack for its published loopback origin'
+  );
+  assert.match(
+    preflight,
+    /elif existing_stack_allowed && \[\[ "\$PORT_OWNER" == "127\.0\.0\.1:\$\{LOOPBACK_PORT\}" \]\]/,
+    "the stack's own published mapping downgrades to a redeploy note"
+  );
+  assert.match(
+    preflight,
+    /miss "loopback port \$\{LOOPBACK_PORT\} is already bound"/,
+    'a foreign binding on the loopback port stays fatal'
+  );
 
   section('Single-sourced staging constants (issue #16)', [
     'infra/staging.sh declares the hostname, install root and loopback port exactly once; every script sources it and no other infra file repeats the literals (one-place edit)',
@@ -5616,17 +5637,17 @@ test('the staging edge strips the PHP origin header from proxied responses (issu
   assert.match(poweredCheck, /\bmiss\b/, 'a disclosed origin runtime must fail verification');
   assert.match(verify, /no X-Powered-By \(origin runtime hidden\)/, 'verify.sh must report the origin-runtime check as part of the walk');
 
-  /* 23f.3 — The re-rendered vhost reaches the server only through the
-     recorded operator step: DEPLOYMENT.md names the pending re-run
-     (deploy.sh renders and installs the vhost, nginx -t before the
-     reload, verify.sh still “verification clean”). */
+  /* 23f.3 — The re-rendered vhost reached the server through the
+     recorded operator run: DEPLOYMENT.md records the executed re-run
+     (deploy.sh rendered and installed the vhost, nginx -t before the
+     reload, verify.sh “verification clean”). */
   assert.ok(deployment.includes('proxy_hide_header X-Powered-By'), 'DEPLOYMENT.md must record the origin-header strip');
-  assert.match(deployment, /Issue #23[\s\S]{0,600}?pending[\s\S]{0,600}?verification clean/, 'DEPLOYMENT.md must record the pending operator re-run expectation');
+  assert.match(deployment, /Issue #23[\s\S]{0,600}?executed[\s\S]{0,900}?verification clean/, 'DEPLOYMENT.md must record the executed operator re-run');
 
   section('The staging edge strips the origin runtime header (issue #23)', [
     'The proxied location of the Nginx vhost template hides exactly one origin header — X-Powered-By (proxy_hide_header) — so authenticated responses stop disclosing the PHP version; no other origin header or forwarded chain changes',
     'verify.sh asserts through the HTTPS edge that an authenticated (owner) response carries no X-Powered-By and fails if the origin runtime is ever disclosed again',
-    'DEPLOYMENT.md records the pending operator re-run: deploy.sh re-renders and installs the vhost (nginx -t before the reload) and verify.sh must still report “verification clean”',
+    'DEPLOYMENT.md records the executed operator re-run (2026-09-04T18:11Z): deploy.sh re-rendered and installed the vhost (nginx -t before the reload) and verify.sh reported “verification clean”',
   ]);
 });
 
