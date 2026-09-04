@@ -50,7 +50,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#15 acceptance
+                      # verify the issue-#2 through issue-#20 acceptance
                       # criteria (including the issue-#8 submission, the
                       # issue-#9 sales workflow, the issue-#10 durable
                       # notifications, the issue-#11 address/distance
@@ -221,6 +221,15 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   templates parse without block recovery (migration 5 upgrades the legacy
   Contacto/privacy placeholders byte-safely), and the theme contains no
   Catalog or Quote Request business logic;
+- the theme markup hygiene (issue #20) keeps the theme position-independent and
+  block-safe: no template/part hardcodes an absolute wp-content theme path —
+  the header logo, footer brand mark and Home hero image resolve through
+  `get_theme_file_uri()` at render time (the `{{FREEPLAST_THEME_URL}}` token
+  resolved by the theme), the same sources are proven to render
+  subdirectory-correct asset URLs when the disposable installation boots under
+  a `/subdir` site URL, and every free-form (`wp:html`) block is balanced on
+  its own — the header wrap/island containers are group block boundaries with
+  the basket button between them;
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle

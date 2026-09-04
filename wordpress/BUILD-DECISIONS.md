@@ -6,6 +6,42 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #20: position-independent theme assets and balanced free-form blocks
+
+Two hygiene fixes to the theme's header/footer parts and front-page template,
+shipped as theme 0.8.1 (the FREEPLAST_THEME_VERSION bump also re-busts the
+stylesheet cache on staging after the CSS change below). Decisions:
+
+1. **Theme assets resolve at render time, never from a hardcoded path.** Block
+   templates and parts are static HTML and cannot call PHP, so theme-owned
+   images are written as `{{FREEPLAST_THEME_URL}}/assets/…` and a
+   `render_block` filter in functions.php replaces the token with
+   `wp_make_link_relative( get_theme_file_uri() )` at render time. On a root
+   install the rendered URLs are byte-identical to before (root-relative);
+   the check proves position independence by booting the same disposable
+   installation under a `/subdir` site URL — the identical sources render
+   subdirectory-correct URLs, and no unresolved token reaches any served
+   document. The Site Editor previews static wp:html blocks from their saved
+   markup, so editors see the literal token there; the rendered v6 shell is
+   always resolved.
+2. **Each free-form (wp:html) block stands on its own.** The header part used
+   to open `<div class="fp-island-wrap"><header class="fp-island">` in one
+   wp:html block and close them in another, with the plugin's basket-button
+   block interleaved — legal, but a Site Editor edit touching either block
+   could silently corrupt the rendered chrome. The wrap and the island header
+   are now group block boundaries (the island as `wp:group` with
+   `tagName: header`), and the logo, navigation, burger button and mobile
+   sheet each live in one balanced wp:html block, with the basket button
+   between them exactly as before. The group blocks receive core
+   flow-layout classes whose rules add block margins to container children;
+   because the v6 pill chrome is gap-driven flex, the theme stylesheet resets
+   block margins on their direct children with a deliberately
+   outspecifying selector, and the check asserts the rendered page uses the
+   same layout CSS rules as before. The rendered DOM delta on a root install
+   is exactly: the two container elements carry
+   `wp-block-group …is-layout-flow` classes, the neutralizing reset, and
+   whitespace.
+
 ## 2026-09-04 — Issue #19: the basket cookie Secure flag follows the request scheme
 
 `send_cookie()` set `secure => true` unconditionally — right for this
