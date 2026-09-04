@@ -34,7 +34,7 @@
 set -euo pipefail
 umask 077
 
-HOSTNAME='freeplast.mliu.site'
+SITE_HOSTNAME='freeplast.mliu.site'
 STACK_DIR='/opt/freeplast-wordpress'
 LOOPBACK_PORT='8092'
 BACKUP_ROOT='/root/freeplast-wordpress-backups'
@@ -44,13 +44,24 @@ SRC="$(cd "${1:-$INFRA_DIR/..}" && pwd)"
 
 die() { printf 'deploy: %s\n' "$1" >&2; exit 1; }
 
+# Poll a command every 2 s (up to 60 tries); abort through die() if it never
+# succeeds, so every start-up wait fails with the same loud, named error.
+wait_for() {
+  local what="$1"; shift
+  for _ in $(seq 1 60); do
+    "$@" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  die "$what"
+}
+
 [[ ${EUID} -eq 0 ]] || die 'run as root on the OpenClaw host'
 [[ -f "$INFRA_DIR/preflight.sh" ]] || die 'preflight.sh must sit beside deploy.sh'
 [[ -f "$SRC/data/products.json" ]] || die "repository wordpress/ not found at $SRC (pass it as \$1)"
 
 # Owner-approved inputs (never secret values)
-: "${TLS_CERT_PATH:?set TLS_CERT_PATH to the approved certificate for $HOSTNAME}"
-: "${TLS_KEY_PATH:?set TLS_KEY_PATH to the approved key for $HOSTNAME}"
+: "${TLS_CERT_PATH:?set TLS_CERT_PATH to the approved certificate for $SITE_HOSTNAME}"
+: "${TLS_KEY_PATH:?set TLS_KEY_PATH to the approved key for $SITE_HOSTNAME}"
 : "${WORDPRESS_ADMIN_EMAIL:?set WORDPRESS_ADMIN_EMAIL to the owner-approved address}"
 export TLS_CERT_PATH TLS_KEY_PATH
 
@@ -102,18 +113,10 @@ cp "$INFRA_DIR/compose.yaml" "$STACK_DIR/compose.yaml"
 # 4. Compose: configuration validated before anything starts
 docker compose --env-file .env config --quiet
 docker compose --env-file .env up -d
-for _ in $(seq 1 60); do
-  docker compose --env-file .env exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && break
-  sleep 2
-done
-docker compose --env-file .env exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null \
-  || die 'the database did not become healthy'
-for _ in $(seq 1 60); do
-  curl -s --max-time 5 -o /dev/null "http://127.0.0.1:${FREEPLAST_LOOPBACK_PORT}/" && break
-  sleep 2
-done
-curl -s --max-time 5 -o /dev/null "http://127.0.0.1:${FREEPLAST_LOOPBACK_PORT}/" \
-  || die 'the origin did not answer on the loopback port'
+wait_for 'the database did not become healthy' \
+  docker compose --env-file .env exec -T db healthcheck.sh --connect --innodb_initialized
+wait_for 'the origin did not answer on the loopback port' \
+  curl -s --max-time 5 -o /dev/null "http://127.0.0.1:${FREEPLAST_LOOPBACK_PORT}/"
 docker compose --env-file .env ps
 
 # 5. Theme + plugin into the persistent WordPress volume
@@ -123,7 +126,7 @@ docker compose --env-file .env run --rm cli sh -c \
 # 6. WordPress bootstrap — secrets travel through the environment, never argv
 docker compose --env-file .env run --rm \
   -e WORDPRESS_ADMIN_USER -e WORDPRESS_ADMIN_PASSWORD -e WORDPRESS_ADMIN_EMAIL \
-  -e SITE_URL="https://${HOSTNAME}" \
+  -e SITE_URL="https://${SITE_HOSTNAME}" \
   cli sh -c '
     wp core is-installed || wp core install --url="$SITE_URL" --title="Freeplast" \
       --admin_user="$WORDPRESS_ADMIN_USER" --admin_password="$WORDPRESS_ADMIN_PASSWORD" \
@@ -170,7 +173,7 @@ Transfer through the owner-approved secret channel, then keep this file
 mode 0400 on the server. It never enters the repository.
 
 WordPress administrator
-  URL:      https://${HOSTNAME}/wp-admin/
+  URL:      https://${SITE_HOSTNAME}/wp-admin/
   user:     ${WORDPRESS_ADMIN_USER}
   password: ${WORDPRESS_ADMIN_PASSWORD}
 

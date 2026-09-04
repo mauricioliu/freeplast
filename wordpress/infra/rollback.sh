@@ -14,7 +14,7 @@
 # are never touched.
 set -euo pipefail
 
-HOSTNAME='freeplast.mliu.site'
+SITE_HOSTNAME='freeplast.mliu.site'
 STACK_DIR='/opt/freeplast-wordpress'
 VHOST='/etc/nginx/sites-available/freeplast.mliu.site'
 ENABLED='/etc/nginx/sites-enabled/freeplast.mliu.site'
@@ -35,9 +35,9 @@ if [[ -e "$ENABLED" || -e "$VHOST" ]]; then
   rm -f "$ENABLED" "$VHOST"
   nginx -t
   systemctl reload nginx
-  printf 'vhost removed — %s no longer served\n' "$HOSTNAME"
+  printf 'vhost removed — %s no longer served\n' "$SITE_HOSTNAME"
 else
-  printf 'no vhost present for %s\n' "$HOSTNAME"
+  printf 'no vhost present for %s\n' "$SITE_HOSTNAME"
 fi
 
 # 2. Bring down only the freeplast-wordpress Compose project

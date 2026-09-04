@@ -10,7 +10,7 @@
 # non-zero on any mismatch. Prints no secret values.
 set -euo pipefail
 
-HOSTNAME='freeplast.mliu.site'
+SITE_HOSTNAME='freeplast.mliu.site'
 STACK_DIR='/opt/freeplast-wordpress'
 
 cd "$STACK_DIR"
@@ -18,9 +18,8 @@ set -a
 . ./.env
 set +a
 
-BASE="https://${HOSTNAME}"
+BASE="https://${SITE_HOSTNAME}"
 ORIGIN="http://127.0.0.1:${FREEPLAST_LOOPBACK_PORT}"
-CLI='docker compose --env-file .env run --rm cli'
 
 failures=0
 ok()   { printf '  ok      %s\n' "$1"; }
@@ -37,7 +36,7 @@ code="$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "$ORIGIN/")"
 if [[ "$code" != "000" ]]; then ok "origin answers on $ORIGIN (status $code)"; else miss "origin does not answer on $ORIGIN"; fi
 
 # Plain HTTP redirects to HTTPS
-code="$(status "http://${HOSTNAME}/")"
+code="$(status "http://${SITE_HOSTNAME}/")"
 if [[ "$code" == "301" ]]; then ok 'plain HTTP redirects to HTTPS (301)'; else miss "plain HTTP returned $code (expected 301)"; fi
 
 # Basic Auth: anonymous is challenged; owner and client credentials pass

@@ -23,6 +23,10 @@ DEST="$BACKUP_ROOT/$STAMP"
 REHEARSAL="${PROJECT}-restore"
 REHEARSAL_PORT='8093'
 
+# Every restore-rehearsal command runs under the temporary project name —
+# never the live one.
+rehearsal() { docker compose --env-file .env -p "$REHEARSAL" "$@"; }
+
 cd "$STACK_DIR"
 set -a
 . ./.env
@@ -46,32 +50,32 @@ printf 'backup stored in %s\n' "$DEST"
 
 # 4. Restore rehearsal — temporary project names only
 printf 'restore rehearsal into temporary project %s (loopback %s)…\n' "$REHEARSAL" "$REHEARSAL_PORT"
-FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" docker compose --env-file .env -p "$REHEARSAL" up -d db
+FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" rehearsal up -d db
 for _ in $(seq 1 60); do
-  docker compose --env-file .env -p "$REHEARSAL" exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && break
+  rehearsal exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && break
   sleep 2
 done
-docker compose --env-file .env -p "$REHEARSAL" exec -T \
+rehearsal exec -T \
   -e MARIADB_PWD="$MARIADB_ROOT_PASSWORD" db \
   sh -c 'exec mariadb -uroot' < "$DEST/db.sql"
-FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" docker compose --env-file .env -p "$REHEARSAL" up -d wordpress
+FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" rehearsal up -d wordpress
 for _ in $(seq 1 60); do
   curl -s --max-time 5 -o /dev/null "http://127.0.0.1:${REHEARSAL_PORT}/" && break
   sleep 2
 done
-docker compose --env-file .env -p "$REHEARSAL" exec -T wordpress sh -c 'tar -xzf - -C /var/www/html' < "$DEST/files.tgz"
+rehearsal exec -T wordpress sh -c 'tar -xzf - -C /var/www/html' < "$DEST/files.tgz"
 
 LIVE_COUNT="$(docker compose --env-file .env run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
-RESTORED_COUNT="$(docker compose --env-file .env -p "$REHEARSAL" run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
+RESTORED_COUNT="$(rehearsal run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
 if [[ -n "$LIVE_COUNT" && "$LIVE_COUNT" != "0" && "$RESTORED_COUNT" == "$LIVE_COUNT" ]]; then
   printf 'restore rehearsal verified: %s fp_product records in both stacks\n' "$LIVE_COUNT"
 else
   printf 'restore rehearsal FAILED: live=%s restored=%s\n' "${LIVE_COUNT:-?}" "${RESTORED_COUNT:-?}" >&2
-  docker compose --env-file .env -p "$REHEARSAL" down -v --remove-orphans
+  rehearsal down -v --remove-orphans
   exit 1
 fi
 
 # Teardown of the rehearsal only (project-scoped volumes and containers)
-docker compose --env-file .env -p "$REHEARSAL" down -v --remove-orphans
+rehearsal down -v --remove-orphans
 printf 'rehearsal torn down — the live stack was never touched\n'
 printf 'backup complete: %s (db.sql + files.tgz + SHA256SUMS)\n' "$DEST"

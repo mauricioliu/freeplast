@@ -19,7 +19,7 @@
 # from /opt/freeplast-wordpress/.env.
 set -euo pipefail
 
-HOSTNAME='freeplast.mliu.site'
+SITE_HOSTNAME='freeplast.mliu.site'
 STACK_DIR='/opt/freeplast-wordpress'
 PROJECT='freeplast-wordpress'
 LOOPBACK_PORT='8092'
@@ -37,9 +37,13 @@ ok()   { printf '  ok      %s\n' "$1"; }
 miss() { printf '  FAIL    %s\n' "$1"; failures=$((failures + 1)); }
 skip() { printf '  note    %s\n' "$1"; }
 
+# A re-deploy (ALLOW_EXISTING_STACK=1) expects the stack's own resources
+# to exist and downgrades them to notes; every other collision stays fatal.
+existing_stack_allowed() { [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; }
+
 printf 'Freeplast staging preflight — %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf 'host: %s\n' "$(hostname)"
-printf 'target: %s proxied to 127.0.0.1:%s from %s\n\n' "$HOSTNAME" "$LOOPBACK_PORT" "$STACK_DIR"
+printf 'target: %s proxied to 127.0.0.1:%s from %s\n\n' "$SITE_HOSTNAME" "$LOOPBACK_PORT" "$STACK_DIR"
 
 # 1. Tooling
 if command -v docker >/dev/null 2>&1; then
@@ -54,10 +58,10 @@ else
 fi
 
 # 2. Approved hostname: no existing enabled vhost claims it
-if grep -rl -- "$HOSTNAME" /etc/nginx/sites-enabled/ >/dev/null 2>&1; then
-  miss "an existing enabled vhost already references $HOSTNAME"
+if grep -rl -- "$SITE_HOSTNAME" /etc/nginx/sites-enabled/ >/dev/null 2>&1; then
+  miss "an existing enabled vhost already references $SITE_HOSTNAME"
 else
-  ok "no enabled vhost references $HOSTNAME"
+  ok "no enabled vhost references $SITE_HOSTNAME"
 fi
 
 # 3. Loopback port is unbound
@@ -70,7 +74,7 @@ fi
 # 4. Stack directory is new
 if [[ ! -e "$STACK_DIR" ]]; then
   ok "stack directory $STACK_DIR does not exist yet"
-elif [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; then
+elif existing_stack_allowed; then
   skip "stack directory $STACK_DIR exists (ALLOW_EXISTING_STACK=1 — redeploy)"
 else
   miss "stack directory $STACK_DIR already exists"
@@ -78,7 +82,7 @@ fi
 
 # 5. Compose project and container names are new
 if docker ps -a --format '{{.Names}}' | grep -q "^${PROJECT}-"; then
-  if [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; then
+  if existing_stack_allowed; then
     skip "containers of ${PROJECT} exist (redeploy)"
   else
     miss "containers named ${PROJECT}-* already exist"
@@ -87,7 +91,7 @@ else
   ok "no ${PROJECT}-* containers exist"
 fi
 if docker compose ls --all --format json 2>/dev/null | grep -q "\"${PROJECT}\""; then
-  if [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; then
+  if existing_stack_allowed; then
     skip "compose project ${PROJECT} registered (redeploy)"
   else
     miss "compose project ${PROJECT} is already registered"
@@ -98,7 +102,7 @@ fi
 
 # 6. Named volumes are new
 if docker volume ls --format '{{.Name}}' | grep -Exq "${PROJECT}_(db_data|wp_data)"; then
-  if [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; then
+  if existing_stack_allowed; then
     skip "named volumes ${PROJECT}_db_data / ${PROJECT}_wp_data exist (redeploy)"
   else
     miss "named volumes ${PROJECT}_db_data / ${PROJECT}_wp_data already exist"
@@ -109,7 +113,7 @@ fi
 
 # 7. Dedicated network is new
 if docker network ls --format '{{.Name}}' | grep -qx "${PROJECT}_freeplast"; then
-  if [[ "${ALLOW_EXISTING_STACK:-0}" == '1' ]]; then
+  if existing_stack_allowed; then
     skip "network ${PROJECT}_freeplast exists (redeploy)"
   else
     miss "network ${PROJECT}_freeplast already exists"
@@ -127,10 +131,10 @@ else
 fi
 
 # 9. DNS resolves to this host before TLS can serve the hostname
-if ADDRS="$(getent ahosts "$HOSTNAME" 2>/dev/null)" && [[ -n "$ADDRS" ]]; then
-  ok "$HOSTNAME resolves here: $(printf '%s\n' "$ADDRS" | awk '{print $1}' | sort -u | paste -sd, -)"
+if ADDRS="$(getent ahosts "$SITE_HOSTNAME" 2>/dev/null)" && [[ -n "$ADDRS" ]]; then
+  ok "$SITE_HOSTNAME resolves here: $(printf '%s\n' "$ADDRS" | awk '{print $1}' | sort -u | paste -sd, -)"
 else
-  miss "$HOSTNAME does not resolve — DNS must reach this host before deployment"
+  miss "$SITE_HOSTNAME does not resolve — DNS must reach this host before deployment"
 fi
 
 # 10. TLS convention: readable, covers the hostname, not near expiry
@@ -143,10 +147,10 @@ if [[ -n "$TLS_CERT" && -n "$TLS_KEY" ]]; then
       miss 'certificate expires within 30 days — renew through the established ACME process'
     fi
     if openssl x509 -in "$TLS_CERT" -noout -ext subjectAltName 2>/dev/null \
-      | grep -Eq "DNS:(${HOSTNAME//./\\.}|\\*\\.${HOSTNAME#*.})"; then
-      ok "certificate SAN covers $HOSTNAME"
+      | grep -Eq "DNS:(${SITE_HOSTNAME//./\\.}|\\*\\.${SITE_HOSTNAME#*.})"; then
+      ok "certificate SAN covers $SITE_HOSTNAME"
     else
-      miss "certificate SAN does not cover $HOSTNAME"
+      miss "certificate SAN does not cover $SITE_HOSTNAME"
     fi
   else
     miss "certificate not readable: $TLS_CERT"
