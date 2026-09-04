@@ -4504,16 +4504,10 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
     assert.ok(deployment.includes(needle), `DEPLOYMENT.md must record ${needle}`);
   }
 
-  /* 10. Cross-file consistency: the staging constants are single-sourced in
-     staging.sh (issue #16); DEPLOYMENT.md records the deployed values. */
-  assert.ok(deployment.includes('8092'), 'DEPLOYMENT.md records the deployed loopback port');
+  /* 10. Cross-file consistency: one proxy target, one htpasswd path — the
+     constants themselves are single-sourced in staging.sh (issue #16 test
+     below) and DEPLOYMENT.md records the deployed values (§9). */
   assert.equal((vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:__LOOPBACK_PORT__;/g) || []).length, 1, 'exactly one proxy target');
-  const sharedDefinition = read('staging.sh');
-  for (const text of [preflight, deploy, verify, backup, rollback]) {
-    assert.ok(text.includes('. "$INFRA_DIR/staging.sh"'), 'every script sources the shared staging constants');
-    assert.ok(!text.includes("STACK_DIR='"), 'no script redeclares the stack directory');
-  }
-  assert.ok(sharedDefinition.includes("STACK_DIR='/opt/freeplast-wordpress'"), 'staging.sh declares the stack directory once');
   assert.ok(
     deploy.includes('"$STACK_DIR/nginx/.htpasswd"') && vhost.includes('__STACK_DIR__/nginx/.htpasswd;'),
     'deploy.sh writes the exact htpasswd path the vhost reads'
@@ -4786,23 +4780,82 @@ test('the verification and operations handoff packages the build for independent
 /** The deployed vhost, rendered exactly as it stands on the server since
  * the issue #14 operator run (TLS paths per DEPLOYMENT.md §Post-deploy
  * records). The issue #16 template must reproduce these bytes. */
-const DEPLOYED_VHOST = "# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).\n#\n# Rendered by deploy.sh: /etc/nginx/ssl/mliu.site/fullchain.pem / /etc/nginx/ssl/mliu.site/key.pem are replaced with the\n# server's approved certificate paths from .env (preflight.sh verifies the\n# certificate covers the hostname first). Align TLS protocol/cipher lines\n# with the server's existing convention when recording the deployment.\n#\n# Installed as /etc/nginx/sites-available/freeplast.mliu.site plus one\n# symlink in /etc/nginx/sites-enabled — nginx -t always runs before the\n# reload, and deploy.sh backs up the prior configuration first.\n\nserver {\n    listen 80;\n    server_name freeplast.mliu.site;\n    return 301 https://$host$request_uri;\n}\n\nserver {\n    listen 443 ssl;\n    server_name freeplast.mliu.site;\n\n    ssl_certificate /etc/nginx/ssl/mliu.site/fullchain.pem;\n    ssl_certificate_key /etc/nginx/ssl/mliu.site/key.pem;\n\n    # Password-protected review surface: owner/client credentials only.\n    auth_basic \"Freeplast staging\";\n    auth_basic_user_file /opt/freeplast-wordpress/nginx/.htpasswd;\n\n    # Staging stays non-indexed even if WordPress is ever misconfigured.\n    add_header X-Robots-Tag \"noindex, nofollow\" always;\n\n    client_max_body_size 64m;\n\n    # Defense in depth: dotfiles and sensitive backup/config extensions.\n    location ~ /\\. { deny all; }\n    location ~* /(wp-config\\.php|readme\\.html|license\\.txt)(/|$) { deny all; }\n    location ~* \\.(bak|config|ini|log|orig|sh|sql|swp|tar\\.gz|tgz)$ { deny all; }\n\n    location / {\n        proxy_pass http://127.0.0.1:8092;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto https;\n        proxy_set_header X-Forwarded-Host $host;\n        proxy_read_timeout 120s;\n    }\n}\n";
+const DEPLOYED_VHOST = `# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).
+#
+# Rendered by deploy.sh: /etc/nginx/ssl/mliu.site/fullchain.pem / /etc/nginx/ssl/mliu.site/key.pem are replaced with the
+# server's approved certificate paths from .env (preflight.sh verifies the
+# certificate covers the hostname first). Align TLS protocol/cipher lines
+# with the server's existing convention when recording the deployment.
+#
+# Installed as /etc/nginx/sites-available/freeplast.mliu.site plus one
+# symlink in /etc/nginx/sites-enabled — nginx -t always runs before the
+# reload, and deploy.sh backs up the prior configuration first.
+
+server {
+    listen 80;
+    server_name freeplast.mliu.site;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name freeplast.mliu.site;
+
+    ssl_certificate /etc/nginx/ssl/mliu.site/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/mliu.site/key.pem;
+
+    # Password-protected review surface: owner/client credentials only.
+    auth_basic "Freeplast staging";
+    auth_basic_user_file /opt/freeplast-wordpress/nginx/.htpasswd;
+
+    # Staging stays non-indexed even if WordPress is ever misconfigured.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    client_max_body_size 64m;
+
+    # Defense in depth: dotfiles and sensitive backup/config extensions.
+    location ~ /\\. { deny all; }
+    location ~* /(wp-config\\.php|readme\\.html|license\\.txt)(/|$) { deny all; }
+    location ~* \\.(bak|config|ini|log|orig|sh|sql|swp|tar\\.gz|tgz)$ { deny all; }
+
+    location / {
+        proxy_pass http://127.0.0.1:8092;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_read_timeout 120s;
+    }
+}
+`;
 
 test('the staging hostname, install root and loopback port are single-sourced in infra (issue #16)', () => {
   const INFRA = join(WORDPRESS_DIR, 'infra');
   const read = (name) => readFileSync(join(INFRA, name), 'utf8');
   const scripts = ['preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh', 'rollback.sh'];
+  const infraFiles = ['staging.sh', ...scripts, 'compose.yaml', '.env.example', 'nginx/staging.conf.tmpl'];
   const CONSTANTS = [
     ['SITE_HOSTNAME', 'freeplast.mliu.site'],
     ['STACK_DIR', '/opt/freeplast-wordpress'],
     ['LOOPBACK_PORT', '8092'],
   ];
+  /* Everything deploy.sh substitutes into the vhost template: the shared
+     constants plus the server's TLS convention as deployed. */
+  const SUBSTITUTIONS = [
+    ...CONSTANTS.map(([name, value]) => [`__${name}__`, value]),
+    ['__TLS_CERT__', '/etc/nginx/ssl/mliu.site/fullchain.pem'],
+    ['__TLS_KEY__', '/etc/nginx/ssl/mliu.site/key.pem'],
+  ];
 
-  const shared = read('staging.sh');
-  assert.ok(shared.endsWith('\n'), 'staging.sh must end with a newline');
-  assert.ok(!/TODO|FIXME/.test(shared), 'staging.sh must not ship unfinished-work markers');
-  const lint = spawnSync('bash', ['-n', join(INFRA, 'staging.sh')], { encoding: 'utf8' });
-  assert.equal(lint.status, 0, `bash -n staging.sh: ${lint.stderr}`);
+  /* Every artifact is read exactly once; the generic hygiene checks
+     (newline-terminated, no unfinished-work markers, bash -n) live in the
+     issue #14 test above. */
+  const text = new Map(infraFiles.map((name) => [name, read(name)]));
+  const shared = text.get('staging.sh');
+  const vhost = text.get('nginx/staging.conf.tmpl');
+  const deploy = text.get('deploy.sh');
 
   /* 1. staging.sh declares each constant exactly once; sourcing it is
      silent and exposes exactly those values. */
@@ -4825,19 +4878,18 @@ test('the staging hostname, install root and loopback port are single-sourced in
   /* 2. All five shell scripts source the shared definition and declare no
      constant literals of their own. */
   for (const name of scripts) {
-    const text = read(name);
-    assert.ok(text.includes('. "$INFRA_DIR/staging.sh"'), `${name} sources the shared definition`);
+    const script = text.get(name);
+    assert.ok(script.includes('. "$INFRA_DIR/staging.sh"'), `${name} sources the shared definition`);
     for (const [key] of CONSTANTS) {
-      assert.ok(!text.includes(`${key}='`), `${name} must not redeclare ${key}`);
+      assert.ok(!script.includes(`${key}='`), `${name} must not redeclare ${key}`);
     }
   }
 
   /* 3. Each value literal appears exactly once across all of infra — in
      staging.sh (a staging host or port change is a one-place edit). */
-  const infraFiles = ['staging.sh', ...scripts, 'compose.yaml', '.env.example', 'nginx/staging.conf.tmpl'];
   for (const [, value] of CONSTANTS) {
     const hits = infraFiles
-      .map((name) => ({ name, count: read(name).split(value).length - 1 }))
+      .map((name) => ({ name, count: text.get(name).split(value).length - 1 }))
       .filter((h) => h.count > 0);
     assert.equal(hits.reduce((sum, h) => sum + h.count, 0), 1, `${value} must appear exactly once in infra`);
     assert.deepEqual(hits.map((h) => h.name), ['staging.sh'], `${value} must be declared only in staging.sh`);
@@ -4845,9 +4897,7 @@ test('the staging hostname, install root and loopback port are single-sourced in
 
   /* 4. The vhost template carries only placeholders (comments included) and
      deploy.sh renders all five of them. */
-  const vhost = read('nginx/staging.conf.tmpl');
-  const deploy = read('deploy.sh');
-  for (const placeholder of ['__SITE_HOSTNAME__', '__STACK_DIR__', '__LOOPBACK_PORT__', '__TLS_CERT__', '__TLS_KEY__']) {
+  for (const [placeholder] of SUBSTITUTIONS) {
     assert.ok(vhost.includes(placeholder), `the vhost template carries ${placeholder}`);
     assert.ok(deploy.includes(`s|${placeholder}|`), `deploy.sh renders ${placeholder}`);
   }
@@ -4856,22 +4906,17 @@ test('the staging hostname, install root and loopback port are single-sourced in
      constants and the deployed TLS convention reproduces the deployed vhost
      byte-for-byte. */
   let rendered = vhost;
-  for (const [placeholder, value] of [
-    ['__SITE_HOSTNAME__', 'freeplast.mliu.site'],
-    ['__STACK_DIR__', '/opt/freeplast-wordpress'],
-    ['__LOOPBACK_PORT__', '8092'],
-    ['__TLS_CERT__', '/etc/nginx/ssl/mliu.site/fullchain.pem'],
-    ['__TLS_KEY__', '/etc/nginx/ssl/mliu.site/key.pem'],
-  ]) {
+  for (const [placeholder, value] of SUBSTITUTIONS) {
     rendered = rendered.split(placeholder).join(value);
   }
   assert.equal(rendered, DEPLOYED_VHOST, 'the rendered vhost is byte-identical to the deployed configuration');
 
   /* 6. The Compose port takes the deploy-written .env value with no fallback
      literal, resolving to the deployed loopback-only mapping. */
-  const portLine = read('compose.yaml').split('\n').find((line) => line.includes('FREEPLAST_LOOPBACK_PORT'));
+  const portLine = text.get('compose.yaml').split('\n').find((line) => line.includes('FREEPLAST_LOOPBACK_PORT'));
+  assert.ok(portLine, 'compose.yaml must publish the loopback port mapping');
   assert.equal(
-    portLine?.trim(),
+    portLine.trim(),
     '- "127.0.0.1:${FREEPLAST_LOOPBACK_PORT:?set in .env by deploy.sh}:80"',
     'the compose port requires the .env value (fail-loud) and resolves to 127.0.0.1:<port>→80'
   );
