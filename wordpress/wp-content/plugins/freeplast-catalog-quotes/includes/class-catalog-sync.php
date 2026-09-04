@@ -328,17 +328,16 @@ class Freeplast_CQ_Catalog_Sync {
 					continue; // unchanged media is reused, never re-imported
 				}
 
-				[ $attachments[ $id ], $created ] = self::import_attachment( $source, $entry['product']['image'] );
-				if ( $created ) {
-					$imported[] = $attachments[ $id ];
+				$import             = self::import_attachment( $source, $entry['product']['image'] );
+				$attachments[ $id ] = $import['attachment_id'];
+				if ( $import['created'] ) {
+					$imported[] = $import['attachment_id'];
 				}
 			}
 		} catch ( Freeplast_CQ_Catalog_Sync_Error $e ) {
 			/* Nothing was mutated yet; only this run's imports are removed —
 			   checksum-reused attachments belong to the library, not the run. */
-			foreach ( $imported as $attachment_id ) {
-				self::delete_run_attachment( $attachment_id );
-			}
+			self::roll_back_imports( $imported );
 			throw $e;
 		}
 
@@ -366,9 +365,7 @@ class Freeplast_CQ_Catalog_Sync {
 			   — remove them too. An import a surviving updated record already
 			   references is not orphaned, and checksum-reused attachments are
 			   never ours to delete. */
-			foreach ( $imported as $attachment_id ) {
-				self::delete_run_attachment( $attachment_id );
-			}
+			self::roll_back_imports( $imported );
 			throw $e;
 		}
 
@@ -445,10 +442,10 @@ class Freeplast_CQ_Catalog_Sync {
 	 * an existing attachment with the same checksum. The frontend never
 	 * hotlinks source media.
 	 *
-	 * @return array{0: int, 1: bool} The attachment id to use for the record,
-	 *                                and whether THIS RUN created it (true) or
-	 *                                found it by checksum (false) — only a
-	 *                                created attachment may be rolled back.
+	 * @return array{attachment_id: int, created: bool} The attachment id to
+	 *                                                use for the record, and whether this run created it
+	 *                                                (true) or found it by checksum (false) — only a
+	 *                                                created attachment may be rolled back.
 	 */
 	private static function import_attachment( Freeplast_CQ_Catalog_Source $source, array $image ): array {
 		$reuse = get_posts(
@@ -463,7 +460,10 @@ class Freeplast_CQ_Catalog_Sync {
 			)
 		);
 		if ( array() !== $reuse ) {
-			return array( (int) $reuse[0], false );
+			return array(
+				'attachment_id' => (int) $reuse[0],
+				'created'       => false,
+			);
 		}
 
 		$path = $source->media_path( $image['file'] );
@@ -508,7 +508,20 @@ class Freeplast_CQ_Catalog_Sync {
 		update_post_meta( $attachment, '_fp_image_checksum', $image['checksum'] );
 		update_post_meta( $attachment, '_fp_image_provisional', $image['provisional'] ? '1' : '0' );
 
-		return array( (int) $attachment, true );
+		return array(
+			'attachment_id' => (int) $attachment,
+			'created'       => true,
+		);
+	}
+
+	/**
+	 * Roll back every attachment this run imported — the shared cleanup of
+	 * both apply-phase failure paths.
+	 */
+	private static function roll_back_imports( array $imported ): void {
+		foreach ( $imported as $attachment_id ) {
+			self::delete_run_attachment( $attachment_id );
+		}
 	}
 
 	/**

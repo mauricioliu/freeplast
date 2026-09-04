@@ -1093,10 +1093,9 @@ test('invalid sources return non-zero without partial mutation; missing products
 /** Names of every file under the disposable uploads directory (recursive). */
 function uploadsFileNames() {
   const walk = (dir) =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(dir, entry.name);
-      return entry.isDirectory() ? walk(path) : [entry.name];
-    });
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? walk(join(dir, entry.name)) : [entry.name]
+    );
   try {
     return walk(join(WP_DIR, 'wp-content', 'uploads'));
   } catch {
@@ -1193,9 +1192,9 @@ test('a failed sync phase rolls back its run-imported media and never deletes ch
      aborts the media phase mid-import) without touching the other type. */
   const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
   mkdirSync(muDir, { recursive: true });
-  const installFault = (postType, name) =>
+  const installFault = (postType, file) =>
     writeFileSync(
-      join(muDir, name),
+      join(muDir, file),
       `<?php
 /* Issue #22 fault injection: short-circuit wp_insert_post for the
    "${postType}" post type only, so the catalog synchronizer fails in
@@ -1205,17 +1204,18 @@ add_filter( 'wp_insert_post_empty_content', static function ( $maybe_empty, $pos
 }, 10, 2 );
 `
     );
-  const faulted = (name, postType) => {
-    installFault(postType, name);
+  const faulted = (postType) => {
+    const file = `fp-test-issue22-fault-${postType}.php`;
+    installFault(postType, file);
     const res = catalogSync([], failingFile);
-    rmSync(join(muDir, name), { force: true });
+    rmSync(join(muDir, file), { force: true });
     return res;
   };
 
   /* Post phase fails after the media phase imported Panalera's reuse plus
      two fresh imports: the run's own imports must roll back with the posts,
      while the checksum-reused tote attachment is never ours to delete. */
-  const postFail = faulted('fp-test-issue22-post-fail.php', 'fp_product');
+  const postFail = faulted('fp_product');
   assert.notEqual(postFail.status, 0, 'the faulted post phase must fail the run');
   assertContains(
     `${postFail.stdout}\n${postFail.stderr}`,
@@ -1234,7 +1234,7 @@ add_filter( 'wp_insert_post_empty_content', static function ( $maybe_empty, $pos
      already done): only this run's import may be removed — the pre-existing
      tote attachment reused minutes earlier belongs to fp-tote, not to the
      failing run, and must survive. */
-  const mediaFail = faulted('fp-test-issue22-media-fail.php', 'attachment');
+  const mediaFail = faulted('attachment');
   assert.notEqual(mediaFail.status, 0, 'the faulted media phase must fail the run');
   assertContains(`${mediaFail.stdout}\n${mediaFail.stderr}`, 'media import failed', 'the media-phase failure must name the import that failed');
   assert.equal(productCount(), productsBefore, 'a media-phase failure must not create any product');
