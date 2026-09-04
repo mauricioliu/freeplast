@@ -11,7 +11,8 @@
  *   3. Create/update only plugin-owned fields; preserve post IDs, permalinks
  *      and revisions across updates.
  *   4. Import changed media into the local media library (checksum-keyed
- *      reuse); unchanged media is never re-imported.
+ *      reuse); unchanged media is never re-imported. A failed run rolls its
+ *      own imports back; checksum-reused attachments are never deleted.
  *   5. Report deterministic per-product differences and
  *      created/updated/unchanged/warning/error totals.
  *   6. Return non-zero on schema, import or consistency failure. A second
@@ -311,7 +312,8 @@ class Freeplast_CQ_Catalog_Sync {
 
 	private static function apply( Freeplast_CQ_Catalog_Source $source, array $plan ): void {
 		$created_ids = array();
-		$attachments = array();
+		$imported    = array(); // attachments this run created (safe to roll back)
+		$attachments = array(); // source id => attachment id used as featured media
 
 		try {
 			/* Media first: a failed import aborts before any post mutation. */
@@ -326,13 +328,16 @@ class Freeplast_CQ_Catalog_Sync {
 					continue; // unchanged media is reused, never re-imported
 				}
 
-				$attachments[ $id ] = self::import_attachment( $source, $entry['product']['image'] );
+				$import             = self::import_attachment( $source, $entry['product']['image'] );
+				$attachments[ $id ] = $import['attachment_id'];
+				if ( $import['created'] ) {
+					$imported[] = $import['attachment_id'];
+				}
 			}
 		} catch ( Freeplast_CQ_Catalog_Sync_Error $e ) {
-			/* Nothing was mutated yet; attachments created above are removed. */
-			foreach ( $attachments as $attachment_id ) {
-				wp_delete_attachment( $attachment_id, true );
-			}
+			/* Nothing was mutated yet; only this run's imports are removed —
+			   checksum-reused attachments belong to the library, not the run. */
+			self::roll_back_imports( $imported );
 			throw $e;
 		}
 
@@ -356,6 +361,11 @@ class Freeplast_CQ_Catalog_Sync {
 			foreach ( $created_ids as $post_id ) {
 				wp_delete_post( $post_id, true );
 			}
+			/* Removing the created posts would orphan this run's fresh imports
+			   — remove them too. An import a surviving updated record already
+			   references is not orphaned, and checksum-reused attachments are
+			   never ours to delete. */
+			self::roll_back_imports( $imported );
 			throw $e;
 		}
 
@@ -431,8 +441,13 @@ class Freeplast_CQ_Catalog_Sync {
 	 * Import the reviewed local media file into the media library, or reuse
 	 * an existing attachment with the same checksum. The frontend never
 	 * hotlinks source media.
+	 *
+	 * @return array{attachment_id: int, created: bool} The attachment id to
+	 *                                                use for the record, and whether this run created it
+	 *                                                (true) or found it by checksum (false) — only a
+	 *                                                created attachment may be rolled back.
 	 */
-	private static function import_attachment( Freeplast_CQ_Catalog_Source $source, array $image ): int {
+	private static function import_attachment( Freeplast_CQ_Catalog_Source $source, array $image ): array {
 		$reuse = get_posts(
 			array(
 				'post_type'        => 'attachment',
@@ -445,7 +460,10 @@ class Freeplast_CQ_Catalog_Sync {
 			)
 		);
 		if ( array() !== $reuse ) {
-			return (int) $reuse[0];
+			return array(
+				'attachment_id' => (int) $reuse[0],
+				'created'       => false,
+			);
 		}
 
 		$path = $source->media_path( $image['file'] );
@@ -470,6 +488,9 @@ class Freeplast_CQ_Catalog_Sync {
 		);
 
 		if ( is_wp_error( $attachment ) || 0 >= (int) $attachment ) {
+			/* Nothing owns the uploaded bits yet — remove them so a failed
+			   import leaves no orphaned file in the uploads directory. */
+			wp_delete_file( $upload['file'] );
 			throw new Freeplast_CQ_Catalog_Sync_Error( sprintf( 'media import failed for "%s"', $image['file'] ) );
 		}
 
@@ -487,7 +508,45 @@ class Freeplast_CQ_Catalog_Sync {
 		update_post_meta( $attachment, '_fp_image_checksum', $image['checksum'] );
 		update_post_meta( $attachment, '_fp_image_provisional', $image['provisional'] ? '1' : '0' );
 
-		return (int) $attachment;
+		return array(
+			'attachment_id' => (int) $attachment,
+			'created'       => true,
+		);
+	}
+
+	/**
+	 * Roll back every attachment this run imported — the shared cleanup of
+	 * both apply-phase failure paths.
+	 */
+	private static function roll_back_imports( array $imported ): void {
+		foreach ( $imported as $attachment_id ) {
+			self::delete_run_attachment( $attachment_id );
+		}
+	}
+
+	/**
+	 * Roll one run-imported attachment back — but only while no surviving
+	 * record still references it: an updated record keeps the fresh media it
+	 * was already upserted with (that attachment is not orphaned), while a
+	 * checksum-reused attachment is never in the run's import list at all.
+	 */
+	private static function delete_run_attachment( int $attachment_id ): void {
+		$referenced = get_posts(
+			array(
+				'post_type'        => 'any',
+				'post_status'      => 'any',
+				'posts_per_page'   => 1,
+				'fields'           => 'ids',
+				'no_found_rows'    => true,
+				'suppress_filters' => true,
+				'meta_key'         => '_thumbnail_id', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'       => (string) $attachment_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			)
+		);
+		if ( array() !== $referenced ) {
+			return;
+		}
+		wp_delete_attachment( $attachment_id, true );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -512,8 +571,9 @@ class Freeplast_CQ_Catalog_Sync {
 }
 
 /**
- * Thrown when synchronization cannot proceed consistently. Nothing is kept
- * when this escapes the apply phase.
+ * Thrown when synchronization cannot proceed consistently. The created posts
+ * and this run's own media imports are rolled back when it escapes the apply
+ * phase; pre-existing (checksum-reused) media is never deleted.
  */
 class Freeplast_CQ_Catalog_Sync_Error extends Exception {
 }

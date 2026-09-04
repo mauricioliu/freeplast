@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20, #23).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20, #22–#23).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -14,7 +14,8 @@
  * verifies the acceptance criteria of issues #2 through #17 (including
  *   the issue #9 sales workflow and the issue #10 notifications), of the
  * issue #19 basket-cookie scheme fix, of the issue #20 theme markup
- * hardening and of the issue #23 edge origin-header strip:
+ * hardening, of the issue #22 synchronization rollback discipline and
+ * of the issue #23 edge origin-header strip:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -167,7 +168,15 @@
  *      wrap and island header are group block boundaries with the basket
  *      button between them, so a Site Editor edit cannot split the v6
  *      chrome across blocks).
- *  22. The staging edge stops disclosing the origin runtime (issue #23):
+ *  22. A failed synchronization phase never leaves the run's media behind
+ *      (issue #22): a post-phase failure rolls the attachments the run
+ *      imported back together with the created posts (zero orphaned
+ *      attachments, no leftover uploads file), a mid-import media failure
+ *      removes only the run's own import, and attachments reused by
+ *      checksum are never deleted on any failure path — recovery
+ *      afterwards applies the same source cleanly and still reuses the
+ *      checksum-matched media.
+ *  23. The staging edge stops disclosing the origin runtime (issue #23):
  *      the proxied location of the Nginx vhost template hides exactly one
  *      origin header — X-Powered-By — via proxy_hide_header (the site's
  *      behavior is otherwise unchanged), verify.sh walks an authenticated
@@ -1083,6 +1092,207 @@ test('invalid sources return non-zero without partial mutation; missing products
     'Products absent from the source produce warnings only and stay published',
     'Only an explicit source lifecycle change archives a Product (and an explicit change reactivates it)',
     'Changed media imports exactly once; reruns and restores reuse attachments by checksum',
+  ]);
+});
+
+/* ─── 10b. Post-phase failure rolls back run-imported media (issue #22) ─ */
+
+/** Names of every file under the disposable uploads directory (recursive). */
+function uploadsFileNames() {
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? walk(join(dir, entry.name)) : [entry.name]
+    );
+  try {
+    return walk(join(WP_DIR, 'wp-content', 'uploads'));
+  } catch {
+    return [];
+  }
+}
+
+test('a failed sync phase rolls back its run-imported media and never deletes checksum-reused attachments (issue #22)', () => {
+  // Section 10 hands over the reviewed catalog: 17 records matching the
+  // source plus the retained v2 tote attachment (DISTINCT_IMAGES + 1).
+  const baseline = attachmentCount();
+  assert.equal(baseline, DISTINCT_IMAGES + 1, 'the section-10 handover must carry the reviewed media plus the retained v2 tote attachment');
+  const productsBefore = productCount();
+  assert.equal(productsBefore, 17);
+  const toteAttachment = productMeta('fp-tote', '_thumbnail_id');
+  assert.match(toteAttachment, /^\d+$/, 'fp-tote must hold a featured attachment that later runs can reuse by checksum');
+  const attachmentAlive = (id) =>
+    wp(['post', 'get', id, '--field=post_status']).stdout === 'inherit';
+
+  // Three never-synchronized fixture products exercising every media path in
+  // one run: Caja Panalera reuses the existing tote media by checksum
+  // (nothing may be imported), Caja Bacaladera and Caja Quitrasaca carry
+  // fresh bytes (real imports). File order drives the apply order.
+  const checksumOf = (bytes) => 'sha256:' + createHash('sha256').update(bytes).digest('hex');
+  const freshBytes = (name, marker) =>
+    Buffer.concat([readFileSync(join(WORDPRESS_DIR, 'data', 'media', name)), Buffer.from(`\n// issue-22 fixture: ${marker}\n`)]);
+  const tote = PRODUCT_BY_SOURCE_ID.get('fp-tote');
+  const fixtureProduct = (sourceId, slug, title, image) => ({
+    source_id: sourceId,
+    source_url: `https://freeplast.cl/producto/${slug}/`,
+    lifecycle: 'active',
+    slug,
+    legacy_paths: [`/producto/${slug}/`],
+    title,
+    excerpt: `${title} de PEAD reciclado para cosecha y transporte hortofrutícola.`,
+    description: `${title}. Fabricada en polietileno de alta densidad reciclado, apilable y resistente para uso agrícola.`,
+    category: 'agricola',
+    image,
+    specs: {
+      material: 'Polietileno de alta densidad reciclado',
+      material_short: 'PEAD reciclado',
+      dimensions: '600 x 400 x 180 mm',
+      weight: '1.250 gramos aprox.',
+      use: 'Cosecha y transporte hortofrutícola',
+      units_per_pallet: null,
+      minimum_quantity: null,
+      quantity_step: null,
+    },
+    options: [],
+    related_ids: ['fp-caja-tomatera'],
+    featured: false,
+    featured_order: null,
+    review: {
+      description_approved: false,
+      notes: [`Fixture product for the issue #22 rollback check (${slug}); never part of the reviewed catalog.`],
+    },
+  });
+  const bacaladeraBytes = freshBytes('fp-frutera.webp', 'fresh bacaladera media');
+  const quitrasacaBytes = freshBytes('fp-pollera.webp', 'fresh quitrasaca media');
+  const doc = cloneSourceDoc();
+  doc.products.push(
+    fixtureProduct('fp-caja-panalera', 'caja-panalera', 'Caja Panalera', {
+      file: 'media/fp-tote.webp',
+      checksum: tote.image.checksum,
+      width: tote.image.width,
+      height: tote.image.height,
+      alt: 'Caja Panalera (fixture issue #22): reutiliza el medio existente por checksum',
+      provisional: true,
+    }),
+    fixtureProduct('fp-caja-bacaladera', 'caja-bacaladera', 'Caja Bacaladera', {
+      file: 'media/fp-caja-bacaladera.webp',
+      checksum: checksumOf(bacaladeraBytes),
+      width: 600,
+      height: 600,
+      alt: 'Caja Bacaladera (fixture issue #22)',
+      provisional: true,
+    }),
+    fixtureProduct('fp-caja-quitrasaca', 'caja-quitrasaca', 'Caja Quitrasaca', {
+      file: 'media/fp-caja-quitrasaca.webp',
+      checksum: checksumOf(quitrasacaBytes),
+      width: 600,
+      height: 600,
+      alt: 'Caja Quitrasaca (fixture issue #22)',
+      provisional: true,
+    }),
+  );
+  const failingFile = writeFullFixture('issue-22-post-fail.json', doc, [
+    ['fp-caja-bacaladera.webp', bacaladeraBytes],
+    ['fp-caja-quitrasaca.webp', quitrasacaBytes],
+  ]);
+
+  /* Fault injection at the wp_insert_post seam: fail exactly one post type
+     (fp_product aborts the post phase after media succeeded; attachment
+     aborts the media phase mid-import) without touching the other type. */
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  mkdirSync(muDir, { recursive: true });
+  const installFault = (postType, file) =>
+    writeFileSync(
+      join(muDir, file),
+      `<?php
+/* Issue #22 fault injection: short-circuit wp_insert_post for the
+   "${postType}" post type only, so the catalog synchronizer fails in
+   exactly one phase while every other insert proceeds untouched. */
+add_filter( 'wp_insert_post_empty_content', static function ( $maybe_empty, $postarr ) {
+	return isset( $postarr['post_type'] ) && '${postType}' === $postarr['post_type'] ? true : $maybe_empty;
+}, 10, 2 );
+`
+    );
+  const faulted = (postType) => {
+    const file = `fp-test-issue22-fault-${postType}.php`;
+    installFault(postType, file);
+    const res = catalogSync([], failingFile);
+    rmSync(join(muDir, file), { force: true });
+    return res;
+  };
+
+  /* Post phase fails after the media phase imported Panalera's reuse plus
+     two fresh imports: the run's own imports must roll back with the posts,
+     while the checksum-reused tote attachment is never ours to delete. */
+  const postFail = faulted('fp_product');
+  assert.notEqual(postFail.status, 0, 'the faulted post phase must fail the run');
+  assertContains(
+    `${postFail.stdout}\n${postFail.stderr}`,
+    'no partial catalog mutation was kept',
+    'the post-phase failure must report the rollback'
+  );
+  assert.equal(productCount(), productsBefore, 'the post-phase failure must roll every created product back');
+  assert.equal(attachmentCount(), baseline, 'a post-phase failure must leave zero orphaned attachments from the run (run-imported media rolled back)');
+  assert.ok(attachmentAlive(toteAttachment), 'the checksum-reused tote attachment must never be deleted on the failure path');
+  assert.ok(
+    !uploadsFileNames().includes('fp-caja-bacaladera.webp'),
+    'the rolled-back import must not leave an orphaned file in the uploads directory'
+  );
+
+  /* Media phase fails mid-import (reuse already resolved, one fresh import
+     already done): only this run's import may be removed — the pre-existing
+     tote attachment reused minutes earlier belongs to fp-tote, not to the
+     failing run, and must survive. */
+  const mediaFail = faulted('attachment');
+  assert.notEqual(mediaFail.status, 0, 'the faulted media phase must fail the run');
+  assertContains(`${mediaFail.stdout}\n${mediaFail.stderr}`, 'media import failed', 'the media-phase failure must name the import that failed');
+  assert.equal(productCount(), productsBefore, 'a media-phase failure must not create any product');
+  assert.equal(attachmentCount(), baseline, 'a media-phase failure must remove only the run import and keep every pre-existing attachment');
+  assert.ok(attachmentAlive(toteAttachment), 'the checksum-reused tote attachment must survive the media-phase failure');
+  assert.ok(
+    !uploadsFileNames().includes('fp-caja-quitrasaca.webp'),
+    'the failed import must not leave its uploaded bits in the uploads directory'
+  );
+
+  /* Recovery: with the fault cleared, the same source applies cleanly — the
+     reused media is still not imported a second time. */
+  const recovery = catalogSync([], failingFile);
+  assert.equal(recovery.status, 0, `the recovery run must succeed:\n${recovery.stderr}`);
+  assertContains(recovery.stdout, 'fp-caja-panalera: created', 'the recovery run must create the checksum-reuse product');
+  assertContains(recovery.stdout, 'Summary: created=3 updated=0 unchanged=17 warnings=0 errors=0', 'the recovery run must report the three fixture creates');
+  assert.equal(attachmentCount(), baseline + 2, 'only the two genuinely fresh media may be imported; the reuse must not import again');
+  assert.equal(productMeta('fp-caja-panalera', '_thumbnail_id'), toteAttachment, 'the Panalera record must attach the existing tote media by checksum');
+  const rerun = catalogSync([], failingFile);
+  assertContains(rerun.stdout, 'Summary: created=0 updated=0 unchanged=20 warnings=0 errors=0', 'the fixture source must be a no-op once applied');
+
+  /* Restore the exact section-11 handover state. */
+  const deleteBySourceId = (sourceId) => {
+    const id = wp([
+      'eval',
+      `echo (int) ( get_posts( array( "post_type" => "fp_product", "post_status" => "any", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_source_id", "meta_value" => "${sourceId}" ) )[0] ?? 0 );`,
+    ]).stdout;
+    assert.notEqual(id, '0', `cleanup must find the fixture product ${sourceId}`);
+    wp(['post', 'delete', id, '--force']);
+  };
+  const attachmentByChecksum = (checksum) =>
+    wp([
+      'eval',
+      `echo (int) ( get_posts( array( "post_type" => "attachment", "post_status" => "inherit", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_image_checksum", "meta_value" => "${checksum}" ) )[0] ?? 0 );`,
+    ]).stdout;
+  for (const sourceId of ['fp-caja-panalera', 'fp-caja-bacaladera', 'fp-caja-quitrasaca']) deleteBySourceId(sourceId);
+  for (const checksum of [checksumOf(bacaladeraBytes), checksumOf(quitrasacaBytes)]) {
+    const attachment = attachmentByChecksum(checksum);
+    assert.notEqual(attachment, '0', 'cleanup must find each fixture import by checksum');
+    wp(['post', 'delete', attachment, '--force']);
+  }
+  assert.equal(productCount(), 17, 'cleanup must restore the reviewed 17-product catalog');
+  assert.equal(attachmentCount(), baseline, 'cleanup must restore the baseline media library');
+  const restore = catalogSync();
+  assert.equal(restore.status, 0, `the reviewed source must sync cleanly again:\n${restore.stderr}`);
+  assertContains(restore.stdout, 'Summary: created=0 updated=0 unchanged=17 warnings=0 errors=0', 'the reviewed source must be a no-op again after cleanup');
+
+  section('Post-phase failure rollback (issue #22)', [
+    'A post-phase failure after successful media imports rolls its run-imported attachments back (zero orphans, no leftover uploads file) alongside the created posts',
+    'A mid-import media failure removes only the run import — attachments reused by checksum are never deleted on any failure path',
+    'Recovery after the failures applies the same source cleanly and still reuses the checksum-matched media instead of importing it again',
   ]);
 });
 
@@ -5328,7 +5538,7 @@ test('the staging edge strips the PHP origin header from proxied responses (issu
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + edge-stripped origin header (issues #2–#17, #19–#20, #23)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + synchronization rollback discipline + edge-stripped origin header (issues #2–#17, #19–#20, #22–#23)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5355,6 +5565,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Local media imported once per distinct image (checksum-keyed reuse); a second complete sync reports zero changes',
     'Invalid schema/identity/slug/color/media sources exit non-zero with no partial mutation; missing products are warnings only',
     'Only explicit lifecycle changes archive/reactivate Products; changed media imports exactly once',
+    'A failed sync phase rolls its own media imports back (issue #22): a post-phase failure leaves zero orphaned attachments alongside the rolled-back posts, checksum-reused attachments are never deleted on any failure path, and recovery reuses the checksum-matched media instead of importing again',
     'Home renders the approved eight Featured Products in source-controlled order with quotation actions',
     '/tienda/ lists all 17 Active Products on one page; every card links its canonical URL and opens a quantity chooser',
     'Todos/Agrícola/Otros filters: labelled link controls with meaningful /tienda/categoria/<categoria>/ URLs and aria-current state; unknown categories 404',
@@ -5463,6 +5674,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The staging constants (issue #16) are single-sourced in infra/staging.sh: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the recorded expected configuration — the issue #14 deployed vhost plus the issue #23 origin-header strip; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-runs (the issue #16 existing-stack no-op and the issue #23 vhost re-render + reload, with verify.sh reporting “verification clean” both times) are recorded in DEPLOYMENT.md as the next on-server steps.`,
     `- The basket cookie Secure flag follows the request scheme (issue #19): send_cookie() derives it from is_ssl() — the staging wp-config maps the Nginx-forwarded https scheme onto \$_SERVER['HTTPS'], so TLS responses keep the Secure cookie (staging behavior unchanged) and plain-HTTP installs keep a working basket. The disposable wp-config mirrors that mapping and the check presents both schemes at the real admin-post seam.`,
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
+    `- The synchronization rollback discipline (issue #22) is verified at the real apply seam with a disposable mu-plugin that short-circuits wp_insert_post for exactly one post type: faulting fp_product aborts the post phase after the media phase succeeded (created posts and the run-imported attachments roll back — zero orphaned attachments and no leftover uploads file), faulting attachment aborts the media phase mid-import after a checksum reuse had already resolved (only the run's own import is removed), and the fault-free recovery run applies the same source cleanly while reusing the checksum-matched media. The synchronizer only ever deletes attachments it imported itself and only while no surviving record still references them.`,
     `- The origin-header strip (issue #23) is verified as repository artifacts plus the recorded operator step: the proxied location of infra/nginx/staging.conf.tmpl carries exactly one proxy_hide_header directive (X-Powered-By — the edge stops disclosing the PHP version without touching any other origin header or the forwarded chain), and verify.sh now walks an authenticated response through the HTTPS edge and fails if the header ever reappears. The OpenClaw host is not reachable from this environment, so the on-server execution — deploy.sh re-rendering and installing the vhost with nginx -t before the reload, verify.sh still reporting “verification clean” — is the operator runbook step recorded in DEPLOYMENT.md.`,
     ``
   );
