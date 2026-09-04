@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#21).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -12,8 +12,9 @@
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
  * verifies the acceptance criteria of issues #2 through #17, of the
- * issue #19 basket-cookie scheme fix and of the issue #20 theme markup
- * hardening (including
+ * issue #19 basket-cookie scheme fix, of the issue #20 theme markup
+ * hardening and of the issue #21 confirm posted-place validation
+ * (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -167,6 +168,13 @@
  *      wrap and island header are group block boundaries with the basket
  *      button between them, so a Site Editor edit cannot split the v6
  *      chrome across blocks).
+ *  22. The Delivery Address confirm validates the posted place (issue
+ *      #21): the explicit confirm form posts the reviewed destination's
+ *      place id as a hidden field and the confirm action verifies it
+ *      against the session-owned review — a matching post confirms
+ *      exactly as before, while a tampered, stale or absent posted place
+ *      is rejected through the recoverable address-error notice without
+ *      mutating the session state.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -3326,6 +3334,43 @@ class FP_Fake_Google_Client {
     assertContains(clearedPage.body, 'data-fpcq-address-search', 'clearing restores the search path');
     assertAbsent(clearedPage.body, 'Dirección confirmada', 'clearing drops the confirmed destination');
 
+    /* 16.3b — The explicit confirm validates the posted place against the
+       session-owned review (issue #21): the confirm form posts the
+       reviewed destination's place id as a hidden field, so a tampered
+       or stale post must be rejected through the recoverable error
+       notice without mutating the state, while the matching post
+       confirms exactly as before. */
+    const token7 = await newSession();
+    const gatePick = await postForm(
+      { action: 'fp_address_pick', fp_place: 'fake-place-1', fp_address_nonce: addressNonce((await get('/cotizacion/', MOBILE_UA, cookieHeader(token7))).body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token7)
+    );
+    assert.equal(noticeOf(gatePick), 'address_review', 'the confirm-validation scenario starts from a reviewed destination');
+    const gateReviewPage = await get('/cotizacion/', MOBILE_UA, cookieHeader(token7));
+    const tampered = await postForm(
+      { action: 'fp_address_confirm', fp_place: 'fake-place-2', fp_address_nonce: addressNonce(gateReviewPage.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token7)
+    );
+    assert.equal(noticeOf(tampered), 'address_error', 'a posted place that differs from the reviewed destination is rejected');
+    const tamperedTarget = await get('/cotizacion/?fpcq_notice=address_error', MOBILE_UA, cookieHeader(token7));
+    assertContains(tamperedTarget.body, 'No pudimos confirmar esa dirección', 'the rejection rides the existing recoverable error notice');
+    const afterTampered = await get('/cotizacion/', MOBILE_UA, cookieHeader(token7));
+    assertContains(afterTampered.body, 'revísala y confírmala', 'a rejected confirm leaves the destination in review (no mutation)');
+    assertAbsent(afterTampered.body, 'Dirección confirmada', 'a rejected confirm never flips the state to confirmed');
+    const placeless = await postForm(
+      { action: 'fp_address_confirm', fp_address_nonce: addressNonce(afterTampered.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token7)
+    );
+    assert.equal(noticeOf(placeless), 'address_error', 'a confirm without any posted place is rejected too');
+    const stillReview = await get('/cotizacion/', MOBILE_UA, cookieHeader(token7));
+    assertContains(stillReview.body, 'revísala y confírmala', 'the reviewed destination survives a placeless confirm unchanged');
+    const honest = await postForm(
+      { action: 'fp_address_confirm', fp_place: 'fake-place-1', fp_address_nonce: addressNonce(stillReview.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token7)
+    );
+    assert.equal(noticeOf(honest), 'address_confirmed', 'confirming the reviewed place still succeeds exactly as before');
+    assertContains((await get('/cotizacion/', MOBILE_UA, cookieHeader(token7))).body, 'Dirección confirmada', 'the matching confirm confirms the reviewed destination');
+
     /* 16.4 — A confirmed destination submits with the request: destination
        data + provider state stored, distance calculated from the
        provisional Warehouse origin, nothing customer-facing. */
@@ -3518,7 +3563,7 @@ class FP_Fake_Google_Client {
 
     section('Google-assisted Delivery Address + Dispatch Distance (issue #11)', [
       'Google assistance renders only inside the dispatch-conditional address block and only while provider credentials are configured — the credential never reaches the page',
-      'The customer searches (plain POST or the JSON enhancement), selects a Chilean suggestion, reviews the formatted destination and confirms it explicitly; Cambiar restores search + manual entry',
+      'The customer searches (plain POST or the JSON enhancement), selects a Chilean suggestion, reviews the formatted destination and confirms it explicitly; the confirm validates the posted place against the session-owned review (issue #21), and Cambiar restores search + manual entry',
       'The manual Dirección de despacho stays the always-available fallback (rural/unrecognized); a confirmed destination stands in for it on submission',
       'Confirmed destination data (mode, formatted address, place id, coordinates, provider, confirmation time) is stored on the fp_quote record; without dispatch nothing address-related is stored',
       'Driving distance is calculated from the configured Warehouse (provisional Camino El Arrayán 52) after durable persistence; a Routes failure never rejects the request — it persists an error state with the destination preserved',
@@ -5261,7 +5306,7 @@ echo $rendered;
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup (issues #2–#17, #19–#20)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + posted-place-validated address confirm (issues #2–#17, #19–#21)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5337,6 +5382,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Staging containment: [STAGING] subject prefix plus configured recipient override (redirect), approved-recipient allowlist, or non-delivery (suppress); unconfigured environments fail closed; the event log records states/codes only — no customer field values',
     'Google assistance renders only inside the dispatch-conditional address block and only while provider credentials are configured; the credential never reaches the page',
     'The customer searches (plain POST or the JSON enhancement), selects a Chilean suggestion, reviews the formatted destination and confirms it explicitly; Cambiar restores search + manual entry',
+    'The explicit confirm validates the posted place against the session-owned review (issue #21): a tampered, stale or absent posted place is rejected through the recoverable error notice and mutates nothing',
     'The manual Dirección de despacho remains the always-available fallback (rural/unrecognized); a confirmed destination stands in for it on submission',
     'Confirmed destination data (mode, formatted address, place id, coordinates, provider, confirmation time) is stored on the fp_quote record; without dispatch nothing address-related is stored',
     'Driving distance is calculated from the configured Warehouse (provisional Camino El Arrayán 52) after durable persistence; provider failures never reject a valid request — they persist pending/error states with the destination preserved',
@@ -5395,6 +5441,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The staging constants (issue #16) are single-sourced in infra/staging.sh and proven strictly behavior-preserving: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the deployed configuration from the issue #14 operator run; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-run (deploy.sh existing-stack path must be a no-op; verify.sh must still report “verification clean”) is recorded in DEPLOYMENT.md as the next on-server step.`,
     `- The basket cookie Secure flag follows the request scheme (issue #19): send_cookie() derives it from is_ssl() — the staging wp-config maps the Nginx-forwarded https scheme onto \$_SERVER['HTTPS'], so TLS responses keep the Secure cookie (staging behavior unchanged) and plain-HTTP installs keep a working basket. The disposable wp-config mirrors that mapping and the check presents both schemes at the real admin-post seam.`,
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
+    `- The Delivery Address confirm posted-place validation (issue #21) rides the existing nonce+session guard: the confirm action compares the posted fp_place with the session transient's place_id — a matching post confirms exactly as before, and a tampered, stale or absent post takes the recoverable address-error redirect without touching the stored state, so a forged or outdated form can no longer confirm a destination the customer never reviewed.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

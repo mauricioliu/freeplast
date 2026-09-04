@@ -342,12 +342,20 @@ class Freeplast_CQ_Address {
 		self::back( array( 'fpcq_notice' => 'address_review' ) );
 	}
 
-	/** The explicit confirmation of the reviewed destination. */
+	/** The explicit confirmation of the reviewed destination. The form
+	 * posts the reviewed destination's place id as a hidden field, and the
+	 * posted value is validated against the session state: a tampered or
+	 * stale post is rejected without mutating anything (issue #21). */
 	public static function handle_confirm(): void {
 		$session = self::begin( false );
 
 		$state = self::session_state( $session['hash'] );
 		if ( null === $state || 'confirmed' === (string) $state['stage'] || '' === (string) $state['formatted'] ) {
+			self::back( array( 'fpcq_notice' => 'address_error' ) );
+		}
+
+		$place = isset( $_POST['fp_place'] ) ? sanitize_text_field( wp_unslash( $_POST['fp_place'] ) ) : '';
+		if ( ! self::is_place_id( $place ) || $place !== (string) $state['place_id'] ) {
 			self::back( array( 'fpcq_notice' => 'address_error' ) );
 		}
 

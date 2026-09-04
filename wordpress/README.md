@@ -50,7 +50,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#20 acceptance
+                      # verify the issue-#2 through issue-#21 acceptance
                       # criteria (including the issue-#8 submission, the
                       # issue-#9 sales workflow, the issue-#10 durable
                       # notifications, the issue-#11 address/distance
@@ -196,7 +196,10 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   are configured (environment-supplied `FREEPLAST_GOOGLE_API_KEY`, never in
   the page or repository), every lookup goes through nonce+session-guarded
   admin-post operations, the customer selects a suggestion, reviews the
-  formatted destination and confirms it explicitly — with the manual
+  formatted destination and confirms it explicitly (the confirm validates
+  the posted place against the session-owned review, so a tampered, stale
+  or absent post is rejected without mutating the state — issue #21) —
+  with the manual
   address fallback always available; the confirmed destination data and
   the provider/calculation state are stored on the Quote Request, the
   driving distance is calculated from the configured Warehouse

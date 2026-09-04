@@ -6,6 +6,31 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #21: the Delivery Address confirm validates the posted place
+
+The confirm form posts the reviewed destination's place id as a hidden
+`fp_place` field, but the confirm action ignored it — the confirmed state
+came solely from the session transient, so a tampered or stale form
+could silently confirm a destination the customer never reviewed.
+Decisions:
+
+1. **The posted place must be the reviewed destination's own place id.**
+   `handle_confirm()` now reads the posted `fp_place` (same
+   sanitize/unslash shape as `handle_pick()`), re-validates it with the
+   shared `is_place_id()` bound and requires exact equality with the
+   session state's `place_id` before flipping the stage to `confirmed`.
+   A mismatched or absent value takes the existing recoverable
+   `address_error` redirect and mutates nothing — the review survives so
+   the customer can still confirm honestly or search again. The form
+   itself is unchanged: it already posted `$state['place_id']`, so the
+   honest path behaves byte-for-byte as before.
+2. **The gate rides the issue #11 test at the real admin-post seam.**
+   The check picks a suggestion into review, confirms with a foreign
+   place id (rejected, error notice text rendered, state provably still
+   in review), confirms with no place at all (rejected, still unmutated)
+   and then confirms with the matching place (confirmed exactly as
+   before). No new fixture or provider mode was needed.
+
 ## 2026-09-04 — Issue #20: position-independent theme assets and balanced free-form blocks
 
 Two hygiene fixes to the theme's header/footer parts and front-page template,
