@@ -91,6 +91,13 @@ define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', false );
 define( 'WP_ENVIRONMENT_TYPE', 'local' );
 define( 'DISALLOW_FILE_EDIT', true );
+/* Honor the Nginx-forwarded HTTPS scheme — mirrors the staging Compose
+   WORDPRESS_CONFIG_EXTRA — so the checks exercise the same TLS seam the
+   deployment uses (the basket cookie Secure flag follows the request
+   scheme, issue #19). */
+if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) && 'https' === $_SERVER['HTTP_X_FORWARDED_PROTO'] ) {
+  $_SERVER['HTTPS'] = 'on';
+}
 /* Deterministic scheduling for the disposable check: WP-Cron's loopback
    would fire scheduled events (notification delivery) at unpredictable
    moments mid-test. The check drives scheduled work explicitly; staging

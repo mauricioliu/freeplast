@@ -116,7 +116,8 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   cotización” opens a quantity chooser on cards and on the product page, a
   positive whole-unit quantity adds Caja Cosechera 3/4 through the
   nonce-guarded authoritative POST (admin-post), the browser keeps only an
-  opaque 256-bit Secure/HttpOnly/SameSite=Lax cookie while the server stores
+  opaque 256-bit HttpOnly/SameSite=Lax cookie (Secure follows the request
+  scheme — issue #19) while the server stores
   only its sha256 hash (migration 4's `basket_sessions` table), the header
   count reflects distinct lines (Cotización (n)), the mini basket shows
   Product/quantity and routes to the full `/cotizacion/` view across
