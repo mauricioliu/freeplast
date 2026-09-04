@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.6.0
+Version: 0.7.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -1470,6 +1470,117 @@ a {
 
 .fpcq-request-privacy a {
   color: var(--fp-blue);
+}
+
+/* Google-assisted address confirmation (issue #11): search, suggestions,
+   review and confirmed blocks inside the dispatch-conditional field. */
+.fpcq-address-assist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-2);
+  padding: var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-lg);
+}
+
+.fpcq-address-search-label {
+  color: var(--fp-muted);
+  font-size: 13px;
+}
+
+.fpcq-address-search-row {
+  display: flex;
+  gap: var(--fp-s-2);
+}
+
+.fpcq-address-search-row .fpcq-input {
+  flex: 1;
+}
+
+.fpcq-address-search-submit,
+.fpcq-address-pick-submit,
+.fpcq-address-confirm-submit,
+.fpcq-address-clear-submit {
+  min-height: 44px;
+  padding: 0 var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-lg);
+  color: var(--fp-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.fpcq-address-search-submit {
+  background: var(--fp-blue);
+  border-color: var(--fp-blue);
+  color: #fff;
+  font-weight: 600;
+}
+
+.fpcq-address-search-submit:hover {
+  background: var(--fp-blue-heading);
+}
+
+.fpcq-address-suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-1);
+}
+
+.fpcq-address-pick-submit {
+  width: 100%;
+  text-align: left;
+  text-align: start;
+}
+
+.fpcq-address-pick-submit:hover,
+.fpcq-address-clear-submit:hover {
+  border-color: var(--fp-blue);
+}
+
+.fpcq-address-confirm-submit {
+  background: var(--fp-green-soft);
+  border-color: var(--fp-green);
+  font-weight: 600;
+}
+
+.fpcq-address-review,
+.fpcq-address-confirmed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-1);
+}
+
+.fpcq-address-review-label,
+.fpcq-address-confirmed-label {
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-address-review-text,
+.fpcq-address-confirmed-text {
+  margin: 0;
+  font-weight: 600;
+}
+
+.fpcq-address-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fp-s-2);
+}
+
+.fpcq-address-manual-note {
+  margin: 0;
+  color: var(--fp-muted);
+  font-size: 13px;
 }
 
 /* Confirmation: the durable Request Reference is the hero of the page. */

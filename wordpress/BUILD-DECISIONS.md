@@ -6,6 +6,61 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #11: confirm Delivery Addresses and calculate Dispatch Distance
+
+Dispatch requests gain Google-assisted Chilean address confirmation and an
+internal road-distance calculation, without ever letting a provider failure
+block request intake. Decisions:
+1. **The assistance is server-mediated and dispatch-conditional.** The
+   search field renders only inside the dispatch-conditional address block
+   of the request form (hidden without Con Despacho, exactly like the manual
+   field) and only while a provider client resolves — without credentials
+   the manual textarea is the sole address path and no assistance markup
+   ships. A nonce+session-guarded admin-post operation performs every
+   provider lookup (`fp_address_search` PRG for the no-JS flow,
+   `fp_address_suggest` JSON for the enhancement, `fp_address_pick`,
+   `fp_address_confirm`, `fp_address_clear`), so the billable credential
+   never reaches the page.
+2. **Select → review → explicit confirm is a server-side state machine.**
+   Picking a suggestion resolves its formatted destination; the re-rendered
+   form shows it for review and requires an explicit Confirmar dirección
+   click before it becomes the confirmed destination (Cambiar/Buscar otra
+   drops it). State lives in a 15-minute session-hash transient — never the
+   URL — mirroring the retained-attempt pattern. The manual Dirección de
+   despacho always remains available (rural/unrecognized); once a Google
+   destination is confirmed it stops being required and the confirmed
+   address is the dispatch address.
+3. **Distance is an internal sales fact, calculated after persistence.**
+   `Freeplast_CQ_Address::calculate_and_store()` runs once the fp_quote
+   record durably exists and stores `_fpq_distance` (status ok/pending/
+   error, meters, origin, provider, calculation time) plus
+   `_fpq_destination` (mode google/manual, formatted address, place id,
+   coordinates as permitted — place ids are storable without limitation
+   under the provider terms and the confirmed address is the operational
+   delivery record). A Routes failure records status error with the
+   destination preserved; a provider-less environment records pending;
+   neither ever rejects the request. The customer-facing confirmation and
+   every public surface stay distance-free, and the admin section carries
+   an explicit “no es un precio de envío automático” note — v1 never turns
+   distance into a shipping price or eligibility decision.
+4. **Sales retry is a first-class guarded operation.** The admin detail
+   (and list, with a km/status column) shows the distance to
+   `manage_freeplast_quotes` holders; `fp_distance_retry` recalculates
+   through the same adapter and is protected by capability + its own nonce
+   (bad nonce → 403, capability-less user → 403), redirecting back with an
+   outcome notice.
+5. **Credentials and configuration stay out of code.** The credential is
+   read via `getenv('FREEPLAST_GOOGLE_API_KEY')` (filter overridable for
+   staging), never an option, never in the repository — the Google console
+   restriction (Places API + Routes API) is the documented requirement.
+   Migration 7 (db 7, no table) seeds the `fp_dispatch_origin` option with
+   the provisional Camino El Arrayán 52, San Francisco de Mostazal origin,
+   so the client's pending answer about Santiago as a second origin and
+   the distance semantics apply as configuration, not redesign. The whole
+   provider sits behind the narrow `freeplast_cq_google_client` filter —
+   every automated check replaces it with a mode-switchable fake
+   (ok/off/resolve_fail/route_fail) and no test performs network calls.
+
 ## 2026-09-04 — Issue #8: submit a Quote Request
 
 The core customer outcome completes: the shared basket at Cotización becomes

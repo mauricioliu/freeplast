@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #12).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #11, #12).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -89,6 +89,25 @@
  *      refresh/back/retry (idempotency token), drops archived Product
  *      lines, and exposes a minimal capability-protected admin detail —
  *      with no price, Quotation, Order, checkout or customer account.
+ *  16. Dispatch requests confirm their Chilean Delivery Address with
+ *      Google assistance and record the internal Dispatch Distance: the
+ *      assistance renders only inside the dispatch-conditional address
+ *      block and only while a provider client is configured (the
+ *      environment credential never reaches the page), the customer
+ *      searches (plain POST-redirect-GET or the JSON enhancement),
+ *      selects a Chilean suggestion, reviews the formatted destination
+ *      and explicitly confirms it — with the manual fallback always
+ *      available — the confirmed destination data and the
+ *      provider/calculation state are stored on the Quote Request, the
+ *      driving distance is calculated from the configured Warehouse
+ *      after durable persistence (Camino El Arrayán 52 is the provisional
+ *      origin), provider failures never reject an otherwise valid
+ *      request (pending/error states with the destination preserved and
+ *      an authorized staff retry), the distance is shown only to the
+ *      capability-protected sales surface as an internal fact (never a
+ *      shipping price), and the credentials stay environment-supplied
+ *      and absent from source control (the provider is replaced at its
+ *      narrow adapter boundary in every automated check).
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -680,7 +699,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} (quote-request submission slice) must be applied`);
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} (latest slice) must be applied`);
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -2280,11 +2299,436 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   ]);
 });
 
-/* ─── 16. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ── 16. Delivery Address confirmation + Dispatch Distance (issue #11) ── */
+
+test('dispatch requests confirm Chilean delivery addresses and record the internal road distance', { timeout: 240_000 }, async () => {
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const addressNonce = (html) => html.match(/name="fp_address_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const FORMATTED = 'Av. Providencia 1234, 7500131 Providencia, Región Metropolitana, Chile';
+  const DEFAULT_ORIGIN = 'Camino El Arrayán 52, San Francisco de Mostazal';
+
+  /* The Google provider is replaced at its narrow adapter boundary: a
+     mu-plugin installs a fake client whose behavior is driven by the
+     fp_fake_google option (ok | off | resolve_fail | route_fail), so no
+     check ever performs a network call or needs a real credential. */
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  mkdirSync(muDir, { recursive: true });
+  writeFileSync(
+    join(muDir, 'fp-test-fake-google.php'),
+    `<?php
+add_filter( 'freeplast_cq_google_client', function ( $client ) {
+	$mode = get_option( 'fp_fake_google', 'ok' );
+	if ( 'off' === $mode ) { return null; }
+	return new FP_Fake_Google_Client( $mode );
+} );
+class FP_Fake_Google_Client {
+	private $mode;
+	public function __construct( $mode ) { $this->mode = $mode; }
+	public function suggestions( $query ) {
+		if ( 'suggest_fail' === $this->mode ) { return array(); }
+		return array(
+			array( 'id' => 'fake-place-1', 'description' => 'Av. Providencia 1234, Providencia, Santiago, Chile' ),
+			array( 'id' => 'fake-place-2', 'description' => 'Camino El Arrayán 100, San Francisco de Mostazal, Chile' ),
+		);
+	}
+	public function resolve( $place_id ) {
+		if ( 'resolve_fail' === $this->mode ) { return null; }
+		return array(
+			'place_id'  => $place_id,
+			'formatted' => '${FORMATTED}',
+			'lat'       => -33.4264,
+			'lng'       => -70.6236,
+		);
+	}
+	public function route( $origin, $destination ) {
+		if ( 'route_fail' === $this->mode ) { return null; }
+		return array( 'meters' => 51234 );
+	}
+}
+`
+  );
+  const fakeMode = (mode) => wp(['option', 'update', 'fp_fake_google', mode]);
+  try {
+    assert.equal(fakeMode('ok').status, 0, 'the fake provider mode must be settable');
+
+    /* Destination and distance state of one persisted Quote Request. */
+    const dispatchOf = (reference) =>
+      JSON.parse(
+        wp([
+          'eval',
+          `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${reference}" ) );` +
+            'if ( empty( $posts ) ) { echo "null"; } else { $p = $posts[0]; echo wp_json_encode( array( ' +
+            '"direccion" => (string) ( json_decode( (string) get_post_meta( $p->ID, "_fpq_customer", true ), true )["direccion_despacho"] ?? "" ), ' +
+            '"destination" => json_decode( (string) get_post_meta( $p->ID, "_fpq_destination", true ), true ), ' +
+            '"distance" => json_decode( (string) get_post_meta( $p->ID, "_fpq_distance", true ), true ), ' +
+            '"id" => $p->ID ) ); }',
+        ]).stdout || 'null'
+      );
+
+    /* A fresh anonymous one-line basket for each sub-scenario. */
+    const newSession = async () => {
+      const page = await get(PRODUCT_URL, MOBILE_UA);
+      const nonce = page.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+      assert.ok(nonce, 'the address section needs a chooser nonce');
+      const res = await postForm(
+        {
+          action: 'fp_basket_add',
+          fp_product: 'fp-caja-cosechera-3-4',
+          fp_quantity: '5',
+          fp_basket_nonce: nonce,
+          _wp_http_referer: PRODUCT_URL,
+        },
+        {}
+      );
+      const token = res.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+      assert.ok(token, 'the address section needs its own guest session');
+      return token;
+    };
+
+    const validFields = {
+      fp_nombre: 'María González',
+      fp_telefono: '+56 9 6844 4265',
+      fp_email: 'maria@acme.cl',
+      fp_empresa: 'Agrícola ACME SpA',
+      fp_rut: '76.335.888-6',
+      fp_giro: 'Comercialización de productos plásticos',
+      fp_despacho: 'si',
+      fp_direccion: '',
+      fp_mensaje: '',
+    };
+    const submitAs = async (token, over = {}) => {
+      const page = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+      const { nonce, token: idemToken } = requestCredentials(page.body);
+      assert.ok(nonce && idemToken, 'the submission form must carry its nonce and idempotency token');
+      return postForm(
+        {
+          action: 'fp_request_submit',
+          ...validFields,
+          fp_request_nonce: nonce,
+          fp_request_token: idemToken,
+          _wp_http_referer: '/cotizacion/',
+          ...over,
+        },
+        cookieHeader(token)
+      );
+    };
+    const confirmAddress = async (token) => {
+      const page = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+      const nonce = addressNonce(page.body);
+      assert.ok(nonce, 'the address steps need their nonce');
+      const picked = await postForm(
+        { action: 'fp_address_pick', fp_place: 'fake-place-1', fp_address_nonce: nonce, _wp_http_referer: '/cotizacion/' },
+        cookieHeader(token)
+      );
+      assert.equal(noticeOf(picked), 'address_review', 'picking a suggestion presents it for review');
+      const confirmed = await postForm(
+        { action: 'fp_address_confirm', fp_place: 'fake-place-1', fp_address_nonce: nonce, _wp_http_referer: '/cotizacion/' },
+        cookieHeader(token)
+      );
+      assert.equal(noticeOf(confirmed), 'address_confirmed', 'the explicit confirmation must succeed');
+    };
+
+    /* 16.1 — Assistance is dispatch-conditional and credential-conditional;
+       the credential never reaches the page. */
+    const token1 = await newSession();
+    const cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    const wrapperAt = cot.body.indexOf('fpcq-hidden" data-fpcq-address-field');
+    assert.ok(wrapperAt !== -1, 'the address block stays hidden without dispatch');
+    const searchAt = cot.body.indexOf('data-fpcq-address-search');
+    assert.ok(searchAt > wrapperAt, 'the Google assistance must live inside the dispatch-conditional address block');
+    assert.doesNotMatch(cot.body, /AIza/, 'no Google credential may ever reach the page');
+    fakeMode('off');
+    const unassisted = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    assertAbsent(unassisted.body, 'data-fpcq-address-search', 'without provider credentials no assistance renders');
+    assertContains(unassisted.body, 'name="fp_direccion"', 'the manual fallback always remains');
+    fakeMode('ok');
+
+    /* 16.2 — Suggestions: the JSON enhancement endpoint and the no-JS
+       search round-trip both query the server-side adapter. */
+    const suggest = await postForm(
+      { action: 'fp_address_suggest', fp_query: 'Av. Providencia 1234', fp_address_nonce: addressNonce(cot.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    let payload = JSON.parse(suggest.body);
+    assert.equal(payload.ok, true, 'the suggest endpoint must answer JSON');
+    assert.equal(payload.suggestions.length, 2, 'the adapter returns its Chilean suggestions');
+    assert.equal(payload.suggestions[0].id, 'fake-place-1');
+    assertContains(payload.suggestions[0].description, 'Chile', 'suggestions are Chilean destinations');
+    const badNonce = await postForm(
+      { action: 'fp_address_suggest', fp_query: 'Av. Providencia 1234', fp_address_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef', _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    assert.equal(JSON.parse(badNonce.body).ok, false, 'a bad nonce never reaches the provider');
+    const sessionless = await postForm(
+      { action: 'fp_address_suggest', fp_query: 'Av. Providencia 1234', fp_address_nonce: addressNonce(cot.body), _wp_http_referer: '/cotizacion/' },
+      {}
+    );
+    assert.equal(JSON.parse(sessionless.body).ok, false, 'a sessionless suggest never reaches the provider');
+
+    const searched = await postForm(
+      { action: 'fp_address_search', fp_query: 'Camino El Arrayán 100', fp_address_nonce: addressNonce(cot.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    assert.equal(searched.status, 302, 'the no-JS search answers POST-redirect-GET');
+    assert.ok((searched.headers.location || '').includes('#fp-direccion'), 'the search redirect focuses the address field');
+    const withSuggestions = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    assertContains(withSuggestions.body, 'value="fp_address_pick"', 'each suggestion posts the pick operation');
+    assertContains(withSuggestions.body, 'fake-place-1', 'the suggestion list carries the provider place id');
+    assertContains(withSuggestions.body, 'Av. Providencia 1234, Providencia, Santiago, Chile', 'the suggestion list shows the Chilean descriptions');
+
+    /* 16.3 — Select → review the formatted destination → explicit confirm
+       (and back: Cambiar restores search + manual entry). */
+    const pick = await postForm(
+      { action: 'fp_address_pick', fp_place: 'fake-place-1', fp_address_nonce: addressNonce(withSuggestions.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    assert.equal(noticeOf(pick), 'address_review');
+    const reviewed = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    assertContains(reviewed.body, 'revísala y confírmala', 'the review state must ask for an explicit confirmation');
+    assertContains(reviewed.body, FORMATTED, 'the formatted destination is presented for review');
+    assertContains(reviewed.body, 'value="fp_address_confirm"', 'the review block carries the confirm operation');
+    assertContains(reviewed.body, 'Confirmar dirección', 'the confirm button is explicit');
+    assertContains(reviewed.body, 'Buscar otra', 'the review block keeps the change path');
+    assertContains(reviewed.body, 'name="fp_direccion"', 'the manual fallback stays available during review');
+    const confirm = await postForm(
+      { action: 'fp_address_confirm', fp_place: 'fake-place-1', fp_address_nonce: addressNonce(reviewed.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    assert.equal(noticeOf(confirm), 'address_confirmed');
+    const confirmedPage = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    assertContains(confirmedPage.body, 'Dirección confirmada', 'the confirmed destination renders on the form');
+    assertContains(confirmedPage.body, FORMATTED, 'the confirmed formatted destination renders');
+    assertContains(confirmedPage.body, 'value="fp_address_clear"', 'Cambiar dirección restores the manual path');
+    const cleared = await postForm(
+      { action: 'fp_address_clear', fp_address_nonce: addressNonce(confirmedPage.body), _wp_http_referer: '/cotizacion/' },
+      cookieHeader(token1)
+    );
+    assert.equal(noticeOf(cleared), 'address_cleared');
+    const clearedPage = await get('/cotizacion/', MOBILE_UA, cookieHeader(token1));
+    assertContains(clearedPage.body, 'data-fpcq-address-search', 'clearing restores the search path');
+    assertAbsent(clearedPage.body, 'Dirección confirmada', 'clearing drops the confirmed destination');
+
+    /* 16.4 — A confirmed destination submits with the request: destination
+       data + provider state stored, distance calculated from the
+       provisional Warehouse origin, nothing customer-facing. */
+    await confirmAddress(token1);
+    const ok1 = await submitAs(token1);
+    assert.equal(ok1.status, 302);
+    const reference1 = submittedRef(ok1);
+    assert.match(reference1, /^FP-\d{4}-\d{6}$/);
+    const record1 = dispatchOf(reference1);
+    assert.ok(record1, 'the confirmed-destination request must persist');
+    assert.equal(record1.destination.mode, 'google');
+    assert.equal(record1.destination.address, FORMATTED);
+    assert.equal(record1.destination.place_id, 'fake-place-1');
+    assert.equal(record1.destination.lat, -33.4264);
+    assert.equal(record1.destination.lng, -70.6236);
+    assert.equal(record1.destination.provider, 'google');
+    assert.ok(record1.destination.confirmed_at, 'the confirmation time is stored');
+    assert.equal(record1.direccion, FORMATTED, 'the confirmed address is the dispatch address');
+    assert.equal(record1.distance.status, 'ok');
+    assert.equal(record1.distance.meters, 51234);
+    assert.equal(record1.distance.origin, DEFAULT_ORIGIN, 'Camino El Arrayán 52 is the provisional origin');
+    assert.equal(record1.distance.provider, 'google-routes');
+    assert.ok(record1.distance.calculated_at, 'the calculation time is stored');
+    assert.ok(
+      !JSON.stringify(record1).includes('price') && !JSON.stringify(record1).includes('precio'),
+      'no shipping price is ever stored'
+    );
+    const confirmation1 = await get(`/cotizacion/?fpcq_submitted=${reference1}`, MOBILE_UA, cookieHeader(token1));
+    assertContains(confirmation1.body, reference1, 'the confirmation keeps the Request Reference');
+    const confirmationSection = pluginSection(confirmation1.body, 'class="fpcq-confirmation"', 'the confirmation must render for its owning session');
+    assertAbsent(confirmationSection, 'distancia', 'the Dispatch Distance never reaches the customer');
+    assertAbsent(confirmationSection, 'precio', 'no shipping price reaches the customer');
+    assert.equal(wp(['option', 'get', 'fp_dispatch_origin']).stdout, DEFAULT_ORIGIN, 'migration 7 seeds the provisional origin');
+    assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), 'the dispatch-distance migration is applied');
+
+    /* 16.5 — Manual fallback: a rural/unrecognized address submits without
+       any provider interaction and routes by address text. */
+    const token2 = await newSession();
+    const rural = 'Km 12 camino rural sin numeración, Mostazal';
+    const ok2 = await submitAs(token2, { fp_direccion: rural });
+    const reference2 = submittedRef(ok2);
+    assert.match(reference2, /^FP-\d{4}-\d{6}$/);
+    const record2 = dispatchOf(reference2);
+    assert.equal(record2.destination.mode, 'manual', 'the manual path stores mode manual');
+    assert.equal(record2.destination.address, rural);
+    assert.equal(record2.destination.place_id, '');
+    assert.equal(record2.destination.lat, null, 'no provider data is invented for manual addresses');
+    assert.equal(record2.direccion, rural);
+    assert.equal(record2.distance.status, 'ok', 'manual addresses route by text');
+    assert.equal(record2.distance.meters, 51234);
+
+    /* 16.6 — A provider resolve failure is recoverable: the request is
+       never rejected, the manual path still submits. */
+    const token3 = await newSession();
+    fakeMode('resolve_fail');
+    const failedPick = await postForm(
+      {
+        action: 'fp_address_pick',
+        fp_place: 'fake-place-1',
+        fp_address_nonce: addressNonce((await get('/cotizacion/', MOBILE_UA, cookieHeader(token3))).body),
+        _wp_http_referer: '/cotizacion/',
+      },
+      cookieHeader(token3)
+    );
+    assert.equal(noticeOf(failedPick), 'address_error', 'a failed resolve is a recoverable notice');
+    const failedPage = await get('/cotizacion/', MOBILE_UA, cookieHeader(token3));
+    assertContains(failedPage.body, 'name="fp_direccion"', 'the manual fallback remains after a provider failure');
+    assertAbsent(failedPage.body, 'Dirección confirmada', 'nothing was confirmed');
+    const ok3 = await submitAs(token3, { fp_direccion: rural });
+    assert.match(submittedRef(ok3), /^FP-\d{4}-\d{6}$/, 'a validation failure never rejects the request');
+    assert.equal(dispatchOf(submittedRef(ok3)).destination.mode, 'manual');
+    fakeMode('ok');
+
+    /* 16.7 — A Routes failure persists an error state with the destination
+       preserved; authorized staff retry through nonce + capability. */
+    const token4 = await newSession();
+    fakeMode('route_fail');
+    await confirmAddress(token4);
+    const ok4 = await submitAs(token4);
+    const reference4 = submittedRef(ok4);
+    assert.match(reference4, /^FP-\d{4}-\d{6}$/, 'a route failure never rejects an otherwise valid request');
+    const record4 = dispatchOf(reference4);
+    assert.equal(record4.destination.mode, 'google');
+    assert.equal(record4.destination.address, FORMATTED, 'the destination is preserved for the retry');
+    assert.equal(record4.distance.status, 'error', 'the failed calculation persists as error');
+    assert.equal(record4.distance.error, 'route_unavailable');
+    fakeMode('ok');
+
+    const adminCookie = wp([
+      'eval',
+      'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+    ]).stdout;
+    assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
+    const recordId4 = record4.id;
+    const adminHeaders = { cookie: adminCookie };
+    const detail4 = await get(`/wp-admin/admin.php?page=fp-quote&p=${recordId4}`, MOBILE_UA, adminHeaders);
+    assert.equal(detail4.status, 200);
+    assertContains(detail4.body, 'Distancia de despacho', 'the admin detail shows the internal distance section');
+    assertContains(detail4.body, 'Error de cálculo (route_unavailable)', 'the error state is visible to sales');
+    assertContains(detail4.body, FORMATTED, 'the preserved destination is visible to sales');
+    assertContains(detail4.body, DEFAULT_ORIGIN, 'the Warehouse origin is visible to sales');
+    assertContains(detail4.body, 'no es un precio de envío automático', 'the distance is explicitly not a shipping price');
+    assertContains(detail4.body, 'Recalcular distancia', 'the staff retry action renders');
+    const retryNonce = detail4.body.match(/name="fp_distance_nonce" value="([a-f0-9]{10})"/)?.[1];
+    assert.ok(retryNonce, 'the retry form carries its nonce');
+
+    const retry = await postForm(
+      {
+        action: 'fp_distance_retry',
+        p: String(recordId4),
+        fp_distance_nonce: retryNonce,
+        _wp_http_referer: `/wp-admin/admin.php?page=fp-quote&p=${recordId4}`,
+      },
+      adminHeaders
+    );
+    assert.equal(retry.status, 302, 'the retry answers POST-redirect-GET');
+    assert.ok((retry.headers.location || '').includes('fp_dist=ok'), 'the retry outcome is reported');
+    const detailAfter = await get(`/wp-admin/admin.php?page=fp-quote&p=${recordId4}&fp_dist=ok`, MOBILE_UA, adminHeaders);
+    assertContains(detailAfter.body, 'Calculada: 51,2 km', 'the recalculated distance renders for sales');
+    assertContains(detailAfter.body, 'Distancia recalculada', 'the retry notice renders');
+    assert.equal(dispatchOf(reference4).distance.status, 'ok', 'the retry stored the recalculated distance');
+    assert.equal(dispatchOf(reference4).distance.meters, 51234);
+    const list4 = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, adminHeaders);
+    assertContains(list4.body, '51,2 km', 'the Cotizaciones list shows the internal distance');
+
+    const badRetry = await postForm(
+      { action: 'fp_distance_retry', p: String(recordId4), fp_distance_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef', _wp_http_referer: '/wp-admin/' },
+      adminHeaders
+    );
+    assert.equal(badRetry.status, 403, 'a bad retry nonce must be rejected');
+    const subUserId = wp(['eval', 'echo (int) get_user_by( "login", "fp_sinventas" )->ID;']).stdout;
+    assert.ok(Number(subUserId) > 0, 'the capability-less user from section 15 must exist');
+    const subCookie = wp([
+      'eval',
+      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "logged_in" );`,
+    ]).stdout;
+    const deniedRetry = await postForm(
+      { action: 'fp_distance_retry', p: String(recordId4), fp_distance_nonce: retryNonce, _wp_http_referer: '/wp-admin/' },
+      { cookie: subCookie }
+    );
+    assert.equal(deniedRetry.status, 403, 'the retry must deny users without the sales capability');
+
+    /* 16.8 — Without provider credentials the request still persists with
+       a pending distance (retryable once credentials exist). The nonce was
+       taken from a page rendered while assistance existed (it stays valid
+       for the session — the point is the provider-less degradation). */
+    const token5 = await newSession();
+    const assistedPage5 = await get('/cotizacion/', MOBILE_UA, cookieHeader(token5));
+    fakeMode('off');
+    const offlineSuggest = await postForm(
+      {
+        action: 'fp_address_suggest',
+        fp_query: 'Av. Providencia 1234',
+        fp_address_nonce: addressNonce(assistedPage5.body),
+        _wp_http_referer: '/cotizacion/',
+      },
+      cookieHeader(token5)
+    );
+    payload = JSON.parse(offlineSuggest.body);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.unavailable, true, 'the enhancement learns the assistance is unavailable');
+    assert.deepEqual(payload.suggestions, []);
+    const ok5 = await submitAs(token5, { fp_direccion: rural });
+    const record5 = dispatchOf(submittedRef(ok5));
+    assert.equal(record5.distance.status, 'pending', 'a provider-less calculation persists as pending');
+    assert.equal(record5.distance.error, 'provider_unavailable');
+    assert.equal(record5.destination.address, rural, 'the destination stays available for a later retry');
+    fakeMode('ok');
+
+    /* 16.9 — Origin selection stays a configuration decision: changing the
+       stored Warehouse option changes the recorded origin. */
+    wp(['option', 'update', 'fp_dispatch_origin', 'Bodega Santiago Centro, Chile']);
+    const token6 = await newSession();
+    const ok6 = await submitAs(token6, { fp_direccion: rural });
+    const record6 = dispatchOf(submittedRef(ok6));
+    assert.equal(record6.distance.origin, 'Bodega Santiago Centro, Chile', 'the recorded origin follows the stored option');
+
+    /* 16.10 — Credentials: environment-supplied, never in source or the
+       database. */
+    const scanDir = (dir) =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = join(dir, entry.name);
+        return entry.isDirectory() ? scanDir(full) : [full];
+      });
+    const scanned = [...scanDir(join(WORDPRESS_DIR, 'wp-content')), ...scanDir(HERE)].filter(
+      (file) => /\.(php|js|mjs|json|css)$/.test(file) && !file.endsWith('check.mjs') /* the scanner carries its own pattern */
+    );
+    assert.ok(
+      !scanned.some((file) => /AIza/.test(readFileSync(file, 'utf8'))),
+      'no Google credential literal may live in source control'
+    );
+    const adapter = readFileSync(join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes', 'includes', 'class-address.php'), 'utf8');
+    assertContains(adapter, 'FREEPLAST_GOOGLE_API_KEY', 'the credential comes from the environment');
+    assertContains(adapter, 'getenv', 'the credential is read via getenv (never an option)');
+    assert.equal(wp(['eval', 'echo get_option( "fp_google_api_key", "none" );']).stdout, 'none', 'no credential option exists');
+
+    section('Google-assisted Delivery Address + Dispatch Distance (issue #11)', [
+      'Google assistance renders only inside the dispatch-conditional address block and only while provider credentials are configured — the credential never reaches the page',
+      'The customer searches (plain POST or the JSON enhancement), selects a Chilean suggestion, reviews the formatted destination and confirms it explicitly; Cambiar restores search + manual entry',
+      'The manual Dirección de despacho stays the always-available fallback (rural/unrecognized); a confirmed destination stands in for it on submission',
+      'Confirmed destination data (mode, formatted address, place id, coordinates, provider, confirmation time) is stored on the fp_quote record; without dispatch nothing address-related is stored',
+      'Driving distance is calculated from the configured Warehouse (provisional Camino El Arrayán 52) after durable persistence; a Routes failure never rejects the request — it persists an error state with the destination preserved',
+      'Dispatch Distance is an internal sales fact: the capability-protected list/detail show km, origin and state with an explicit not-a-shipping-price note; nothing distance-like reaches the customer',
+      'Authorized staff retry the calculation through a nonce + capability-guarded operation (bad nonce and capability-less users are denied); provider-less requests persist as pending',
+      'Credentials are environment-supplied (FREEPLAST_GOOGLE_API_KEY via getenv), absent from source control and the database; the provider is replaced at the freeplast_cq_google_client boundary in every check',
+      'Origin selection remains configuration: the stored fp_dispatch_origin option (seeded by migration 7) defines the recorded origin',
+    ]);
+  } finally {
+    rmSync(join(muDir, 'fp-test-fake-google.php'), { force: true });
+    wp(['option', 'delete', 'fp_fake_google']);
+    wp(['option', 'update', 'fp_dispatch_origin', DEFAULT_ORIGIN]);
+  }
+});
+
+/* ─── 17. Write VERIFICATION.md and clean up ─────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + v6 content (issues #2–#8, #12)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + delivery addresses (issues #2–#8, #11, #12)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -2345,6 +2789,15 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'The confirmation shows the permanent unique FP-YYYY-NNNNNN Request Reference; the basket clears only after durable persistence; a persistence failure shows no success and retains basket + values',
     'Refresh/back/retry with the same idempotency token never duplicates the record; a second basket receives a fresh token and its own reference; archived Product lines drop out',
     'A minimal capability-protected admin detail lists and inspects the records; users without manage_freeplast_quotes are denied; no customer account is created',
+    'Google assistance renders only inside the dispatch-conditional address block and only while provider credentials are configured; the credential never reaches the page',
+    'The customer searches (plain POST or the JSON enhancement), selects a Chilean suggestion, reviews the formatted destination and confirms it explicitly; Cambiar restores search + manual entry',
+    'The manual Dirección de despacho remains the always-available fallback (rural/unrecognized); a confirmed destination stands in for it on submission',
+    'Confirmed destination data (mode, formatted address, place id, coordinates, provider, confirmation time) is stored on the fp_quote record; without dispatch nothing address-related is stored',
+    'Driving distance is calculated from the configured Warehouse (provisional Camino El Arrayán 52) after durable persistence; provider failures never reject a valid request — they persist pending/error states with the destination preserved',
+    'Dispatch Distance is an internal sales fact: the capability-protected Cotizaciones list/detail show km, origin and state with an explicit not-a-shipping-price note; nothing distance-like reaches the customer',
+    'Authorized staff retry the calculation through a nonce + capability-guarded operation (bad nonce and capability-less users are denied)',
+    'Credentials are environment-supplied (FREEPLAST_GOOGLE_API_KEY via getenv), absent from source control and the database; the provider is replaced at its narrow adapter boundary in every automated check',
+    'Origin selection remains configuration: the stored fp_dispatch_origin option (seeded by migration 7) defines the recorded origin',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -2359,7 +2812,8 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
-    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the this-slice address path (Google-assisted confirmation arrives with issue #9), the acknowledgement/notification emails arrive with issue #11, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
+    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the fallback address path (the Google-assisted confirmation arrives with issue #11, below), the acknowledgement/notification emails arrive with their own slice, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
+    `- The Google-assisted Delivery Address confirmation and Dispatch Distance (issue #11) are verified by replacing the Google provider at its narrow adapter boundary (freeplast_cq_google_client) with a mode-switchable fake — no check performs a network call or holds a real credential. The real client is only built when FREEPLAST_GOOGLE_API_KEY is present in the environment ( Places + Routes APIs, Google-console restricted); origin selection (Camino El Arrayán 52 provisional, Santiago pending the client answer) and distance semantics stay the stored-option/filter configuration. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );

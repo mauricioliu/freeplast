@@ -40,6 +40,14 @@
  *               transients) and the dedicated sales capability
  *               (manage_freeplast_quotes) granted to administrators so
  *               the minimal admin detail is capability-protected.
+ * Migration 7 — delivery address and dispatch distance (issue #11): no
+ *               table — the confirmed destination and the distance state
+ *               live on the fp_quote records (issue #8) — but the
+ *               provisional Warehouse origin (Camino El Arrayán 52,
+ *               San Francisco de Mostazal) becomes the stored
+ *               fp_dispatch_origin option, so the client's pending answer
+ *               about origin selection and distance semantics applies as
+ *               a configuration change, not code.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -127,6 +135,16 @@ class Freeplast_CQ_Migrations {
 				$administrator->add_cap( Freeplast_CQ_Request::CAPABILITY );
 			}
 			$applied = 6;
+		}
+
+		if ( $applied < 7 ) {
+			// Migration 7 — the dispatch-distance slice (see class-address.php):
+			// seed the provisional Warehouse origin exactly once; a human edit
+			// of the option is never clobbered.
+			if ( false === get_option( Freeplast_CQ_Address::ORIGIN_OPTION, false ) ) {
+				add_option( Freeplast_CQ_Address::ORIGIN_OPTION, Freeplast_CQ_Address::DEFAULT_ORIGIN );
+			}
+			$applied = 7;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {

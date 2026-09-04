@@ -696,6 +696,18 @@ class Freeplast_CQ_Basket {
 				return 'Revisa el formulario: hay campos que necesitan tu atención.';
 			case 'request_failed':
 				return 'No pudimos guardar tu solicitud. Tu cotización sigue activa; inténtalo de nuevo.';
+			case 'address_unavailable':
+				return 'La confirmación asistida de direcciones no está disponible en este momento; escribe la dirección de despacho manualmente.';
+			case 'address_query':
+				return 'Escribe al menos 3 caracteres para buscar una dirección.';
+			case 'address_review':
+				return 'Revisa la dirección encontrada y confírmala antes de enviar.';
+			case 'address_confirmed':
+				return 'Dirección confirmada. Continúa con el resto de tus datos.';
+			case 'address_cleared':
+				return 'Dirección descartada. Busca otra o escríbela manualmente.';
+			case 'address_error':
+				return 'No pudimos confirmar esa dirección. Escríbela manualmente abajo.';
 		}
 		return null;
 	}
