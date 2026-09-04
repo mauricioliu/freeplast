@@ -196,12 +196,11 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   are configured (environment-supplied `FREEPLAST_GOOGLE_API_KEY`, never in
   the page or repository), every lookup goes through nonce+session-guarded
   admin-post operations, the customer selects a suggestion, reviews the
-  formatted destination and confirms it explicitly (the confirm validates
+  formatted destination and confirms it explicitly — the confirm validates
   the posted place against the session-owned review, so a tampered, stale
-  or absent post is rejected without mutating the state — issue #21) —
-  with the manual
-  address fallback always available; the confirmed destination data and
-  the provider/calculation state are stored on the Quote Request, the
+  or absent post is rejected without mutating the state (issue #21) —
+  with the manual address fallback always available; the confirmed
+  destination data and the provider/calculation state are stored on the Quote Request, the
   driving distance is calculated from the configured Warehouse
   (provisional Camino El Arrayán 52, stored as the `fp_dispatch_origin`
   option by migration 7) after durable persistence, provider failures

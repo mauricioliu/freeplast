@@ -3341,8 +3341,9 @@ class FP_Fake_Google_Client {
        notice without mutating the state, while the matching post
        confirms exactly as before. */
     const token7 = await newSession();
+    const gateStart = await get('/cotizacion/', MOBILE_UA, cookieHeader(token7));
     const gatePick = await postForm(
-      { action: 'fp_address_pick', fp_place: 'fake-place-1', fp_address_nonce: addressNonce((await get('/cotizacion/', MOBILE_UA, cookieHeader(token7))).body), _wp_http_referer: '/cotizacion/' },
+      { action: 'fp_address_pick', fp_place: 'fake-place-1', fp_address_nonce: addressNonce(gateStart.body), _wp_http_referer: '/cotizacion/' },
       cookieHeader(token7)
     );
     assert.equal(noticeOf(gatePick), 'address_review', 'the confirm-validation scenario starts from a reviewed destination');
@@ -3369,7 +3370,8 @@ class FP_Fake_Google_Client {
       cookieHeader(token7)
     );
     assert.equal(noticeOf(honest), 'address_confirmed', 'confirming the reviewed place still succeeds exactly as before');
-    assertContains((await get('/cotizacion/', MOBILE_UA, cookieHeader(token7))).body, 'Dirección confirmada', 'the matching confirm confirms the reviewed destination');
+    const honestPage = await get('/cotizacion/', MOBILE_UA, cookieHeader(token7));
+    assertContains(honestPage.body, 'Dirección confirmada', 'the matching confirm confirms the reviewed destination');
 
     /* 16.4 — A confirmed destination submits with the request: destination
        data + provider state stored, distance calculated from the
