@@ -388,7 +388,9 @@ class Freeplast_CQ_Admin {
 	 * submission form (Freeplast_CQ_Request), restricted to the
 	 * correctable contact subset (the delivery address stays optional —
 	 * a request without dispatch carries none). Values are kept for
-	 * retention even when invalid.
+	 * retention even when invalid. The format-checked fields (Email,
+	 * Teléfono, Rut Empresa) run through the shared contact-format
+	 * validation (issue #18).
 	 *
 	 * @return array{values: array, errors: array}
 	 */
@@ -411,20 +413,12 @@ class Freeplast_CQ_Admin {
 			}
 		}
 
-		if ( ! isset( $errors['email'] ) ) {
-			$email = sanitize_email( $values['email'] );
-			if ( false === is_email( $email ) ) {
-				$errors['email'] = 'Ingresa un email válido.';
-			} else {
-				$values['email'] = $email;
-			}
-		}
-		if ( ! isset( $errors['telefono'] ) && 1 !== preg_match( '/^\+?[0-9()\-\s.]{4,39}$/', $values['telefono'] ) ) {
-			$errors['telefono'] = 'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).';
-		}
-		if ( ! isset( $errors['rut'] ) && 1 !== preg_match( '/^[0-9kK.\-\s]+$/', $values['rut'] ) ) {
-			$errors['rut'] = 'Ingresa un RUT válido (por ejemplo 76.335.888-6).';
-		}
+		/* Email, Teléfono and Rut Empresa — the shared contact-format rules
+		   (issue #18) defined on the submission class: one definition of
+		   the patterns and messages, identical outcomes on both surfaces. */
+		$formats = Freeplast_CQ_Request::validated_contact_formats( $values, $errors );
+		$values  = $formats['values'];
+		$errors  = $formats['errors'];
 
 		$direccion = trim( isset( $_POST['fp_direccion'] ) ? sanitize_textarea_field( wp_unslash( $_POST['fp_direccion'] ) ) : '' );
 		if ( mb_strlen( $direccion ) > Freeplast_CQ_Request::MAX_DIRECCION ) {

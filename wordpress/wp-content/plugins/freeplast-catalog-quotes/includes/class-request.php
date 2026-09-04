@@ -271,6 +271,51 @@ class Freeplast_CQ_Request {
 	}
 
 	/**
+	 * The shared contact-format validation (issue #18): the acceptance
+	 * rules and user-facing messages of the text fields that carry a
+	 * format check — Email, Teléfono and Rut Empresa — are defined here
+	 * exactly once and applied by both surfaces, the Quote Request intake
+	 * (validated_fields) and the sales contact correction
+	 * (Freeplast_CQ_Admin::validated_contact), so the outcomes and the
+	 * messages for the same input are identical by construction.
+	 *
+	 * Skips fields already carrying an earlier (required/length) error —
+	 * a missing value in $values implies its error is present. The valid
+	 * email is stored in its WordPress-sanitized form; Teléfono and Rut
+	 * Empresa keep the entered text.
+	 *
+	 * @param array $values Validated text values.
+	 * @param array $errors Per-field errors collected so far.
+	 * @return array{values: array, errors: array}
+	 */
+	public static function validated_contact_formats( array $values, array $errors ): array {
+		/* Email — standard validity checks. */
+		if ( ! isset( $errors['email'] ) ) {
+			$email = sanitize_email( $values['email'] );
+			if ( false === is_email( $email ) ) {
+				$errors['email'] = 'Ingresa un email válido.';
+			} else {
+				$values['email'] = $email;
+			}
+		}
+
+		/* Telephone — accepts international formatting, keeps the entered text. */
+		if ( ! isset( $errors['telefono'] ) && 1 !== preg_match( '/^\+?[0-9()\-\s.]{4,39}$/', $values['telefono'] ) ) {
+			$errors['telefono'] = 'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).';
+		}
+
+		/* Rut Empresa — required business identity, format kept as entered. */
+		if ( ! isset( $errors['rut'] ) && 1 !== preg_match( '/^[0-9kK.\-\s]+$/', $values['rut'] ) ) {
+			$errors['rut'] = 'Ingresa un RUT válido (por ejemplo 76.335.888-6).';
+		}
+
+		return array(
+			'values' => $values,
+			'errors' => $errors,
+		);
+	}
+
+	/**
 	 * Validate the submitted customer fields. Returns the sanitized values
 	 * (kept for retention even when invalid), the per-field errors and the
 	 * confirmed destination standing in for the manual address (null when
@@ -305,25 +350,11 @@ class Freeplast_CQ_Request {
 			$values[ $key ] = $value;
 		}
 
-		/* Email — standard validity checks. */
-		if ( ! isset( $errors['email'] ) ) {
-			$email = sanitize_email( $values['email'] );
-			if ( false === is_email( $email ) ) {
-				$errors['email'] = 'Ingresa un email válido.';
-			} else {
-				$values['email'] = $email;
-			}
-		}
-
-		/* Telephone — accepts international formatting, keeps the entered text. */
-		if ( ! isset( $errors['telefono'] ) && 1 !== preg_match( '/^\+?[0-9()\-\s.]{4,39}$/', $values['telefono'] ) ) {
-			$errors['telefono'] = 'Ingresa un teléfono válido (por ejemplo +56 9 6844 4265).';
-		}
-
-		/* Rut Empresa — required business identity, format kept as entered. */
-		if ( ! isset( $errors['rut'] ) && 1 !== preg_match( '/^[0-9kK.\-\s]+$/', $values['rut'] ) ) {
-			$errors['rut'] = 'Ingresa un RUT válido (por ejemplo 76.335.888-6).';
-		}
+		/* Email, Teléfono and Rut Empresa — the shared contact-format
+		   rules (issue #18), one definition for both surfaces. */
+		$formats = self::validated_contact_formats( $values, $errors );
+		$values  = $formats['values'];
+		$errors  = $formats['errors'];
 
 		/* Con Despacho — exactly Sí or No. */
 		$despacho = $text( 'despacho' );
