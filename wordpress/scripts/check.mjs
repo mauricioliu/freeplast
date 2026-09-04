@@ -208,7 +208,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, cpSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, createServer } from 'node:http';
+import { connect as netConnect } from 'node:net';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -606,7 +607,51 @@ test('WordPress/PHP/database version expectations and plugin migration version a
 
 /* ─── 3. HTTP server ──────────────────────────────────────────────────── */
 
+/* Probe the site origin before php -S starts: this suite must be the
+   only server there. A foreign listener (another project's dev server,
+   a forgotten process) answers the suite's requests instead, and every
+   content assertion then fails misleadingly — refuse to run instead. */
+function ensureOriginFree(siteUrl) {
+  const { hostname, port } = new URL(siteUrl);
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ host: hostname, port: Number(port || 80) });
+    socket.setTimeout(1_000);
+    socket.once('connect', () => {
+      socket.destroy();
+      reject(
+        new Error(
+          `the test origin ${siteUrl} is already owned by another server — stop it or set FREEPLAST_TEST_URL to a free port (a foreign server on the origin answers this suite's requests and every check fails misleadingly)`
+        )
+      );
+    });
+    socket.once('error', () => resolve());
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve();
+    });
+  });
+}
+
+test('the suite refuses an origin port that a foreign server already owns', async () => {
+  const foreign = createServer((req, res) => {
+    res.end('not the disposable installation');
+  });
+  await new Promise((ready) => foreign.listen(0, '127.0.0.1', ready));
+  const { port } = foreign.address();
+  await assert.rejects(
+    () => ensureOriginFree(`http://127.0.0.1:${port}`),
+    /FREEPLAST_TEST_URL/,
+    'a foreign listener on the origin must abort the suite with the escape hatch named'
+  );
+  await new Promise((closed) => foreign.close(closed));
+  await assert.doesNotReject(
+    () => ensureOriginFree(`http://127.0.0.1:${port}`),
+    'the same origin must probe free once the foreign listener is gone'
+  );
+});
+
 test('serve the disposable installation over HTTP', { timeout: 30_000 }, async () => {
+  await ensureOriginFree(SITE_URL);
   server = spawn(PHP_BIN, ['-S', new URL(SITE_URL).host, join(HERE, 'router.php')], {
     cwd: WP_DIR,
     stdio: 'ignore',
@@ -616,6 +661,9 @@ test('serve the disposable installation over HTTP', { timeout: 30_000 }, async (
   let ok = false;
   for (let i = 0; i < 60 && !ok; i++) {
     await new Promise((r) => setTimeout(r, 250));
+    if (server.exitCode !== null) {
+      break; /* php -S exited (origin refused, router missing) — report, don't time out */
+    }
     try {
       const res = await fetch(SITE_URL + '/', { headers: { 'user-agent': MOBILE_UA } });
       ok = res.ok;
@@ -623,7 +671,7 @@ test('serve the disposable installation over HTTP', { timeout: 30_000 }, async (
       /* retry */
     }
   }
-  assert.ok(ok, `php -S server must respond at ${SITE_URL}`);
+  assert.ok(ok, `php -S server must respond at ${SITE_URL} (php -S exit code: ${server.exitCode})`);
 });
 
 /* ─── 4. Home renders the approved v6 shell ───────────────────────────── */
