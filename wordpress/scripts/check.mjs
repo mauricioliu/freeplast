@@ -4812,15 +4812,13 @@ test('theme assets are position-independent and every free-form block is balance
      edit can never silently corrupt the v6 chrome across a block
      boundary. */
   const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  const TAG_PATTERN = /<(?<closing>\/)?(?<tag>[a-zA-Z][a-zA-Z0-9-]*)(?:"[^"]*"|'[^']*'|[^"'>])*(?<selfClosing>\/)?>/g;
   const balanced = (fragment) => {
     const stack = [];
-    for (const match of fragment
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .matchAll(/<(\/)?([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^"'>])*)(\/?)>/g)) {
-      const [, closing, rawTag, , selfClosing] = match;
-      const tag = rawTag.toLowerCase();
-      if (VOID_TAGS.has(tag) || selfClosing) continue;
-      if (closing) {
+    for (const { groups } of fragment.replace(/<!--[\s\S]*?-->/g, '').matchAll(TAG_PATTERN)) {
+      const tag = groups.tag.toLowerCase();
+      if (VOID_TAGS.has(tag) || groups.selfClosing) continue;
+      if (groups.closing) {
         if (stack.pop() !== tag) return false;
       } else {
         stack.push(tag);
@@ -4838,30 +4836,34 @@ test('theme assets are position-independent and every free-form block is balance
   /* 24.3 — At render time the token resolves through the WordPress theme
      API and nothing unresolved reaches a served document; the resolved
      assets are really served. */
-  const markUri = wp(['eval', 'echo wp_make_link_relative( get_theme_file_uri( "assets/img/mark.svg" ) );']).stdout;
-  const warehouseUri = wp(['eval', 'echo wp_make_link_relative( get_theme_file_uri( "assets/img/warehouse.webp" ) );']).stdout;
+  const themeAssetUri = (asset) =>
+    wp(['eval', `echo wp_make_link_relative( get_theme_file_uri( "${asset}" ) );`]).stdout;
+  const markUri = themeAssetUri('assets/img/mark.svg');
+  const warehouseUri = themeAssetUri('assets/img/warehouse.webp');
   assert.match(markUri, /wp-content\/themes\/freeplast\/assets\/img\/mark\.svg$/, 'the logo URL must resolve from get_theme_file_uri()');
   assert.match(warehouseUri, /wp-content\/themes\/freeplast\/assets\/img\/warehouse\.webp$/, 'the hero-image URL must resolve from get_theme_file_uri()');
   /* The served <img> carries WordPress's lazy-loading attributes before
      src, so match the resolved src within the tag instead of a fixed tag
      prefix. */
   const imgSrc = (uri) => new RegExp(`<img[^>]*src="${uri.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`);
+  const pages = new Map();
   for (const route of ['/', PRODUCT_URL, '/cotizacion/']) {
     const res = await get(route, MOBILE_UA);
     assert.equal(res.status, 200, `${route} must render to check the theme assets`);
     assert.ok(!res.body.includes('{{FREEPLAST_THEME_URL}}'), `${route} must not leak the unresolved theme-URL token`);
     assert.ok(imgSrc(markUri).test(res.body), `${route} must resolve the header logo through the theme API at render time`);
+    pages.set(route, res.body);
   }
   assert.ok(
-    imgSrc(warehouseUri).test((await get('/', MOBILE_UA)).body),
+    imgSrc(warehouseUri).test(pages.get('/')),
     'Home must resolve the hero image through the theme API at render time'
   );
   /* The php -S built-in server sends no Content-Type for svg/webp, so the
      "served as an image" proof is the byte signature of the response. */
-  const firstBytes = async (uri, bytes = 12) => {
+  const firstBytes = async (uri) => {
     const res = await fetch(SITE_URL + uri, { headers: { 'user-agent': MOBILE_UA } });
     assert.equal(res.status, 200, `${uri} must be reachable at the resolved URL`);
-    return String.fromCharCode(...new Uint8Array((await res.arrayBuffer()).slice(0, bytes)));
+    return String.fromCharCode(...new Uint8Array((await res.arrayBuffer()).slice(0, 12)));
   };
   assert.match(await firstBytes(markUri), /^<svg /, 'the resolved logo URL must really serve the SVG mark');
   const webpHead = await firstBytes(warehouseUri);
