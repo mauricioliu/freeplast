@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19–#20, #23).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -12,8 +12,8 @@
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
  * verifies the acceptance criteria of issues #2 through #17, of the
- * issue #19 basket-cookie scheme fix and of the issue #20 theme markup
- * hardening (including
+ * issue #19 basket-cookie scheme fix, of the issue #20 theme markup
+ * hardening and of the issue #23 edge origin-header strip (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -167,6 +167,13 @@
  *      wrap and island header are group block boundaries with the basket
  *      button between them, so a Site Editor edit cannot split the v6
  *      chrome across blocks).
+ *  22. The staging edge stops disclosing the origin runtime (issue #23):
+ *      the proxied location of the Nginx vhost template hides exactly one
+ *      origin header — X-Powered-By — via proxy_hide_header (the site's
+ *      behavior is otherwise unchanged), verify.sh walks an authenticated
+ *      response through the HTTPS edge and fails if the header ever
+ *      reappears, and the on-server re-run that installs the re-rendered
+ *      vhost is recorded as the pending operator step in DEPLOYMENT.md.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -4972,7 +4979,11 @@ test('the verification and operations handoff packages the build for independent
 /** The deployed vhost, rendered exactly as it stands on the server since
  * the issue #14 operator run (TLS paths per DEPLOYMENT.md §Post-deploy
  * records). The issue #16 template must reproduce these bytes. */
-const DEPLOYED_VHOST = `# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).
+/* The vhost the rendered template must reproduce byte-for-byte: the issue
+   #14 deployed configuration plus the issue #23 origin-header strip. The
+   operator re-run that installs it on the server is pending and recorded
+   in DEPLOYMENT.md. */
+const EXPECTED_VHOST = `# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).
 #
 # Rendered by deploy.sh: /etc/nginx/ssl/mliu.site/fullchain.pem / /etc/nginx/ssl/mliu.site/key.pem are replaced with the
 # server's approved certificate paths from .env (preflight.sh verifies the
@@ -5013,6 +5024,9 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8092;
         proxy_http_version 1.1;
+        # Origin opacity (issue #23): the edge never advertises the origin
+        # runtime — strip the PHP version header from proxied responses.
+        proxy_hide_header X-Powered-By;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -5094,14 +5108,15 @@ test('the staging hostname, install root and loopback port are single-sourced in
     assert.ok(deploy.includes(`s|${placeholder}|`), `deploy.sh renders ${placeholder}`);
   }
 
-  /* 5. Strictly behavior-preserving: rendering the template with the shared
-     constants and the deployed TLS convention reproduces the deployed vhost
-     byte-for-byte. */
+  /* 5. The render is reproducible byte-for-byte against the recorded
+     expectation: the issue #14 deployed configuration plus the issue #23
+     origin-header strip (the operator re-run installing it is pending
+     per DEPLOYMENT.md). */
   let rendered = vhost;
   for (const [placeholder, value] of SUBSTITUTIONS) {
     rendered = rendered.split(placeholder).join(value);
   }
-  assert.equal(rendered, DEPLOYED_VHOST, 'the rendered vhost is byte-identical to the deployed configuration');
+  assert.equal(rendered, EXPECTED_VHOST, 'the rendered vhost is byte-identical to the recorded expected configuration');
 
   /* 6. The Compose port takes the deploy-written .env value with no fallback
      literal, resolving to the deployed loopback-only mapping. */
@@ -5116,7 +5131,7 @@ test('the staging hostname, install root and loopback port are single-sourced in
 
   section('Single-sourced staging constants (issue #16)', [
     'infra/staging.sh declares the hostname, install root and loopback port exactly once; every script sources it and no other infra file repeats the literals (one-place edit)',
-    'nginx/staging.conf.tmpl carries only __-placeholders that deploy.sh renders from the shared values and the TLS convention; the render is byte-identical to the deployed vhost',
+    'nginx/staging.conf.tmpl carries only __-placeholders that deploy.sh renders from the shared values and the TLS convention; the render is byte-identical to the recorded expected configuration (issue #14 deployment + the issue #23 edge strip)',
     'The Compose port drops its fallback literal and takes the deploy-written .env value (fail-loud); DEPLOYMENT.md records the deployed values and the re-run expectation',
   ]);
 });
@@ -5257,11 +5272,55 @@ echo $rendered;
   ]);
 });
 
+/* ─── 23f. The staging edge strips the origin runtime header (issue #23) ── */
+
+test('the staging edge strips the PHP origin header from proxied responses (issue #23)', () => {
+  const vhost = readFileSync(join(WORDPRESS_DIR, 'infra', 'nginx', 'staging.conf.tmpl'), 'utf8');
+  const verify = readFileSync(join(WORDPRESS_DIR, 'infra', 'verify.sh'), 'utf8');
+  const deployment = readFileSync(join(WORDPRESS_DIR, 'DEPLOYMENT.md'), 'utf8');
+
+  /* 23f.1 — The proxied location hides exactly one origin header,
+     X-Powered-By: authenticated responses through the edge stop
+     disclosing the PHP version and nothing else about the response
+     changes (a surgical directive — no other header is hidden, and the
+     forwarded request chain is untouched). */
+  const hidden = [...vhost.matchAll(/^\s*proxy_hide_header\s+([^;]+);/gm)].map((m) => m[1]);
+  assert.deepEqual(hidden, ['X-Powered-By'], 'the edge must hide exactly one origin header — X-Powered-By — and nothing else');
+  const locationStart = vhost.indexOf('location / {');
+  const locationEnd = vhost.indexOf('\n}', locationStart);
+  const proxiedLocation = vhost.slice(locationStart, locationEnd);
+  assert.ok(proxiedLocation.includes('proxy_pass http://127.0.0.1:__LOOPBACK_PORT__;'), 'the proxied location must keep the loopback proxy');
+  assert.ok(proxiedLocation.includes('proxy_hide_header X-Powered-By;'), 'the hide directive must sit inside the proxied location / block');
+
+  /* 23f.2 — verify.sh walks the acceptance matrix through the edge: an
+     authenticated (owner-credential) response must carry no
+     X-Powered-By, and a disclosed origin runtime fails verification. */
+  const checkStart = verify.indexOf("grep -i '^x-powered-by:'");
+  assert.ok(checkStart > 0, 'verify.sh must look for the X-Powered-By response header');
+  const poweredCheck = verify.slice(verify.lastIndexOf('\n', checkStart) + 1, checkStart + 600);
+  assert.ok(poweredCheck.includes('BASIC_AUTH_OWNER_USER'), 'the X-Powered-By check must run authenticated (owner credentials)');
+  assert.match(poweredCheck, /\bmiss\b/, 'a disclosed origin runtime must fail verification');
+  assert.match(verify, /no X-Powered-By \(origin runtime hidden\)/, 'verify.sh must report the origin-runtime check as part of the walk');
+
+  /* 23f.3 — The re-rendered vhost reaches the server only through the
+     recorded operator step: DEPLOYMENT.md names the pending re-run
+     (deploy.sh renders and installs the vhost, nginx -t before the
+     reload, verify.sh still “verification clean”). */
+  assert.ok(deployment.includes('proxy_hide_header X-Powered-By'), 'DEPLOYMENT.md must record the origin-header strip');
+  assert.match(deployment, /Issue #23[\s\S]{0,600}?pending[\s\S]{0,600}?verification clean/, 'DEPLOYMENT.md must record the pending operator re-run expectation');
+
+  section('The staging edge strips the origin runtime header (issue #23)', [
+    'The proxied location of the Nginx vhost template hides exactly one origin header — X-Powered-By (proxy_hide_header) — so authenticated responses stop disclosing the PHP version; no other origin header or forwarded chain changes',
+    'verify.sh asserts through the HTTPS edge that an authenticated (owner) response carries no X-Powered-By and fails if the origin runtime is ever disclosed again',
+    'DEPLOYMENT.md records the pending operator re-run: deploy.sh re-renders and installs the vhost (nginx -t before the reload) and verify.sh must still report “verification clean”',
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup (issues #2–#17, #19–#20)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + edge-stripped origin header (issues #2–#17, #19–#20, #23)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5364,10 +5423,11 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
     `Shipped artifacts (issue #15): theme ${checksumLines[0].replace(/^Theme:\s*/, '')} and plugin ${checksumLines[1].replace(/^Plugin:\s*/, '')} recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)`,
     'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',
-    'Staging constants single-sourced (issue #16): hostname, install root and loopback port declared exactly once in infra/staging.sh; all five scripts source it; the Nginx vhost template renders from it byte-identically to the deployed configuration; the Compose port takes the deploy-written .env value with no fallback literal',
+    'Staging constants single-sourced (issue #16): hostname, install root and loopback port declared exactly once in infra/staging.sh; all five scripts source it; the Nginx vhost template renders from it byte-identically to the recorded expected configuration; the Compose port takes the deploy-written .env value with no fallback literal',
     'One shared JSON codec (issue #17): every stored-meta write/read goes through Freeplast_CQ_Codec with the byte-identical unescaped stored form — the retired per-class helpers are gone, round-trip identity holds on the persisted staging data and the catalog dry run after the swap reports zero changes',
     'Theme assets are position-independent (issue #20): no template/part hardcodes an absolute wp-content theme path; the header logo, footer mark and Home hero image render through get_theme_file_uri() at render time, and a subdirectory boot of the same sources renders subdirectory-correct asset URLs',
     'Every free-form (wp:html) block in the theme is balanced on its own (issue #20): the header wrap/island containers are group block boundaries with the basket button between them; the logo, navigation, burger and mobile sheet each stand in one self-contained block',
+    'The staging edge strips the origin runtime header (issue #23): the proxied location of the vhost template hides exactly one origin header — X-Powered-By — via proxy_hide_header, and verify.sh asserts an authenticated response through the HTTPS edge carries none',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -5392,9 +5452,10 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
     `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
     `- The verification and operations handoff (issue #15) is wordpress/HANDOFF.md: it records where every verification dimension lives (including the on-server infrastructure/Nginx/browser-console steps that remain operator actions), the 17→17 catalog reconciliation with per-Product provisional facts, the Quote Request acceptance matrix with reproduction pointers, mechanical accessibility observations explicitly labelled as not human approval, the reproducible operator procedures, the Gate 3 review URLs and the exact pending owner/client actions. The shipped theme/plugin ZIPs and their SHA-256 manifest in dist/ are rebuilt deterministically by every npm test run and verified with unzip -t; nothing in the handoff claims visual validation.`,
-    `- The staging constants (issue #16) are single-sourced in infra/staging.sh and proven strictly behavior-preserving: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the deployed configuration from the issue #14 operator run; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-run (deploy.sh existing-stack path must be a no-op; verify.sh must still report “verification clean”) is recorded in DEPLOYMENT.md as the next on-server step.`,
+    `- The staging constants (issue #16) are single-sourced in infra/staging.sh: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the recorded expected configuration — the issue #14 deployed vhost plus the issue #23 origin-header strip; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-runs (the issue #16 existing-stack no-op and the issue #23 vhost re-render + reload, with verify.sh reporting “verification clean” both times) are recorded in DEPLOYMENT.md as the next on-server steps.`,
     `- The basket cookie Secure flag follows the request scheme (issue #19): send_cookie() derives it from is_ssl() — the staging wp-config maps the Nginx-forwarded https scheme onto \$_SERVER['HTTPS'], so TLS responses keep the Secure cookie (staging behavior unchanged) and plain-HTTP installs keep a working basket. The disposable wp-config mirrors that mapping and the check presents both schemes at the real admin-post seam.`,
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
+    `- The origin-header strip (issue #23) is verified as repository artifacts plus the recorded operator step: the proxied location of infra/nginx/staging.conf.tmpl carries exactly one proxy_hide_header directive (X-Powered-By — the edge stops disclosing the PHP version without touching any other origin header or the forwarded chain), and verify.sh now walks an authenticated response through the HTTPS edge and fails if the header ever reappears. The OpenClaw host is not reachable from this environment, so the on-server execution — deploy.sh re-rendering and installing the vhost with nginx -t before the reload, verify.sh still reporting “verification clean” — is the operator runbook step recorded in DEPLOYMENT.md.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

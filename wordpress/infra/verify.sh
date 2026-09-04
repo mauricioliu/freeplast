@@ -67,6 +67,15 @@ if curl -s --max-time 20 -I -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWOR
 else
   miss 'X-Robots-Tag noindex header missing'
 fi
+
+# The edge never advertises the origin runtime (issue #23)
+POWERED="$(curl -s --max-time 20 -D - -o /dev/null -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/" | grep -i '^x-powered-by:' || true)"
+if [[ -z "$POWERED" ]]; then
+  ok 'authenticated response carries no X-Powered-By (origin runtime hidden)'
+else
+  miss "the edge discloses the origin runtime: $(printf '%s' "$POWERED" | head -n1 | tr -d '\r')"
+fi
+
 blog_public="$(wpcli wp option get blog_public)"
 if [[ "$blog_public" == "0" ]]; then ok 'WordPress discourages indexing (blog_public 0)'; else miss "blog_public is ${blog_public:-unset} (expected 0)"; fi
 

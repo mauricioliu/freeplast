@@ -66,6 +66,10 @@ stay fatal.
   `X-Robots-Tag: noindex, nofollow` on every response; WordPress itself
   installs with `blog_public 0`. `nginx -t` validates before every
   reload, and the prior configuration is backed up first.
+- **Origin opacity:** the edge hides the origin runtime header
+  (`X-Powered-By`) from every proxied response (issue #23) — the staging
+  site never discloses the PHP version; no other origin header is
+  touched, and verify.sh fails if the header ever reappears.
 - **WordPress identity:** locale `es_CL`, timezone `America/Santiago`,
   home/site URLs `https://freeplast.mliu.site`, permalinks
   `/%postname%/`, `DISALLOW_FILE_EDIT`, `--skip-email` installs.
@@ -156,6 +160,14 @@ the server must take the existing-stack path as a no-op (same secrets, same
 resolved Compose configuration — the loopback mapping is unchanged) and
 `verify.sh` must still report `verification clean`. The rendered vhost is
 proven byte-identical by `npm test`.
+
+Issue #23 origin-header strip re-run (pending, operator step): the vhost
+template now carries `proxy_hide_header X-Powered-By;` in the proxied
+`location /` block, so the next `deploy.sh` run re-renders and installs
+the vhost (`nginx -t` before the reload) and `verify.sh` — which now also
+asserts that an authenticated response carries no `X-Powered-By` — must
+still report `verification clean`. `npm test` proves the render
+byte-identical to the recorded expected configuration.
 
 - [x] Preflight output: all checks `ok`, baseline recorded —
       `/root/freeplast-wordpress-backups/preflight-20260904T102325Z.txt`

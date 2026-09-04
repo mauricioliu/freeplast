@@ -54,8 +54,9 @@ npm test              # THE check command: bootstrap a clean disposable
                       # criteria (including the issue-#8 submission, the
                       # issue-#9 sales workflow, the issue-#10 durable
                       # notifications, the issue-#11 address/distance
-                      # slice, the issue-#14 staging artifacts and the
-                      # issue-#15 handoff + shipped-artifact checksums).
+                      # slice, the issue-#14 staging artifacts, the
+                      # issue-#15 handoff + shipped-artifact checksums and
+                      # the issue-#23 staging edge strip).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -335,8 +336,8 @@ convention, owner/client Basic Auth, `X-Robots-Tag: noindex` and
   the HTTPS verification walk.
 - `infra/verify.sh` — the acceptance matrix through the public HTTPS
   surface and WP-CLI (redirect, 401/200 authentication, every route,
-  noindex at both layers, WordPress identity, catalog idempotence,
-  non-live mail mode).
+  noindex at both layers, no `X-Powered-By` through the edge (issue
+  #23), WordPress identity, catalog idempotence, non-live mail mode).
 - `infra/backup.sh` — database dump + WordPress-volume archive with
   SHA-256 hashes outside the live volumes, plus a restore rehearsal into
   temporary project names that is torn down afterwards.
