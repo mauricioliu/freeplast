@@ -392,16 +392,6 @@ class Freeplast_CQ_Request {
 		);
 	}
 
-	/**
-	 * Encode one fp_quote metadata value. Slashes and unicode stay
-	 * unescaped so the stored form is stable: update_post_meta()
-	 * unslashes scalar values, so escaped forms would not round-trip
-	 * byte for byte.
-	 */
-	public static function encode_meta( array $value ): string {
-		return (string) wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-	}
-
 	/* ------------------------------------------------------------------ */
 	/* Persistence                                                         */
 	/* ------------------------------------------------------------------ */
@@ -487,19 +477,19 @@ class Freeplast_CQ_Request {
 
 		$meta = array(
 			'_fpq_status'        => 'new',
-			'_fpq_customer'      => self::encode_meta( $customer ),
-			'_fpq_items'         => self::encode_meta( $items ),
+			'_fpq_customer'      => Freeplast_CQ_Codec::encode( $customer ),
+			'_fpq_items'         => Freeplast_CQ_Codec::encode( $items ),
 			'_fpq_notifications' => Freeplast_CQ_Notifications::initial_state_json(),
-			'_fpq_current'       => self::encode_meta( $current ),
+			'_fpq_current'       => Freeplast_CQ_Codec::encode( $current ),
 			'_fpq_empresa'       => $current['empresa'],
 			'_fpq_email'         => $current['email'],
-			'_fpq_history'       => self::encode_meta( $history ),
+			'_fpq_history'       => Freeplast_CQ_Codec::encode( $history ),
 			'_fpq_idempotency'   => $idempotency,
 			'_fpq_session'       => $session['hash'],
 		);
 		if ( null !== $destination ) {
 			/* Dispatch-only data: requests without despacho carry no destination. */
-			$meta['_fpq_destination'] = self::encode_meta( $destination );
+			$meta['_fpq_destination'] = Freeplast_CQ_Codec::encode( $destination );
 		}
 
 		/* Retry with a fresh reference allocation: the sequence is derived,

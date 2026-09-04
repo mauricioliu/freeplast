@@ -274,25 +274,25 @@ class Freeplast_CQ_Catalog_Sync {
 			'dimensions'  => array( $get( '_fp_dimensions' ), $specs['dimensions'] ),
 			'weight'      => array( $get( '_fp_weight_text' ), $specs['weight'] ),
 			'use'         => array( $get( '_fp_use' ), $specs['use'] ),
-			'legacy'      => array( $get( '_fp_legacy_paths' ), self::pack( $product['legacy_paths'] ) ),
+			'legacy'      => array( $get( '_fp_legacy_paths' ), Freeplast_CQ_Codec::encode( $product['legacy_paths'] ) ),
 			'specs'       => array(
-				self::pack( array( $get( '_fp_material_short' ), (string) $get( '_fp_units_per_pallet' ), $get( '_fp_quote_min_qty' ), $get( '_fp_quote_step' ) ) ),
-				self::pack( array( $specs['material_short'], (string) $specs['units_per_pallet'], self::nullable_int( $specs['minimum_quantity'] ), self::nullable_int( $specs['quantity_step'] ) ) ),
+				Freeplast_CQ_Codec::encode( array( $get( '_fp_material_short' ), (string) $get( '_fp_units_per_pallet' ), $get( '_fp_quote_min_qty' ), $get( '_fp_quote_step' ) ) ),
+				Freeplast_CQ_Codec::encode( array( $specs['material_short'], (string) $specs['units_per_pallet'], self::nullable_int( $specs['minimum_quantity'] ), self::nullable_int( $specs['quantity_step'] ) ) ),
 			),
 			'image'       => array( $get( '_fp_image_checksum' ), $product['image']['checksum'] ),
-			'options'     => array( $get( '_fp_options' ), self::pack( $product['options'] ) ),
-			'related'     => array( $get( '_fp_related_ids' ), self::pack( $product['related_ids'] ) ),
+			'options'     => array( $get( '_fp_options' ), Freeplast_CQ_Codec::encode( $product['options'] ) ),
+			'related'     => array( $get( '_fp_related_ids' ), Freeplast_CQ_Codec::encode( $product['related_ids'] ) ),
 			'featured'    => array(
-				self::pack( array( $get( '_fp_featured' ), $get( '_fp_featured_order' ) ) ),
-				self::pack( array( $product['featured'] ? '1' : '0', self::nullable_int( $product['featured_order'] ) ) ),
+				Freeplast_CQ_Codec::encode( array( $get( '_fp_featured' ), $get( '_fp_featured_order' ) ) ),
+				Freeplast_CQ_Codec::encode( array( $product['featured'] ? '1' : '0', self::nullable_int( $product['featured_order'] ) ) ),
 			),
 			'lifecycle'   => array(
-				self::pack( array( $get( '_fp_lifecycle' ), $post->post_status ) ),
-				self::pack( array( $product['lifecycle'], 'active' === $product['lifecycle'] ? 'publish' : 'draft' ) ),
+				Freeplast_CQ_Codec::encode( array( $get( '_fp_lifecycle' ), $post->post_status ) ),
+				Freeplast_CQ_Codec::encode( array( $product['lifecycle'], 'active' === $product['lifecycle'] ? 'publish' : 'draft' ) ),
 			),
 			'provenance'  => array(
-				self::pack( array( $get( '_fp_source_url' ), $get( '_fp_source_checked_at' ), $get( '_fp_image_alt' ), $get( '_fp_image_provisional' ) ) ),
-				self::pack( array( $product['source_url'], $source->provenance()['retrieved_at'], $product['image']['alt'], $product['image']['provisional'] ? '1' : '0' ) ),
+				Freeplast_CQ_Codec::encode( array( $get( '_fp_source_url' ), $get( '_fp_source_checked_at' ), $get( '_fp_image_alt' ), $get( '_fp_image_provisional' ) ) ),
+				Freeplast_CQ_Codec::encode( array( $product['source_url'], $source->provenance()['retrieved_at'], $product['image']['alt'], $product['image']['provisional'] ? '1' : '0' ) ),
 			),
 		);
 
@@ -399,9 +399,9 @@ class Freeplast_CQ_Catalog_Sync {
 			'_fp_weight_text'        => $specs['weight'],
 			'_fp_use'                => $specs['use'],
 			'_fp_lifecycle'          => $product['lifecycle'],
-			'_fp_legacy_paths'       => self::pack( $product['legacy_paths'] ),
-			'_fp_options'            => self::pack( $product['options'] ),
-			'_fp_related_ids'        => self::pack( $product['related_ids'] ),
+			'_fp_legacy_paths'       => Freeplast_CQ_Codec::encode( $product['legacy_paths'] ),
+			'_fp_options'            => Freeplast_CQ_Codec::encode( $product['options'] ),
+			'_fp_related_ids'        => Freeplast_CQ_Codec::encode( $product['related_ids'] ),
 			'_fp_featured'           => $product['featured'] ? '1' : '0',
 			'_fp_image_checksum'     => $product['image']['checksum'],
 			'_fp_image_source'       => 'catalog-source:' . $product['source_id'],
@@ -493,13 +493,6 @@ class Freeplast_CQ_Catalog_Sync {
 	/* ------------------------------------------------------------------ */
 	/* Helpers                                                             */
 	/* ------------------------------------------------------------------ */
-
-	private static function pack( $value ): string {
-		/* Unescaped JSON survives the metadata API (update_post_meta unslashes
-		   scalar values), so the stored form equals the compared form byte for
-		   byte on every later run. */
-		return (string) wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-	}
 
 	private static function nullable_int( $value ): string {
 		return null === $value ? '' : (string) $value;

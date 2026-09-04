@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#15).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#17).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #15 (including
+ * verifies the acceptance criteria of issues #2 through #17 (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -138,6 +138,13 @@
  *      deterministically into dist/ with SHA-256 checksums verified by
  *      unzip -t and sha256sum -c, and the handoff never claims visual
  *      validation.
+ *  19. One JSON codec serves every stored-meta read/write (issue #17):
+ *      the plugin-level Freeplast_CQ_Codec pair replaces the three
+ *      identical encoders, two identical decoders and the Delivery
+ *      Address inline decodes; the stored form stays byte-for-byte
+ *      identical (unescaped slashes/unicode), proven by the exact byte
+ *      form, round-trip identity on the persisted staging data and a
+ *      zero-change catalog dry run after the swap.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -4214,6 +4221,116 @@ test('PHP syntax and coding-standard scans pass over the shipped theme and plugi
   ]);
 });
 
+/* ─── 23b2. One JSON codec for stored meta (issue #17) ───────────── */
+
+test('one shared JSON codec serves every stored-meta read/write with byte-identical unescaped JSON (issue #17)', () => {
+  const pluginDir = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
+  const codecPath = join(pluginDir, 'includes', 'class-codec.php');
+  assert.ok(existsSync(codecPath), 'includes/class-codec.php must exist (the plugin-level codec pair)');
+  assert.ok(
+    readFileSync(join(pluginDir, 'freeplast-catalog-quotes.php'), 'utf8').includes("require_once __DIR__ . '/includes/class-codec.php'"),
+    'the plugin bootstrap must load the codec before the classes that use it'
+  );
+
+  /* Structural consolidation: the unescaped stored form is decided in
+     exactly one file, the retired per-class helpers are gone, and the
+     only remaining json_decode sites are non-meta (the catalog source
+     document and the Google provider wire responses). */
+  const walkPhp = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      return entry.isDirectory() ? walkPhp(full) : full.endsWith('.php') ? [full] : [];
+    });
+  const phpFiles17 = walkPhp(pluginDir);
+  const code = Object.fromEntries(phpFiles17.map((file) => [file, readFileSync(file, 'utf8')]));
+  const flagFiles = phpFiles17.filter((file) => code[file].includes('JSON_UNESCAPED_SLASHES'));
+  assert.deepEqual(
+    flagFiles,
+    [codecPath],
+    `the unescaped-JSON stored form must be decided only in class-codec.php, found in: ${flagFiles.map((f) => f.replaceAll(pluginDir + '/', '')).join(', ')}`
+  );
+  for (const retired of ['encode_meta', 'private static function pack', 'json_meta(', 'decoded_meta(']) {
+    const sites = phpFiles17.filter((file) => code[file].includes(retired));
+    assert.deepEqual(sites, [], `the retired helper ${JSON.stringify(retired)} must not remain (found in ${sites.map((f) => f.replaceAll(pluginDir + '/', '')).join(', ')})`);
+  }
+  for (const file of phpFiles17) {
+    if (file === codecPath) continue;
+    const relative = file.replaceAll(pluginDir + '/', '');
+    if (relative.endsWith('class-catalog-source.php') || relative.endsWith('class-address.php')) {
+      /* Non-meta decodes only: the source document, the provider wire
+         bodies — never a stored-meta key. */
+      for (const line of code[file].split('\n')) {
+        if (line.includes('json_decode(')) {
+          assert.ok(!line.includes('_fp'), `${relative} must not json_decode a stored-meta key inline: ${line.trim()}`);
+        }
+      }
+      continue;
+    }
+    assert.ok(!code[file].includes('json_decode('), `${relative} must decode stored JSON only through the codec`);
+  }
+
+  /* Behavioral: the codec reproduces the documented byte form exactly
+     (unescaped slashes and unicode), decodes honestly, and round-trips
+     the actual stored meta on the running installation byte for byte. */
+  const encoded = wp([
+    'eval',
+    'echo bin2hex( Freeplast_CQ_Codec::encode( array( "nombre" => "Ñandú Ltda.", "ruta" => "Caja 3/4", "articulo" => "nº 7 «azul»", "lista" => array( "a/b", "segunda" ) ) ) );',
+  ]).stdout;
+  const expectedBytes = Buffer.from(
+    '{"nombre":"Ñandú Ltda.","ruta":"Caja 3/4","articulo":"nº 7 «azul»","lista":["a/b","segunda"]}',
+    'utf8'
+  ).toString('hex');
+  assert.equal(encoded, expectedBytes, 'encode must produce the exact documented unescaped byte form');
+
+  const decoded = JSON.parse(
+    wp([
+      'eval',
+      'echo wp_json_encode( array( "roundtrip" => Freeplast_CQ_Codec::decode( Freeplast_CQ_Codec::encode( array( "k" => "v/ñ" ) ) ), "absent" => Freeplast_CQ_Codec::decode( "" ), "corrupt" => Freeplast_CQ_Codec::decode( "{nonsense" ) ) );',
+    ]).stdout || '{}'
+  );
+  assert.deepEqual(
+    decoded,
+    { roundtrip: { k: 'v/ñ' }, absent: [], corrupt: [] },
+    'decode must round-trip the encoded form and read absent/corrupt meta as an empty array'
+  );
+
+  const identityPhp =
+    '$out = array();' +
+    '$id = intval( get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "orderby" => "ID", "order" => "ASC", "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true ) )[0] ?? 0 );' +
+    'foreach ( array( "_fpq_customer", "_fpq_items", "_fpq_current", "_fpq_notifications", "_fpq_history", "_fpq_notes", "_fpq_destination", "_fpq_distance" ) as $k ) {' +
+    '  $raw = (string) get_post_meta( $id, $k, true ); if ( "" === $raw ) { continue; }' +
+    '  $out[ $k ] = Freeplast_CQ_Codec::encode( Freeplast_CQ_Codec::decode( $raw ) ) === $raw ? "identity" : "drift";' +
+    '}' +
+    '$pid = intval( get_posts( array( "post_type" => "fp_product", "post_status" => "any", "posts_per_page" => 1, "orderby" => "ID", "order" => "ASC", "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true ) )[0] ?? 0 );' +
+    'foreach ( array( "_fp_options", "_fp_related_ids", "_fp_legacy_paths" ) as $k ) {' +
+    '  $raw = (string) get_post_meta( $pid, $k, true ); if ( "" === $raw ) { continue; }' +
+    '  $out[ $k ] = Freeplast_CQ_Codec::encode( Freeplast_CQ_Codec::decode( $raw ) ) === $raw ? "identity" : "drift";' +
+    '}' +
+    'global $wpdb;' +
+    '$raw = (string) $wpdb->get_var( "SELECT basket_lines FROM {$wpdb->prefix}basket_sessions LIMIT 1" );' +
+    'if ( "" !== $raw ) { $out[ "basket_lines" ] = Freeplast_CQ_Codec::encode( Freeplast_CQ_Codec::decode( $raw ) ) === $raw ? "identity" : "drift"; }' +
+    'echo wp_json_encode( $out );';
+  const stored = JSON.parse(wp(['eval', identityPhp]).stdout || '{}');
+  for (const required of ['_fpq_customer', '_fpq_items', '_fpq_history', '_fpq_notifications', '_fp_options', '_fp_related_ids']) {
+    assert.equal(stored[required], 'identity', `${required} must exist on the running installation and round-trip byte for byte`);
+  }
+  for (const [key, value] of Object.entries(stored)) {
+    assert.equal(value, 'identity', `${key} must round-trip byte for byte through the codec (issue #17 identity gate)`);
+  }
+
+  /* The stored form still equals the compared form: the synchronizer's
+     dry run over the untouched catalog must report zero changes. */
+  const dry = catalogSync(['--dry-run']);
+  assert.equal(dry.status, 0, `the post-swap dry run must succeed:\n${dry.stderr}`);
+  assertContains(dry.stdout, 'Summary: created=0 updated=0 unchanged=17 warnings=0 errors=0', 'the dry run after the codec swap must report zero changes (stored form equals compared form)');
+
+  section('One JSON codec for stored meta (issue #17)', [
+    'One plugin-level encode/decode pair (Freeplast_CQ_Codec) serves every stored-meta read/write — Quote Request meta, Catalog Sync, Notifications, basket sessions and the Delivery Address inline decodes included; the unescaped stored form is decided in exactly one file and the retired per-class helpers are gone',
+    'Encode reproduces the documented byte form exactly (JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); absent/corrupt meta decodes to an empty array',
+    'Round-trip identity on existing staging data: every stored meta key on the running installation re-encodes to its own bytes; the catalog dry run after the swap reports created=0 updated=0 unchanged=17 errors=0',
+  ]);
+});
+
 /* ─── 23b. Isolated staging deployment artifacts (issue #14) ─────── */
 
 /**
@@ -4772,7 +4889,7 @@ test('the verification and operations handoff packages the build for independent
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff (issues #2–#15)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + one stored-meta JSON codec (issues #2–#17)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -4874,6 +4991,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
     'Shipped artifacts (issue #15): theme freeplast 0.8.0 and plugin freeplast-catalog-quotes 0.8.0 recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)',
     'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',
+    'One shared JSON codec (issue #17): every stored-meta write/read goes through Freeplast_CQ_Codec with the byte-identical unescaped stored form — the retired per-class helpers are gone, round-trip identity holds on the persisted staging data and the catalog dry run after the swap reports zero changes',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);

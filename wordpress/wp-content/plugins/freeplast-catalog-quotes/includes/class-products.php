@@ -240,8 +240,8 @@ class Freeplast_CQ_Products {
 
 		$html = (string) ob_get_clean();
 
-		$related = json_decode( $meta( '_fp_related_ids' ) ?: '[]', true );
-		if ( is_array( $related ) && array() !== $related ) {
+		$related = Freeplast_CQ_Codec::decode( (string) $meta( '_fp_related_ids' ) );
+		if ( array() !== $related ) {
 			$html .= self::render_related( $related );
 		}
 

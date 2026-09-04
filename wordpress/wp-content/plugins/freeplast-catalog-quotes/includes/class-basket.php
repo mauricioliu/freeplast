@@ -183,10 +183,10 @@ class Freeplast_CQ_Basket {
 			return null;
 		}
 
-		$lines = json_decode( (string) $row->basket_lines, true );
+		$lines = Freeplast_CQ_Codec::decode( (string) $row->basket_lines );
 		return array(
 			'hash'  => $hash,
-			'lines' => is_array( $lines ) ? $lines : array(),
+			'lines' => $lines,
 		);
 	}
 
@@ -233,7 +233,7 @@ class Freeplast_CQ_Basket {
 		global $wpdb;
 		$wpdb->update(
 			$wpdb->prefix . 'basket_sessions',
-			array( 'basket_lines' => wp_json_encode( array_values( $lines ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) ),
+			array( 'basket_lines' => Freeplast_CQ_Codec::encode( array_values( $lines ) ) ),
 			array( 'session_hash' => $session['hash'] ),
 			array( '%s' ),
 			array( '%s' )
@@ -350,10 +350,7 @@ class Freeplast_CQ_Basket {
 
 	/** The reviewed option list of one Product (synchronized source order). */
 	private static function product_options( WP_Post $product ): array {
-		$options = json_decode( (string) get_post_meta( $product->ID, '_fp_options', true ), true );
-		if ( ! is_array( $options ) ) {
-			return array();
-		}
+		$options = Freeplast_CQ_Codec::decode( (string) get_post_meta( $product->ID, '_fp_options', true ) );
 		$reviewed = array();
 		foreach ( $options as $option ) {
 			if ( is_array( $option ) && '' !== (string) ( $option['id'] ?? '' ) ) {

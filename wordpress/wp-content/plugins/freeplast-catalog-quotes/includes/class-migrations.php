@@ -212,10 +212,10 @@ class Freeplast_CQ_Migrations {
 
 				/* Current-contact copy (issue #9). */
 				if ( '' === (string) get_post_meta( $quote_id, '_fpq_current', true ) ) {
-					$customer = json_decode( (string) get_post_meta( $quote_id, '_fpq_customer', true ), true );
-					if ( is_array( $customer ) ) {
+					$customer = Freeplast_CQ_Codec::decode( (string) get_post_meta( $quote_id, '_fpq_customer', true ) );
+					if ( array() !== $customer ) {
 						$current = Freeplast_CQ_Request::current_contact_copy( $customer );
-						update_post_meta( $quote_id, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
+						update_post_meta( $quote_id, '_fpq_current', Freeplast_CQ_Codec::encode( $current ) );
 						update_post_meta( $quote_id, '_fpq_empresa', $current['empresa'] );
 						update_post_meta( $quote_id, '_fpq_email', $current['email'] );
 					}
