@@ -4,7 +4,8 @@ The isolated, password-protected staging deployment of the complete build
 (issues #2–#13). Everything an operator needs to deploy, verify, back up
 and roll back lives here and in `infra/`. The repository carries the
 artifacts and their mechanical checks; the server-side execution is the
-operator step recorded below.
+operator step recorded below. The packaging for independent operation
+and human review is `HANDOFF.md` (issue #15).
 
 **Status:** artifacts committed and covered by `npm test` (see
 VERIFICATION.md — “Isolated staging deployment artifacts”). The

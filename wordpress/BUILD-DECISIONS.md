@@ -6,6 +6,53 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #15: verification and operations handoff
+
+The completed build is packaged for independent operation and human
+review in wordpress/HANDOFF.md, without claiming any visual validation.
+Decisions:
+
+1. **One committed handoff document, mechanically guarded.** HANDOFF.md
+   records where every verification dimension lives — automated tests,
+   migration version, active components, route statuses, PHP/JS syntax
+   and coding standards recorded by `npm test`; infrastructure health,
+   Nginx validation and the browser-console observation explicitly
+   named as the on-server/operator/reviewer steps they are (DEPLOYMENT.md
+   runbook, Gate 3) rather than asserted as done. The check asserts the
+   coverage and rejects any phrase claiming visual approval.
+
+2. **Catalog evidence is per-Product, not aggregate.** The handoff
+   carries the 17→17 source/destination reconciliation with every
+   source_id, canonical URL and provisional fact, the no-op dry-run
+   expectation (`created=0 updated=0 … errors=0`), the media status
+   (14 distinct images, all provisional) and the complete pending-client
+   list, each with its apply-through-source/configuration procedure
+   (products.json / fp_dispatch_origin / FREEPLAST_GOOGLE_API_KEY).
+
+3. **Shipped artifacts are deterministic ZIPs with recorded checksums.**
+   `npm test` builds `dist/freeplast-theme-0.8.0.zip` and
+   `dist/freeplast-catalog-quotes-plugin-0.8.0.zip` as stored
+   (uncompressed) archives with sorted entries and a fixed timestamp, so
+   every rebuild is byte-identical; `unzip -t` validates them and
+   `dist/CHECKSUMS.sha256` records the package digests plus a per-file
+   manifest that `sha256sum -c` verifies against the real sources. The
+   digests are re-recorded in VERIFICATION.md on every run (RUNBOOK §8).
+
+4. **The acceptance matrix and accessibility observations point at their
+   evidence.** Each Quote Request matrix row (JavaScript on/off, one/
+multiple Products, options, failures, idempotency, Google fallback,
+   emails, admin state) names its VERIFICATION.md row and its manual
+   staging reproduction; the keyboard/focus/error/reduced-motion/
+   responsive results are labelled mechanical observations, not human
+   approval, and the Gate 3 review URLs sit beside the frozen v6/v7-A
+   references with the exact pending owner/client actions.
+
+5. **Out-of-scope release work stays visibly separate.** Production DNS
+   cutover, legacy-redirect activation, mail authentication
+   (SPF/DKIM/DMARC), original photography and `live` mail mode are listed
+   as separate owner-approved release work in the handoff — nothing in
+   the staging build performs or schedules them.
+
 ## 2026-09-04 — Issue #14: deploy isolated password-protected staging
 
 The complete build becomes an isolated, reviewable staging site on

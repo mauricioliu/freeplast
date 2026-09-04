@@ -125,6 +125,19 @@
  *      walk, a backup with restore rehearsal, and a rollback bounded to
  *      the new resources only (DEPLOYMENT.md records the operator
  *      runbook; the on-server execution is the operator step).
+ *  18. The verification and operations handoff (issue #15) packages the
+ *      build for independent operation and human review: HANDOFF.md
+ *      records every verification dimension (with the on-server
+ *      infrastructure/Nginx/browser-console steps named as operator/
+ *      reviewer actions, never as done), the 17→17 catalog
+ *      reconciliation with every provisional client fact, the Quote
+ *      Request acceptance matrix, mechanical-only accessibility
+ *      observations, reproducible operator procedures, Gate 3 review
+ *      URLs, pending owner/client actions and the separately-scoped
+ *      release work; the shipped theme/plugin ZIPs are rebuilt
+ *      deterministically into dist/ with SHA-256 checksums verified by
+ *      unzip -t and sha256sum -c, and the handoff never claims visual
+ *      validation.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -4505,11 +4518,253 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   ]);
 });
 
+/* ─── 23c. Verification and operations handoff (issue #15) ───────── */
+
+/** Walk one shipped artifact into sorted (name, bytes) pairs — deterministic. */
+function collectShippedFiles(dir, root) {
+  const out = [];
+  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of entries) {
+    const name = root ? `${root}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...collectShippedFiles(join(dir, entry.name), name));
+    else out.push({ name, data: readFileSync(join(dir, entry.name)) });
+  }
+  return out;
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function crc32(buffer) {
+  let crc = -1;
+  for (const byte of buffer) crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff];
+  return (crc ^ -1) >>> 0;
+}
+
+/**
+ * Deterministic stored (uncompressed) ZIP so every rebuild is byte-identical
+ * and the recorded checksums stay verifiable: sorted entries, a fixed
+ * 2026-01-01 DOS timestamp, no extras. `unzip -t` validates the result.
+ */
+const ZIP_DOS_TIME = 0; // 00:00:00
+const ZIP_DOS_DATE = ((2026 - 1980) << 9) | (1 << 5) | 1; // 2026-01-01
+
+function buildStoredZip(files) {
+  const local = [];
+  const central = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name, 'utf8');
+    const crc = crc32(file.data);
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0); // local file header signature
+    header.writeUInt16LE(20, 4); // version needed
+    header.writeUInt16LE(0, 6); // flags
+    header.writeUInt16LE(0, 8); // method: store
+    header.writeUInt16LE(ZIP_DOS_TIME, 10);
+    header.writeUInt16LE(ZIP_DOS_DATE, 12);
+    header.writeUInt32LE(crc, 14);
+    header.writeUInt32LE(file.data.length, 18);
+    header.writeUInt32LE(file.data.length, 22);
+    header.writeUInt16LE(name.length, 26);
+    header.writeUInt16LE(0, 28);
+    local.push(header, name, file.data);
+
+    const entry = Buffer.alloc(46);
+    entry.writeUInt32LE(0x02014b50, 0); // central directory signature
+    entry.writeUInt16LE(20, 4); // version made by
+    entry.writeUInt16LE(20, 6); // version needed
+    entry.writeUInt16LE(0, 8); // flags
+    entry.writeUInt16LE(0, 10); // method: store
+    entry.writeUInt16LE(ZIP_DOS_TIME, 12);
+    entry.writeUInt16LE(ZIP_DOS_DATE, 14);
+    entry.writeUInt32LE(crc, 16);
+    entry.writeUInt32LE(file.data.length, 20);
+    entry.writeUInt32LE(file.data.length, 24);
+    entry.writeUInt16LE(name.length, 28);
+    entry.writeUInt16LE(0, 30); // extra length
+    entry.writeUInt16LE(0, 32); // comment length
+    entry.writeUInt16LE(0, 34); // disk number
+    entry.writeUInt16LE(0, 36); // internal attributes
+    entry.writeUInt32LE((0o100644 << 16) >>> 0, 38); // external attributes: regular 0644
+    entry.writeUInt32LE(offset, 42);
+    central.push(Buffer.concat([entry, name]));
+    offset += header.length + name.length + file.data.length;
+  }
+  const centralBuf = Buffer.concat(central);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); // end of central directory signature
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...local, centralBuf, eocd]);
+}
+
+let checksumLines = [];
+
+test('the verification and operations handoff packages the build for independent operation and human review (issue #15)', () => {
+  const THEME_DIR = join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast');
+  const PLUGIN_DIR = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
+  const handoffPath = join(WORDPRESS_DIR, 'HANDOFF.md');
+  assert.ok(existsSync(handoffPath), 'wordpress/HANDOFF.md must exist (the issue #15 deliverable)');
+  const handoff = readFileSync(handoffPath, 'utf8');
+  /* Prose needles are matched on a whitespace-normalized copy so wrapped
+     lines never break the coverage assertions. */
+  const flat = handoff.replace(/\s+/g, ' ');
+  const flatLower = flat.toLowerCase();
+  const covers = (needle) => flatLower.includes(needle.toLowerCase());
+  assert.ok(handoff.endsWith('\n'), 'HANDOFF.md must end with a newline');
+  assert.ok(!/TODO|FIXME/.test(handoff), 'HANDOFF.md must not ship unfinished-work markers');
+
+  /* 1. Shipped artifacts: deterministic ZIPs with recorded versions and
+     SHA-256 checksums (RUNBOOK §Handoff). */
+  const themeVersion = readFileSync(join(THEME_DIR, 'style.css'), 'utf8').match(/^Version:\s*(\S+)$/m)?.[1];
+  const pluginVersion = readFileSync(PLUGIN_MAIN, 'utf8').match(/FREEPLAST_CQ_VERSION',\s*'([^']+)'/)?.[1];
+  assert.ok(themeVersion, 'the theme version must be readable from style.css');
+  assert.ok(pluginVersion, 'the plugin version must be readable from the plugin header constant');
+  const themeFiles = collectShippedFiles(THEME_DIR, 'freeplast');
+  const pluginFiles = collectShippedFiles(PLUGIN_DIR, 'freeplast-catalog-quotes');
+  assert.ok(themeFiles.length >= 8, `the theme ZIP must ship the complete theme (${themeFiles.length} files)`);
+  assert.ok(pluginFiles.length >= 10, `the plugin ZIP must ship the complete plugin (${pluginFiles.length} files)`);
+  const shipped = [...themeFiles, ...pluginFiles];
+  const sha256 = (data) => createHash('sha256').update(data).digest('hex');
+
+  const dist = join(WORDPRESS_DIR, 'dist');
+  mkdirSync(dist, { recursive: true });
+  const zips = [
+    { name: `freeplast-theme-${themeVersion}.zip`, files: themeFiles, source: 'themes' },
+    { name: `freeplast-catalog-quotes-plugin-${pluginVersion}.zip`, files: pluginFiles, source: 'plugins' },
+  ];
+  const manifest = [
+    '# Freeplast shipped artifacts — SHA-256 checksums (issue #15).',
+    `# Regenerated by npm test; theme freeplast ${themeVersion} · plugin freeplast-catalog-quotes ${pluginVersion} · fp_db_version ${DB_VERSION}.`,
+  ];
+  checksumLines = [
+    `Theme:     freeplast ${themeVersion} — ${themeFiles.length} files → dist/${zips[0].name}`,
+    `Plugin:    freeplast-catalog-quotes ${pluginVersion} — ${pluginFiles.length} files → dist/${zips[1].name}`,
+  ];
+  for (const zip of zips) {
+    const bytes = buildStoredZip(zip.files);
+    writeFileSync(join(dist, zip.name), bytes);
+    const hash = sha256(bytes);
+    manifest.push(`${hash}  ${zip.name}`);
+    checksumLines.push(`dist/${zip.name} — sha256:${hash} (${zip.files.length} stored entries, deterministic rebuild)`);
+    const probe = spawnSync('unzip', ['-t', join(dist, zip.name)], { encoding: 'utf8' });
+    assert.equal(probe.status, 0, `unzip -t dist/${zip.name}: ${probe.stdout || ''}${probe.stderr || ''}`);
+    assert.ok(/No errors detected/.test(probe.stdout), `unzip -t must report a sound archive: ${probe.stdout}`);
+  }
+  for (const file of shipped) {
+    /* Per-file paths stay relative to dist/ so `sha256sum -c` verifies the
+       real repository files, not just the packages. */
+    const prefix = file.name.startsWith('freeplast/') ? '../wp-content/themes/' : '../wp-content/plugins/';
+    manifest.push(`${sha256(file.data)}  ${prefix}${file.name}`);
+  }
+  writeFileSync(join(dist, 'CHECKSUMS.sha256'), manifest.join('\n') + '\n');
+  const verify = spawnSync('sha256sum', ['-c', 'CHECKSUMS.sha256'], { cwd: dist, encoding: 'utf8' });
+  assert.equal(verify.status, 0, `sha256sum -c CHECKSUMS.sha256: ${verify.stdout || ''}${verify.stderr || ''}`);
+  checksumLines.push(`Per-file manifest: dist/CHECKSUMS.sha256 — ${shipped.length} shipped files with SHA-256 checksums (sha256sum -c from dist/ verifies both packages and sources)`);
+
+  /* 2. The handoff records the artifact versions and checksum location. */
+  for (const needle of [themeVersion, pluginVersion, 'CHECKSUMS.sha256', zips[0].name, zips[1].name, 'SHA-256', 'dist/']) {
+    assert.ok(covers(needle), `HANDOFF.md must record the artifact identity: ${needle}`);
+  }
+
+  /* 3. The verification record names every required dimension. */
+  for (const needle of [
+    'Infrastructure health', 'Nginx validation', 'PHP syntax', 'Coding standards', 'npm test',
+    'fp_db_version', 'Active components', 'Route statuses', 'Browser console',
+    'VERIFICATION.md', 'DEPLOYMENT.md', `fp_db_version=${DB_VERSION}`,
+  ]) {
+    assert.ok(covers(needle), `HANDOFF.md §1 must record: ${needle}`);
+  }
+
+  /* 4. Catalog evidence: counts, the complete per-Product reconciliation,
+     the no-op dry run, media status and every provisional client fact. */
+  assert.ok(handoff.includes(`${PRODUCT_COUNT} Active Products`), 'the source/destination count must be recorded');
+  assert.ok(handoff.includes(`${PRODUCT_COUNT} destination`), 'the destination count must be recorded');
+  for (const product of PRODUCTS) {
+    for (const needle of [product.source_id, product.slug, product.title]) {
+      assert.ok(covers(needle), `the per-Product reconciliation must cover ${needle}`);
+    }
+    assert.ok(covers(`/producto/${product.slug}/`), `the reconciliation must carry the canonical URL of ${product.slug}`);
+  }
+  for (const needle of ['no-op dry run', 'created=0 updated=0', 'errors=0', `${DISTINCT_IMAGES}`, 'provisional', 'media library']) {
+    assert.ok(covers(needle), `HANDOFF.md §2 must record: ${needle}`);
+  }
+  for (const fact of ['Romano', 'G2', 'pediluvio', 'Ladrillo', 'minimum', 'color', 'photograph', 'dispatch origin', 'distance']) {
+    assert.ok(covers(fact), `HANDOFF.md §2 must list the provisional client fact: ${fact}`);
+  }
+
+  /* 5. The Quote Request acceptance matrix covers the full journey. */
+  for (const needle of [
+    'JavaScript disabled', 'JavaScript enabled', 'one Product', 'multiple Products', 'option',
+    'idempoten', 'manual', 'fallback', 'sales notification', 'customer acknowledgement', 'Cotizaciones',
+  ]) {
+    assert.ok(covers(needle), `HANDOFF.md §3 acceptance matrix must cover: ${needle}`);
+  }
+
+  /* 6. Accessibility and responsive observations stay mechanical. */
+  for (const needle of ['Keyboard', 'focus', 'error summary', 'reduced motion', '375', '412', '768', '1024', '1440', 'WCAG']) {
+    assert.ok(covers(needle), `HANDOFF.md §4 must record the mechanical observation: ${needle}`);
+  }
+  assert.ok(
+    flat.match(/mechanical observations, not human approval/g) !== null,
+    'the accessibility record must explicitly deny human approval'
+  );
+  assert.ok(!/visually approved|visual approval (is |has )?(complete|recorded|granted)/i.test(flat), 'the handoff must not claim visual validation');
+
+  /* 7. Operator procedures are reproducible by another operator. */
+  for (const needle of [
+    'preflight.sh', 'deploy.sh', 'backup.sh', 'rollback.sh', 'restore', 'catalog sync',
+    'Cotizaciones', 'Reenviar', 'fp_dispatch_origin', 'FREEPLAST_CQ_MAIL_MODE',
+  ]) {
+    assert.ok(covers(needle), `HANDOFF.md §5 must carry the operator procedure for: ${needle}`);
+  }
+
+  /* 8. HTTPS review links beside the frozen v6/v7-A references. */
+  for (const needle of [
+    'https://freeplast.mliu.site/', '/tienda/', '/producto/caja-cosechera-3-4/', '/cotizacion/',
+    '/nosotros/', '/contacto/', 'https://mliu.site/freeplast/v6/', 'https://mliu.site/freeplast/v7/?variant=A',
+  ]) {
+    assert.ok(covers(needle), `HANDOFF.md §7 must prepare the review link: ${needle}`);
+  }
+
+  /* 9. The exact pending human actions are stated as pending. */
+  for (const needle of ['pending', 'Gate 3', 'DECISIONS.md', 'visual review', 'complete quote journey', 'Basic Auth']) {
+    assert.ok(covers(needle), `HANDOFF.md §8 must state the pending human action: ${needle}`);
+  }
+
+  /* 10. Pending client answers list their apply-through-source/config process. */
+  for (const needle of ['products.json', 'Catalog Source', 'fp_dispatch_origin', 'FREEPLAST_GOOGLE_API_KEY']) {
+    assert.ok(covers(needle), `HANDOFF.md §9 must document applying client answers through: ${needle}`);
+  }
+
+  /* 11. Out-of-scope release work stays explicitly separate. */
+  for (const needle of ['cutover', 'mail authentication', 'SPF', 'redirects', 'original photography', 'release plan']) {
+    assert.ok(covers(needle), `HANDOFF.md §10 must keep out of scope: ${needle}`);
+  }
+
+  section('Verification and operations handoff (issue #15)', [
+    `Shipped artifacts recorded: theme freeplast ${themeVersion} (${themeFiles.length} files) and plugin freeplast-catalog-quotes ${pluginVersion} (${pluginFiles.length} files) as deterministic ZIPs in dist/ with SHA-256 checksums (dist/CHECKSUMS.sha256, sha256sum-compatible; unzip -t clean)`,
+    `HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version fp_db_version=${DB_VERSION}, active components, route statuses, browser console), catalog evidence (17→17 reconciliation, no-op dry run, provisional media and client facts) and the full Quote Request acceptance matrix`,
+    `Accessibility/responsive observations recorded as mechanical observations, not human approval; Gate 3 review URLs (Home, Tienda, Caja Cosechera 3/4, Cotización, Nosotros, Contacto) prepared beside the frozen v6/v7-A references`,
+    `Operator procedures reproducible from HANDOFF.md alone (deploy/rollback/backup/restore, catalog sync, sales administration, notification resend, warehouse and mail configuration); pending owner/client actions and out-of-scope release work stated separately`,
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts (issues #2–#14)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff (issues #2–#15)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -4609,10 +4864,14 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'deploy.sh: umask 077, server-generated secrets into mode-0600/0400 files (never the repository or command output), Compose validation before up, es_CL + America/Santiago + approved HTTPS URLs + blog_public 0, catalog sync gated on a zero-change dry run, Nginx backed up before the vhost and nginx -t before reload',
     'verify.sh walks the acceptance matrix through HTTPS (301/401/owner+client 200s, every route, noindex at both layers, WordPress identity, catalog idempotence, non-live mail mode); backup.sh dumps + hashes + rehearses the restore into temporary project names; rollback.sh is bounded to the new resources with volumes retained unless the owner explicitly purges',
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
+    'Shipped artifacts (issue #15): theme freeplast 0.8.0 and plugin freeplast-catalog-quotes 0.8.0 recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)',
+    'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
   for (const line of versionLines) lines.push(`- ${line}`);
+  lines.push(``, `## Shipped artifact checksums (issue #15)`, ``);
+  for (const line of checksumLines) lines.push(`- ${line}`);
   lines.push(
     ``,
     `## Notes`,
@@ -4630,6 +4889,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
     `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
+    `- The verification and operations handoff (issue #15) is wordpress/HANDOFF.md: it records where every verification dimension lives (including the on-server infrastructure/Nginx/browser-console steps that remain operator actions), the 17→17 catalog reconciliation with per-Product provisional facts, the Quote Request acceptance matrix with reproduction pointers, mechanical accessibility observations explicitly labelled as not human approval, the reproducible operator procedures, the Gate 3 review URLs and the exact pending owner/client actions. The shipped theme/plugin ZIPs and their SHA-256 manifest in dist/ are rebuilt deterministically by every npm test run and verified with unzip -t; nothing in the handoff claims visual validation.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

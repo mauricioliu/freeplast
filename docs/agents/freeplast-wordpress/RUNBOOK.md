@@ -262,13 +262,15 @@ Agent screenshots and emulation do not satisfy this gate.
 
 ### 8. Handoff
 
-Produce:
+Produced by issue #15 as `wordpress/HANDOFF.md` (mechanically guarded by
+`npm test`), covering:
 
 - deployment and rollback commands;
 - database/uploads/theme/plugin backup and restore commands;
 - catalog JSON schema and sync instructions;
 - quote administration and retention guide;
-- versions and SHA-256 checksums of shipped theme/plugin ZIPs;
+- versions and SHA-256 checksums of shipped theme/plugin ZIPs
+  (`wordpress/dist/`);
 - remaining blockers and exact next human action.
 
 Keep staging `noindex`. Replacing `freeplast.cl`, production mail authentication and DNS
