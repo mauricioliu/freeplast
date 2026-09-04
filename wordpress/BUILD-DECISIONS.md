@@ -53,6 +53,64 @@ context, explicit status transitions and auditable reopening. Decisions:
    (`_fpq_notes`: time, staff, text) and events render only inside the
    capability-guarded detail; the records remain non-public, so nothing
    reaches a customer-facing page (public search cannot leak them).
+## 2026-09-04 — Issue #10: durable sales and customer notifications
+
+Sales notification and customer acknowledgement stop being a delivery
+problem and become durable state on the request itself. Decisions:
+1. **The jobs commit with the record.** Every fp_quote insert carries
+   `_fpq_notifications` (two jobs: sales + customer, state pending) in the
+   same `wp_insert_post` meta payload, so a record can never exist without
+   its jobs — and the filter seam `freeplast_cq_notification_jobs` aborts
+   the whole submission (no record, no success, basket retained) when job
+   creation fails. No jobs table: the jobs, their delivery state and the
+   PII-free event log are meta on the records, like the rest of the slice
+   family (migration 6).
+2. **Receipt is persistence, never delivery.** After the insert, one
+   scheduled event (`freeplast_cq_notify`) owns delivery; the confirmation
+   and the cleared basket were already independent of it. The event and
+   the jobs are processed by `Freeplast_CQ_Notifications::process()`, which
+   is idempotent: only pending jobs (and failed jobs below the automatic
+   attempt cap, retried with a 5-minute backoff) are attempted, so cron
+   re-runs, duplicate events and staff resends can never duplicate a
+   delivery — and a mail outage can never duplicate the request (the
+   issue #8 idempotency token already guards the record).
+3. **One message per audience, built from the immutable record.** Both
+   messages carry the Request Reference and every product line with its
+   option and quantity; the sales message adds the operational
+   customer/dispatch details (nombre, teléfono + normalizado, email,
+   empresa, RUT, giro, dirección de despacho, mensaje). Reply-To routing:
+   sales → the customer email; customer → the configured sales address
+   (filter `freeplast_cq_sales_recipient`, default `ventas@freeplast.cl`).
+   The transport is one external adapter seam — the filter
+   `freeplast_cq_send_mail` (default `wp_mail`); the automated check
+   replaces exactly that boundary.
+4. **Staging containment fails closed.** The mail mode is
+   `FREEPLAST_CQ_MAIL_MODE` (environment) → `freeplast_cq_mail_mode`
+   (option) → `suppress`. `live` delivers as addressed; `redirect` forces
+   every message to `FREEPLAST_CQ_MAIL_TO`; `allowlist` delivers only to
+   `FREEPLAST_CQ_MAIL_ALLOW` recipients (others are recorded suppressed,
+   code `not_allowlisted`); `suppress` delivers nothing. Every restricted
+   mode prefixes the subject with `[STAGING]` and preserves the Reply-To
+   routing. The environment always wins over the option, so a staging
+   environment that sets `suppress` cannot be weakened from WordPress.
+5. **Staff visibility and safe resend.** The Cotizaciones detail gains a
+   Notificaciones section (channel, recipient, state, attempts, last
+   attempt, code, effective mail mode) and, for channels that still need
+   delivery, a resend form (`admin-post.php` `action=fp_notify_resend`,
+   nonce + `manage_freeplast_quotes`). Resend bypasses the automatic
+   attempt cap but re-checks state: an already-sent channel answers `noop`
+   without touching the transport.
+6. **Logs stay PII-free.** `_fpq_notify_log` (bounded to 25 entries)
+   records time, channel, state and code only — never an email address or
+   customer field value; recipients are re-derived from the record at
+   send time. Migration 7 (db 7) backfills the pending jobs and a delivery
+   event onto records persisted before the slice, without ever resetting
+   delivered state.
+7. **The disposable host disables WP-Cron** (`DISABLE_WP_CRON` in the
+   bootstrap wp-config): core's loopback `wp_cron()` on `init` would fire
+   the scheduled delivery events at unpredictable moments mid-check. The
+   check drives scheduled work explicitly (the same policy as the basket
+   gc sweep); staging runs system cron in the deployment slice.
 
 ## 2026-09-04 — Issue #8: submit a Quote Request
 
@@ -108,8 +166,8 @@ a one-shot submission into a durable, non-public business record. Decisions:
    top-level Cotizaciones menu lists the records (reference, company,
    email, dispatch, status, created) and the detail shows Submitted Details
    and the immutable snapshots. The full sales administration (statuses,
-   notes, history, corrections) is issue #10; notifications are #11; the
-   Google-assisted address is #9. No price, Quotation, Order, checkout or
+   notes, history, corrections) is issue #9; notifications are #10; the
+   Google-assisted address is #11. No price, Quotation, Order, checkout or
    customer account is created.
 
 ## 2026-09-03 — Issue #7: complete Quote Basket editing and options

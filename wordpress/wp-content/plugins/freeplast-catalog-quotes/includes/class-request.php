@@ -46,9 +46,11 @@
  *     information and the immutable item snapshots. Since issue #9 the
  *     operational sales workflow (list sorting/search, current-contact
  *     corrections, Sales Notes, Request Status transitions, history) is
- *     owned by Freeplast_CQ_Admin. No price, Quotation, Order, checkout
- *     or customer account is ever created — notifications arrive
- *     separately (issue #10).
+ *     owned by Freeplast_CQ_Admin, whose detail also renders — since the
+ *     durable notifications slice (issue #10) — the per-channel
+ *     notification delivery state with its safe staff resend
+ *     (Freeplast_CQ_Notifications). No price, Quotation, Order, checkout
+ *     or customer account is ever created.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -177,14 +179,23 @@ class Freeplast_CQ_Request {
 			self::fail( 'request_failed' );
 		}
 
-		/* 8. Persist exactly one record with the immutable snapshots. */
+		/* 8. Persist exactly one record with the immutable snapshots — and its
+		   two durable notification jobs, in the very same insert: request and
+		   jobs commit together or fail together (issue #10). */
 		$reference = self::persist( $session, $token, $values, $lines );
 		if ( null === $reference ) {
 			self::store_attempt( $session['hash'], $values, array(), $failure );
 			self::fail( 'request_failed' );
 		}
 
-		/* 9. Success — only now is the basket cleared (the session stays
+		/* 9. Schedule the decoupled notification delivery (one sales
+		   notification, one customer acknowledgement). Receipt is already
+		   durable: a scheduling or transport failure changes nothing about
+		   this confirmation — the jobs stay pending for retries and the
+		   staff resend. */
+		Freeplast_CQ_Notifications::schedule_delivery( $reference );
+
+		/* 10. Success — only now is the basket cleared (the session stays
 		   alive so the next visit does not look like an expiry). */
 		Freeplast_CQ_Basket::clear_basket( $session );
 		delete_transient( self::token_key( $session['hash'] ) );
@@ -348,6 +359,14 @@ class Freeplast_CQ_Request {
 			$items[] = self::snapshot( $line );
 		}
 
+
+		/* Durable-job creation seam: the record and its notification jobs
+		   are one unit — when the jobs cannot be created, the whole
+		   persistence aborts (no record, no success, basket retained). */
+		if ( ! apply_filters( 'freeplast_cq_notification_jobs', true, $values, $lines ) ) {
+			return null;
+		}
+
 		/* The correctable current contact details start as a copy of the
 		   submitted ones (issue #9); the denormalized empresa/email columns
 		   feed the Cotizaciones list sort/search and follow corrections. */
@@ -375,16 +394,17 @@ class Freeplast_CQ_Request {
 					'post_title'  => $reference,
 					'post_author' => 0,
 					'meta_input'  => array(
-						'_fpq_reference'   => $reference,
-						'_fpq_status'      => 'new',
-						'_fpq_customer'    => self::encode_meta( $customer ),
-						'_fpq_items'       => self::encode_meta( $items ),
-						'_fpq_current'     => self::encode_meta( $current ),
-						'_fpq_empresa'     => $current['empresa'],
-						'_fpq_email'       => $current['email'],
-						'_fpq_history'     => self::encode_meta( $history ),
-						'_fpq_idempotency' => $idempotency,
-						'_fpq_session'     => $session['hash'],
+						'_fpq_reference'     => $reference,
+						'_fpq_status'        => 'new',
+						'_fpq_customer'      => self::encode_meta( $customer ),
+						'_fpq_items'         => self::encode_meta( $items ),
+						'_fpq_notifications' => Freeplast_CQ_Notifications::initial_state_json(),
+						'_fpq_current'       => self::encode_meta( $current ),
+						'_fpq_empresa'       => $current['empresa'],
+						'_fpq_email'         => $current['email'],
+						'_fpq_history'       => self::encode_meta( $history ),
+						'_fpq_idempotency'   => $idempotency,
+						'_fpq_session'       => $session['hash'],
 					),
 				),
 				true

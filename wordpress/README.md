@@ -36,7 +36,8 @@ network access to download the pinned toolchain; later runs are offline.
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
                       # verify the issue-#2 through issue-#12 acceptance
-                      # criteria (including the issue-#8 submission).
+                      # criteria (including the issue-#8 submission and the
+                      # issue-#10 durable notifications).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -142,6 +143,26 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   permitted skips plus cancelled, terminal states reopen explicitly back
   to contacted, and every state change re-validates nonce + capability
   and records staff identity/time; no bulk CSV export exists;
+- the durable notifications (issue #10) decouple mail from receipt: every
+  Quote Request persists together with exactly two notification jobs (one
+  sales notification, one customer acknowledgement) in the same record
+  insert — a failing job creation aborts the whole submission (no record,
+  basket retained) — while successful receipt still confirms and clears
+  the basket before any external mail delivery is required (a scheduled
+  delivery event runs later). Both messages carry the Request Reference
+  and the product lines with options and quantities, the sales message
+  adds the operational customer/dispatch details, sales Reply-To points
+  to the customer and the customer Reply-To to `ventas@freeplast.cl`.
+  Delivery is idempotent (sent channels are never re-attempted), a total
+  or partial mail failure after persistence never duplicates the request
+  or a successful delivery, authorized staff see the per-channel state in
+  the Cotizaciones detail and can safely resend a failed notification
+  (nonce + capability guarded), staging modes add the visible `[STAGING]`
+  subject prefix and enforce the configured recipient override, approved
+  recipient allowlist or non-delivery, and the event log records states
+  and codes but never customer field values. Mail is controlled at the
+  single external adapter seam (`freeplast_cq_send_mail`, default
+  `wp_mail`); see “Mail configuration” below;
 - the complete v6 content and navigation experience (issue #12) is governed
   by a frozen design contract (`design/design-tokens.json` + `DECISIONS.md`
   with SHA-256-frozen approved prototypes; the rejected v5 rules are not
@@ -176,6 +197,33 @@ cd wordpress/.build/wp
 Pixel-level visual fidelity at 412 px and desktop widths is human Gate 3
 (RUNBOOK.md) — the automated check verifies the served document and
 responsive stylesheet, not rendered pixels.
+
+## Mail configuration (issue #10)
+
+Notification delivery is decoupled from Quote Request receipt and is
+contained per environment. The effective mode is
+`FREEPLAST_CQ_MAIL_MODE` (environment) — falling back to the
+`freeplast_cq_mail_mode` option for unconfigured hosts — and an
+environment with neither fails closed to non-delivery:
+
+- `live` — production: messages deliver to their real recipients
+  (`ventas@freeplast.cl` and the customer) with no subject prefix;
+- `redirect` — staging override: every message goes to the configured
+  `FREEPLAST_CQ_MAIL_TO` (or `freeplast_cq_mail_to` option) instead;
+- `allowlist` — only recipients in `FREEPLAST_CQ_MAIL_ALLOW` (or the
+  `freeplast_cq_mail_allow` option, comma-separated) receive mail, others
+  are recorded as suppressed;
+- `suppress` — non-delivery mode: nothing is sent, the jobs are recorded
+  as suppressed.
+
+Every restricted mode (redirect/allowlist/suppress) prefixes the subject
+with `[STAGING]` and preserves the Reply-To routing (sales → customer,
+customer → ventas@freeplast.cl). The single external transport boundary
+is the `freeplast_cq_send_mail` filter (default `wp_mail`) — the automated
+check replaces it to control delivery and assert business outcomes. The
+disposable check host defines `DISABLE_WP_CRON` so the scheduled delivery
+events run deterministically when the check drives them; staging runs
+system cron (deployment slice).
 
 ## Catalog source (schema v2)
 

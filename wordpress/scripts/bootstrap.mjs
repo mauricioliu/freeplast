@@ -91,6 +91,11 @@ define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', false );
 define( 'WP_ENVIRONMENT_TYPE', 'local' );
 define( 'DISALLOW_FILE_EDIT', true );
+/* Deterministic scheduling for the disposable check: WP-Cron's loopback
+   would fire scheduled events (notification delivery) at unpredictable
+   moments mid-test. The check drives scheduled work explicitly; staging
+   runs system cron (see wordpress/BUILD-DECISIONS.md). */
+define( 'DISABLE_WP_CRON', true );
 define( 'WP_CACHE', false );
 define( 'AUTOSAVE_INTERVAL', 3600 );
 

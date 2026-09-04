@@ -40,14 +40,22 @@
  *               transients) and the dedicated sales capability
  *               (manage_freeplast_quotes) granted to administrators so
  *               the minimal admin detail is capability-protected.
- * Migration 7 — sales workflow (issue #9): the least-privilege Ventas
- *               Freeplast role (read + manage_freeplast_quotes, nothing
- *               else) so sales reaches Cotizaciones without unrelated
- *               site administration; the capability re-asserted for
- *               administrators; and the correctable current-contact copy
+ * Migration 7 — sales workflow (issue #9) + durable notifications
+ *               (issue #10): the least-privilege Ventas Freeplast role
+ *               (read + manage_freeplast_quotes, nothing else) so sales
+ *               reaches Cotizaciones without unrelated site
+ *               administration; the capability re-asserted for
+ *               administrators; the correctable current-contact copy
  *               backfilled onto fp_quote records persisted before this
- *               slice so the Cotizaciones list can sort and search them.
- *
+ *               slice so the Cotizaciones list can sort and search them;
+ *               and every fp_quote record persisted before this slice
+ *               gains its two pending notification jobs
+ *               (_fpq_notifications — new records carry them from the
+ *               submission insert itself) and a scheduled delivery
+ *               event, so a pre-slice record can never sit undelivered
+ *               forever. No new table: the jobs, their delivery state
+ *               and the PII-free event log are meta on the records (see
+ *               Freeplast_CQ_Notifications). *
  * @package Freeplast_Catalog_Quotes
  */
 
@@ -137,9 +145,15 @@ class Freeplast_CQ_Migrations {
 		}
 
 		if ( $applied < 7 ) {
-			// Migration 7 — the sales workflow (issue #9, see class-admin.php):
-			// the least-privilege Ventas Freeplast role and the current-contact
-			// copy backfilled onto records persisted before this slice.
+			// Migration 7 — the sales workflow (issue #9, see class-admin.php)
+			// plus the durable notifications (issue #10, see
+			// class-notifications.php): the least-privilege Ventas Freeplast
+			// role, the current-contact copy backfilled onto records persisted
+			// before the slice, and the two pending delivery jobs plus a
+			// scheduled event backfilled onto every pre-slice fp_quote record.
+			// Records created from now on carry the jobs in the submission
+			// insert itself; this backfill only ever touches records without
+			// the meta, so already delivered state is never reset.
 			$ventas = get_role( 'ventas_freeplast' );
 			if ( null === $ventas ) {
 				add_role(
@@ -161,13 +175,17 @@ class Freeplast_CQ_Migrations {
 			}
 
 			/* Records persisted before this slice carry no _fpq_current copy
-			   (nor the denormalized empresa/email list columns): derive both
-			   from the immutable Submitted Details — once, idempotently. */
+			   (nor the denormalized empresa/email list columns) and no
+			   notification jobs: derive the current-contact copy from the
+			   immutable Submitted Details and seed the two pending delivery
+			   jobs — once, idempotently. */
 			$quotes = get_posts(
 				array(
 					'post_type'        => Freeplast_CQ_Request::POST_TYPE,
 					'post_status'      => 'private',
 					'posts_per_page'   => -1,
+					'orderby'          => 'ID',
+					'order'            => 'ASC',
 					'fields'           => 'ids',
 					'no_found_rows'    => true,
 					'suppress_filters' => true,
@@ -175,17 +193,23 @@ class Freeplast_CQ_Migrations {
 			);
 			foreach ( $quotes as $quote_id ) {
 				$quote_id = (int) $quote_id;
-				if ( '' !== (string) get_post_meta( $quote_id, '_fpq_current', true ) ) {
-					continue;
+
+				/* Current-contact copy (issue #9). */
+				if ( '' === (string) get_post_meta( $quote_id, '_fpq_current', true ) ) {
+					$customer = json_decode( (string) get_post_meta( $quote_id, '_fpq_customer', true ), true );
+					if ( is_array( $customer ) ) {
+						$current = Freeplast_CQ_Request::current_contact_copy( $customer );
+						update_post_meta( $quote_id, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
+						update_post_meta( $quote_id, '_fpq_empresa', $current['empresa'] );
+						update_post_meta( $quote_id, '_fpq_email', $current['email'] );
+					}
 				}
-				$customer = json_decode( (string) get_post_meta( $quote_id, '_fpq_customer', true ), true );
-				if ( ! is_array( $customer ) ) {
-					continue;
+
+				/* Pending notification jobs + delivery event (issue #10). */
+				if ( '' === (string) get_post_meta( $quote_id, Freeplast_CQ_Notifications::META_JOBS, true ) ) {
+					update_post_meta( $quote_id, Freeplast_CQ_Notifications::META_JOBS, Freeplast_CQ_Notifications::initial_state_json() );
+					Freeplast_CQ_Notifications::schedule_delivery( (string) get_post_meta( $quote_id, '_fpq_reference', true ) );
 				}
-				$current = Freeplast_CQ_Request::current_contact_copy( $customer );
-				update_post_meta( $quote_id, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
-				update_post_meta( $quote_id, '_fpq_empresa', $current['empresa'] );
-				update_post_meta( $quote_id, '_fpq_email', $current['email'] );
 			}
 			$applied = 7;
 		}
