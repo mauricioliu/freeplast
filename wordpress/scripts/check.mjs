@@ -11,8 +11,8 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #15 and the issue
- * #19 basket-cookie scheme fix (including
+ * verifies the acceptance criteria of issues #2 through #15 and of the
+ * issue #19 basket-cookie scheme fix (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -46,9 +46,9 @@
  *      Agregar a cotización quantity chooser (cards + product page) adds the
  *      first synchronized Product through an authoritative nonce-guarded
  *      admin-post operation, the browser keeps only an opaque
- *      HttpOnly/SameSite=Lax cookie whose Secure flag follows the request
- *      scheme (issue #19; never basket data, only its
- *      sha256 hash stored server-side), the header counts distinct lines
+ *      HttpOnly/SameSite=Lax cookie (Secure follows the request scheme,
+ *      issue #19; never basket data, only its sha256 hash stored
+ *      server-side), the header counts distinct lines
  *      (Cotización (n)) regardless of unit quantity, the mini basket shows
  *      Product/quantity and a route to the full Cotización view across
  *      refreshes, and invalid nonce/session/Product/quantity mutate nothing
@@ -264,6 +264,24 @@ function assertAbsent(haystack, needle, message) {
     !haystack.toLowerCase().includes(needle.toLowerCase()),
     `${message}\nExpected response NOT to contain: ${JSON.stringify(needle)}`
   );
+}
+
+/**
+ * The basket session-cookie attribute contract for one request scheme
+ * (issue #19): always HttpOnly and SameSite=Lax, while Secure is set
+ * exactly when the request presented TLS — a Secure cookie answered over
+ * plain HTTP would be dropped by the browser and the basket would
+ * silently stop persisting.
+ */
+function assertSessionCookieAttributes(setCookie, { tls, label }) {
+  const attributes = setCookie.toLowerCase(); // PHP writes attributes lowercase
+  const expected = tls ? ['secure', 'httponly', 'samesite=lax'] : ['httponly', 'samesite=lax'];
+  for (const attribute of expected) {
+    assert.ok(attributes.includes(attribute), `the ${label} cookie must be ${attribute}`);
+  }
+  if (!tls) {
+    assert.ok(!attributes.includes('secure'), `the ${label} cookie must not be Secure on plain HTTP — the browser would drop it and the basket would silently break`);
+  }
 }
 
 /** Slugs of every canonical /producto/<slug>/ link, in order of appearance. */
@@ -1186,17 +1204,11 @@ test('a guest can add Products to a persistent, secure Quote Basket', { timeout:
   assert.ok(sessionCookie, 'the browser must receive a session cookie');
 
   // The cookie is a random opaque 256-bit token: HttpOnly, SameSite=Lax,
-  // 30-day expiry — and it carries no basket data whatsoever. Secure follows
-  // the request scheme (issue #19): this check origin is plain HTTP, so the
-  // cookie must NOT claim Secure — an ordinary browser would drop it and
-  // basket persistence would silently break.
+  // 30-day expiry — and it carries no basket data whatsoever. The check
+  // origin is plain HTTP, so the cookie must not claim Secure (issue #19).
   const token = sessionCookie.match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
   assert.ok(token, 'the cookie must carry the 64-hex-char opaque token');
-  const cookieAttributes = sessionCookie.toLowerCase(); // PHP writes attributes lowercase
-  for (const attribute of ['httponly', 'samesite=lax']) {
-    assert.ok(cookieAttributes.includes(attribute), `the session cookie must be ${attribute}`);
-  }
-  assert.ok(!cookieAttributes.includes('secure'), 'a plain-HTTP request must not set Secure — the browser would drop the cookie and the basket would silently break');
+  assertSessionCookieAttributes(sessionCookie, { tls: false, label: 'session' });
   assert.match(sessionCookie, /expires=/i, 'the cookie must outlive the visit (30-day persistence)');
 
   // Only a hash of the opaque token is persisted server-side.
@@ -1318,29 +1330,25 @@ test('the basket cookie sets Secure on TLS requests and omits it on plain HTTP',
     ...over,
   });
 
-  /* TLS request, presented exactly as staging presents it: the Nginx vhost
-     forwards X-Forwarded-Proto: https and wp-config maps it onto
-     $_SERVER['HTTPS'] — there the cookie must be Secure. */
-  const tls = await postForm(addFields(), { 'x-forwarded-proto': 'https' });
-  assert.equal(tls.status, 302, 'the add operation must succeed under the forwarded TLS scheme');
-  const [tlsCookie] = tls.setCookies;
-  assert.ok(tlsCookie, 'the TLS response must carry the session cookie');
-  const tlsAttributes = tlsCookie.toLowerCase();
-  for (const attribute of ['secure', 'httponly', 'samesite=lax']) {
-    assert.ok(tlsAttributes.includes(attribute), `the TLS cookie must be ${attribute}`);
-  }
+  /* One authoritative add under each scheme — the identical request
+     except for how it presents TLS. */
+  const sessionCookieForScheme = async (extraHeaders, scheme) => {
+    const res = await postForm(addFields(), extraHeaders);
+    assert.equal(res.status, 302, `the add operation must succeed ${scheme}`);
+    const [cookie] = res.setCookies;
+    assert.ok(cookie, `the ${scheme} response must carry the session cookie`);
+    return cookie;
+  };
 
-  /* The same request over plain HTTP must keep a working basket: a Secure
-     flag there would make every ordinary browser drop the cookie. */
-  const plain = await postForm(addFields());
-  assert.equal(plain.status, 302, 'the add operation must succeed over plain HTTP');
-  const [plainCookie] = plain.setCookies;
-  assert.ok(plainCookie, 'the plain-HTTP response must carry the session cookie');
-  const plainAttributes = plainCookie.toLowerCase();
-  for (const attribute of ['httponly', 'samesite=lax']) {
-    assert.ok(plainAttributes.includes(attribute), `the plain-HTTP cookie must be ${attribute}`);
-  }
-  assert.ok(!plainAttributes.includes('secure'), 'a plain-HTTP request must never set Secure — the browser would drop the cookie and the basket would silently break');
+  /* TLS, presented exactly as staging presents it: the Nginx vhost forwards
+     X-Forwarded-Proto: https and wp-config maps it onto $_SERVER['HTTPS']. */
+  const tlsCookie = await sessionCookieForScheme({ 'x-forwarded-proto': 'https' }, 'under the forwarded TLS scheme');
+  assertSessionCookieAttributes(tlsCookie, { tls: true, label: 'TLS' });
+
+  /* Plain HTTP must keep a working basket: a Secure flag there would make
+     every ordinary browser drop the cookie. */
+  const plainCookie = await sessionCookieForScheme({}, 'over plain HTTP');
+  assertSessionCookieAttributes(plainCookie, { tls: false, label: 'plain-HTTP' });
 
   section('Basket cookie scheme (issue #19)', [
     'The basket cookie sets Secure on TLS requests (staging always answers over TLS — staging behavior unchanged)',

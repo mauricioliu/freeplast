@@ -549,8 +549,8 @@ Decisions:
 
 2. **Sessions are opaque cookies over a versioned table.** The browser
    receives only a random 256-bit hex token (`fpcq_basket`, Secure on
-   TLS requests, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is persisted in
-   migration 4's `basket_sessions` table (columns: session_hash,
+   TLS requests, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash
+   is persisted in migration 4's `basket_sessions` table (columns: session_hash,
    basket_lines JSON, created_at, last_activity; expiry = 30 days after
    last activity). The cookie never carries product, option or customer
    data. NB: the lines column is named `basket_lines` because `lines` is a
