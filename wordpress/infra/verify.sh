@@ -76,7 +76,7 @@ if [[ "$tz" == "America/Santiago" ]]; then ok 'timezone America/Santiago'; else 
 home="$(wpcli wp option get home)"
 siteurl="$(wpcli wp option get siteurl)"
 if [[ "$home" == "$BASE" && "$siteurl" == "$BASE" ]]; then ok "home/siteurl report $BASE"; else miss "home=${home:-unset} siteurl=${siteurl:-unset} (expected $BASE)"; fi
-plugins="$(wpcli wp plugin list --status=active --format=name)"
+plugins="$(wpcli wp plugin list --status=active --format=csv --fields=name | tail -n +2)"
 if grep -qx 'freeplast-catalog-quotes' <<<"$plugins"; then ok 'freeplast-catalog-quotes is active'; else miss 'freeplast-catalog-quotes is not active'; fi
 theme="$(wpcli sh -c "wp eval 'echo get_stylesheet();'")"
 if [[ "$theme" == "freeplast" ]]; then ok 'theme freeplast is active'; else miss "active theme is ${theme:-unset} (expected freeplast)"; fi

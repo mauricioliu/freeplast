@@ -157,6 +157,9 @@ printf '%s:%s\n%s:%s\n' \
   "$BASIC_AUTH_CLIENT_USER" "$CLIENT_HASH" > /opt/freeplast-wordpress/nginx/.htpasswd
 chmod 0640 /opt/freeplast-wordpress/nginx/.htpasswd
 chown root:www-data /opt/freeplast-wordpress/nginx/.htpasswd 2>/dev/null || true
+# nginx (www-data) must traverse the stack directory to read the htpasswd;
+# secrets stay 0600/0400 and remain unreadable at 0711 (traverse-only).
+chmod 0711 /opt/freeplast-wordpress
 sed -e "s|__TLS_CERT__|${TLS_CERT_PATH}|" -e "s|__TLS_KEY__|${TLS_KEY_PATH}|" \
   "$INFRA_DIR/nginx/freeplast.mliu.site.conf" > /opt/freeplast-wordpress/nginx/freeplast.mliu.site.conf
 install -m 0644 /opt/freeplast-wordpress/nginx/freeplast.mliu.site.conf /etc/nginx/sites-available/freeplast.mliu.site

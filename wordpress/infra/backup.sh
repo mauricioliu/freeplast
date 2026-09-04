@@ -38,7 +38,7 @@ printf 'Freeplast staging backup — %s\n' "$STAMP"
 
 # 1. Database (secret travels through the container environment, never argv)
 docker compose --env-file .env exec -T \
-  -e MARIADB_PWD="$MARIADB_ROOT_PASSWORD" db \
+  -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db \
   sh -c 'exec mariadb-dump -uroot --databases "$MARIADB_DATABASE"' > "$DEST/db.sql"
 
 # 2. Files (the whole persistent WordPress volume)
@@ -56,7 +56,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 rehearsal exec -T \
-  -e MARIADB_PWD="$MARIADB_ROOT_PASSWORD" db \
+  -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db \
   sh -c 'exec mariadb -uroot' < "$DEST/db.sql"
 FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" rehearsal up -d wordpress
 for _ in $(seq 1 60); do

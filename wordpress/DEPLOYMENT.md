@@ -7,13 +7,22 @@ artifacts and their mechanical checks; the server-side execution is the
 operator step recorded below. The packaging for independent operation
 and human review is `HANDOFF.md` (issue #15).
 
-**Status:** artifacts committed and covered by `npm test` (see
-VERIFICATION.md — “Isolated staging deployment artifacts”). The
-OpenClaw host is not reachable from the development workspace that
-authored this slice, so the on-server run is pending: an operator
-executes §Operator runbook, fills §Post-deploy records and appends the
-preflight/verify output below. Gate 3 (human visual approval) remains a
-separate owner step.
+**Status:** DEPLOYED 2026-09-04 (operator run executed by the pi agent
+session with the owner present). Preflight clean → deploy → verify.sh all
+checks `ok` → backup + restore rehearsal verified (17/17 `fp_product`).
+Three on-server fixes applied during the run, patched at source and listed
+below. Gate 3 (human visual approval) remains the owner/client step.
+
+On-server fixes from the operator run (source patched, re-deploy safe):
+1. `deploy.sh` — the stack directory needs `chmod 0711` so nginx (www-data)
+   can traverse to `nginx/.htpasswd` (was `0700` → every proxied request
+   500'd on htpasswd open); secrets stay 0600/0400 and unreadable.
+2. `verify.sh` — `wp plugin list --format=name` is not a valid format on
+   this WP-CLI (silent failure through `|| true` → false "not active");
+   now `--format=csv --fields=name | tail -n +2`.
+3. `backup.sh` — mariadb 11.4 `mariadb-dump`/`mariadb` read `MYSQL_PWD`,
+   not `MARIADB_PWD` (dump failed "using password: NO"); secret still
+   travels through the container environment, never argv.
 
 ## Approved resources (all collision-checked by `infra/preflight.sh`)
 
@@ -132,22 +141,33 @@ Compose projects and the static proposals are untouched. Named volumes,
 `.env`, `.secrets`, deployment records and backups stay on disk until
 the owner explicitly approves deletion.
 
-## Post-deploy records (fill after the on-server run)
+## Post-deploy records (filled 2026-09-04, operator run by pi agent)
 
-- [ ] Preflight output appended below (or path under
-      `/root/freeplast-wordpress-backups/preflight-*.txt`)
-- [ ] Resolved image digests (`docker image inspect` — also written to
-      `/opt/freeplast-wordpress/deployment-record-*.txt`)
-- [ ] `nginx -t` output and the TLS certificate path/SAN used
-- [ ] verify.sh output (all checks `ok`)
-- [ ] backup.sh run + restore-rehearsal counts
-- [ ] UTC timestamp and operator name
-- [ ] Owner informed of the credentials path (secret channel used: ___)
+- [x] Preflight output: all checks `ok`, baseline recorded —
+      `/root/freeplast-wordpress-backups/preflight-20260904T102325Z.txt`
+- [x] Resolved image digests —
+      `/opt/freeplast-wordpress/deployment-record-20260904T102325Z.txt`
+      (mariadb@sha256:611a2fcc…, wordpress@sha256:ae66461…,
+      wp-cli@sha256:2b5e9d4…)
+- [x] `nginx -t` ok; TLS: `/etc/nginx/ssl/mliu.site/{fullchain,key}.pem`
+      (wildcard `*.mliu.site`, CN=mliu.site, expires 2026-11-18, dns-only)
+- [x] verify.sh output: all checks `ok` (routes, 401 anonymous, auth 200s,
+      404, 302 wp-admin, noindex ×2, es_CL, America/Santiago, URLs,
+      plugin+theme active, catalog idempotent, mail suppress)
+- [x] backup.sh run + restore-rehearsal verified —
+      `/root/freeplast-wordpress-backups/20260904T103048Z`
+      (first attempt 102916Z failed on MARIADB_PWD → fixed, see above)
+- [x] UTC timestamp: 2026-09-04T10:23–10:31Z · operator: pi agent (Mauricio present)
+- [x] Owner informed of the credentials path (secret channel used: this
+      pi session with the owner; file never entered the repository)
+- DNS: `freeplast.mliu.site A 178.105.30.70 dns-only` created in
+      Cloudflare (zone 93dca869…), matching the lms.mliu.site convention.
 
 ## Pending owner inputs
 
-- Final approval of the hostname/DNS (PRD treats `freeplast.mliu.site`
-  as approved-subject-to-DNS).
+- ~~Final approval of the hostname/DNS~~ — resolved 2026-09-04: DNS A
+  record created in Cloudflare (dns-only), staging live at
+  https://freeplast.mliu.site.
 - Approved staging test-mail recipients (until then the stack stays on
   `suppress`).
 - Google Places/Routes key (optional; console-restricted, supplied as
@@ -155,4 +175,9 @@ the owner explicitly approves deletion.
 
 ## On-server run output
 
-(append preflight.sh and verify.sh output here after the operator run)
+Executed 2026-09-04T10:23–10:31Z by the pi agent session with the owner
+present. Full preflight/verify outputs live beside the backups
+(`preflight-20260904T102325Z.txt`, deployment-record-20260904T102325Z.txt).
+Final verify: `verification clean — staging answers the acceptance matrix
+through HTTPS`. Neighbor check: cutulab, frappe-lms, open-wearables and
+the static proposals unchanged from the preflight baseline.
