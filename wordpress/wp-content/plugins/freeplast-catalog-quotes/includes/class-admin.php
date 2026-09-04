@@ -186,7 +186,7 @@ class Freeplast_CQ_Admin {
 	/* Record access                                                       */
 	/* ------------------------------------------------------------------ */
 
-	/** The immutable Submitted Details as stored at submission time (decoded by the plugin-level codec, issue #17). */
+	/** The immutable Submitted Details as stored at submission time. */
 	private static function submitted_details( int $post_id ): array {
 		return Freeplast_CQ_Codec::decode( (string) get_post_meta( $post_id, '_fpq_customer', true ) );
 	}
@@ -670,8 +670,9 @@ class Freeplast_CQ_Admin {
 		}
 
 		/* Historial (eventos sin valores de PII). */
+		$history      = array_reverse( Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_history', true ) ) );
 		$history_rows = '';
-		foreach ( array_reverse( Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_history', true ) ) ) as $event ) {
+		foreach ( $history as $event ) {
 			$event = is_array( $event ) ? $event : array();
 			$history_rows .= sprintf(
 				'<tr><td>%1$s</td><td>%2$s</td><td>%3$s</td></tr>',
@@ -685,8 +686,9 @@ class Freeplast_CQ_Admin {
 		}
 
 		/* Notas internas. */
+		$notes     = Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_notes', true ) );
 		$note_rows = '';
-		foreach ( Freeplast_CQ_Codec::decode( (string) get_post_meta( $post->ID, '_fpq_notes', true ) ) as $note ) {
+		foreach ( $notes as $note ) {
 			$note = is_array( $note ) ? $note : array();
 			$note_rows .= sprintf(
 				'<tr><td>%1$s</td><td>%2$s</td><td>%3$s</td></tr>',

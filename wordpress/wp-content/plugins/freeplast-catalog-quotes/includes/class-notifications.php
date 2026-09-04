@@ -88,15 +88,6 @@ class Freeplast_CQ_Notifications {
 	}
 
 	/* ------------------------------------------------------------------ */
-	/* Persisted meta helpers                                              */
-	/* ------------------------------------------------------------------ */
-
-	/* Every persisted notification meta value is written through the
-	   plugin-level codec and every read decodes through it (issue #17):
-	   Freeplast_CQ_Codec::encode() for writes, Freeplast_CQ_Codec::decode()
-	   for reads (empty when absent or corrupt). */
-
-	/* ------------------------------------------------------------------ */
 	/* The durable jobs                                                    */
 	/* ------------------------------------------------------------------ */
 

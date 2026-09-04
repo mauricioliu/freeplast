@@ -4221,7 +4221,7 @@ test('PHP syntax and coding-standard scans pass over the shipped theme and plugi
   ]);
 });
 
-/* ─── 23b2. One JSON codec for stored meta (issue #17) ───────────── */
+/* ─── 23a. One JSON codec for stored meta (issue #17) ────────────── */
 
 test('one shared JSON codec serves every stored-meta read/write with byte-identical unescaped JSON (issue #17)', () => {
   const pluginDir = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
@@ -4236,24 +4236,24 @@ test('one shared JSON codec serves every stored-meta read/write with byte-identi
      exactly one file, the retired per-class helpers are gone, and the
      only remaining json_decode sites are non-meta (the catalog source
      document and the Google provider wire responses). */
-  const walkPhp = (dir) =>
+  const scanDir = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = join(dir, entry.name);
-      return entry.isDirectory() ? walkPhp(full) : full.endsWith('.php') ? [full] : [];
+      return entry.isDirectory() ? scanDir(full) : [full];
     });
-  const phpFiles17 = walkPhp(pluginDir);
-  const code = Object.fromEntries(phpFiles17.map((file) => [file, readFileSync(file, 'utf8')]));
-  const flagFiles = phpFiles17.filter((file) => code[file].includes('JSON_UNESCAPED_SLASHES'));
+  const phpFiles = scanDir(pluginDir).filter((file) => file.endsWith('.php'));
+  const code = Object.fromEntries(phpFiles.map((file) => [file, readFileSync(file, 'utf8')]));
+  const flagFiles = phpFiles.filter((file) => code[file].includes('JSON_UNESCAPED_SLASHES'));
   assert.deepEqual(
     flagFiles,
     [codecPath],
     `the unescaped-JSON stored form must be decided only in class-codec.php, found in: ${flagFiles.map((f) => f.replaceAll(pluginDir + '/', '')).join(', ')}`
   );
   for (const retired of ['encode_meta', 'private static function pack', 'json_meta(', 'decoded_meta(']) {
-    const sites = phpFiles17.filter((file) => code[file].includes(retired));
+    const sites = phpFiles.filter((file) => code[file].includes(retired));
     assert.deepEqual(sites, [], `the retired helper ${JSON.stringify(retired)} must not remain (found in ${sites.map((f) => f.replaceAll(pluginDir + '/', '')).join(', ')})`);
   }
-  for (const file of phpFiles17) {
+  for (const file of phpFiles) {
     if (file === codecPath) continue;
     const relative = file.replaceAll(pluginDir + '/', '');
     if (relative.endsWith('class-catalog-source.php') || relative.endsWith('class-address.php')) {
