@@ -40,6 +40,13 @@
  *               transients) and the dedicated sales capability
  *               (manage_freeplast_quotes) granted to administrators so
  *               the minimal admin detail is capability-protected.
+ * Migration 7 — sales workflow (issue #9): the least-privilege Ventas
+ *               Freeplast role (read + manage_freeplast_quotes, nothing
+ *               else) so sales reaches Cotizaciones without unrelated
+ *               site administration; the capability re-asserted for
+ *               administrators; and the correctable current-contact copy
+ *               backfilled onto fp_quote records persisted before this
+ *               slice so the Cotizaciones list can sort and search them.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -127,6 +134,69 @@ class Freeplast_CQ_Migrations {
 				$administrator->add_cap( Freeplast_CQ_Request::CAPABILITY );
 			}
 			$applied = 6;
+		}
+
+		if ( $applied < 7 ) {
+			// Migration 7 — the sales workflow (issue #9, see class-admin.php):
+			// the least-privilege Ventas Freeplast role and the current-contact
+			// copy backfilled onto records persisted before this slice.
+			$ventas = get_role( 'ventas_freeplast' );
+			if ( null === $ventas ) {
+				add_role(
+					'ventas_freeplast',
+					'Ventas Freeplast',
+					array(
+						'read'                           => true,
+						Freeplast_CQ_Request::CAPABILITY => true,
+					)
+				);
+			} else {
+				$ventas->add_cap( 'read' );
+				$ventas->add_cap( Freeplast_CQ_Request::CAPABILITY );
+			}
+
+			$administrator = get_role( 'administrator' );
+			if ( null !== $administrator && ! $administrator->has_cap( Freeplast_CQ_Request::CAPABILITY ) ) {
+				$administrator->add_cap( Freeplast_CQ_Request::CAPABILITY );
+			}
+
+			/* Records persisted before this slice carry no _fpq_current copy
+			   (nor the denormalized empresa/email list columns): derive both
+			   from the immutable Submitted Details — once, idempotently. */
+			$quotes = get_posts(
+				array(
+					'post_type'        => Freeplast_CQ_Request::POST_TYPE,
+					'post_status'      => 'private',
+					'posts_per_page'   => -1,
+					'fields'           => 'ids',
+					'no_found_rows'    => true,
+					'suppress_filters' => true,
+				)
+			);
+			foreach ( $quotes as $quote_id ) {
+				$quote_id = (int) $quote_id;
+				if ( '' !== (string) get_post_meta( $quote_id, '_fpq_current', true ) ) {
+					continue;
+				}
+				$customer = json_decode( (string) get_post_meta( $quote_id, '_fpq_customer', true ), true );
+				if ( ! is_array( $customer ) ) {
+					continue;
+				}
+				$current = array(
+					'nombre'               => (string) ( $customer['nombre'] ?? '' ),
+					'telefono'             => (string) ( $customer['telefono'] ?? '' ),
+					'telefono_normalizado' => (string) ( $customer['telefono_normalizado'] ?? '' ),
+					'email'                => (string) ( $customer['email'] ?? '' ),
+					'empresa'              => (string) ( $customer['empresa'] ?? '' ),
+					'rut'                  => (string) ( $customer['rut'] ?? '' ),
+					'giro'                 => (string) ( $customer['giro'] ?? '' ),
+					'direccion_despacho'   => (string) ( $customer['direccion_despacho'] ?? '' ),
+				);
+				update_post_meta( $quote_id, '_fpq_current', wp_json_encode( $current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+				update_post_meta( $quote_id, '_fpq_empresa', $current['empresa'] );
+				update_post_meta( $quote_id, '_fpq_email', $current['email'] );
+			}
+			$applied = 7;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {

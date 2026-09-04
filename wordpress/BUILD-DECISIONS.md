@@ -6,6 +6,54 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #9: the operational sales workflow
+
+The minimally visible record becomes a focused sales workspace:
+least-privilege access, searchable requests, current corrections, internal
+context, explicit status transitions and auditable reopening. Decisions:
+1. **Least privilege through a role, not broader caps.** Migration 7 (db
+   version 7) creates the Ventas Freeplast role with exactly `read` +
+   `manage_freeplast_quotes` (administrators keep the capability from
+   migration 6). The role reaches Cotizaciones and nothing else — Users,
+   Plugins, Posts and Themes stay denied. `Freeplast_CQ_Admin`
+   (class-admin.php) owns the whole surface now; the minimal issue #8
+   pages moved out of `Freeplast_CQ_Request`, keeping the same page
+   slugs (`fp-quotes`/`fp-quote`) and the same capability constant.
+2. **Menu pages register on the `admin_menu` hook.** Registering them
+   during `init` makes WordPress' re-parent loop rewrite the top-level
+   slug (first submenu becomes the parent) and the detail page's access
+   resolution then fails with 403 — the canonical seam is `admin_menu`,
+   after core builds the menus. The four state-changing operations
+   (`fp_quote_update_contact`, `fp_quote_add_note`, `fp_quote_set_status`,
+   `fp_quote_reopen`) attach immediately on `admin_post`/`admin_post_nopriv`
+   (logged-out attempts die on the same capability guard).
+3. **Current details are a separate correctable copy.** Each record now
+   persists `_fpq_current` (initialized from the submitted details) plus
+   the denormalized `_fpq_empresa`/`_fpq_email` columns that feed the
+   list sort/search; corrections update only those while `_fpq_customer`
+   (Submitted Details) stays byte-identical. Migration 7 backfills the
+   copy onto records persisted before this slice. The correction form
+   validates the same business rules as the submission (one shared field
+   map, `Freeplast_CQ_Request::TEXT_FIELDS`), retains entered values on
+   failure through a per-staff transient, and appends a history event
+   naming the changed fields + time + staff identity — never the values.
+4. **List operations work on the current details.** The list sorts by
+   reference (title), created date, company, email and Request Status
+   (named EXISTS meta clause + ID tiebreak) and searches reference/
+   company/email with a status filter; a fruitless search renders an
+   explicit empty state. No bulk CSV export exists.
+5. **Status is a strict forward graph with one explicit exit.** new →
+   contacted → quoted → won/lost, any strictly forward skip permitted,
+   cancelled reachable from new/contacted/quoted. The terminal states
+   have no direct targets; the separate reopen operation returns them to
+   contacted. Every transition appends a `_fpq_history` event (from/to,
+   time, staff) and every operation re-validates nonce + capability
+   server-side — a bad nonce or a capability-less POST mutates nothing.
+6. **Sales Notes and history stay internal by construction.** Notes
+   (`_fpq_notes`: time, staff, text) and events render only inside the
+   capability-guarded detail; the records remain non-public, so nothing
+   reaches a customer-facing page (public search cannot leak them).
+
 ## 2026-09-04 — Issue #8: submit a Quote Request
 
 The core customer outcome completes: the shared basket at Cotización becomes

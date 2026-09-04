@@ -43,9 +43,12 @@
  *     (Cotizaciones → fp-quotes / fp-quote, capability
  *     manage_freeplast_quotes granted to administrators by migration 6)
  *     makes the persisted record inspectable: Submitted Details, dispatch
- *     information and the immutable item snapshots. No price, Quotation,
- *     Order, checkout or customer account is ever created — notifications
- *     arrive separately (issue #11).
+ *     information and the immutable item snapshots. Since issue #9 the
+ *     operational sales workflow (list sorting/search, current-contact
+ *     corrections, Sales Notes, Request Status transitions, history) is
+ *     owned by Freeplast_CQ_Admin. No price, Quotation, Order, checkout
+ *     or customer account is ever created — notifications arrive
+ *     separately (issue #10).
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -67,9 +70,10 @@ class Freeplast_CQ_Request {
 
 	/**
 	 * Required single-line business fields: key => (label, max length,
-	 * input type, autocomplete).
+	 * input type, autocomplete). Shared with the sales correction form
+	 * (Freeplast_CQ_Admin) — one place to add a business field.
 	 */
-	private const TEXT_FIELDS = array(
+	public const TEXT_FIELDS = array(
 		'nombre'   => array( 'label' => 'Nombre', 'max' => 120, 'type' => 'text', 'autocomplete' => 'name' ),
 		'telefono' => array( 'label' => 'Teléfono', 'max' => 40, 'type' => 'tel', 'autocomplete' => 'tel' ),
 		'email'    => array( 'label' => 'Email', 'max' => 190, 'type' => 'email', 'autocomplete' => 'email' ),
@@ -78,7 +82,7 @@ class Freeplast_CQ_Request {
 		'giro'     => array( 'label' => 'Giro', 'max' => 190, 'type' => 'text', 'autocomplete' => 'off' ),
 	);
 
-	private const MAX_DIRECCION = 400;
+	public const MAX_DIRECCION = 400;
 	private const MAX_MENSAJE   = 2000;
 
 	public static function register(): void {
@@ -108,7 +112,8 @@ class Freeplast_CQ_Request {
 		add_action( 'admin_post_fp_request_submit', array( self::class, 'handle_submit' ) );
 		add_action( 'admin_post_nopriv_fp_request_submit', array( self::class, 'handle_submit' ) );
 
-		add_action( 'admin_menu', array( self::class, 'register_admin_pages' ) );
+		/* The Cotizaciones administration surface is owned by
+	   Freeplast_CQ_Admin since the issue #9 sales workflow slice. */
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -277,7 +282,7 @@ class Freeplast_CQ_Request {
 	}
 
 	/** A normalized copy of the entered telephone when one is derivable. */
-	private static function normalized_phone( string $entered ): string {
+	public static function normalized_phone( string $entered ): string {
 		$plus   = str_starts_with( $entered, '+' );
 		$digits = preg_replace( '/\D+/', '', $entered );
 		if ( null === $digits || 8 > strlen( $digits ) ) {
@@ -314,6 +319,28 @@ class Freeplast_CQ_Request {
 			$items[] = self::snapshot( $line );
 		}
 
+		/* The correctable current contact details start as a copy of the
+		   submitted ones (issue #9); the denormalized empresa/email columns
+		   feed the Cotizaciones list sort/search and follow corrections. */
+		$current = array(
+			'nombre'               => $customer['nombre'],
+			'telefono'             => $customer['telefono'],
+			'telefono_normalizado' => $customer['telefono_normalizado'],
+			'email'                => $customer['email'],
+			'empresa'              => $customer['empresa'],
+			'rut'                  => $customer['rut'],
+			'giro'                 => $customer['giro'],
+			'direccion_despacho'   => $customer['direccion_despacho'],
+		);
+
+		$history = array(
+			array(
+				'type'  => 'created',
+				'time'  => current_time( 'mysql' ),
+				'staff' => 0,
+			),
+		);
+
 		$idempotency = hash( 'sha256', $token );
 
 		/* Retry with a fresh reference allocation: the sequence is derived,
@@ -332,6 +359,10 @@ class Freeplast_CQ_Request {
 						'_fpq_status'      => 'new',
 						'_fpq_customer'    => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
 						'_fpq_items'       => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_current'     => wp_json_encode( $current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_empresa'     => $current['empresa'],
+						'_fpq_email'       => $current['email'],
+						'_fpq_history'     => wp_json_encode( $history, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
 						'_fpq_idempotency' => $idempotency,
 						'_fpq_session'     => $session['hash'],
 					),
@@ -695,160 +726,4 @@ class Freeplast_CQ_Request {
 		);
 	}
 
-	/* ------------------------------------------------------------------ */
-	/* Minimal capability-protected administration (issue #8 slice)         */
-	/* ------------------------------------------------------------------ */
-
-	public static function register_admin_pages(): void {
-		add_menu_page(
-			'Cotizaciones',
-			'Cotizaciones',
-			self::CAPABILITY,
-			'fp-quotes',
-			array( self::class, 'render_admin_list' ),
-			'dashicons-clipboard',
-			26
-		);
-		add_submenu_page(
-			'fp-quotes',
-			'Solicitud',
-			'Solicitud',
-			self::CAPABILITY,
-			'fp-quote',
-			array( self::class, 'render_admin_detail' )
-		);
-	}
-
-	/** The dedicated sales capability is required for every admin surface. */
-	private static function guard(): void {
-		if ( ! current_user_can( self::CAPABILITY ) ) {
-			wp_die( 'Lo sentimos, no tienes permisos para acceder a esta página.', '', array( 'response' => 403 ) );
-		}
-	}
-
-	/** Cotizaciones — the latest persisted Quote Requests. */
-	public static function render_admin_list(): void {
-		self::guard();
-
-		$posts = get_posts(
-			array(
-				'post_type'        => self::POST_TYPE,
-				'post_status'      => 'private',
-				'posts_per_page'   => 100,
-				'orderby'          => 'ID',
-				'order'            => 'DESC',
-				'no_found_rows'    => true,
-				'suppress_filters' => true,
-			)
-		);
-
-		$rows = '';
-		foreach ( $posts as $post ) {
-			$customer = json_decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ), true );
-			$customer = is_array( $customer ) ? $customer : array();
-			$rows    .= sprintf(
-				'<tr><td><a href="%1$s"><strong>%2$s</strong></a></td><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td><td>%7$s</td></tr>',
-				esc_url( admin_url( 'admin.php?page=fp-quote&p=' . $post->ID ) ),
-				esc_html( (string) get_post_meta( $post->ID, '_fpq_reference', true ) ),
-				esc_html( (string) ( $customer['empresa'] ?? '' ) ),
-				esc_html( (string) ( $customer['email'] ?? '' ) ),
-				'si' === (string) ( $customer['con_despacho'] ?? '' ) ? 'Sí' : 'No',
-				esc_html( self::status_label( (string) get_post_meta( $post->ID, '_fpq_status', true ) ) ),
-				esc_html( mysql2date( 'd/m/Y H:i', $post->post_date ) )
-			);
-		}
-
-		printf(
-			'<div class="wrap"><h1>Cotizaciones</h1><p class="description">Solicitudes de cotización recibidas desde el sitio. La administración completa (estados, notas, historial) llega con el slice de ventas; esta vista permite inspeccionar cada solicitud persistida.</p><table class="widefat striped"><thead><tr><th>Referencia</th><th>Empresa</th><th>Email</th><th>Despacho</th><th>Estado</th><th>Creada</th></tr></thead><tbody>%s</tbody></table></div>',
-			$rows // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
-		);
-	}
-
-	/** The detail of one persisted Quote Request (read-only at this slice). */
-	public static function render_admin_detail(): void {
-		self::guard();
-
-		$id   = isset( $_GET['p'] ) ? absint( $_GET['p'] ) : 0;
-		$post = $id > 0 ? get_post( $id ) : null;
-		if ( ! $post instanceof WP_Post || self::POST_TYPE !== $post->post_type ) {
-			wp_die( 'Solicitud no encontrada.', '', array( 'response' => 404 ) );
-		}
-
-		$reference = (string) get_post_meta( $post->ID, '_fpq_reference', true );
-		$status    = (string) get_post_meta( $post->ID, '_fpq_status', true );
-		$customer  = json_decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ), true );
-		$customer  = is_array( $customer ) ? $customer : array();
-		$items     = json_decode( (string) get_post_meta( $post->ID, '_fpq_items', true ), true );
-		$items     = is_array( $items ) ? $items : array();
-
-		$dispatched = 'si' === (string) ( $customer['con_despacho'] ?? '' );
-
-		/* The entered telephone plus its normalized copy when one was derivable. */
-		$telefono     = (string) ( $customer['telefono'] ?? '' );
-		$normalizado  = (string) ( $customer['telefono_normalizado'] ?? '' );
-		$telefono_row = '' !== $normalizado ? trim( $telefono . ' (normalizado: ' . $normalizado . ')' ) : $telefono;
-		$mensaje      = (string) ( $customer['mensaje'] ?? '' );
-
-		$detail_rows = array(
-			array( 'Nombre', (string) ( $customer['nombre'] ?? '' ) ),
-			array( 'Teléfono', $telefono_row ),
-			array( 'Email', (string) ( $customer['email'] ?? '' ) ),
-			array( 'Nombre Empresa', (string) ( $customer['empresa'] ?? '' ) ),
-			array( 'Rut Empresa', (string) ( $customer['rut'] ?? '' ) ),
-			array( 'Giro', (string) ( $customer['giro'] ?? '' ) ),
-			array( 'Con despacho', $dispatched ? 'Sí' : 'No' ),
-			array( 'Dirección de despacho', $dispatched ? (string) ( $customer['direccion_despacho'] ?? '' ) : '—' ),
-			array( 'Mensaje', '' !== $mensaje ? $mensaje : '—' ),
-		);
-
-		$details = '';
-		foreach ( $detail_rows as $row ) {
-			$details .= sprintf( '<tr><th scope="row">%s</th><td>%s</td></tr>', esc_html( $row[0] ), esc_html( $row[1] ) );
-		}
-
-		$lines = '';
-		foreach ( $items as $item ) {
-			$item         = is_array( $item ) ? $item : array();
-			$option_label = (string) ( $item['option_label'] ?? '' );
-			$option       = '' !== $option_label ? $option_label : '—';
-			$rules        = sprintf(
-				'%s / %s',
-				null === ( $item['minimum'] ?? null ) ? 'sin mínimo confirmado' : sprintf( 'mínimo %d', (int) $item['minimum'] ),
-				null === ( $item['step'] ?? null ) ? 'sin paso confirmado' : sprintf( 'paso %d', (int) $item['step'] )
-			);
-			$lines .= sprintf(
-				'<tr><td>%1$s</td><td>%2$s</td><td>%3$d</td><td>%4$s</td><td>%5$s · %6$s · %7$s</td><td><a href="%8$s" target="_blank" rel="noopener">%8$s</a></td></tr>',
-				esc_html( (string) ( $item['title'] ?? '' ) ),
-				esc_html( $option ),
-				(int) ( $item['quantity'] ?? 0 ),
-				esc_html( $rules ),
-				esc_html( (string) ( $item['material'] ?? '' ) ),
-				esc_html( (string) ( $item['dimensions'] ?? '' ) ),
-				esc_html( (string) ( $item['weight'] ?? '' ) ),
-				esc_url( (string) ( $item['url'] ?? '' ) )
-			);
-		}
-
-		printf(
-			'<div class="wrap"><h1>Solicitud %1$s</h1><p class="description">Estado: <strong>%2$s</strong> · Recibida: %3$s · Los detalles enviados y las líneas son inmutables; la administración de estados, notas e historial llega con el slice de ventas.</p><h2>Datos enviados</h2><table class="widefat striped"><tbody>%4$s</tbody></table><h2>Productos solicitados (snapshot inmutable)</h2><table class="widefat striped"><thead><tr><th>Producto</th><th>Opción</th><th>Cantidad</th><th>Reglas usadas</th><th>Especificaciones</th><th>URL canónica</th></tr></thead><tbody>%5$s</tbody></table><p><a class="button" href="%6$s">← Volver a Cotizaciones</a></p></div>',
-			esc_html( $reference ),
-			esc_html( self::status_label( $status ) ),
-			esc_html( mysql2date( 'd/m/Y H:i', $post->post_date ) ),
-			$details, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
-			$lines,  // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
-			esc_url( admin_url( 'admin.php?page=fp-quotes' ) )
-		);
-	}
-
-	private static function status_label( string $status ): string {
-		$labels = array(
-			'new'       => 'nueva',
-			'contacted' => 'contactada',
-			'quoted'    => 'cotizada',
-			'won'       => 'ganada',
-			'lost'      => 'perdida',
-			'cancelled' => 'cancelada',
-		);
-		return $labels[ $status ] ?? $status;
-	}
 }

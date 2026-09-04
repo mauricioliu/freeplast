@@ -21,7 +21,8 @@ wordpress/
     plugins/freeplast-catalog-quotes/
                               private plugin — shell routes, migrations,
                               fp_product records, catalog synchronization,
-                              quote basket + quote-request submission
+                              quote basket, quote-request submission
+                              and the restricted sales administration
   .tools/                     pinned downloadable toolchain (gitignored)
   .build/                     disposable WordPress site (gitignored)
 ```
@@ -126,6 +127,21 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   minimal capability-protected Cotizaciones admin detail
   (`manage_freeplast_quotes`); no price, Quotation, Order, checkout or
   customer account is ever created;
+- the sales administration workflow (issue #9) makes the records
+  operational: a least-privilege Ventas Freeplast role (read +
+  `manage_freeplast_quotes`, nothing else — migration 7) reaches
+  Cotizaciones while Users/Plugins/Posts/Themes stay denied, the list
+  sorts by reference/company/email/created date/Request Status and
+  searches by reference/company/email with a status filter, the detail
+  separates immutable Submitted Details from correctable Current Contact
+  Details (corrections update the current copy and the list columns while
+  the submitted record stays byte-identical, and the history event names
+  only the changed fields + time + staff — never PII values), internal
+  Sales Notes append with author and timestamp and never reach a public
+  page, Request Status moves new → contacted → quoted → won/lost with
+  permitted skips plus cancelled, terminal states reopen explicitly back
+  to contacted, and every state change re-validates nonce + capability
+  and records staff identity/time; no bulk CSV export exists;
 - the complete v6 content and navigation experience (issue #12) is governed
   by a frozen design contract (`design/design-tokens.json` + `DECISIONS.md`
   with SHA-256-frozen approved prototypes; the rejected v5 rules are not

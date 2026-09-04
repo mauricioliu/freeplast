@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #12).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#9, #12).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,8 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #12:
+ * verifies the acceptance criteria of issues #2 through #12 (including the
+ *   issue #9 sales workflow):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -89,6 +90,21 @@
  *      refresh/back/retry (idempotency token), drops archived Product
  *      lines, and exposes a minimal capability-protected admin detail —
  *      with no price, Quotation, Order, checkout or customer account.
+ *
+ * 16. The sales administration turns the persisted records into an
+ *     operational workflow: the least-privilege Ventas Freeplast role
+ *     (read + manage_freeplast_quotes, nothing else) reaches Cotizaciones
+ *     while staying out of unrelated site administration, the list sorts
+ *     (reference, company, email, created date, Request Status) and
+ *     searches (reference, company, email, plus a status filter), the
+ *     detail separates immutable Submitted Details from correctable
+ *     Current Contact Details (corrections append a field/time/staff
+ *     history event without PII values), internal Sales Notes append with
+ *     author and timestamp, Request Status moves new → contacted →
+ *     quoted → won/lost with permitted skips plus cancelled, terminal
+ *     states reopen explicitly back to contacted, and every state change
+ *     validates nonce + capability and records staff identity/time — with
+ *     no Products in editor menus and no bulk CSV export.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -680,7 +696,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} (quote-request submission slice) must be applied`);
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} must be applied after activation (the sales workflow slice bumps it)`);
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -2280,11 +2296,301 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   ]);
 });
 
-/* ─── 16. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ─── 16. Sales administration workflow (issue #9) ───────────────── */
+
+test('sales operates Quote Requests through the restricted Cotizaciones workflow', { timeout: 240_000 }, async () => {
+  const authCookie = (userId) =>
+    wp([
+      'eval',
+      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "logged_in" );`,
+    ]).stdout;
+  const adminCookie = authCookie(1);
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpqa_notice');
+  const quoteMeta = (id, key) => wp(['eval', `echo (string) get_post_meta( ${id}, "${key}", true );`]).stdout;
+  const quoteJson = (id, key) => JSON.parse(wp(['eval', `echo (string) get_post_meta( ${id}, "${key}", true );`]).stdout || 'null');
+  const ids = wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--orderby=ID', '--order=ASC', '--format=ids'])
+    .stdout.split(/\s+/)
+    .filter(Boolean)
+    .map(Number);
+  assert.ok(ids.length >= 4, 'the sales workflow section needs the requests persisted by the issue #8 section');
+  const [r1, r2, r3, r4] = ids;
+  const refs = ids.map((id) => quoteMeta(id, '_fpq_reference'));
+
+  /** The nonce field of the admin form posting one operation. */
+  const adminNonce = (html, action) => {
+    for (const form of html.split('<form ')) {
+      if (form.includes(`name="action" value="${action}"`)) {
+        return form.match(/name="fp_[a-z]+_nonce" value="([a-f0-9]{10})"/)?.[1];
+      }
+    }
+    return undefined;
+  };
+  const detailOf = async (id, cookie = adminCookie) => {
+    const res = await get(`/wp-admin/admin.php?page=fp-quote&p=${id}`, MOBILE_UA, { cookie });
+    assert.equal(res.status, 200, 'the detail view must be reachable for the capability holder');
+    return res.body;
+  };
+  const listRefs = async (query = '', cookie = adminCookie) => {
+    const res = await get(`/wp-admin/admin.php?page=fp-quotes${query}`, MOBILE_UA, { cookie });
+    assert.equal(res.status, 200, 'the Cotizaciones list must be reachable for the capability holder');
+    const tbody = res.body.slice(res.body.indexOf('<tbody>'));
+    return [...new Set([...tbody.matchAll(/FP-\d{4}-\d{6}/g)].map((m) => m[0]))];
+  };
+  const between = (html, from, to) => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)));
+
+  /* 16.1 — The Ventas Freeplast role: least privilege. */
+  assert.equal(wp(['eval', 'echo get_role( "ventas_freeplast" ) ? "exists" : "missing";']).stdout, 'exists', 'migration 7 must create the Ventas Freeplast role');
+  const ventasId = Number(
+    wp([
+      'eval',
+      '$u = get_user_by( "login", "fp_ventas" );' +
+        'if ( ! $u ) { $id = wp_insert_user( array( "user_login" => "fp_ventas", "user_pass" => wp_generate_password( 24 ), "user_email" => "ventas@example.test", "role" => "ventas_freeplast" ) ); }' +
+        'else { $id = $u->ID; } echo $id;',
+    ]).stdout || 0
+  );
+  assert.ok(ventasId > 0, 'a Ventas Freeplast user must exist');
+  const ventasCaps = JSON.parse(
+    wp([
+      'eval',
+      `$u = get_userdata( ${ventasId} ); echo wp_json_encode( array( "read" => $u->has_cap( "read" ), "quotes" => $u->has_cap( "manage_freeplast_quotes" ), "manage_options" => $u->has_cap( "manage_options" ), "edit_posts" => $u->has_cap( "edit_posts" ), "edit_pages" => $u->has_cap( "edit_pages" ), "edit_theme_options" => $u->has_cap( "edit_theme_options" ), "list_users" => $u->has_cap( "list_users" ), "activate_plugins" => $u->has_cap( "activate_plugins" ), "edit_fp_product" => $u->has_cap( "edit_fp_product" ) ) );`,
+    ]).stdout || '{}'
+  );
+  assert.equal(ventasCaps.read, true, 'the role must be able to reach wp-admin at all (read)');
+  assert.equal(ventasCaps.quotes, true, 'the role must carry the dedicated sales capability');
+  for (const [cap, allowed] of Object.entries(ventasCaps)) {
+    if (cap !== 'read' && cap !== 'quotes') {
+      assert.equal(allowed, false, `the Ventas Freeplast role must not gain unrelated administration (${cap})`);
+    }
+  }
+  const ventasCookie = authCookie(ventasId);
+  assert.equal((await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: ventasCookie })).status, 200, 'Ventas Freeplast reaches Cotizaciones');
+  for (const adminPath of ['/wp-admin/users.php', '/wp-admin/plugins.php', '/wp-admin/edit.php', '/wp-admin/themes.php']) {
+    const res = await get(adminPath, MOBILE_UA, { cookie: ventasCookie });
+    assert.notEqual(res.status, 200, `${adminPath} must stay denied for Ventas Freeplast`);
+  }
+  assert.equal(wp(['eval', 'echo user_can( 1, "manage_freeplast_quotes" ) ? "yes" : "no";']).stdout, 'yes', 'administrators keep the same dedicated capability');
+
+  /* 16.2 — The detail separates Submitted from Current Contact Details. */
+  let detail = await detailOf(r2);
+  assertContains(detail, 'Datos enviados', 'the detail must show the Submitted Details');
+  assertContains(detail, 'Datos de contacto actuales', 'the detail must show the editable Current Contact Details');
+  const submittedBlock = between(detail, 'Datos enviados', 'Datos de contacto actuales');
+  assertContains(submittedBlock, 'Agrícola ACME SpA', 'Submitted Details keep the submitted company');
+  assertContains(submittedBlock, 'maria@acme.cl', 'Submitted Details keep the submitted email');
+  assertContains(detail, 'name="action" value="fp_quote_update_contact"', 'the correction form posts to the guarded admin operation');
+
+  /* 16.3 — Correcting Current Contact Details. */
+  const contactNonce = adminNonce(detail, 'fp_quote_update_contact');
+  assert.ok(contactNonce, 'the correction form carries its per-object nonce');
+  const contactPost = (over = {}, cookie = adminCookie, nonce = contactNonce) =>
+    postForm(
+      {
+        action: 'fp_quote_update_contact',
+        p: String(r2),
+        fp_nombre: 'María González',
+        fp_telefono: '+56 9 6844 4265',
+        fp_email: 'maria@acme.cl',
+        fp_empresa: 'Agrícola ACME SpA',
+        fp_rut: '76.335.888-6',
+        fp_giro: 'Comercialización de productos plásticos',
+        fp_direccion: 'Camino El Arrayán 52, San Francisco de Mostazal',
+        fp_contact_nonce: nonce,
+        ...over,
+      },
+      { cookie }
+    );
+  // Invalid correction: no mutation, entered values retained.
+  const badContact = await contactPost({ fp_email: 'no-es-un-email', fp_empresa: 'Bodegas del Sur SpA' });
+  assert.equal(badContact.status, 302, 'the correction answers POST-redirect-GET');
+  assert.equal(noticeOf(badContact), 'contact_invalid', 'a malformed correction must be rejected');
+  assert.equal(quoteMeta(r2, '_fpq_email'), 'maria@acme.cl', 'an invalid correction mutates nothing');
+  const invalidBack = await detailOf(r2);
+  assertContains(invalidBack, 'value="Bodegas del Sur SpA"', 'the attempted correction value is retained');
+  assertContains(invalidBack, 'Ingresa un email válido', 'the inline error explains the problem');
+  // Valid correction of empresa + email + teléfono only.
+  const fixed = await contactPost({ fp_email: 'compras@bodegasdelsur.cl', fp_empresa: 'Bodegas del Sur SpA', fp_telefono: '+56 2 2345 6789' });
+  assert.equal(fixed.status, 302);
+  assert.equal(noticeOf(fixed), 'contact_updated');
+  detail = await detailOf(r2);
+  const currentBlock = between(detail, 'Datos de contacto actuales', 'Productos solicitados');
+  assertContains(currentBlock, 'Bodegas del Sur SpA', 'the corrected company shows as current');
+  assertContains(currentBlock, 'compras@bodegasdelsur.cl', 'the corrected email shows as current');
+  assertContains(currentBlock, '+56 2 2345 6789', 'the corrected telephone shows as current');
+  const submittedAfter = between(detail, 'Datos enviados', 'Datos de contacto actuales');
+  assertContains(submittedAfter, 'Agrícola ACME SpA', 'the correction never overwrites Submitted Details');
+  assertContains(submittedAfter, 'maria@acme.cl', 'the submitted email stays visible');
+  const submittedJson = quoteJson(r2, '_fpq_customer');
+  assert.equal(submittedJson.empresa, 'Agrícola ACME SpA', 'the stored Submitted Details stay immutable');
+  assert.equal(submittedJson.email, 'maria@acme.cl');
+  const currentJson = quoteJson(r2, '_fpq_current');
+  assert.equal(currentJson.empresa, 'Bodegas del Sur SpA', 'the current contact copy is stored separately');
+  assert.equal(currentJson.telefono_normalizado, '+56223456789', 'the corrected telephone gets a normalized copy');
+  // The change history records fields/time/staff without PII values.
+  const historyR2 = quoteJson(r2, '_fpq_history') || [];
+  const contactEvent = [...historyR2].reverse().find((e) => e.type === 'contact');
+  assert.ok(contactEvent, 'a correction appends a history event');
+  assert.equal(contactEvent.staff, 1, 'the event records the staff identity');
+  assert.ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(contactEvent.time), 'the event records a timestamp');
+  assert.ok(contactEvent.fields.includes('email') && contactEvent.fields.includes('empresa'), 'the event names the corrected fields');
+  const historyRaw = JSON.stringify(historyR2);
+  assert.ok(!historyRaw.includes('compras@bodegasdelsur.cl') && !historyRaw.includes('Bodegas del Sur'), 'history events never copy PII values');
+
+  /* 16.4 — Internal Sales Notes. */
+  detail = await detailOf(r1);
+  const noteNonce = adminNonce(detail, 'fp_quote_add_note');
+  assert.ok(noteNonce, 'the note form carries its per-object nonce');
+  const notePost = (text, cookie = adminCookie, nonce = noteNonce) =>
+    postForm({ action: 'fp_quote_add_note', p: String(r1), fp_nota: text, fp_note_nonce: nonce }, { cookie });
+  assert.equal(noticeOf(await notePost('')), 'note_invalid', 'an empty note is rejected');
+  assert.equal(noticeOf(await notePost('Cliente prefiere contacto por WhatsApp en la mañana.')), 'note_added');
+  // The Ventas Freeplast user appends a second note through the same surface.
+  const ventasDetail = await detailOf(r1, ventasCookie);
+  const ventasNoteNonce = adminNonce(ventasDetail, 'fp_quote_add_note');
+  assert.ok(ventasNoteNonce, 'Ventas Freeplast renders the note form');
+  assert.equal(noticeOf(await notePost('Se pidió muestra de la Caja Tomatera.', ventasCookie, ventasNoteNonce)), 'note_added');
+  const notes = quoteJson(r1, '_fpq_notes') || [];
+  assert.equal(notes.length, 2, 'both notes append');
+  assert.equal(notes[0].staff, 1, 'the first note records the administrator');
+  assert.equal(notes[1].staff, ventasId, 'the second note records the Ventas Freeplast staff');
+  assert.ok(notes[0].time && notes[1].time, 'notes carry timestamps');
+  detail = await detailOf(r1);
+  assertContains(detail, 'Cliente prefiere contacto por WhatsApp', 'the note renders in the detail');
+  assertContains(detail, 'Se pidió muestra de la Caja Tomatera', 'the second note renders in order');
+  // Sales Notes never reach a public page (records are non-public; search does not leak them).
+  const publicSearch = await get(`/?s=${encodeURIComponent('WhatsApp en la mañana')}`, MOBILE_UA);
+  assertAbsent(publicSearch.body, 'Cliente prefiere contacto', 'no Sales Note may reach a public page');
+
+  /* 16.5 — Request Status transitions with skips and terminal handling. */
+  const statusOf = (id) => quoteMeta(id, '_fpq_status');
+  const statusNonceOf = async (id, cookie = adminCookie) => adminNonce(await detailOf(id, cookie), 'fp_quote_set_status');
+  const reopenNonceOf = async (id) => adminNonce(await detailOf(id), 'fp_quote_reopen');
+  const setStatus = (id, target, nonce, cookie = adminCookie) =>
+    postForm({ action: 'fp_quote_set_status', p: String(id), fp_status: target, fp_status_nonce: nonce }, { cookie });
+  const reopen = (id, nonce, cookie = adminCookie) =>
+    postForm({ action: 'fp_quote_reopen', p: String(id), fp_reopen_nonce: nonce }, { cookie });
+
+  assert.equal(statusOf(r1), 'new', 'a fresh request starts new');
+  const sNonce = await statusNonceOf(r1);
+  assert.equal(noticeOf(await setStatus(r1, 'contacted', sNonce)), 'status_updated');
+  assert.equal(statusOf(r1), 'contacted');
+  assert.equal(noticeOf(await setStatus(r1, 'quoted', sNonce)), 'status_updated', 'forward movement is allowed');
+  assert.equal(statusOf(r1), 'quoted');
+  assert.equal(noticeOf(await setStatus(r1, 'won', sNonce)), 'status_updated');
+  assert.equal(statusOf(r1), 'won', 'won is reachable');
+  assert.equal(noticeOf(await setStatus(r1, 'lost', sNonce)), 'bad_transition', 'won is terminal — no further direct transition');
+  assert.equal(statusOf(r1), 'won');
+  assert.equal(noticeOf(await setStatus(r1, 'contacted', sNonce)), 'bad_transition', 'reopening never happens through the status operation');
+  const reopenNonce = await reopenNonceOf(r1);
+  assert.equal(noticeOf(await reopen(r1, reopenNonce)), 'reopened', 'an explicit reopen returns a terminal request to contacted');
+  assert.equal(statusOf(r1), 'contacted');
+  assert.equal(noticeOf(await setStatus(r1, 'cancelled', sNonce)), 'status_updated', 'contacted may be cancelled');
+  assert.equal(statusOf(r1), 'cancelled');
+  assert.equal(noticeOf(await setStatus(r1, 'quoted', sNonce)), 'bad_transition', 'cancelled is terminal');
+  assert.equal(noticeOf(await reopen(r1, reopenNonce)), 'reopened');
+  assert.equal(statusOf(r1), 'contacted', 'the explicit reopen returns cancelled to contacted too');
+  // Skips: intermediate steps may be omitted entirely.
+  assert.equal(noticeOf(await setStatus(r3, 'won', await statusNonceOf(r3))), 'status_updated', 'new may skip straight to won');
+  assert.equal(statusOf(r3), 'won');
+  assert.equal(noticeOf(await setStatus(r4, 'cancelled', await statusNonceOf(r4))), 'status_updated', 'new may be cancelled directly');
+  assert.equal(statusOf(r4), 'cancelled');
+  assert.equal(noticeOf(await setStatus(r2, 'new', await statusNonceOf(r2))), 'bad_transition', 'a same-status no-op is not a transition');
+  // Every transition records staff identity and time (without PII).
+  const historyR3 = quoteJson(r3, '_fpq_history') || [];
+  const statusEvent = historyR3.find((e) => e.type === 'status');
+  assert.ok(statusEvent, 'a transition appends a history event');
+  assert.equal(statusEvent.from, 'new');
+  assert.equal(statusEvent.to, 'won');
+  assert.equal(statusEvent.staff, 1, 'the event records the staff identity');
+  assert.ok(statusEvent.time, 'the event records a timestamp');
+  // A bad nonce changes nothing.
+  assert.equal(noticeOf(await setStatus(r2, 'contacted', 'deadbeefdead')), 'nonce', 'a bad nonce must be rejected');
+  assert.equal(statusOf(r2), 'new');
+
+  /* 16.6 — Unauthorized users cannot list, view, correct, note or transition. */
+  const subUserId = Number(wp(['eval', 'echo (int) get_user_by( "login", "fp_sinventas" )->ID;']).stdout || 0);
+  assert.ok(subUserId > 0, 'the capability-less user from the issue #8 section must exist');
+  const subCookie = authCookie(subUserId);
+  const before = JSON.stringify([statusOf(r2), quoteJson(r2, '_fpq_notes'), quoteJson(r2, '_fpq_history'), quoteJson(r2, '_fpq_current')]);
+  for (const fields of [
+    { action: 'fp_quote_set_status', p: String(r2), fp_status: 'won', fp_status_nonce: 'x' },
+    { action: 'fp_quote_reopen', p: String(r2), fp_reopen_nonce: 'x' },
+    { action: 'fp_quote_add_note', p: String(r2), fp_nota: 'nota infiltrada', fp_note_nonce: 'x' },
+    {
+      action: 'fp_quote_update_contact',
+      p: String(r2),
+      fp_nombre: 'X',
+      fp_telefono: '+56 9 0000 0000',
+      fp_email: 'infiltrado@example.test',
+      fp_empresa: 'X',
+      fp_rut: '1',
+      fp_giro: 'X',
+      fp_contact_nonce: 'x',
+    },
+  ]) {
+    const res = await postForm(fields, { cookie: subCookie });
+    assert.notEqual(res.status, 200, `${fields.action} must deny users without the capability`);
+  }
+  assert.notEqual((await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: subCookie })).status, 200, 'the list stays denied');
+  assert.notEqual((await get(`/wp-admin/admin.php?page=fp-quote&p=${r2}`, MOBILE_UA, { cookie: subCookie })).status, 200, 'the detail stays denied');
+  assert.equal(
+    JSON.stringify([statusOf(r2), quoteJson(r2, '_fpq_notes'), quoteJson(r2, '_fpq_history'), quoteJson(r2, '_fpq_current')]),
+    before,
+    'unauthorized POSTs mutate nothing'
+  );
+
+  /* 16.7 — The list sorts and searches. */
+  assert.deepEqual(await listRefs(), [refs[3], refs[2], refs[1], refs[0]], 'newest first by default');
+  assert.deepEqual(await listRefs('&orderby=referencia&order=asc'), refs, 'sortable by Request Reference');
+  assert.deepEqual(await listRefs('&orderby=referencia&order=desc'), [refs[3], refs[2], refs[1], refs[0]]);
+  assert.deepEqual(await listRefs('&orderby=creada&order=asc'), refs, 'sortable by created date');
+  assert.deepEqual(await listRefs('&orderby=creada&order=desc'), [refs[3], refs[2], refs[1], refs[0]]);
+  assert.deepEqual(await listRefs('&orderby=empresa&order=asc'), [refs[0], refs[2], refs[3], refs[1]], 'sortable by company (current details)');
+  assert.deepEqual(await listRefs('&orderby=empresa&order=desc'), [refs[1], refs[3], refs[2], refs[0]]);
+  assert.deepEqual(await listRefs('&orderby=email&order=asc'), [refs[1], refs[0], refs[2], refs[3]], 'sortable by email');
+  assert.deepEqual(await listRefs('&orderby=email&order=desc'), [refs[3], refs[2], refs[0], refs[1]]);
+  assert.deepEqual(await listRefs('&orderby=estado&order=asc'), [refs[3], refs[0], refs[1], refs[2]], 'sortable by Request Status');
+  assert.deepEqual(await listRefs('&orderby=estado&order=desc'), [refs[2], refs[1], refs[0], refs[3]]);
+  assert.deepEqual(await listRefs(`&s=${encodeURIComponent(refs[0])}`), [refs[0]], 'search by Request Reference');
+  assert.deepEqual(await listRefs('&s=Bodegas'), [refs[1]], 'search by company');
+  assert.deepEqual(await listRefs('&s=compras%40bodegasdelsur.cl'), [refs[1]], 'search by email');
+  assert.deepEqual(await listRefs('&s=maria%40acme.cl'), [refs[3], refs[2], refs[0]], 'search matches the remaining records (default newest-first order)');
+  const none = await get('/wp-admin/admin.php?page=fp-quotes&s=NoExisteSA', MOBILE_UA, { cookie: adminCookie });
+  assertContains(none.body, 'Sin solicitudes', 'a fruitless search renders an explicit empty state');
+  assert.deepEqual(await listRefs('&estado=won'), [refs[2]], 'filter by Request Status: won');
+  assert.deepEqual(await listRefs('&estado=new'), [refs[1]], 'filter by Request Status: new');
+  assert.deepEqual(await listRefs('&estado=contacted'), [refs[0]], 'filter by Request Status: contacted');
+
+  /* 16.8 — The sales role operates transitions too. */
+  const ventasStatusNonce = await statusNonceOf(r2, ventasCookie);
+  assert.equal(noticeOf(await setStatus(r2, 'contacted', ventasStatusNonce, ventasCookie)), 'status_updated');
+  assert.equal(statusOf(r2), 'contacted');
+  const ventasEvent = [...(quoteJson(r2, '_fpq_history') || [])].reverse().find((e) => e.type === 'status');
+  assert.equal(ventasEvent.staff, ventasId, 'the Ventas Freeplast staff identity is recorded');
+
+  /* 16.9 — Least-privilege hygiene: no Products in editor menus, no bulk export. */
+  assert.equal(wp(['eval', 'echo get_post_type_object( "fp_product" )->show_ui ? "shown" : "hidden";']).stdout, 'hidden', 'fp_product must stay absent from editor menus');
+  const listPage = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: adminCookie });
+  const ourSurface = listPage.body.slice(listPage.body.indexOf('<div class="wrap"'), listPage.body.indexOf('</table>'));
+  assert.ok(ourSurface.length > 0, 'the list surface must render');
+  assert.ok(!/exportar|\.csv|export/i.test(ourSurface), 'no bulk CSV export may be introduced in the Cotizaciones surface');
+
+  section('Sales administration workflow (issue #9)', [
+    'Ventas Freeplast role: read + manage_freeplast_quotes only — reaches Cotizaciones while staying out of unrelated site administration; administrators keep the capability',
+    'The list sorts by reference, company, email, created date and Request Status, searches by reference/company/email and filters by status, with an explicit empty state',
+    'The detail separates immutable Submitted Details from editable Current Contact Details; a correction updates the current copy and the list/search columns while the submitted record stays byte-identical',
+    'Corrections append a history event naming the changed fields, time and staff identity — never the PII values',
+    'Timestamped internal Sales Notes append with author identity and never reach any public page',
+    'Status moves new → contacted → quoted → won/lost with permitted skips; new/contacted/quoted may be cancelled; terminal states leave only through the explicit reopen action (→ contacted)',
+    'Every state change validates nonce + capability and records staff identity/time; capability-less users cannot list, view, correct, note or transition anything',
+    'Products stay absent from editor menus and no bulk CSV export exists',
+  ]);
+});
+
+/* ─── 17. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + v6 content (issues #2–#8, #12)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + v6 content + sales workflow (issues #2–#9, #12)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -2345,6 +2651,14 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'The confirmation shows the permanent unique FP-YYYY-NNNNNN Request Reference; the basket clears only after durable persistence; a persistence failure shows no success and retains basket + values',
     'Refresh/back/retry with the same idempotency token never duplicates the record; a second basket receives a fresh token and its own reference; archived Product lines drop out',
     'A minimal capability-protected admin detail lists and inspects the records; users without manage_freeplast_quotes are denied; no customer account is created',
+    'Ventas Freeplast role: read + manage_freeplast_quotes only — reaches Cotizaciones, stays out of unrelated site administration; administrators keep the capability',
+    'The Cotizaciones list sorts by reference/company/email/created date/Request Status and searches by reference/company/email with a status filter and an explicit empty state',
+    'The detail separates immutable Submitted Details from editable Current Contact Details; corrections update the current copy and the list/search columns, never the submitted record',
+    'Corrections append a history event naming the changed fields, time and staff identity without PII values',
+    'Timestamped internal Sales Notes append with author identity and never reach any public page',
+    'Request Status supports new/contacted/quoted/won/lost/cancelled with permitted skips; terminal states reopen explicitly back to contacted',
+    'Every state change validates nonce and capability and records staff identity/time; unauthorized users cannot list, view, correct, note or transition anything',
+    'Products stay absent from editor menus; no bulk CSV export exists',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -2359,7 +2673,8 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
-    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the this-slice address path (Google-assisted confirmation arrives with issue #9), the acknowledgement/notification emails arrive with issue #11, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
+    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the this-slice address path (the Google-assisted confirmation arrives with issue #11) and the acknowledgement/notification emails arrive with issue #10. Human visual approval remains Gate 3.`,
+    `- The sales administration workflow (issue #9) is verified through served wp-admin documents and the persisted fp_quote metadata: corrections, notes, status history and staff identity live on the records; notifications (issue #10) and Dispatch Distance retry (issue #11) arrive with their slices. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );
