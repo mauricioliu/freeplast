@@ -43,9 +43,11 @@
  *     (Cotizaciones → fp-quotes / fp-quote, capability
  *     manage_freeplast_quotes granted to administrators by migration 6)
  *     makes the persisted record inspectable: Submitted Details, dispatch
- *     information and the immutable item snapshots. No price, Quotation,
- *     Order, checkout or customer account is ever created — notifications
- *     arrive separately (issue #11).
+ *     information, the immutable item snapshots and — since the durable
+ *     notifications slice (issue #10) — the per-channel notification
+ *     delivery state with its safe staff resend (Freeplast_CQ_Notifications).
+ *     No price, Quotation, Order, checkout or customer account is ever
+ *     created.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -172,14 +174,23 @@ class Freeplast_CQ_Request {
 			self::fail( 'request_failed' );
 		}
 
-		/* 8. Persist exactly one record with the immutable snapshots. */
+		/* 8. Persist exactly one record with the immutable snapshots — and its
+		   two durable notification jobs, in the very same insert: request and
+		   jobs commit together or fail together (issue #10). */
 		$reference = self::persist( $session, $token, $values, $lines );
 		if ( null === $reference ) {
 			self::store_attempt( $session['hash'], $values, array(), $failure );
 			self::fail( 'request_failed' );
 		}
 
-		/* 9. Success — only now is the basket cleared (the session stays
+		/* 9. Schedule the decoupled notification delivery (one sales
+		   notification, one customer acknowledgement). Receipt is already
+		   durable: a scheduling or transport failure changes nothing about
+		   this confirmation — the jobs stay pending for retries and the
+		   staff resend. */
+		Freeplast_CQ_Notifications::schedule_delivery( $reference );
+
+		/* 10. Success — only now is the basket cleared (the session stays
 		   alive so the next visit does not look like an expiry). */
 		Freeplast_CQ_Basket::clear_basket( $session );
 		delete_transient( self::token_key( $session['hash'] ) );
@@ -314,6 +325,13 @@ class Freeplast_CQ_Request {
 			$items[] = self::snapshot( $line );
 		}
 
+		/* Durable-job creation seam: the record and its notification jobs
+		   are one unit — when the jobs cannot be created, the whole
+		   persistence aborts (no record, no success, basket retained). */
+		if ( ! apply_filters( 'freeplast_cq_notification_jobs', true, $values, $lines ) ) {
+			return null;
+		}
+
 		$idempotency = hash( 'sha256', $token );
 
 		/* Retry with a fresh reference allocation: the sequence is derived,
@@ -328,12 +346,13 @@ class Freeplast_CQ_Request {
 					'post_title'  => $reference,
 					'post_author' => 0,
 					'meta_input'  => array(
-						'_fpq_reference'   => $reference,
-						'_fpq_status'      => 'new',
-						'_fpq_customer'    => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-						'_fpq_items'       => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-						'_fpq_idempotency' => $idempotency,
-						'_fpq_session'     => $session['hash'],
+						'_fpq_reference'     => $reference,
+						'_fpq_status'        => 'new',
+						'_fpq_customer'      => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_items'         => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_notifications' => wp_json_encode( Freeplast_CQ_Notifications::initial_state(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_idempotency'   => $idempotency,
+						'_fpq_session'       => $session['hash'],
 					),
 				),
 				true
@@ -830,12 +849,13 @@ class Freeplast_CQ_Request {
 		}
 
 		printf(
-			'<div class="wrap"><h1>Solicitud %1$s</h1><p class="description">Estado: <strong>%2$s</strong> · Recibida: %3$s · Los detalles enviados y las líneas son inmutables; la administración de estados, notas e historial llega con el slice de ventas.</p><h2>Datos enviados</h2><table class="widefat striped"><tbody>%4$s</tbody></table><h2>Productos solicitados (snapshot inmutable)</h2><table class="widefat striped"><thead><tr><th>Producto</th><th>Opción</th><th>Cantidad</th><th>Reglas usadas</th><th>Especificaciones</th><th>URL canónica</th></tr></thead><tbody>%5$s</tbody></table><p><a class="button" href="%6$s">← Volver a Cotizaciones</a></p></div>',
+			'<div class="wrap"><h1>Solicitud %1$s</h1><p class="description">Estado: <strong>%2$s</strong> · Recibida: %3$s · Los detalles enviados y las líneas son inmutables; la administración de estados, notas e historial llega con el slice de ventas.</p><h2>Datos enviados</h2><table class="widefat striped"><tbody>%4$s</tbody></table><h2>Productos solicitados (snapshot inmutable)</h2><table class="widefat striped"><thead><tr><th>Producto</th><th>Opción</th><th>Cantidad</th><th>Reglas usadas</th><th>Especificaciones</th><th>URL canónica</th></tr></thead><tbody>%5$s</tbody></table>%6$s<p><a class="button" href="%7$s">← Volver a Cotizaciones</a></p></div>',
 			esc_html( $reference ),
 			esc_html( self::status_label( $status ) ),
 			esc_html( mysql2date( 'd/m/Y H:i', $post->post_date ) ),
 			$details, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
 			$lines,  // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
+			Freeplast_CQ_Notifications::render_detail( $post ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the section escapes its own output
 			esc_url( admin_url( 'admin.php?page=fp-quotes' ) )
 		);
 	}

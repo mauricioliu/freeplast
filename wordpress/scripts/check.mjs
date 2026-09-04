@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #12).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #10, #12).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #12:
+ * verifies the acceptance criteria of issues #2 through #12 (notifications: #10):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -89,6 +89,25 @@
  *      refresh/back/retry (idempotency token), drops archived Product
  *      lines, and exposes a minimal capability-protected admin detail —
  *      with no price, Quotation, Order, checkout or customer account.
+ * 16. Notifications are durable and decoupled (issue #10): every Quote
+ *     Request persists together with exactly two notification jobs (one
+ *     sales notification, one customer acknowledgement) in the same record
+ *     insert — a failing job creation aborts the whole submission (no
+ *     record, basket retained) — while successful receipt still confirms
+ *     and clears the basket before any external mail delivery is required
+ *     (a scheduled delivery event runs later). Both messages carry the
+ *     Request Reference and the product lines with options and quantities,
+ *     the sales message adds the operational customer/dispatch details,
+ *     sales Reply-To points to the customer and the customer Reply-To to
+ *     the configured sales address. Delivery is idempotent (sent channels
+ *     are never re-attempted), total or partial mail failure after
+ *     persistence never duplicates the request or a successful delivery,
+ *     authorized staff see the per-channel state and can safely resend a
+ *     failed notification (nonce + capability guarded), staging modes add
+ *     the visible [STAGING] subject prefix and enforce the configured
+ *     recipient override/allowlist or non-delivery, and the event log
+ *     records states and codes but never customer field values. Mail is
+ *     controlled at the single external adapter seam (freeplast_cq_send_mail).
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -680,7 +699,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} (quote-request submission slice) must be applied`);
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} must be applied after activation`);
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -2280,11 +2299,431 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   ]);
 });
 
-/* ─── 16. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ── 16. Durable sales and customer notifications (issue #10) ──── */
+
+test('sales and customer notifications are durable jobs delivered independently of receipt', { timeout: 240_000 }, async () => {
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const COLOR_ID = 'fp-caja-universal-cerrada-color';
+  const COLOR_URL = '/producto/caja-universal-cerrada-color/';
+
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const notifyState = (reference) =>
+    JSON.parse(
+      wp([
+        'eval',
+        `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${reference}" ) );` +
+          'if ( empty( $posts ) ) { echo "null"; } else { $p = $posts[0]; echo wp_json_encode( array( ' +
+          '"id" => $p->ID, ' +
+          '"jobs" => json_decode( (string) get_post_meta( $p->ID, "_fpq_notifications", true ), true ), ' +
+          '"log" => json_decode( (string) get_post_meta( $p->ID, "_fpq_notify_log", true ), true ) ) ); }',
+      ]).stdout || 'null'
+    );
+  const mailLog = () => JSON.parse(wp(['eval', 'echo wp_json_encode( get_option( "fp_test_mail_log", array() ) );']).stdout || '[]');
+  const clearLog = () => wp(['eval', 'delete_option( "fp_test_mail_log" );']);
+  const setBehavior = (behavior) => wp(['eval', `update_option( "fp_test_mail_behavior", "${behavior}" );`]);
+  const setMode = (mode, to = null, allow = null) =>
+    wp([
+      'eval',
+      `update_option( "freeplast_cq_mail_mode", "${mode}" );` +
+        (to === null ? '' : ` update_option( "freeplast_cq_mail_to", "${to}" );`) +
+        (allow === null ? '' : ` update_option( "freeplast_cq_mail_allow", "${allow}" );`),
+    ]);
+  const runDelivery = (reference) => wp(['eval', `Freeplast_CQ_Notifications::process( "${reference}" );`]);
+
+  /* The single external mail adapter seam: every delivery is recorded and
+     answered per the configured behavior (ok | fail | fail:sales |
+     fail:customer). A refused message is never recorded — the log is the
+     set of messages that actually reached the transport. Nothing else in
+     the site touches a transport. */
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  mkdirSync(muDir, { recursive: true });
+  writeFileSync(
+    join(muDir, 'fp-test-mail-adapter.php'),
+    `<?php
+/**
+ * Test seam: replaces the external mail adapter boundary
+ * (freeplast_cq_send_mail) so the checks control delivery and assert
+ * business outcomes. Records every delivered message; answers per the
+ * configured behavior option (ok | fail | fail:sales | fail:customer).
+ */
+add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
+    $behavior = (string) get_option( 'fp_test_mail_behavior', 'ok' );
+    $deliver  = true;
+    if ( 'fail' === $behavior ) {
+        $deliver = false;
+    } elseif ( 'fail:sales' === $behavior && 'sales' === ( isset( $message['channel'] ) ? $message['channel'] : '' ) ) {
+        $deliver = false;
+    } elseif ( 'fail:customer' === $behavior && 'customer' === ( isset( $message['channel'] ) ? $message['channel'] : '' ) ) {
+        $deliver = false;
+    }
+    if ( ! $deliver ) {
+        return false;
+    }
+    $log   = get_option( 'fp_test_mail_log', array() );
+    $log[] = array(
+        'channel'  => isset( $message['channel'] ) ? $message['channel'] : '',
+        'to'       => isset( $message['to'] ) ? $message['to'] : '',
+        'subject'  => isset( $message['subject'] ) ? $message['subject'] : '',
+        'reply_to' => isset( $message['reply_to'] ) ? $message['reply_to'] : '',
+        'body'     => isset( $message['body'] ) ? $message['body'] : '',
+    );
+    update_option( 'fp_test_mail_log', $log );
+    return true;
+}, 10, 2 );
+`
+  );
+
+  const validFields = {
+    fp_nombre: 'María González',
+    fp_telefono: '+56 9 6844 4265',
+    fp_email: 'maria@acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización de productos plásticos',
+    fp_despacho: 'si',
+    fp_direccion: 'Camino El Arrayán 52, San Francisco de Mostazal',
+    fp_mensaje: 'Necesitamos las cajas para la próxima cosecha.',
+  };
+
+  /** Build a fresh two-line basket (plain + Color option) and return its session with form credentials. */
+  const prepareSession = async () => {
+    const productPage = await get(PRODUCT_URL, MOBILE_UA);
+    const addNonce = productPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+    assert.ok(addNonce, 'the notification flow needs a chooser nonce');
+    const seeded = await postForm({
+      action: 'fp_basket_add',
+      fp_product: 'fp-caja-cosechera-3-4',
+      fp_quantity: '5',
+      fp_basket_nonce: addNonce,
+      _wp_http_referer: PRODUCT_URL,
+    });
+    const token = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+    assert.ok(token, 'the notification flow needs its own guest session');
+    const colorAdd = await postForm(
+      {
+        action: 'fp_basket_add',
+        fp_product: COLOR_ID,
+        fp_option: 'blanco',
+        fp_quantity: '12',
+        fp_basket_nonce: addNonce,
+        _wp_http_referer: COLOR_URL,
+      },
+      cookieHeader(token)
+    );
+    assert.equal(noticeOf(colorAdd), 'added', 'the two-line basket must build');
+    const cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+    assertContains(cot.body, 'Cotización (2)', 'the basket must carry both lines');
+    const { nonce, token: idemToken } = requestCredentials(cot.body);
+    assert.ok(nonce && idemToken, 'the form must be nonce-guarded and carry the idempotency token');
+    return { token, nonce, idemToken };
+  };
+
+  /** Submit one request from a fresh two-line basket. */
+  const submitRequest = async (over = {}) => {
+    const session = await prepareSession();
+    const res = await postForm(
+      {
+        action: 'fp_request_submit',
+        ...validFields,
+        fp_request_nonce: session.nonce,
+        fp_request_token: session.idemToken,
+        _wp_http_referer: '/cotizacion/',
+        ...over,
+      },
+      cookieHeader(session.token)
+    );
+    return { res, token: session.token, reference: submittedRef(res) };
+  };
+
+  try {
+    setMode('live');
+    setBehavior('ok');
+    clearLog();
+
+    /* 16.1 — Receipt is persistence: confirmation and cleared basket never
+       wait for mail, and the two durable jobs exist on the record itself. */
+    const before = quoteCount();
+    const first = await submitRequest();
+    assert.match(first.reference, /^FP-\d{4}-\d{6}$/, 'the submission must persist with a reference');
+    assert.equal(quoteCount(), before + 1, 'exactly one record persists');
+    const confirmation = await get(`/cotizacion/?fpcq_submitted=${first.reference}`, MOBILE_UA, cookieHeader(first.token));
+    assertContains(confirmation.body, 'Solicitud recibida', 'successful receipt confirms without mail');
+    assertContains(confirmation.body, first.reference, 'the confirmation shows the Request Reference');
+    assertContains(confirmation.body, 'Cotización (0)', 'the basket cleared before any delivery');
+    assert.deepEqual(mailLog(), [], 'nothing is delivered yet — receipt never waited for mail');
+    const jobs = notifyState(first.reference)?.jobs;
+    assert.ok(jobs, 'the record must carry its notification jobs');
+    assert.deepEqual(Object.keys(jobs).sort(), ['customer', 'sales'], 'exactly one sales job and one customer job per reference');
+    assert.equal(jobs.sales.state, 'pending', 'the sales job starts pending');
+    assert.equal(jobs.customer.state, 'pending', 'the customer job starts pending');
+    const scheduled = wp(['eval', `echo wp_next_scheduled( "freeplast_cq_notify", array( "${first.reference}" ) ) ? "yes" : "no";`]).stdout;
+    assert.equal(scheduled, 'yes', 'the durable jobs carry a scheduled delivery event');
+
+    /* 16.2 — One delivery event processes both jobs exactly once, with the
+       required content and Reply-To routing. */
+    runDelivery(first.reference);
+    const entries = mailLog();
+    assert.equal(entries.length, 2, 'exactly one sales notification and one customer acknowledgement deliver');
+    const sales = entries.find((e) => e.channel === 'sales');
+    const customer = entries.find((e) => e.channel === 'customer');
+    assert.ok(sales && customer, 'both channels must be represented');
+    assert.equal(sales.to, 'ventas@freeplast.cl', 'the sales notification reaches the configured sales address');
+    assert.ok(sales.reply_to.includes('maria@acme.cl'), 'sales Reply-To points to the customer');
+    assert.ok(sales.subject.includes(first.reference), 'the sales subject carries the Request Reference');
+    assert.ok(!sales.subject.includes('[STAGING]'), 'live mode adds no staging prefix');
+    assert.equal(customer.to, 'maria@acme.cl', 'the acknowledgement reaches the customer');
+    assert.ok(customer.reply_to.includes('ventas@freeplast.cl'), 'customer Reply-To points to the sales address');
+    assert.ok(customer.subject.includes(first.reference), 'the customer subject carries the Request Reference');
+    const productNeedles = ['Caja Cosechera 3/4', '5 unidades', 'Caja Universal Cerrada Color', 'Blanco', '12 unidades'];
+    for (const needle of productNeedles) {
+      assertContains(sales.body, needle, `the sales body includes ${needle}`);
+      assertContains(customer.body, needle, `the customer body includes ${needle}`);
+    }
+    for (const needle of ['María González', '+56 9 6844 4265', 'maria@acme.cl', 'Agrícola ACME SpA', '76.335.888-6', 'Camino El Arrayán 52']) {
+      assertContains(sales.body, needle, `the sales body includes the operational detail ${needle}`);
+    }
+    let after = notifyState(first.reference).jobs;
+    assert.equal(after.sales.state, 'sent', 'the sales job records its delivery');
+    assert.equal(after.customer.state, 'sent', 'the customer job records its delivery');
+    assert.ok(after.sales.sent_at > 0 && after.customer.sent_at > 0, 'delivery times are recorded');
+    // Idempotent: re-running the delivery event (retry, duplicate event)
+    // sends nothing new.
+    runDelivery(first.reference);
+    runDelivery(first.reference);
+    assert.equal(mailLog().length, 2, 'already successful delivery is never duplicated');
+
+    /* 16.3 — A mail outage after persistence (total, then partial) never
+       duplicates the request or a successful delivery; staff resends safely. */
+    const baseline = quoteCount();
+    setBehavior('fail');
+    const failed = await submitRequest({ fp_mensaje: '' });
+    assert.match(failed.reference, /^FP-\d{4}-\d{6}$/, 'a mail outage must not discard the request');
+    assert.equal(quoteCount(), baseline + 1, 'a mail outage never duplicates or blocks the record');
+    clearLog();
+    runDelivery(failed.reference);
+    assert.deepEqual(mailLog(), [], 'a failed delivery sends nothing');
+    let failedJobs = notifyState(failed.reference).jobs;
+    assert.equal(failedJobs.sales.state, 'failed', 'the sales job records the failure');
+    assert.equal(failedJobs.customer.state, 'failed', 'the customer job records the failure');
+    assert.equal(failedJobs.sales.attempts, 1, 'attempts are recorded');
+    clearLog();
+    setBehavior('fail:customer');
+    runDelivery(failed.reference);
+    const partial = mailLog();
+    assert.equal(partial.length, 1, 'a partial outage delivers only the working channel');
+    assert.equal(partial[0].channel, 'sales', 'the sales notification still delivers');
+    failedJobs = notifyState(failed.reference).jobs;
+    assert.equal(failedJobs.sales.state, 'sent', 'the working channel is delivered');
+    assert.equal(failedJobs.customer.state, 'failed', 'the failing channel stays failed');
+
+    const adminCookie = wp([
+      'eval',
+      'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+    ]).stdout;
+    assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
+    const failedId = notifyState(failed.reference).id;
+    const detail = await get(`/wp-admin/admin.php?page=fp-quote&p=${failedId}`, MOBILE_UA, { cookie: adminCookie });
+    assert.equal(detail.status, 200, 'the detail must remain reachable');
+    assertContains(detail.body, 'Notificaciones', 'the detail shows the notification delivery state');
+    assertContains(detail.body, 'fallida', 'the failed channel state is visible');
+    assertContains(detail.body, 'Modo de correo: live', 'the effective mail mode is visible');
+    const resendNonce = detail.body.match(/name="fp_notify_nonce" value="([a-f0-9]{10})"/)?.[1];
+    assert.ok(resendNonce, 'a failed channel offers the staff resend');
+    setBehavior('ok');
+    const resent = await postForm(
+      {
+        action: 'fp_notify_resend',
+        fp_quote: String(failedId),
+        fp_channel: 'customer',
+        fp_notify_nonce: resendNonce,
+        _wp_http_referer: `/wp-admin/admin.php?page=fp-quote&p=${failedId}`,
+      },
+      { cookie: adminCookie }
+    );
+    assert.equal(resent.status, 302, 'the resend answers POST-redirect-GET');
+    assert.equal(new URL(resent.headers.location, SITE_URL).searchParams.get('fpcq_notify'), 'sent', 'the resend delivers the failed channel');
+    const afterResend = mailLog();
+    assert.equal(afterResend.length, 2, 'sales (partial) + customer (resent) are the only deliveries');
+    assert.equal(afterResend.filter((e) => e.channel === 'sales').length, 1, 'the safe resend never duplicates the delivered sales notification');
+    assert.equal(notifyState(failed.reference).jobs.customer.state, 'sent', 'the resent channel is delivered');
+
+    // A crafted resend of an already-sent channel is a no-op.
+    const noop = await postForm(
+      {
+        action: 'fp_notify_resend',
+        fp_quote: String(failedId),
+        fp_channel: 'sales',
+        fp_notify_nonce: resendNonce,
+        _wp_http_referer: `/wp-admin/admin.php?page=fp-quote&p=${failedId}`,
+      },
+      { cookie: adminCookie }
+    );
+    assert.equal(new URL(noop.headers.location, SITE_URL).searchParams.get('fpcq_notify'), 'noop', 'an already-sent channel is never resent');
+    assert.equal(mailLog().filter((e) => e.channel === 'sales').length, 1, 'already successful delivery cannot be duplicated');
+
+    // Guards: bad nonce, no capability, logged out.
+    const badNonce = await postForm(
+      {
+        action: 'fp_notify_resend',
+        fp_quote: String(failedId),
+        fp_channel: 'customer',
+        fp_notify_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef',
+        _wp_http_referer: '/wp-admin/',
+      },
+      { cookie: adminCookie }
+    );
+    assert.notEqual(badNonce.status, 200, 'a bad resend nonce must be rejected');
+    const loggedOut = await postForm({
+      action: 'fp_notify_resend',
+      fp_quote: String(failedId),
+      fp_channel: 'customer',
+      fp_notify_nonce: resendNonce,
+      _wp_http_referer: '/wp-admin/',
+    });
+    assert.notEqual(loggedOut.status, 200, 'a logged-out resend must be denied');
+    const noCapId = wp([
+      'eval',
+      'echo (int) wp_insert_user( array( "user_login" => "fp_sinventas2", "user_pass" => wp_generate_password( 24 ), "user_email" => "sinventas2@example.test" ) );',
+    ]).stdout;
+    assert.ok(Number(noCapId) > 0, 'a capability-less user must be created for the denial check');
+    const noCapCookie = wp([
+      'eval',
+      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${noCapId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${noCapId}, time() + 3600, "logged_in" );`,
+    ]).stdout;
+    const denied = await postForm(
+      {
+        action: 'fp_notify_resend',
+        fp_quote: String(failedId),
+        fp_channel: 'customer',
+        fp_notify_nonce: resendNonce,
+        _wp_http_referer: '/wp-admin/',
+      },
+      { cookie: noCapCookie }
+    );
+    assert.notEqual(denied.status, 200, 'the resend must deny users without the capability');
+
+    /* 16.4 — Job creation commits with the record or the whole submission
+       fails (no record, no success, basket retained). */
+    const kept = quoteCount();
+    writeFileSync(join(muDir, 'fp-test-no-jobs.php'), "<?php\nadd_filter( 'freeplast_cq_notification_jobs', '__return_false' );\n");
+    try {
+      const session = await prepareSession();
+      const res = await postForm(
+        {
+          action: 'fp_request_submit',
+          ...validFields,
+          fp_request_nonce: session.nonce,
+          fp_request_token: session.idemToken,
+          _wp_http_referer: '/cotizacion/',
+        },
+        cookieHeader(session.token)
+      );
+      assert.equal(noticeOf(res), 'request_failed', 'a failing job creation must not claim success');
+      assert.ok(!(res.headers.location || '').includes('fpcq_submitted'), 'no confirmation may be shown');
+      assert.equal(quoteCount(), kept, 'no record persists without its durable notification jobs');
+      const back = await get('/cotizacion/', MOBILE_UA, cookieHeader(session.token));
+      assertContains(back.body, 'Cotización (2)', 'the basket must be retained');
+      assertContains(back.body, 'value="María González"', 'the entered values must be retained');
+    } finally {
+      rmSync(join(muDir, 'fp-test-no-jobs.php'), { force: true });
+    }
+
+    /* 16.5 — Staging containment: redirect override, approved-recipient
+       allowlist, non-delivery — every restricted mode prefixes [STAGING]. */
+    setBehavior('ok');
+    setMode('suppress');
+    clearLog();
+    const suppressed = await submitRequest();
+    assert.match(suppressed.reference, /^FP-\d{4}-\d{6}$/);
+    runDelivery(suppressed.reference);
+    let sJobs = notifyState(suppressed.reference).jobs;
+    assert.equal(sJobs.sales.state, 'suppressed', 'non-delivery mode suppresses the sales job');
+    assert.equal(sJobs.customer.state, 'suppressed', 'non-delivery mode suppresses the customer job');
+    assert.equal(sJobs.sales.code, 'non_delivery_mode', 'the suppression reason is recorded');
+    assert.deepEqual(mailLog(), [], 'non-delivery mode never reaches the transport');
+
+    setMode('redirect', 'qa@mliu.test');
+    clearLog();
+    const redirected = await submitRequest();
+    runDelivery(redirected.reference);
+    const rlog = mailLog();
+    assert.equal(rlog.length, 2, 'both messages deliver under the override');
+    for (const entry of rlog) {
+      assert.equal(entry.to, 'qa@mliu.test', 'redirect mode forces the configured override recipient');
+      assert.ok(entry.subject.startsWith('[STAGING] '), 'the staging subject prefix is visible');
+    }
+    assert.ok(rlog[0].reply_to.includes('maria@acme.cl'), 'the Reply-To routing survives containment');
+    sJobs = notifyState(redirected.reference).jobs;
+    assert.equal(sJobs.sales.state, 'sent', 'the redirected sales job delivers');
+    assert.equal(sJobs.customer.state, 'sent', 'the redirected customer job delivers');
+
+    setMode('allowlist', null, 'ventas@freeplast.cl');
+    clearLog();
+    const listed = await submitRequest();
+    runDelivery(listed.reference);
+    const alog = mailLog();
+    assert.equal(alog.length, 1, 'only the allowlisted recipient receives mail');
+    assert.equal(alog[0].channel, 'sales', 'the sales address is the approved recipient');
+    assert.equal(alog[0].to, 'ventas@freeplast.cl', 'the allowlisted recipient is addressed directly');
+    assert.ok(alog[0].subject.startsWith('[STAGING] '), 'the allowlist mode also prefixes the subject');
+    sJobs = notifyState(listed.reference).jobs;
+    assert.equal(sJobs.sales.state, 'sent');
+    assert.equal(sJobs.customer.state, 'suppressed', 'the non-approved recipient is not delivered');
+    assert.equal(sJobs.customer.code, 'not_allowlisted', 'the rejection reason is recorded');
+    setMode('live');
+
+    /* 16.6 — The event log carries IDs, event and delivery state — never a
+       customer field value. */
+    for (const record of [first, failed, suppressed, listed]) {
+      const state = notifyState(record.reference);
+      const logJson = JSON.stringify(state.log || []);
+      assert.ok((state.log || []).length > 0, 'each processed reference must log its delivery events');
+      assertContains(logJson, '"state"', 'the log records the event/delivery state');
+      for (const forbidden of ['maria', 'María', 'González', 'acme', '+56', 'Camino', '76.335', 'plásticos']) {
+        assertAbsent(logJson, forbidden, `the notification log must never contain customer field values (${forbidden})`);
+      }
+    }
+
+    /* 16.7 — Migration 7 backfills pending jobs and a delivery event onto
+       records persisted before the slice. */
+    const legacyId = notifyState(first.reference).id;
+    wp(['eval', `delete_post_meta( ${legacyId}, "_fpq_notifications" ); delete_post_meta( ${legacyId}, "_fpq_notify_log" );`]);
+    wp(['option', 'update', 'fp_db_version', '6']);
+    const migrated = wp(['eval', 'Freeplast_CQ_Migrations::run(); echo get_option( "fp_db_version" );']);
+    assert.equal(migrated.stdout, '7', 'migration 7 must apply');
+    const backfilled = notifyState(first.reference).jobs;
+    assert.deepEqual(Object.keys(backfilled).sort(), ['customer', 'sales'], 'a pre-slice record regains its two pending jobs');
+    assert.equal(backfilled.sales.state, 'pending', 'the backfilled jobs start pending');
+    const backfillScheduled = wp(['eval', `echo wp_next_scheduled( "freeplast_cq_notify", array( "${first.reference}" ) ) ? "yes" : "no";`]).stdout;
+    assert.equal(backfillScheduled, 'yes', 'the backfill schedules the delivery');
+    // Records that already carry delivery state are never reset by re-runs.
+    wp(['eval', 'Freeplast_CQ_Migrations::run();']);
+    assert.equal(notifyState(failed.reference).jobs.customer.state, 'sent', 'already delivered state survives migration re-runs');
+
+    section('Durable sales and customer notifications (issue #10)', [
+      'Quote Request persistence and its two durable notification jobs commit together (same record insert) or fail together (freeplast_cq_notification_jobs seam aborts the submission; basket and values retained)',
+      'Successful receipt confirms with the Request Reference and clears the basket before any external mail delivery is required — nothing delivers until the scheduled event runs',
+      'Exactly one sales notification and one customer acknowledgement are scheduled per Request Reference; both carry reference, products, options and quantities; sales adds the operational customer/dispatch details',
+      'Sales Reply-To points to the customer; customer Reply-To points to ventas@freeplast.cl; live mode adds no prefix',
+      'A temporary or partial mail failure after persistence never duplicates the request or a successful delivery: failed state + attempts recorded, retries and crafted resends of sent channels are no-ops',
+      'Authorized staff see the per-channel delivery state and resend a failed notification safely (nonce + capability guarded; bad nonce, logged-out and capability-less resends are denied)',
+      'Staging containment: redirect forces the configured override recipient, allowlist delivers only approved recipients, suppress delivers nothing — every restricted mode prefixes the subject with [STAGING]',
+      'The event log records states and codes only (no customer field values); migration 7 backfills pending jobs and a delivery event onto pre-slice records without resetting delivered state',
+    ]);
+  } finally {
+    rmSync(join(muDir, 'fp-test-mail-adapter.php'), { force: true });
+    setMode('live');
+    setBehavior('ok');
+  }
+});
+
+/* ─── 17. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + v6 content (issues #2–#8, #12)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + durable notifications + v6 content (issues #2–#8, #10, #12)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -2345,6 +2784,11 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'The confirmation shows the permanent unique FP-YYYY-NNNNNN Request Reference; the basket clears only after durable persistence; a persistence failure shows no success and retains basket + values',
     'Refresh/back/retry with the same idempotency token never duplicates the record; a second basket receives a fresh token and its own reference; archived Product lines drop out',
     'A minimal capability-protected admin detail lists and inspects the records; users without manage_freeplast_quotes are denied; no customer account is created',
+    'Quote Request persistence and its two durable notification jobs commit together (same record insert) or fail together — a failing job creation aborts the submission and retains basket + values',
+    'Successful receipt confirms with the Request Reference and clears the basket before any external mail delivery is required (scheduled delivery event; nothing delivers until it runs)',
+    'Exactly one sales notification and one customer acknowledgement per Request Reference; both carry reference, products, options and quantities; sales adds operational customer/dispatch details; Reply-To routing: sales → customer, customer → ventas@freeplast.cl',
+    'Total or partial mail failure after persistence never duplicates the request or a successful delivery; delivery is idempotent (sent channels are never re-attempted); staff see the state and resend a failed channel safely (nonce + capability guarded)',
+    'Staging containment: [STAGING] subject prefix plus configured recipient override (redirect), approved-recipient allowlist, or non-delivery (suppress); unconfigured environments fail closed; the event log records states/codes only — no customer field values',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -2359,7 +2803,8 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
-    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the this-slice address path (Google-assisted confirmation arrives with issue #9), the acknowledgement/notification emails arrive with issue #11, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
+    '- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records; the manual Dirección de despacho is the this-slice address path (Google-assisted confirmation arrives with issue #11), and the full sales administration (statuses, notes, history) with issue #9. Human visual approval remains Gate 3.',
+    '- The durable notifications (issue #10) are verified through the persisted job/delivery state, the single external mail adapter seam (freeplast_cq_send_mail, replaced by the check) and the Cotizaciones detail: receipt never waits for delivery, WP-Cron is disabled on the disposable host so the scheduled delivery events run only when the check drives them (staging runs system cron), and the default mail mode fails closed to non-delivery until FREEPLAST_CQ_MAIL_MODE (or the freeplast_cq_mail_mode option) is configured.',
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );

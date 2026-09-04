@@ -40,6 +40,14 @@
  *               transients) and the dedicated sales capability
  *               (manage_freeplast_quotes) granted to administrators so
  *               the minimal admin detail is capability-protected.
+ * Migration 7 — durable notifications (issue #10): every fp_quote record
+ *               persisted before this slice gains its two pending
+ *               notification jobs (_fpq_notifications — new records
+ *               carry them from the submission insert itself) and a
+ *               scheduled delivery event, so a pre-slice record can
+ *               never sit undelivered forever. No new table: the jobs,
+ *               their delivery state and the PII-free event log are meta
+ *               on the records (see Freeplast_CQ_Notifications).
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -127,6 +135,38 @@ class Freeplast_CQ_Migrations {
 				$administrator->add_cap( Freeplast_CQ_Request::CAPABILITY );
 			}
 			$applied = 6;
+		}
+
+		if ( $applied < 7 ) {
+			// Migration 7 — durable notifications (see class-notifications.php):
+			// backfill the two pending jobs and a delivery event onto every
+			// fp_quote record persisted before the slice. Records created from
+			// now on carry the jobs in the submission insert itself; this
+			// backfill only ever touches records without the meta, so already
+			// delivered state is never reset.
+			$legacy = get_posts(
+				array(
+					'post_type'        => Freeplast_CQ_Request::POST_TYPE,
+					'post_status'      => 'private',
+					'posts_per_page'   => -1,
+					'orderby'          => 'ID',
+					'order'            => 'ASC',
+					'no_found_rows'    => true,
+					'suppress_filters' => true,
+					'fields'           => 'ids',
+				)
+			);
+			foreach ( $legacy as $id ) {
+				if ( '' === (string) get_post_meta( (int) $id, Freeplast_CQ_Notifications::META_JOBS, true ) ) {
+					update_post_meta(
+						(int) $id,
+						Freeplast_CQ_Notifications::META_JOBS,
+						wp_json_encode( Freeplast_CQ_Notifications::initial_state(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
+					);
+					Freeplast_CQ_Notifications::schedule_delivery( (string) get_post_meta( (int) $id, '_fpq_reference', true ) );
+				}
+			}
+			$applied = 7;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {
