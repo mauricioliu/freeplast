@@ -15,7 +15,11 @@
 # migration or release, and before server-level changes.
 set -euo pipefail
 
-STACK_DIR='/opt/freeplast-wordpress'
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Single source of the staging constants (issue #16): hostname, install
+# root and loopback port are declared in staging.sh, not here.
+. "$INFRA_DIR/staging.sh"
+
 PROJECT='freeplast-wordpress'
 BACKUP_ROOT='/root/freeplast-wordpress-backups'
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"

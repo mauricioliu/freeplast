@@ -13,9 +13,10 @@
 #   → verification through HTTPS.
 #
 # Secrets never enter repository files or command output: they are
-# generated on the server, written into /opt/freeplast-wordpress/.env
-# (0600) and /opt/freeplast-wordpress/.secrets/credentials (0400), and
-# transferred to the owner through the approved secret channel.
+# generated on the server, written into the stack .env (0600) and
+# .secrets/credentials (0400) under the install root declared in
+# staging.sh, and transferred to the owner through the approved secret
+# channel.
 #
 # Required environment inputs (not secrets — the TLS convention and the
 # administrator address are owner decisions):
@@ -34,12 +35,13 @@
 set -euo pipefail
 umask 077
 
-SITE_HOSTNAME='freeplast.mliu.site'
-STACK_DIR='/opt/freeplast-wordpress'
-LOOPBACK_PORT='8092'
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Single source of the staging constants (issue #16): hostname, install
+# root and loopback port are declared in staging.sh, not here.
+. "$INFRA_DIR/staging.sh"
+
 BACKUP_ROOT='/root/freeplast-wordpress-backups'
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "${1:-$INFRA_DIR/..}" && pwd)"
 
 die() { printf 'deploy: %s\n' "$1" >&2; exit 1; }
@@ -154,16 +156,21 @@ OWNER_HASH="$(openssl passwd -apr1 "$BASIC_AUTH_OWNER_PASSWORD")"
 CLIENT_HASH="$(openssl passwd -apr1 "$BASIC_AUTH_CLIENT_PASSWORD")"
 printf '%s:%s\n%s:%s\n' \
   "$BASIC_AUTH_OWNER_USER" "$OWNER_HASH" \
-  "$BASIC_AUTH_CLIENT_USER" "$CLIENT_HASH" > /opt/freeplast-wordpress/nginx/.htpasswd
-chmod 0640 /opt/freeplast-wordpress/nginx/.htpasswd
-chown root:www-data /opt/freeplast-wordpress/nginx/.htpasswd 2>/dev/null || true
+  "$BASIC_AUTH_CLIENT_USER" "$CLIENT_HASH" > "$STACK_DIR/nginx/.htpasswd"
+chmod 0640 "$STACK_DIR/nginx/.htpasswd"
+chown root:www-data "$STACK_DIR/nginx/.htpasswd" 2>/dev/null || true
 # nginx (www-data) must traverse the stack directory to read the htpasswd;
 # secrets stay 0600/0400 and remain unreadable at 0711 (traverse-only).
-chmod 0711 /opt/freeplast-wordpress
-sed -e "s|__TLS_CERT__|${TLS_CERT_PATH}|" -e "s|__TLS_KEY__|${TLS_KEY_PATH}|" \
-  "$INFRA_DIR/nginx/freeplast.mliu.site.conf" > /opt/freeplast-wordpress/nginx/freeplast.mliu.site.conf
-install -m 0644 /opt/freeplast-wordpress/nginx/freeplast.mliu.site.conf /etc/nginx/sites-available/freeplast.mliu.site
-ln -sfn /etc/nginx/sites-available/freeplast.mliu.site /etc/nginx/sites-enabled/freeplast.mliu.site
+chmod 0711 "$STACK_DIR"
+# Render the vhost from the single-sourced constants (staging.sh) and the
+# server's approved TLS convention — the rendered file is byte-for-byte
+# the deployed configuration (issue #16).
+sed -e "s|__TLS_CERT__|${TLS_CERT_PATH}|g" -e "s|__TLS_KEY__|${TLS_KEY_PATH}|g" \
+  -e "s|__SITE_HOSTNAME__|${SITE_HOSTNAME}|g" -e "s|__STACK_DIR__|${STACK_DIR}|g" \
+  -e "s|__LOOPBACK_PORT__|${LOOPBACK_PORT}|g" \
+  "$INFRA_DIR/nginx/staging.conf.tmpl" > "$STACK_DIR/nginx/${SITE_HOSTNAME}.conf"
+install -m 0644 "$STACK_DIR/nginx/${SITE_HOSTNAME}.conf" "/etc/nginx/sites-available/${SITE_HOSTNAME}"
+ln -sfn "/etc/nginx/sites-available/${SITE_HOSTNAME}" "/etc/nginx/sites-enabled/${SITE_HOSTNAME}"
 nginx -t
 systemctl reload nginx
 

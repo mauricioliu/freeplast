@@ -1,30 +1,30 @@
-# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).
+# Freeplast staging vhost — the approved hostname __SITE_HOSTNAME__ (issue #14).
 #
 # Rendered by deploy.sh: __TLS_CERT__ / __TLS_KEY__ are replaced with the
 # server's approved certificate paths from .env (preflight.sh verifies the
 # certificate covers the hostname first). Align TLS protocol/cipher lines
 # with the server's existing convention when recording the deployment.
 #
-# Installed as /etc/nginx/sites-available/freeplast.mliu.site plus one
+# Installed as /etc/nginx/sites-available/__SITE_HOSTNAME__ plus one
 # symlink in /etc/nginx/sites-enabled — nginx -t always runs before the
 # reload, and deploy.sh backs up the prior configuration first.
 
 server {
     listen 80;
-    server_name freeplast.mliu.site;
+    server_name __SITE_HOSTNAME__;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name freeplast.mliu.site;
+    server_name __SITE_HOSTNAME__;
 
     ssl_certificate __TLS_CERT__;
     ssl_certificate_key __TLS_KEY__;
 
     # Password-protected review surface: owner/client credentials only.
     auth_basic "Freeplast staging";
-    auth_basic_user_file /opt/freeplast-wordpress/nginx/.htpasswd;
+    auth_basic_user_file __STACK_DIR__/nginx/.htpasswd;
 
     # Staging stays non-indexed even if WordPress is ever misconfigured.
     add_header X-Robots-Tag "noindex, nofollow" always;
@@ -37,7 +37,7 @@ server {
     location ~* \.(bak|config|ini|log|orig|sh|sql|swp|tar\.gz|tgz)$ { deny all; }
 
     location / {
-        proxy_pass http://127.0.0.1:8092;
+        proxy_pass http://127.0.0.1:__LOOPBACK_PORT__;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

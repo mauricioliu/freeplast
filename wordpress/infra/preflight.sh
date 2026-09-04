@@ -16,13 +16,15 @@
 #
 # TLS convention: pass TLS_CERT_PATH/TLS_KEY_PATH in the environment
 # (deploy.sh does); with a generated stack present they are also read
-# from /opt/freeplast-wordpress/.env.
+# from the stack .env under the install root declared in staging.sh.
 set -euo pipefail
 
-SITE_HOSTNAME='freeplast.mliu.site'
-STACK_DIR='/opt/freeplast-wordpress'
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Single source of the staging constants (issue #16): hostname, install
+# root and loopback port are declared in staging.sh, not here.
+. "$INFRA_DIR/staging.sh"
+
 PROJECT='freeplast-wordpress'
-LOOPBACK_PORT='8092'
 MIN_DISK_GB='10'
 
 TLS_CERT="${TLS_CERT_PATH:-}"

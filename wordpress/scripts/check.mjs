@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#15).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#16).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -138,6 +138,14 @@
  *      deterministically into dist/ with SHA-256 checksums verified by
  *      unzip -t and sha256sum -c, and the handoff never claims visual
  *      validation.
+ *  19. The staging infrastructure constants (issue #16) are single-sourced:
+ *      the hostname, install root and loopback port are declared exactly
+ *      once in infra/staging.sh, all five shell scripts source that shared
+ *      definition instead of declaring literals, the Nginx vhost template
+ *      carries only __-placeholders that deploy.sh renders from the shared
+ *      values, and the Compose port requires the deploy-written .env value
+ *      with no fallback literal. Rendering the template with the shared
+ *      constants reproduces the deployed vhost byte-for-byte.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -4273,7 +4281,7 @@ function parseComposeYaml(text) {
 test('the isolated staging deployment is collision-checked, secret-safe and bounded before any server mutation', () => {
   const INFRA = join(WORDPRESS_DIR, 'infra');
   const read = (name) => readFileSync(join(INFRA, name), 'utf8');
-  const files = ['compose.yaml', '.env.example', 'nginx/freeplast.mliu.site.conf', 'preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh', 'rollback.sh'];
+  const files = ['staging.sh', 'compose.yaml', '.env.example', 'nginx/staging.conf.tmpl', 'preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh', 'rollback.sh'];
 
   /* Every artifact exists, is newline-terminated and carries no unfinished-work markers. */
   for (const name of files) {
@@ -4312,8 +4320,8 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   assert.match(wp.image, /^wordpress:\d/, 'WordPress is a pinned multi-arch release');
   assert.deepEqual(
     wp.ports,
-    ['127.0.0.1:${FREEPLAST_LOOPBACK_PORT:-8092}:80'],
-    'origin HTTP is published to loopback only (host Nginx terminates TLS)'
+    ['127.0.0.1:${FREEPLAST_LOOPBACK_PORT:?set in .env by deploy.sh}:80'],
+    'origin HTTP is published to loopback only, taking the single-sourced port from .env (host Nginx terminates TLS)'
   );
   assert.ok(wp.volumes.includes('wp_data:/var/www/html'), 'WordPress persists into a private named volume');
   assert.equal(wp.depends_on.db.condition, 'service_healthy', 'WordPress waits for a healthy database');
@@ -4362,19 +4370,19 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
 
   /* 3. The Nginx vhost proxies only the approved hostname with owner/client
      Basic Auth and staging noindex, following the TLS convention. */
-  const vhost = read('nginx/freeplast.mliu.site.conf');
+  const vhost = read('nginx/staging.conf.tmpl');
   const serverBlocks = vhost.split(/^server\s*\{/m);
   assert.equal(serverBlocks.length, 3, 'exactly the HTTP-redirect and HTTPS server blocks');
   const names = vhost.match(/server_name\s+([^;]+);/g) || [];
-  assert.deepEqual(names, ['server_name freeplast.mliu.site;', 'server_name freeplast.mliu.site;'], 'only the approved hostname is proxied (collision discipline)');
+  assert.deepEqual(names, ['server_name __SITE_HOSTNAME__;', 'server_name __SITE_HOSTNAME__;'], 'only the approved hostname is proxied (collision discipline)');
   assert.ok(/listen 80;/.test(vhost) && /return 301 https:\/\/\$host\$request_uri;/.test(vhost), 'plain HTTP redirects to HTTPS');
   assert.ok(/listen 443 ssl;/.test(vhost), 'the review surface is TLS');
   assert.ok(/ssl_certificate __TLS_CERT__;/.test(vhost) && /ssl_certificate_key __TLS_KEY__;/.test(vhost), 'TLS paths render from the server convention at deploy time');
   assert.ok(/auth_basic "Freeplast staging";/.test(vhost), 'owner/client Basic Auth protects the review surface');
-  assert.ok(/auth_basic_user_file \/opt\/freeplast-wordpress\/nginx\/.htpasswd;/.test(vhost), 'the htpasswd lives inside the stack directory');
+  assert.ok(/auth_basic_user_file __STACK_DIR__\/nginx\/.htpasswd;/.test(vhost), 'the htpasswd lives inside the stack directory');
   assert.ok(/add_header X-Robots-Tag "noindex, nofollow" always;/.test(vhost), 'Nginx-level noindex backs up the WordPress setting');
   assert.ok(/client_max_body_size 64m;/.test(vhost), 'an explicit upload limit for WordPress media');
-  assert.ok(/proxy_pass http:\/\/127\.0\.0\.1:8092;/.test(vhost), 'the proxy targets the loopback-only origin');
+  assert.ok(/proxy_pass http:\/\/127\.0\.0\.1:__LOOPBACK_PORT__;/.test(vhost), 'the proxy targets the loopback-only origin');
   assert.ok(/proxy_set_header X-Forwarded-Proto https;/.test(vhost) && /proxy_set_header Host \$host;/.test(vhost), 'the forwarded chain carries Host and HTTPS scheme');
   assert.ok(vhost.includes('location ~ /\\. { deny all; }'), 'dotfiles are denied at Nginx');
   const listens = [...vhost.matchAll(/^\s*listen\s+([^;]+);/gm)].map((m) => m[1]);
@@ -4432,7 +4440,7 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   assert.ok(deploy.includes('catalog sync --file=/bundle/catalog/products.json'), 'the reviewed Catalog Source synchronizes');
   assert.ok(deploy.includes('created=0 updated=0') && deploy.includes('errors=0'), 'a repeated dry run must report zero changes or deployment fails');
   assert.ok(
-    deploy.indexOf('nginx-sites-available.pre-freeplast') < deploy.indexOf('sites-available/freeplast.mliu.site'),
+    deploy.indexOf('nginx-sites-available.pre-freeplast') < deploy.indexOf('sites-available/${SITE_HOSTNAME}'),
     'Nginx is backed up before the new vhost exists'
   );
   assert.ok(deploy.indexOf('nginx -t') < deploy.indexOf('systemctl reload nginx'), 'nginx -t validates before reload');
@@ -4477,7 +4485,7 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
 
   /* 8. rollback.sh is bounded to the new resources. */
   const rollback = read('rollback.sh');
-  assert.ok(rollback.includes('sites-enabled/freeplast.mliu.site') && rollback.includes('rm -f'), 'rollback removes only the approved-hostname vhost');
+  assert.ok(rollback.includes('sites-enabled/${SITE_HOSTNAME}') && rollback.includes('rm -f'), 'rollback removes only the approved-hostname vhost');
   assert.ok(rollback.indexOf('nginx -t') < rollback.indexOf('systemctl reload nginx'), 'nginx -t validates before reload');
   assert.ok(rollback.includes('freeplast-wordpress') && rollback.includes('--purge-volumes'), 'the rollback targets only the new Compose project');
   assert.ok(!rollback.match(/docker compose[^\n]*down[^\n]*-v/) || rollback.includes('--purge-volumes'), 'volumes are retained unless the owner explicitly purges');
@@ -4496,15 +4504,20 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
     assert.ok(deployment.includes(needle), `DEPLOYMENT.md must record ${needle}`);
   }
 
-  /* 10. Cross-file consistency: one port, one stack path, one htpasswd path. */
-  for (const text of [composeText, vhost, deployment]) {
-    assert.ok(text.includes('8092'), 'the loopback port must agree across compose, vhost and the record');
-  }
-  assert.equal((vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:8092;/g) || []).length, 1, 'exactly one proxy target');
+  /* 10. Cross-file consistency: the staging constants are single-sourced in
+     staging.sh (issue #16); DEPLOYMENT.md records the deployed values. */
+  assert.ok(deployment.includes('8092'), 'DEPLOYMENT.md records the deployed loopback port');
+  assert.equal((vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:__LOOPBACK_PORT__;/g) || []).length, 1, 'exactly one proxy target');
+  const sharedDefinition = read('staging.sh');
   for (const text of [preflight, deploy, verify, backup, rollback]) {
-    assert.ok(text.includes("STACK_DIR='/opt/freeplast-wordpress'") || text.includes('STACK_DIR="/opt/freeplast-wordpress"'), 'every script agrees on the stack directory');
+    assert.ok(text.includes('. "$INFRA_DIR/staging.sh"'), 'every script sources the shared staging constants');
+    assert.ok(!text.includes("STACK_DIR='"), 'no script redeclares the stack directory');
   }
-  assert.ok(deploy.includes('/opt/freeplast-wordpress/nginx/.htpasswd'), 'deploy.sh writes the exact htpasswd path the vhost reads');
+  assert.ok(sharedDefinition.includes("STACK_DIR='/opt/freeplast-wordpress'"), 'staging.sh declares the stack directory once');
+  assert.ok(
+    deploy.includes('"$STACK_DIR/nginx/.htpasswd"') && vhost.includes('__STACK_DIR__/nginx/.htpasswd;'),
+    'deploy.sh writes the exact htpasswd path the vhost reads'
+  );
 
   section('Isolated staging deployment artifacts (issue #14)', [
     'Compose stack: dedicated freeplast-wordpress project, MariaDB healthcheck, private named volumes (db_data, wp_data), loopback-only origin 127.0.0.1:8092, profile-gated WP-CLI sidecar, no literal secrets (all .env references)',
@@ -4768,11 +4781,114 @@ test('the verification and operations handoff packages the build for independent
   ]);
 });
 
+/* ─── 23d. Single-sourced staging constants (issue #16) ───────────── */
+
+/** The deployed vhost, rendered exactly as it stands on the server since
+ * the issue #14 operator run (TLS paths per DEPLOYMENT.md §Post-deploy
+ * records). The issue #16 template must reproduce these bytes. */
+const DEPLOYED_VHOST = "# Freeplast staging vhost — the approved hostname freeplast.mliu.site (issue #14).\n#\n# Rendered by deploy.sh: /etc/nginx/ssl/mliu.site/fullchain.pem / /etc/nginx/ssl/mliu.site/key.pem are replaced with the\n# server's approved certificate paths from .env (preflight.sh verifies the\n# certificate covers the hostname first). Align TLS protocol/cipher lines\n# with the server's existing convention when recording the deployment.\n#\n# Installed as /etc/nginx/sites-available/freeplast.mliu.site plus one\n# symlink in /etc/nginx/sites-enabled — nginx -t always runs before the\n# reload, and deploy.sh backs up the prior configuration first.\n\nserver {\n    listen 80;\n    server_name freeplast.mliu.site;\n    return 301 https://$host$request_uri;\n}\n\nserver {\n    listen 443 ssl;\n    server_name freeplast.mliu.site;\n\n    ssl_certificate /etc/nginx/ssl/mliu.site/fullchain.pem;\n    ssl_certificate_key /etc/nginx/ssl/mliu.site/key.pem;\n\n    # Password-protected review surface: owner/client credentials only.\n    auth_basic \"Freeplast staging\";\n    auth_basic_user_file /opt/freeplast-wordpress/nginx/.htpasswd;\n\n    # Staging stays non-indexed even if WordPress is ever misconfigured.\n    add_header X-Robots-Tag \"noindex, nofollow\" always;\n\n    client_max_body_size 64m;\n\n    # Defense in depth: dotfiles and sensitive backup/config extensions.\n    location ~ /\\. { deny all; }\n    location ~* /(wp-config\\.php|readme\\.html|license\\.txt)(/|$) { deny all; }\n    location ~* \\.(bak|config|ini|log|orig|sh|sql|swp|tar\\.gz|tgz)$ { deny all; }\n\n    location / {\n        proxy_pass http://127.0.0.1:8092;\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto https;\n        proxy_set_header X-Forwarded-Host $host;\n        proxy_read_timeout 120s;\n    }\n}\n";
+
+test('the staging hostname, install root and loopback port are single-sourced in infra (issue #16)', () => {
+  const INFRA = join(WORDPRESS_DIR, 'infra');
+  const read = (name) => readFileSync(join(INFRA, name), 'utf8');
+  const scripts = ['preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh', 'rollback.sh'];
+  const CONSTANTS = [
+    ['SITE_HOSTNAME', 'freeplast.mliu.site'],
+    ['STACK_DIR', '/opt/freeplast-wordpress'],
+    ['LOOPBACK_PORT', '8092'],
+  ];
+
+  const shared = read('staging.sh');
+  assert.ok(shared.endsWith('\n'), 'staging.sh must end with a newline');
+  assert.ok(!/TODO|FIXME/.test(shared), 'staging.sh must not ship unfinished-work markers');
+  const lint = spawnSync('bash', ['-n', join(INFRA, 'staging.sh')], { encoding: 'utf8' });
+  assert.equal(lint.status, 0, `bash -n staging.sh: ${lint.stderr}`);
+
+  /* 1. staging.sh declares each constant exactly once; sourcing it is
+     silent and exposes exactly those values. */
+  for (const [name, value] of CONSTANTS) {
+    assert.deepEqual(
+      shared.split('\n').filter((line) => line.startsWith(`${name}=`)).map((line) => line.replace(/\s+#.*$/, '')),
+      [`${name}='${value}'`],
+      `staging.sh declares ${name} exactly once`
+    );
+  }
+  const sourced = spawnSync(
+    'bash',
+    ['-c', '. "$1" && printf \'%s\\n\' "$SITE_HOSTNAME" "$STACK_DIR" "$LOOPBACK_PORT"', 'staging.sh', join(INFRA, 'staging.sh')],
+    { encoding: 'utf8' }
+  );
+  assert.equal(sourced.status, 0, `sourcing staging.sh: ${sourced.stderr}`);
+  assert.equal(sourced.stdout, `${CONSTANTS.map(([, value]) => value).join('\n')}\n`, 'sourcing exposes exactly the declared values');
+  assert.equal(sourced.stderr, '', 'sourcing staging.sh prints nothing');
+
+  /* 2. All five shell scripts source the shared definition and declare no
+     constant literals of their own. */
+  for (const name of scripts) {
+    const text = read(name);
+    assert.ok(text.includes('. "$INFRA_DIR/staging.sh"'), `${name} sources the shared definition`);
+    for (const [key] of CONSTANTS) {
+      assert.ok(!text.includes(`${key}='`), `${name} must not redeclare ${key}`);
+    }
+  }
+
+  /* 3. Each value literal appears exactly once across all of infra — in
+     staging.sh (a staging host or port change is a one-place edit). */
+  const infraFiles = ['staging.sh', ...scripts, 'compose.yaml', '.env.example', 'nginx/staging.conf.tmpl'];
+  for (const [, value] of CONSTANTS) {
+    const hits = infraFiles
+      .map((name) => ({ name, count: read(name).split(value).length - 1 }))
+      .filter((h) => h.count > 0);
+    assert.equal(hits.reduce((sum, h) => sum + h.count, 0), 1, `${value} must appear exactly once in infra`);
+    assert.deepEqual(hits.map((h) => h.name), ['staging.sh'], `${value} must be declared only in staging.sh`);
+  }
+
+  /* 4. The vhost template carries only placeholders (comments included) and
+     deploy.sh renders all five of them. */
+  const vhost = read('nginx/staging.conf.tmpl');
+  const deploy = read('deploy.sh');
+  for (const placeholder of ['__SITE_HOSTNAME__', '__STACK_DIR__', '__LOOPBACK_PORT__', '__TLS_CERT__', '__TLS_KEY__']) {
+    assert.ok(vhost.includes(placeholder), `the vhost template carries ${placeholder}`);
+    assert.ok(deploy.includes(`s|${placeholder}|`), `deploy.sh renders ${placeholder}`);
+  }
+
+  /* 5. Strictly behavior-preserving: rendering the template with the shared
+     constants and the deployed TLS convention reproduces the deployed vhost
+     byte-for-byte. */
+  let rendered = vhost;
+  for (const [placeholder, value] of [
+    ['__SITE_HOSTNAME__', 'freeplast.mliu.site'],
+    ['__STACK_DIR__', '/opt/freeplast-wordpress'],
+    ['__LOOPBACK_PORT__', '8092'],
+    ['__TLS_CERT__', '/etc/nginx/ssl/mliu.site/fullchain.pem'],
+    ['__TLS_KEY__', '/etc/nginx/ssl/mliu.site/key.pem'],
+  ]) {
+    rendered = rendered.split(placeholder).join(value);
+  }
+  assert.equal(rendered, DEPLOYED_VHOST, 'the rendered vhost is byte-identical to the deployed configuration');
+
+  /* 6. The Compose port takes the deploy-written .env value with no fallback
+     literal, resolving to the deployed loopback-only mapping. */
+  const portLine = read('compose.yaml').split('\n').find((line) => line.includes('FREEPLAST_LOOPBACK_PORT'));
+  assert.equal(
+    portLine?.trim(),
+    '- "127.0.0.1:${FREEPLAST_LOOPBACK_PORT:?set in .env by deploy.sh}:80"',
+    'the compose port requires the .env value (fail-loud) and resolves to 127.0.0.1:<port>→80'
+  );
+  assert.ok(!portLine.includes('8092'), 'the compose port line carries no literal');
+
+  section('Single-sourced staging constants (issue #16)', [
+    'infra/staging.sh declares the hostname, install root and loopback port exactly once; every script sources it and no other infra file repeats the literals (one-place edit)',
+    'nginx/staging.conf.tmpl carries only __-placeholders that deploy.sh renders from the shared values and the TLS convention; the render is byte-identical to the deployed vhost',
+    'The Compose port drops its fallback literal and takes the deploy-written .env value (fail-loud); DEPLOYMENT.md records the deployed values and the re-run expectation',
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff (issues #2–#15)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants (issues #2–#16)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -4874,6 +4990,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
     'Shipped artifacts (issue #15): theme freeplast 0.8.0 and plugin freeplast-catalog-quotes 0.8.0 recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)',
     'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',
+    'Staging constants single-sourced (issue #16): hostname, install root and loopback port declared exactly once in infra/staging.sh; all five scripts source it; the Nginx vhost template renders from it byte-identically to the deployed configuration; the Compose port takes the deploy-written .env value with no fallback literal',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -4898,6 +5015,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
     `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
     `- The verification and operations handoff (issue #15) is wordpress/HANDOFF.md: it records where every verification dimension lives (including the on-server infrastructure/Nginx/browser-console steps that remain operator actions), the 17→17 catalog reconciliation with per-Product provisional facts, the Quote Request acceptance matrix with reproduction pointers, mechanical accessibility observations explicitly labelled as not human approval, the reproducible operator procedures, the Gate 3 review URLs and the exact pending owner/client actions. The shipped theme/plugin ZIPs and their SHA-256 manifest in dist/ are rebuilt deterministically by every npm test run and verified with unzip -t; nothing in the handoff claims visual validation.`,
+    `- The staging constants (issue #16) are single-sourced in infra/staging.sh and proven strictly behavior-preserving: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the deployed configuration from the issue #14 operator run; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-run (deploy.sh existing-stack path must be a no-op; verify.sh must still report “verification clean”) is recorded in DEPLOYMENT.md as the next on-server step.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

@@ -14,10 +14,13 @@
 # are never touched.
 set -euo pipefail
 
-SITE_HOSTNAME='freeplast.mliu.site'
-STACK_DIR='/opt/freeplast-wordpress'
-VHOST='/etc/nginx/sites-available/freeplast.mliu.site'
-ENABLED='/etc/nginx/sites-enabled/freeplast.mliu.site'
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Single source of the staging constants (issue #16): hostname, install
+# root and loopback port are declared in staging.sh, not here.
+. "$INFRA_DIR/staging.sh"
+
+VHOST="/etc/nginx/sites-available/${SITE_HOSTNAME}"
+ENABLED="/etc/nginx/sites-enabled/${SITE_HOSTNAME}"
 
 if [[ "${1:-}" == '--purge-volumes' ]]; then
   read -r -p 'Type "delete freeplast volumes" to also remove the named volumes: ' reply

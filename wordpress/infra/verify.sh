@@ -10,8 +10,10 @@
 # non-zero on any mismatch. Prints no secret values.
 set -euo pipefail
 
-SITE_HOSTNAME='freeplast.mliu.site'
-STACK_DIR='/opt/freeplast-wordpress'
+INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Single source of the staging constants (issue #16): hostname, install
+# root and loopback port are declared in staging.sh, not here.
+. "$INFRA_DIR/staging.sh"
 
 cd "$STACK_DIR"
 set -a

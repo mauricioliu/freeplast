@@ -6,6 +6,46 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #16: single-source the staging infrastructure constants
+
+The staging hostname, install root and loopback port lived as literals in
+every infra script, the Nginx vhost, the compose file and the env example.
+They are now declared exactly once in `wordpress/infra/staging.sh`.
+Decisions:
+
+1. **One shared definition, sourced everywhere.** preflight/deploy/
+   verify/backup/rollback source `infra/staging.sh` and declare no
+   hostname/stack-dir/port literals of their own; rollback derives the
+   vhost paths from `$SITE_HOSTNAME`. `PROJECT` and `BACKUP_ROOT` stay
+   per-script — they are not part of the contracted trio.
+2. **Templates receive the values.** The vhost is now
+   `nginx/staging.conf.tmpl`: every hostname/stack-dir/port occurrence —
+   comments included — is a `__`-placeholder rendered by deploy.sh's sed
+   alongside the existing TLS placeholders, so the rendered file is
+   byte-for-byte the deployed vhost. compose.yaml drops the `:-8092`
+   fallback: the port is `${FREEPLAST_LOOPBACK_PORT:?…}`, written into
+   `.env` by deploy.sh from staging.sh. Interpolation fails loudly without
+   a value; the no-`.env` rollback branch could not interpolate the
+   credentialed compose file before either, so no working path changes.
+3. **Mechanically proven behavior-preserving.** check.mjs renders the
+   template with the shared constants plus the recorded TLS convention and
+   compares it byte-for-byte against the deployed vhost of the issue #14
+   operator run; a scan asserts each value literal appears exactly once
+   across infra (plus the name-only declarations in `.env.example`). The
+   on-server re-run — existing-stack deploy must be a no-op and verify.sh
+   must still report "verification clean" — stays the recorded operator
+   step (DEPLOYMENT.md).
+
+Files: wordpress/infra/ (new staging.sh;
+nginx/freeplast.mliu.site.conf → nginx/staging.conf.tmpl; all five
+scripts, compose.yaml, .env.example), scripts (check.mjs issue #16
+section + updated issue #14 assertions + VERIFICATION rows), docs
+(DEPLOYMENT.md, README, BUILD-DECISIONS).
+
+Notes for next iteration: the on-server re-run (deploy.sh existing-stack
+no-op + verify.sh "verification clean") is recorded in DEPLOYMENT.md as
+the operator step.
+
 ## 2026-09-04 — Issue #15: verification and operations handoff
 
 The completed build is packaged for independent operation and human

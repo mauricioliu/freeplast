@@ -26,6 +26,13 @@ On-server fixes from the operator run (source patched, re-deploy safe):
 
 ## Approved resources (all collision-checked by `infra/preflight.sh`)
 
+The hostname, stack directory and loopback port below are declared exactly
+once, in `infra/staging.sh` (issue #16): every script sources that shared
+definition, deploy.sh renders the vhost template
+(`nginx/staging.conf.tmpl`) from it, and Compose reads the port back from
+the deploy-written `.env` — a staging host or port change is a one-place
+edit. This table remains the record of the values as deployed.
+
 | Resource | Value |
 | --- | --- |
 | Hostname | `freeplast.mliu.site` (PRD §Staging; DNS must resolve to OpenClaw — preflight check 9) |
@@ -36,7 +43,7 @@ On-server fixes from the operator run (source patched, re-deploy safe):
 | WordPress volume | `freeplast-wordpress_wp_data` (private named volume) |
 | Network | `freeplast-wordpress_freeplast` (project-scoped bridge) |
 | Images | `mariadb:11.4`, `wordpress:7.1-php8.3-apache`, `wordpress:cli-php8.3` (multi-arch, ARM64 host — digests in §Post-deploy records) |
-| Nginx vhost | `/etc/nginx/sites-available/freeplast.mliu.site` + symlink in `sites-enabled/` |
+| Nginx vhost | `/etc/nginx/sites-available/freeplast.mliu.site` + symlink in `sites-enabled/` (rendered from `infra/nginx/staging.conf.tmpl`) |
 | htpasswd | `/opt/freeplast-wordpress/nginx/.htpasswd` (0640, root:www-data; rendered by deploy.sh) |
 | TLS | the server's approved convention — paths supplied through `.env` (`TLS_CERT_PATH`/`TLS_KEY_PATH`); preflight verifies the certificate covers the hostname and is not near expiry; the wildcard covering `*.mliu.site` is the expected form |
 | Backups | `/root/freeplast-wordpress-backups/<UTC-stamp>/` + `/root/nginx-sites-available.pre-freeplast-<UTC-stamp>` (Nginx pre-change backup) |
@@ -142,6 +149,13 @@ Compose projects and the static proposals are untouched. Named volumes,
 the owner explicitly approves deletion.
 
 ## Post-deploy records (filled 2026-09-04, operator run by pi agent)
+
+Issue #16 single-sourcing re-run (pending, operator step): after the
+constants were moved into `infra/staging.sh`, the next `deploy.sh` run on
+the server must take the existing-stack path as a no-op (same secrets, same
+resolved Compose configuration — the loopback mapping is unchanged) and
+`verify.sh` must still report `verification clean`. The rendered vhost is
+proven byte-identical by `npm test`.
 
 - [x] Preflight output: all checks `ok`, baseline recorded —
       `/root/freeplast-wordpress-backups/preflight-20260904T102325Z.txt`
