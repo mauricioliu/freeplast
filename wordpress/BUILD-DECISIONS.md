@@ -39,10 +39,10 @@ Decisions:
    digests are re-recorded in VERIFICATION.md on every run (RUNBOOK §8).
 
 4. **The acceptance matrix and accessibility observations point at their
-   evidence.** Each Quote Request matrix row (JavaScript on/off, one/
-multiple Products, options, failures, idempotency, Google fallback,
-   emails, admin state) names its VERIFICATION.md row and its manual
-   staging reproduction; the keyboard/focus/error/reduced-motion/
+   evidence.** Each Quote Request matrix row (JavaScript on/off,
+   one/multiple Products, options, failures, idempotency, Google
+   fallback, emails, admin state) names its VERIFICATION.md row and its
+   manual staging reproduction; the keyboard/focus/error/reduced-motion/
    responsive results are labelled mechanical observations, not human
    approval, and the Gate 3 review URLs sit beside the frozen v6/v7-A
    references with the exact pending owner/client actions.

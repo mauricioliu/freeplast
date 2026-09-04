@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#14).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#15).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #13 (including
+ * verifies the acceptance criteria of issues #2 through #15 (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -4520,10 +4520,17 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
 
 /* ─── 23c. Verification and operations handoff (issue #15) ───────── */
 
+/** Compare Dirent entries by name (code-point order) for deterministic packaging. */
+function byName(a, b) {
+  if (a.name < b.name) return -1;
+  if (a.name > b.name) return 1;
+  return 0;
+}
+
 /** Walk one shipped artifact into sorted (name, bytes) pairs — deterministic. */
 function collectShippedFiles(dir, root) {
   const out = [];
-  const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const entries = readdirSync(dir, { withFileTypes: true }).sort(byName);
   for (const entry of entries) {
     const name = root ? `${root}/${entry.name}` : entry.name;
     if (entry.isDirectory()) out.push(...collectShippedFiles(join(dir, entry.name), name));
@@ -4634,14 +4641,13 @@ test('the verification and operations handoff packages the build for independent
   const pluginFiles = collectShippedFiles(PLUGIN_DIR, 'freeplast-catalog-quotes');
   assert.ok(themeFiles.length >= 8, `the theme ZIP must ship the complete theme (${themeFiles.length} files)`);
   assert.ok(pluginFiles.length >= 10, `the plugin ZIP must ship the complete plugin (${pluginFiles.length} files)`);
-  const shipped = [...themeFiles, ...pluginFiles];
   const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 
   const dist = join(WORDPRESS_DIR, 'dist');
   mkdirSync(dist, { recursive: true });
   const zips = [
-    { name: `freeplast-theme-${themeVersion}.zip`, files: themeFiles, source: 'themes' },
-    { name: `freeplast-catalog-quotes-plugin-${pluginVersion}.zip`, files: pluginFiles, source: 'plugins' },
+    { name: `freeplast-theme-${themeVersion}.zip`, files: themeFiles },
+    { name: `freeplast-catalog-quotes-plugin-${pluginVersion}.zip`, files: pluginFiles },
   ];
   const manifest = [
     '# Freeplast shipped artifacts — SHA-256 checksums (issue #15).',
@@ -4661,19 +4667,21 @@ test('the verification and operations handoff packages the build for independent
     assert.equal(probe.status, 0, `unzip -t dist/${zip.name}: ${probe.stdout || ''}${probe.stderr || ''}`);
     assert.ok(/No errors detected/.test(probe.stdout), `unzip -t must report a sound archive: ${probe.stdout}`);
   }
-  for (const file of shipped) {
-    /* Per-file paths stay relative to dist/ so `sha256sum -c` verifies the
-       real repository files, not just the packages. */
-    const prefix = file.name.startsWith('freeplast/') ? '../wp-content/themes/' : '../wp-content/plugins/';
-    manifest.push(`${sha256(file.data)}  ${prefix}${file.name}`);
+  /* Per-file manifest paths stay relative to dist/ so `sha256sum -c`
+     verifies the real repository files, not just the packages. */
+  for (const file of themeFiles) {
+    manifest.push(`${sha256(file.data)}  ../wp-content/themes/${file.name}`);
+  }
+  for (const file of pluginFiles) {
+    manifest.push(`${sha256(file.data)}  ../wp-content/plugins/${file.name}`);
   }
   writeFileSync(join(dist, 'CHECKSUMS.sha256'), manifest.join('\n') + '\n');
   const verify = spawnSync('sha256sum', ['-c', 'CHECKSUMS.sha256'], { cwd: dist, encoding: 'utf8' });
   assert.equal(verify.status, 0, `sha256sum -c CHECKSUMS.sha256: ${verify.stdout || ''}${verify.stderr || ''}`);
-  checksumLines.push(`Per-file manifest: dist/CHECKSUMS.sha256 — ${shipped.length} shipped files with SHA-256 checksums (sha256sum -c from dist/ verifies both packages and sources)`);
+  checksumLines.push(`Per-file manifest: dist/CHECKSUMS.sha256 — ${themeFiles.length + pluginFiles.length} shipped files with SHA-256 checksums (sha256sum -c from dist/ verifies both packages and sources)`);
 
   /* 2. The handoff records the artifact versions and checksum location. */
-  for (const needle of [themeVersion, pluginVersion, 'CHECKSUMS.sha256', zips[0].name, zips[1].name, 'SHA-256', 'dist/']) {
+  for (const needle of [themeVersion, pluginVersion, 'CHECKSUMS.sha256', ...zips.map((zip) => zip.name), 'SHA-256', 'dist/']) {
     assert.ok(covers(needle), `HANDOFF.md must record the artifact identity: ${needle}`);
   }
 
@@ -4716,7 +4724,7 @@ test('the verification and operations handoff packages the build for independent
     assert.ok(covers(needle), `HANDOFF.md §4 must record the mechanical observation: ${needle}`);
   }
   assert.ok(
-    flat.match(/mechanical observations, not human approval/g) !== null,
+    flat.includes('mechanical observations, not human approval'),
     'the accessibility record must explicitly deny human approval'
   );
   assert.ok(!/visually approved|visual approval (is |has )?(complete|recorded|granted)/i.test(flat), 'the handoff must not claim visual validation');
