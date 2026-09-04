@@ -291,6 +291,35 @@ class Freeplast_CQ_Request {
 		return ( $plus ? '+' : '' ) . $digits;
 	}
 
+	/**
+	 * The correctable current-contact copy (issue #9), derived from the
+	 * Submitted Details: the contact fields under their stored keys plus
+	 * the normalized telephone. One definition shared by the submission,
+	 * the migration 7 backfill and the sales corrections.
+	 */
+	public static function current_contact_copy( array $customer ): array {
+		return array(
+			'nombre'               => (string) ( $customer['nombre'] ?? '' ),
+			'telefono'             => (string) ( $customer['telefono'] ?? '' ),
+			'telefono_normalizado' => self::normalized_phone( (string) ( $customer['telefono'] ?? '' ) ),
+			'email'                => (string) ( $customer['email'] ?? '' ),
+			'empresa'              => (string) ( $customer['empresa'] ?? '' ),
+			'rut'                  => (string) ( $customer['rut'] ?? '' ),
+			'giro'                 => (string) ( $customer['giro'] ?? '' ),
+			'direccion_despacho'   => (string) ( $customer['direccion_despacho'] ?? '' ),
+		);
+	}
+
+	/**
+	 * Encode one fp_quote metadata value. Slashes and unicode stay
+	 * unescaped so the stored form is stable: update_post_meta()
+	 * unslashes scalar values, so escaped forms would not round-trip
+	 * byte for byte.
+	 */
+	public static function encode_meta( array $value ): string {
+		return (string) wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Persistence                                                         */
 	/* ------------------------------------------------------------------ */
@@ -322,16 +351,7 @@ class Freeplast_CQ_Request {
 		/* The correctable current contact details start as a copy of the
 		   submitted ones (issue #9); the denormalized empresa/email columns
 		   feed the Cotizaciones list sort/search and follow corrections. */
-		$current = array(
-			'nombre'               => $customer['nombre'],
-			'telefono'             => $customer['telefono'],
-			'telefono_normalizado' => $customer['telefono_normalizado'],
-			'email'                => $customer['email'],
-			'empresa'              => $customer['empresa'],
-			'rut'                  => $customer['rut'],
-			'giro'                 => $customer['giro'],
-			'direccion_despacho'   => $customer['direccion_despacho'],
-		);
+		$current = self::current_contact_copy( $customer );
 
 		$history = array(
 			array(
@@ -357,12 +377,12 @@ class Freeplast_CQ_Request {
 					'meta_input'  => array(
 						'_fpq_reference'   => $reference,
 						'_fpq_status'      => 'new',
-						'_fpq_customer'    => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-						'_fpq_items'       => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-						'_fpq_current'     => wp_json_encode( $current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_customer'    => self::encode_meta( $customer ),
+						'_fpq_items'       => self::encode_meta( $items ),
+						'_fpq_current'     => self::encode_meta( $current ),
 						'_fpq_empresa'     => $current['empresa'],
 						'_fpq_email'       => $current['email'],
-						'_fpq_history'     => wp_json_encode( $history, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_history'     => self::encode_meta( $history ),
 						'_fpq_idempotency' => $idempotency,
 						'_fpq_session'     => $session['hash'],
 					),
@@ -725,5 +745,4 @@ class Freeplast_CQ_Request {
 			$inline
 		);
 	}
-
 }

@@ -57,6 +57,22 @@ class Freeplast_CQ_Admin {
 	/** The Request Status vocabulary (see the PRD). */
 	public const STATUSES = array( 'new', 'contacted', 'quoted', 'won', 'lost', 'cancelled' );
 
+	/** Spanish display labels of the Request Status vocabulary. */
+	private const STATUS_LABELS = array(
+		'new'       => 'nueva',
+		'contacted' => 'contactada',
+		'quoted'    => 'cotizada',
+		'won'       => 'ganada',
+		'lost'      => 'perdida',
+		'cancelled' => 'cancelada',
+	);
+
+	/** Forward ranks — won and lost share the terminal rank. */
+	private const STATUS_RANKS = array( 'new' => 0, 'contacted' => 1, 'quoted' => 2, 'won' => 3, 'lost' => 3 );
+
+	/** The statuses that leave only through the explicit reopen operation. */
+	private const TERMINAL_STATUSES = array( 'won', 'lost', 'cancelled' );
+
 	private const MAX_NOTE = 2000;
 
 	/** The correctable contact fields: form key => stored current key. */
@@ -117,25 +133,16 @@ class Freeplast_CQ_Admin {
 	/* ------------------------------------------------------------------ */
 
 	private static function status_label( string $status ): string {
-		$labels = array(
-			'new'       => 'nueva',
-			'contacted' => 'contactada',
-			'quoted'    => 'cotizada',
-			'won'       => 'ganada',
-			'lost'      => 'perdida',
-			'cancelled' => 'cancelada',
-		);
-		return $labels[ $status ] ?? $status;
+		return self::STATUS_LABELS[ $status ] ?? $status;
 	}
 
 	/** The forward rank of a status (won/lost share the terminal rank). */
 	private static function status_rank( string $status ): int {
-		$ranks = array( 'new' => 0, 'contacted' => 1, 'quoted' => 2, 'won' => 3, 'lost' => 3 );
-		return $ranks[ $status ] ?? -1;
+		return self::STATUS_RANKS[ $status ] ?? -1;
 	}
 
 	private static function is_terminal( string $status ): bool {
-		return in_array( $status, array( 'won', 'lost', 'cancelled' ), true );
+		return in_array( $status, self::TERMINAL_STATUSES, true );
 	}
 
 	/**
@@ -190,7 +197,7 @@ class Freeplast_CQ_Admin {
 	private static function append_history( int $post_id, array $event ): void {
 		$history   = self::json_meta( $post_id, '_fpq_history' );
 		$history[] = $event;
-		update_post_meta( $post_id, '_fpq_history', wp_json_encode( $history, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post_id, '_fpq_history', Freeplast_CQ_Request::encode_meta( $history ) );
 	}
 
 	/** The acting staff identity (user id + display name). */
@@ -229,6 +236,20 @@ class Freeplast_CQ_Admin {
 		return '' !== $nonce && false !== wp_verify_nonce( $nonce, 'fp-quote-' . $verb . '-' . $post->ID );
 	}
 
+	/**
+	 * The guard shared by every state-changing operation: capability,
+	 * fp_quote record, then the per-object nonce — a bad nonce redirects
+	 * back to the detail (which exits) and never falls through.
+	 */
+	private static function guarded_post( string $verb, string $nonce_field ): WP_Post {
+		self::require_capability();
+		$post = self::require_post();
+		if ( ! self::verified_nonce( $post, $verb, $nonce_field ) ) {
+			self::redirect_detail( $post->ID, 'nonce' );
+		}
+		return $post;
+	}
+
 	private static function redirect_detail( int $post_id, string $code ): void {
 		wp_safe_redirect(
 			add_query_arg(
@@ -245,11 +266,7 @@ class Freeplast_CQ_Admin {
 	/* ------------------------------------------------------------------ */
 
 	public static function handle_update_contact(): void {
-		self::require_capability();
-		$post = self::require_post();
-		if ( ! self::verified_nonce( $post, 'contact', 'fp_contact_nonce' ) ) {
-			self::redirect_detail( $post->ID, 'nonce' );
-		}
+		$post = self::guarded_post( 'contact', 'fp_contact_nonce' );
 
 		$validated = self::validated_contact();
 		if ( array() !== $validated['errors'] ) {
@@ -258,16 +275,14 @@ class Freeplast_CQ_Admin {
 		}
 		$values = $validated['values'];
 
-		$current = array(
-			'nombre'               => $values['nombre'],
-			'telefono'             => $values['telefono'],
-			'telefono_normalizado' => Freeplast_CQ_Request::normalized_phone( $values['telefono'] ),
-			'email'                => $values['email'],
-			'empresa'              => $values['empresa'],
-			'rut'                  => $values['rut'],
-			'giro'                 => $values['giro'],
-			'direccion_despacho'   => $values['direccion'],
-		);
+		/* The canonical current copy, one shared shape: the corrected values
+		   renamed onto their stored keys (CONTACT_KEYS), then derived through
+		   Freeplast_CQ_Request::current_contact_copy. */
+		$corrected = array();
+		foreach ( self::CONTACT_KEYS as $form_key => $stored_key ) {
+			$corrected[ $stored_key ] = $values[ $form_key ];
+		}
+		$current = Freeplast_CQ_Request::current_contact_copy( $corrected );
 
 		/* Which stored fields actually change (names only — the history
 		   never copies values). */
@@ -279,7 +294,7 @@ class Freeplast_CQ_Admin {
 			}
 		}
 
-		update_post_meta( $post->ID, '_fpq_current', wp_json_encode( $current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post->ID, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
 		update_post_meta( $post->ID, '_fpq_empresa', $current['empresa'] ); /* the list/search columns follow the current details */
 		update_post_meta( $post->ID, '_fpq_email', $current['email'] );
 		delete_transient( self::attempt_key( $post->ID ) );
@@ -297,11 +312,7 @@ class Freeplast_CQ_Admin {
 	}
 
 	public static function handle_add_note(): void {
-		self::require_capability();
-		$post = self::require_post();
-		if ( ! self::verified_nonce( $post, 'note', 'fp_note_nonce' ) ) {
-			self::redirect_detail( $post->ID, 'nonce' );
-		}
+		$post = self::guarded_post( 'note', 'fp_note_nonce' );
 
 		$text = isset( $_POST['fp_nota'] ) ? trim( sanitize_textarea_field( wp_unslash( $_POST['fp_nota'] ) ) ) : '';
 		if ( '' === $text || mb_strlen( $text ) > self::MAX_NOTE ) {
@@ -313,16 +324,12 @@ class Freeplast_CQ_Admin {
 			array( 'time' => current_time( 'mysql' ), 'text' => $text ),
 			self::staff_identity()
 		);
-		update_post_meta( $post->ID, '_fpq_notes', wp_json_encode( $notes, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post->ID, '_fpq_notes', Freeplast_CQ_Request::encode_meta( $notes ) );
 		self::redirect_detail( $post->ID, 'note_added' );
 	}
 
 	public static function handle_set_status(): void {
-		self::require_capability();
-		$post = self::require_post();
-		if ( ! self::verified_nonce( $post, 'status', 'fp_status_nonce' ) ) {
-			self::redirect_detail( $post->ID, 'nonce' );
-		}
+		$post = self::guarded_post( 'status', 'fp_status_nonce' );
 
 		$target  = isset( $_POST['fp_status'] ) ? sanitize_key( wp_unslash( $_POST['fp_status'] ) ) : '';
 		$current = (string) get_post_meta( $post->ID, '_fpq_status', true );
@@ -342,11 +349,7 @@ class Freeplast_CQ_Admin {
 	}
 
 	public static function handle_reopen(): void {
-		self::require_capability();
-		$post = self::require_post();
-		if ( ! self::verified_nonce( $post, 'reopen', 'fp_reopen_nonce' ) ) {
-			self::redirect_detail( $post->ID, 'nonce' );
-		}
+		$post = self::guarded_post( 'reopen', 'fp_reopen_nonce' );
 
 		$current = (string) get_post_meta( $post->ID, '_fpq_status', true );
 		if ( ! self::is_terminal( $current ) ) {
@@ -541,8 +544,12 @@ class Freeplast_CQ_Admin {
 				),
 				admin_url( 'admin.php' )
 			);
-			$arrow  = $active ? ( 'ASC' === $order ? ' ▲' : ' ▼' ) : '';
-			$sorted = $active ? sprintf( ' aria-sort="%s"', 'ASC' === $order ? 'ascending' : 'descending' ) : '';
+			$arrow  = '';
+			$sorted = '';
+			if ( $active ) {
+				$arrow  = 'ASC' === $order ? ' ▲' : ' ▼';
+				$sorted = sprintf( ' aria-sort="%s"', 'ASC' === $order ? 'ascending' : 'descending' );
+			}
 			return sprintf( '<th scope="col"%1$s><a href="%2$s">%3$s%4$s</a></th>', $sorted, esc_url( $url ), esc_html( $label ), $arrow );
 		};
 
@@ -759,8 +766,8 @@ class Freeplast_CQ_Admin {
 		$error_of = static function ( string $key ) use ( $attempt ): ?string {
 			return isset( $attempt['errors'][ $key ] ) ? (string) $attempt['errors'][ $key ] : null;
 		};
-		$field    = static function ( string $key, string $value, ?string $error ) use ( $post_id ): string {
-			$rule = Freeplast_CQ_Request::TEXT_FIELDS[ $key ];
+		$field = static function ( string $key, string $value, ?string $error ): string {
+			$rule   = Freeplast_CQ_Request::TEXT_FIELDS[ $key ];
 			$inline = null === $error ? '' : sprintf( '<p class="fpqa-field-error" id="fp-qa-%1$s-error">%2$s</p>', esc_attr( $key ), esc_html( $error ) );
 			return sprintf(
 				'<div class="fpqa-field%1$s"><label class="fpqa-field-label" for="fp-qa-%2$s">%3$s</label><input class="regular-text" type="%4$s" id="fp-qa-%2$s" name="fp_%2$s" value="%5$s" maxlength="%6$d"%7$s>%8$s</div>',
@@ -813,7 +820,8 @@ class Freeplast_CQ_Admin {
 		if ( ! isset( $messages[ $code ] ) ) {
 			return '';
 		}
-		return sprintf( '<div class="notice notice-%s is-dismissible"><p>%s</p></div>', esc_attr( $messages[ $code ][1] ), esc_html( $messages[ $code ][0] ) );
+		list( $text, $type ) = $messages[ $code ];
+		return sprintf( '<div class="notice notice-%s is-dismissible"><p>%s</p></div>', esc_attr( $type ), esc_html( $text ) );
 	}
 
 	/** Human description of one history event (no PII values by construction). */

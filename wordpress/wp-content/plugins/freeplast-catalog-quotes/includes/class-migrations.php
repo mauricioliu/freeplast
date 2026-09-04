@@ -182,17 +182,8 @@ class Freeplast_CQ_Migrations {
 				if ( ! is_array( $customer ) ) {
 					continue;
 				}
-				$current = array(
-					'nombre'               => (string) ( $customer['nombre'] ?? '' ),
-					'telefono'             => (string) ( $customer['telefono'] ?? '' ),
-					'telefono_normalizado' => (string) ( $customer['telefono_normalizado'] ?? '' ),
-					'email'                => (string) ( $customer['email'] ?? '' ),
-					'empresa'              => (string) ( $customer['empresa'] ?? '' ),
-					'rut'                  => (string) ( $customer['rut'] ?? '' ),
-					'giro'                 => (string) ( $customer['giro'] ?? '' ),
-					'direccion_despacho'   => (string) ( $customer['direccion_despacho'] ?? '' ),
-				);
-				update_post_meta( $quote_id, '_fpq_current', wp_json_encode( $current, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+				$current = Freeplast_CQ_Request::current_contact_copy( $customer );
+				update_post_meta( $quote_id, '_fpq_current', Freeplast_CQ_Request::encode_meta( $current ) );
 				update_post_meta( $quote_id, '_fpq_empresa', $current['empresa'] );
 				update_post_meta( $quote_id, '_fpq_email', $current['email'] );
 			}
