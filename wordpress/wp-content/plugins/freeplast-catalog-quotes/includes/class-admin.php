@@ -132,6 +132,23 @@ class Freeplast_CQ_Admin {
 	/* Status model                                                        */
 	/* ------------------------------------------------------------------ */
 
+	/**
+	 * One-line Dispatch Distance summary for the list: an internal sales
+	 * fact (km when calculated, the state otherwise), never a price
+	 * (issue #11).
+	 */
+	private static function distance_summary( WP_Post $post ): string {
+		$distance = json_decode( (string) get_post_meta( $post->ID, Freeplast_CQ_Address::META_DISTANCE, true ), true );
+		if ( ! is_array( $distance ) ) {
+			return '—';
+		}
+		$status = (string) ( $distance['status'] ?? 'pending' );
+		if ( 'ok' === $status ) {
+			return sprintf( '%s km', number_format( ( (int) ( $distance['meters'] ?? 0 ) ) / 1000, 1, ',', '.' ) );
+		}
+		return 'error' === $status ? 'error' : 'pendiente';
+	}
+
 	private static function status_label( string $status ): string {
 		return self::STATUS_LABELS[ $status ] ?? $status;
 	}
@@ -514,18 +531,19 @@ class Freeplast_CQ_Admin {
 			$current  = self::current_details( $post->ID );
 			$customer = self::submitted_details( $post->ID );
 			$rows    .= sprintf(
-				'<tr><td><a href="%1$s"><strong>%2$s</strong></a></td><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td><td>%7$s</td></tr>',
+				'<tr><td><a href="%1$s"><strong>%2$s</strong></a></td><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td><td>%7$s</td><td>%8$s</td></tr>',
 				esc_url( admin_url( 'admin.php?page=' . self::DETAIL_SLUG . '&p=' . $post->ID ) ),
 				esc_html( (string) get_post_meta( $post->ID, '_fpq_reference', true ) ),
 				esc_html( (string) ( $current['empresa'] ?? '' ) ),
 				esc_html( (string) ( $current['email'] ?? '' ) ),
 				'si' === (string) ( $customer['con_despacho'] ?? '' ) ? 'Sí' : 'No',
+				esc_html( self::distance_summary( $post ) ),
 				esc_html( self::status_label( (string) get_post_meta( $post->ID, '_fpq_status', true ) ) ),
 				esc_html( mysql2date( 'd/m/Y H:i', $post->post_date ) )
 			);
 		}
 		if ( '' === $rows ) {
-			$rows = '<tr><td colspan="6">Sin solicitudes que coincidan con la búsqueda.</td></tr>';
+			$rows = '<tr><td colspan="7">Sin solicitudes que coincidan con la búsqueda.</td></tr>';
 		}
 
 		/* Sortable column headers keep the active search and filter. */
@@ -564,7 +582,7 @@ class Freeplast_CQ_Admin {
 		}
 
 		printf(
-			'<div class="wrap"><h1>Cotizaciones</h1><p class="description">Flujo operativo de ventas: busca y ordena las solicitudes, corrige los datos de contacto actuales, agrega notas internas y avanza el estado de cada solicitud.</p><form class="fpqa-filters" method="get" action="%1$s"><input type="hidden" name="page" value="%2$s"><label class="screen-reader-text" for="fpqa-search">Buscar solicitudes</label><input type="search" id="fpqa-search" name="s" value="%3$s" placeholder="Referencia, empresa o email"><label class="screen-reader-text" for="fpqa-estado">Filtrar por estado</label><select id="fpqa-estado" name="estado"><option value="">Todos los estados</option>%4$s</select><button class="button" type="submit">Filtrar</button></form><table class="widefat striped"><thead><tr>%5$s%6$s%7$s%8$s%9$s%10$s</tr></thead><tbody>%11$s</tbody></table></div>',
+			'<div class="wrap"><h1>Cotizaciones</h1><p class="description">Flujo operativo de ventas: busca y ordena las solicitudes, corrige los datos de contacto actuales, agrega notas internas y avanza el estado de cada solicitud.</p><form class="fpqa-filters" method="get" action="%1$s"><input type="hidden" name="page" value="%2$s"><label class="screen-reader-text" for="fpqa-search">Buscar solicitudes</label><input type="search" id="fpqa-search" name="s" value="%3$s" placeholder="Referencia, empresa o email"><label class="screen-reader-text" for="fpqa-estado">Filtrar por estado</label><select id="fpqa-estado" name="estado"><option value="">Todos los estados</option>%4$s</select><button class="button" type="submit">Filtrar</button></form><table class="widefat striped"><thead><tr>%5$s%6$s%7$s%8$s%9$s%10$s%11$s</tr></thead><tbody>%12$s</tbody></table></div>',
 			esc_url( admin_url( 'admin.php' ) ),
 			esc_attr( self::LIST_SLUG ),
 			esc_attr( $search ),
@@ -573,6 +591,7 @@ class Freeplast_CQ_Admin {
 			$header( 'empresa', 'Empresa' ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			$header( 'email', 'Email' ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			'<th scope="col">Despacho</th>',
+			'<th scope="col">Distancia</th>',
 			$header( 'estado', 'Estado' ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			$header( 'creada', 'Creada' ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			$rows // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
@@ -694,7 +713,7 @@ class Freeplast_CQ_Admin {
 		);
 
 		printf(
-			'<div class="wrap"><h1>Solicitud %1$s</h1>%2$s<p class="description">Recibida: %3$s · Estado: <strong>%4$s</strong> · Los datos enviados y las líneas son inmutables.</p><h2>Estado de la solicitud</h2>%5$s<h2>Datos enviados</h2><p class="description">Tal como los envió el cliente — nunca se sobrescriben.</p><table class="widefat striped"><tbody>%6$s</tbody></table><h2>Datos de contacto actuales</h2><p class="description">Corregibles por ventas. Las correcciones no alteran los datos enviados; se registra qué campos cambiaron, cuándo y quién (nunca los valores).</p>%7$s<h2>Productos solicitados (snapshot inmutable)</h2><table class="widefat striped"><thead><tr><th>Producto</th><th>Opción</th><th>Cantidad</th><th>Reglas usadas</th><th>Especificaciones</th><th>URL canónica</th></tr></thead><tbody>%8$s</tbody></table>%13$s<h2>Historial</h2><table class="widefat striped"><thead><tr><th>Cuándo</th><th>Evento</th><th>Quién</th></tr></thead><tbody>%9$s</tbody></table><h2>Notas de ventas (internas)</h2><p class="description">Nunca visibles para el cliente.</p><table class="widefat striped"><thead><tr><th>Cuándo</th><th>Quién</th><th>Nota</th></tr></thead><tbody>%10$s</tbody></table>%11$s<p><a class="button" href="%12$s">← Volver a Cotizaciones</a></p></div>',
+			'<div class="wrap"><h1>Solicitud %1$s</h1>%2$s<p class="description">Recibida: %3$s · Estado: <strong>%4$s</strong> · Los datos enviados y las líneas son inmutables.</p><h2>Estado de la solicitud</h2>%5$s<h2>Datos enviados</h2><p class="description">Tal como los envió el cliente — nunca se sobrescriben.</p><table class="widefat striped"><tbody>%6$s</tbody></table><h2>Datos de contacto actuales</h2><p class="description">Corregibles por ventas. Las correcciones no alteran los datos enviados; se registra qué campos cambiaron, cuándo y quién (nunca los valores).</p>%7$s<h2>Productos solicitados (snapshot inmutable)</h2><table class="widefat striped"><thead><tr><th>Producto</th><th>Opción</th><th>Cantidad</th><th>Reglas usadas</th><th>Especificaciones</th><th>URL canónica</th></tr></thead><tbody>%8$s</tbody></table>%13$s%14$s<h2>Historial</h2><table class="widefat striped"><thead><tr><th>Cuándo</th><th>Evento</th><th>Quién</th></tr></thead><tbody>%9$s</tbody></table><h2>Notas de ventas (internas)</h2><p class="description">Nunca visibles para el cliente.</p><table class="widefat striped"><thead><tr><th>Cuándo</th><th>Quién</th><th>Nota</th></tr></thead><tbody>%10$s</tbody></table>%11$s<p><a class="button" href="%12$s">← Volver a Cotizaciones</a></p></div>',
 			esc_html( $reference ),
 			$notice, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
 			esc_html( mysql2date( 'd/m/Y H:i', $post->post_date ) ),
@@ -707,7 +726,8 @@ class Freeplast_CQ_Admin {
 			$note_rows, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
 			$note_form, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
 			esc_url( admin_url( 'admin.php?page=' . self::LIST_SLUG ) ),
-			Freeplast_CQ_Notifications::render_detail( $post ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the section escapes its own output
+			Freeplast_CQ_Notifications::render_detail( $post ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the section escapes its own output
+			Freeplast_CQ_Address::render_admin_distance( $post ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fully escaped by the builder
 		);
 	}
 

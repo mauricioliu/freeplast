@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast Catalog & Quotes
  * Plugin URI: https://freeplast.mliu.site/
- * This slice registers the shell routes (complete v6 content since migration 5: Contacto details + CTA, privacy disclosure), the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer, the catalog discovery blocks (Home featured, Tienda grid/filter, search), the editable persistent anonymous Quote Basket (quantity/option choosers, secure cookie session, header count, mini basket, line update/remove, expiry sweep), the Quote Request submission (non-public fp_quote records with immutable snapshots, permanent FP-YYYY-NNNNNN references, idempotency), the restricted sales administration workflow (Ventas Freeplast role, sortable/searchable Cotizaciones list, current-contact corrections, internal Sales Notes, Request Status transitions with explicit reopening, nonce+capability-guarded operations) and the durable sales/customer notifications (jobs committed with the record, idempotent delivery decoupled from receipt, staging mail containment, staff resend).
+ * This slice registers the shell routes (complete v6 content since migration 5: Contacto details + CTA, privacy disclosure), the versioned migration boundary, the hidden-editor fp_product record type, the WP-CLI catalog synchronizer, the catalog discovery blocks (Home featured, Tienda grid/filter, search), the editable persistent anonymous Quote Basket (quantity/option choosers, secure cookie session, header count, mini basket, line update/remove, expiry sweep), the Quote Request submission (non-public fp_quote records with immutable snapshots, permanent FP-YYYY-NNNNNN references, idempotency), the Google-assisted Delivery Address confirmation with the internal Dispatch Distance (Chilean suggestions with an explicit confirm, manual fallback, server-mediated provider adapter, configurable Warehouse origin, staff-only distance and retry), the restricted sales administration workflow (Ventas Freeplast role, sortable/searchable Cotizaciones list, current-contact corrections, internal Sales Notes, Request Status transitions with explicit reopening, nonce+capability-guarded operations) and the durable sales/customer notifications (jobs committed with the record, idempotent delivery decoupled from receipt, staging mail containment, staff resend).
  * Version: 0.7.0
  * Requires at least: 7.0
  * Requires PHP: 8.1
@@ -32,12 +32,14 @@ require_once __DIR__ . '/includes/class-basket.php';
 require_once __DIR__ . '/includes/class-request.php';
 require_once __DIR__ . '/includes/class-admin.php';
 require_once __DIR__ . '/includes/class-notifications.php';
+require_once __DIR__ . '/includes/class-address.php';
 
 /**
  * Register the product record type, its metadata, the public
  * product-detail, catalog-discovery and quote-basket blocks, the catalog
- * synchronization command, the Quote Request submission and the sales
- * administration workflow.
+ * synchronization command, the Quote Request submission, the sales
+ * administration workflow and the Delivery Address confirmation and
+ * Dispatch Distance operations.
  */
 add_action( 'init', array( 'Freeplast_CQ_Products', 'register' ) );
 add_action( 'init', array( 'Freeplast_CQ_Discovery', 'register' ) );
@@ -45,6 +47,7 @@ add_action( 'init', array( 'Freeplast_CQ_Basket', 'register' ) );
 add_action( 'init', array( 'Freeplast_CQ_Request', 'register' ) );
 add_action( 'init', array( 'Freeplast_CQ_Admin', 'register' ) );
 add_action( 'init', array( 'Freeplast_CQ_Notifications', 'register' ) );
+add_action( 'init', array( 'Freeplast_CQ_Address', 'register' ) );
 Freeplast_CQ_Catalog_Sync::register();
 
 /**

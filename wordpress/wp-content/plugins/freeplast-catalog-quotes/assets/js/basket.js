@@ -1,5 +1,5 @@
 /**
- * Freeplast Quote Basket — progressive enhancement (issues #6–#8).
+ * Freeplast Quote Basket — progressive enhancement (issues #6–#8, #11).
  *
  * The server stays authoritative: every basket form (add, update, remove)
  * POSTs to the same admin-post.php handlers the plain flow uses. When
@@ -14,6 +14,11 @@
  * mirrored element), so typed customer data survives every in-place
  * basket mutation; this script only hides it once the basket empties and
  * reveals the dispatch address when Con despacho is Sí.
+ *
+ * The Google-assisted address confirmation (issue #11) is likewise only
+ * enhanced: typing into the search field refreshes the suggestion buttons
+ * through the server-side lookup (the provider credential never reaches
+ * the page); picking, confirming and clearing remain plain POSTs.
  */
 ( function () {
 	'use strict';
@@ -78,7 +83,9 @@
 	}
 
 	/* Dirección de despacho appears and becomes required only with Con
-	   despacho = Sí (the server enforces the same rule on every submit). */
+	   despacho = Sí — and, once a Google destination is confirmed, the
+	   manual fallback stops being required (the server enforces the same
+	   rules on every submit). */
 	document.addEventListener( 'change', function ( event ) {
 		var input = event.target;
 		if ( ! input || 'radio' !== input.type || input.name !== 'fp_despacho' ) {
@@ -91,7 +98,103 @@
 		}
 		var wanted = 'si' === input.value;
 		wrapper.classList.toggle( 'fpcq-hidden', ! wanted );
-		address.required = wanted;
+		address.required = wanted && address.getAttribute( 'data-fpcq-manual-required' ) === '1';
+	} );
+
+	/* Google-assisted suggestions (issue #11): a debounced lookup against
+	   the server-side adapter; the rendered buttons reuse the plain pick
+	   POST. Any failure keeps the server-rendered list and the plain Buscar
+	   submit fully functional. */
+	var suggestTimer = null;
+
+	function hiddenInput( name, value ) {
+		var input = document.createElement( 'input' );
+		input.type = 'hidden';
+		input.name = name;
+		input.value = value;
+		return input;
+	}
+
+	/* The value of one hidden field of the search form (referer, nonce), so
+	   the rendered pick forms carry exactly what the server rendered. */
+	function fieldValue( form, name ) {
+		var input = form.querySelector( 'input[name="' + name + '"]' );
+		return input ? input.value : '';
+	}
+
+	/* One suggestion button: the same plain pick POST the server renders. */
+	function pickForm( suggestion, searchForm ) {
+		var form = document.createElement( 'form' );
+		form.className = 'fpcq-address-pick';
+		form.method = 'post';
+		form.action = searchForm.getAttribute( 'action' );
+
+		var button = document.createElement( 'button' );
+		button.type = 'submit';
+		button.className = 'fpcq-address-pick-submit';
+		button.textContent = suggestion.description || '';
+		form.appendChild( button );
+
+		form.appendChild( hiddenInput( 'action', 'fp_address_pick' ) );
+		form.appendChild( hiddenInput( 'fp_place', suggestion.id || '' ) );
+		form.appendChild( hiddenInput( '_wp_http_referer', fieldValue( searchForm, '_wp_http_referer' ) ) );
+		form.appendChild( hiddenInput( 'fp_address_nonce', fieldValue( searchForm, 'fp_address_nonce' ) ) );
+		return form;
+	}
+
+	function renderSuggestions( payload, searchForm ) {
+		var list = document.querySelector( '[data-fpcq-address-suggestions]' );
+		if ( ! list ) {
+			return;
+		}
+		list.textContent = '';
+		( payload.suggestions || [] ).forEach( function ( suggestion ) {
+			var item = document.createElement( 'li' );
+			item.appendChild( pickForm( suggestion, searchForm ) );
+			list.appendChild( item );
+		} );
+	}
+
+	document.addEventListener( 'input', function ( event ) {
+		var input = event.target;
+		if ( ! input || 'search' !== input.type || input.name !== 'fp_query' ) {
+			return;
+		}
+		var searchForm = input.closest( 'form.fpcq-address-search' );
+		if ( ! searchForm || ! window.fetch || ! window.FormData ) {
+			return; /* the plain Buscar submit is fully functional on its own */
+		}
+		if ( suggestTimer ) {
+			clearTimeout( suggestTimer );
+		}
+		var query = input.value.trim();
+		if ( query.length < 3 ) {
+			return;
+		}
+		suggestTimer = setTimeout( function () {
+			var data = new FormData( searchForm );
+			data.set( 'action', 'fp_address_suggest' );
+			fetch( searchForm.getAttribute( 'action' ), {
+				method: 'POST',
+				body: data,
+				credentials: 'same-origin',
+				headers: { 'X-Requested-With': 'fetch' }
+			} )
+				.then( function ( response ) {
+					if ( ! response.ok ) {
+						throw new Error( 'HTTP ' + response.status );
+					}
+					return response.json();
+				} )
+				.then( function ( payload ) {
+					if ( payload && payload.ok ) {
+						renderSuggestions( payload, searchForm );
+					}
+				} )
+				.catch( function () {
+					/* keep the server-rendered list; Buscar still works */
+				} );
+		}, 300 );
 	} );
 
 	document.addEventListener( 'submit', function ( event ) {

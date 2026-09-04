@@ -21,8 +21,11 @@ wordpress/
     plugins/freeplast-catalog-quotes/
                               private plugin — shell routes, migrations,
                               fp_product records, catalog synchronization,
-                              quote basket, quote-request submission
-                              and the restricted sales administration
+                              quote basket, quote-request submission,
+                              Google-assisted delivery-address confirmation
+                              and internal dispatch distance, the restricted
+                              sales administration and the durable
+                              sales/customer notifications
   .tools/                     pinned downloadable toolchain (gitignored)
   .build/                     disposable WordPress site (gitignored)
 ```
@@ -36,8 +39,10 @@ network access to download the pinned toolchain; later runs are offline.
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
                       # verify the issue-#2 through issue-#12 acceptance
-                      # criteria (including the issue-#8 submission and the
-                      # issue-#10 durable notifications).
+                      # criteria (including the issue-#8 submission, the
+                      # issue-#9 sales workflow, the issue-#10 durable
+                      # notifications and the issue-#11 address/distance
+                      # slice).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -48,6 +53,14 @@ The disposable site boots at `http://127.0.0.1:8091` (override with
 `FREEPLAST_KEEP_BUILD=0 npm run bootstrap -- --fresh` — `npm test` always
 rebuilds from a clean database by default; set `FREEPLAST_KEEP_BUILD=1` (or
 `--keep`) to reuse the existing build during iteration.
+
+Google provider credentials (issue #11): supply
+`FREEPLAST_GOOGLE_API_KEY` in the server environment — never a WordPress
+option, never the repository — and restrict the key in the Google console
+to the Places API (New) and Routes API. Without it the manual address path
+is the only one and Dispatch Distances persist as pending; the automated
+checks replace the whole provider at its adapter boundary
+(`freeplast_cq_google_client`) and never need the credential.
 
 What `npm test` proves (see `VERIFICATION.md` after a run):
 
@@ -163,6 +176,22 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   and codes but never customer field values. Mail is controlled at the
   single external adapter seam (`freeplast_cq_send_mail`, default
   `wp_mail`); see “Mail configuration” below;
+- dispatch requests (issue #11) confirm their Chilean Delivery Address
+  with Google assistance: the search renders only inside the
+  dispatch-conditional address block and only while provider credentials
+  are configured (environment-supplied `FREEPLAST_GOOGLE_API_KEY`, never in
+  the page or repository), every lookup goes through nonce+session-guarded
+  admin-post operations, the customer selects a suggestion, reviews the
+  formatted destination and confirms it explicitly — with the manual
+  address fallback always available; the confirmed destination data and
+  the provider/calculation state are stored on the Quote Request, the
+  driving distance is calculated from the configured Warehouse
+  (provisional Camino El Arrayán 52, stored as the `fp_dispatch_origin`
+  option by migration 7) after durable persistence, provider failures
+  never reject a valid request (pending/error states with the destination
+  preserved and a nonce+capability-guarded staff retry), and the distance
+  is shown only on the capability-protected sales surface as an internal
+  fact — never as a customer-facing shipping price;
 - the complete v6 content and navigation experience (issue #12) is governed
   by a frozen design contract (`design/design-tokens.json` + `DECISIONS.md`
   with SHA-256-frozen approved prototypes; the rejected v5 rules are not

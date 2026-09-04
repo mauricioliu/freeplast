@@ -14,10 +14,12 @@
  *     revalidated server-side, always.
  *   - Required fields mirror the current Freeplast form: Nombre, Teléfono,
  *     Email, Nombre Empresa, Rut Empresa, Giro and Con Despacho (exactly
- *     Sí or No). Mensaje is optional and bounded. A manual Dirección de
- *     despacho appears and is required only while Con Despacho is Sí
- *     (the Google-assisted address enhancement arrives separately,
- *     issue #9); without dispatch the address is omitted entirely.
+ *     Sí or No). Mensaje is optional and bounded. The Dirección de
+ *     despacho appears and is required only while Con Despacho is Sí —
+ *     with the Google-assisted confirmation and Dispatch Distance of
+ *     issue #11 (Freeplast_CQ_Address) the confirmed destination is the
+ *     dispatch address and the manual field is the fallback; without
+ *     dispatch the address is omitted entirely.
  *   - Product/options/quantities never arrive as request fields: they are
  *     read from the authenticated server basket session, re-resolved
  *     against the live Catalog (only currently published Products with
@@ -43,14 +45,15 @@
  *     (Cotizaciones → fp-quotes / fp-quote, capability
  *     manage_freeplast_quotes granted to administrators by migration 6)
  *     makes the persisted record inspectable: Submitted Details, dispatch
- *     information and the immutable item snapshots. Since issue #9 the
- *     operational sales workflow (list sorting/search, current-contact
- *     corrections, Sales Notes, Request Status transitions, history) is
- *     owned by Freeplast_CQ_Admin, whose detail also renders — since the
- *     durable notifications slice (issue #10) — the per-channel
- *     notification delivery state with its safe staff resend
- *     (Freeplast_CQ_Notifications). No price, Quotation, Order, checkout
- *     or customer account is ever created.
+ *     information, the immutable item snapshots and — for dispatch
+ *     requests — the internal Dispatch Distance with its staff retry
+ *     (issue #11). Since issue #9 the operational sales workflow (list
+ *     sorting/search, current-contact corrections, Sales Notes, Request
+ *     Status transitions, history) is owned by Freeplast_CQ_Admin, whose
+ *     detail also renders — since the durable notifications slice
+ *     (issue #10) — the per-channel notification delivery state with its
+ *     safe staff resend (Freeplast_CQ_Notifications). No price,
+ *     Quotation, Order, checkout or customer account is ever created.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -84,6 +87,7 @@ class Freeplast_CQ_Request {
 		'giro'     => array( 'label' => 'Giro', 'max' => 190, 'type' => 'text', 'autocomplete' => 'off' ),
 	);
 
+	/** Shared maximum length of the manual Dirección de despacho (rendered by Freeplast_CQ_Address). */
 	public const MAX_DIRECCION = 400;
 	private const MAX_MENSAJE   = 2000;
 
@@ -163,13 +167,15 @@ class Freeplast_CQ_Request {
 			self::fail( 'basket' );
 		}
 
-		/* 6. Customer fields — validated server-side, always. */
-		$validated = self::validated_fields();
+		/* 6. Customer fields — validated server-side, always. A confirmed
+		   Google destination (issue #11) stands in for the manual address. */
+		$validated = self::validated_fields( Freeplast_CQ_Address::confirmed( $session['hash'] ) );
 		if ( array() !== $validated['errors'] ) {
 			self::store_attempt( $session['hash'], $validated['values'], $validated['errors'], '' );
 			self::fail( 'request_invalid' );
 		}
-		$values = $validated['values'];
+		$values    = $validated['values'];
+		$confirmed = $validated['confirmed'];
 
 		/* 7. Persistence seam — a failing store never claims success and
 		   never clears the basket (the values stay retained). */
@@ -179,13 +185,22 @@ class Freeplast_CQ_Request {
 			self::fail( 'request_failed' );
 		}
 
-		/* 8. Persist exactly one record with the immutable snapshots — and its
+
+		/* 8. Persist exactly one record with the immutable snapshots (the
+		   confirmed destination is stored with it, issue #11) — and its
 		   two durable notification jobs, in the very same insert: request and
 		   jobs commit together or fail together (issue #10). */
-		$reference = self::persist( $session, $token, $values, $lines );
-		if ( null === $reference ) {
+		$stored = self::persist( $session, $token, $values, $lines, $confirmed );
+		if ( null === $stored ) {
 			self::store_attempt( $session['hash'], $values, array(), $failure );
 			self::fail( 'request_failed' );
+		}
+
+		/* 8b. Dispatch Distance (issue #11): calculated after durable
+		   persistence — a provider failure records a pending/error state
+		   and never rejects the request. */
+		if ( 'si' === $values['despacho'] ) {
+			Freeplast_CQ_Address::calculate_and_store( $stored['id'] );
 		}
 
 		/* 9. Schedule the decoupled notification delivery (one sales
@@ -193,25 +208,28 @@ class Freeplast_CQ_Request {
 		   durable: a scheduling or transport failure changes nothing about
 		   this confirmation — the jobs stay pending for retries and the
 		   staff resend. */
-		Freeplast_CQ_Notifications::schedule_delivery( $reference );
+		Freeplast_CQ_Notifications::schedule_delivery( $stored['reference'] );
 
 		/* 10. Success — only now is the basket cleared (the session stays
 		   alive so the next visit does not look like an expiry). */
 		Freeplast_CQ_Basket::clear_basket( $session );
 		delete_transient( self::token_key( $session['hash'] ) );
 		delete_transient( self::attempt_key( $session['hash'] ) );
-		set_transient( self::confirm_key( $session['hash'] ), $reference, DAY_IN_SECONDS );
+		Freeplast_CQ_Address::clear_session_state( $session['hash'] );
+		set_transient( self::confirm_key( $session['hash'] ), $stored['reference'], DAY_IN_SECONDS );
 
-		self::redirect( array( 'fpcq_submitted' => $reference ) );
+		self::redirect( array( 'fpcq_submitted' => $stored['reference'] ) );
 	}
 
 	/**
 	 * Validate the submitted customer fields. Returns the sanitized values
-	 * (kept for retention even when invalid) and the per-field errors.
+	 * (kept for retention even when invalid), the per-field errors and the
+	 * confirmed destination standing in for the manual address (null when
+	 * none is confirmed).
 	 *
-	 * @return array{values: array, errors: array}
+	 * @return array{values: array, errors: array, confirmed: array|null}
 	 */
-	private static function validated_fields(): array {
+	private static function validated_fields( ?array $confirmed ): array {
 		$values = self::empty_values();
 		$errors = array();
 
@@ -266,11 +284,14 @@ class Freeplast_CQ_Request {
 			$values['despacho'] = $despacho;
 		}
 
-		/* Dirección de despacho — required only with dispatch, omitted otherwise. */
+		/* Dirección de despacho — required only with dispatch and without a
+		   confirmed destination, omitted entirely without dispatch (the
+		   confirmed Google destination is the dispatch address, issue #11;
+		   the manual field is the rural/unrecognized fallback). */
 		if ( 'si' === $values['despacho'] ) {
 			$direccion = trim( $area( 'direccion' ) );
-			if ( '' === $direccion ) {
-				$errors['direccion'] = 'La dirección de despacho es obligatoria cuando solicitas despacho.';
+			if ( null === $confirmed && '' === $direccion ) {
+				$errors['direccion'] = 'La dirección de despacho es obligatoria cuando solicitas despacho (confírmala con Google o escríbela manualmente).';
 			} elseif ( mb_strlen( $direccion ) > self::MAX_DIRECCION ) {
 				$errors['direccion'] = sprintf( 'La dirección de despacho es demasiado larga (máximo %d caracteres).', self::MAX_DIRECCION );
 			} else {
@@ -287,8 +308,9 @@ class Freeplast_CQ_Request {
 		}
 
 		return array(
-			'values' => $values,
-			'errors' => $errors,
+			'values'    => $values,
+			'errors'    => $errors,
+			'confirmed' => $confirmed,
 		);
 	}
 
@@ -337,10 +359,42 @@ class Freeplast_CQ_Request {
 
 	/**
 	 * Persist exactly one Quote Request: a private fp_quote record titled
-	 * with its permanent reference, carrying the Submitted Details and the
-	 * immutable item snapshots. Null when the insert fails.
+	 * with its permanent reference, carrying the Submitted Details, the
+	 * immutable item snapshots and the dispatch destination (issue #11).
+	 * Null when the insert fails.
+	 *
+	 * @return array{id: int, reference: string}|null
 	 */
-	private static function persist( array $session, string $token, array $values, array $lines ): ?string {
+	private static function persist( array $session, string $token, array $values, array $lines, ?array $confirmed ): ?array {
+		/* The dispatch destination: the customer-confirmed Google result,
+		   or the manual fallback text (null without dispatch). Provider
+		   terms: place ids are stored without limitation; the formatted
+		   address and coordinates are the operational delivery record. */
+		$destination = null;
+		if ( 'si' === $values['despacho'] ) {
+			if ( null !== $confirmed ) {
+				$destination = array(
+					'mode'         => 'google',
+					'address'      => (string) $confirmed['formatted'],
+					'place_id'     => (string) ( $confirmed['place_id'] ?? '' ),
+					'lat'          => isset( $confirmed['lat'] ) && is_numeric( $confirmed['lat'] ) ? (float) $confirmed['lat'] : null,
+					'lng'          => isset( $confirmed['lng'] ) && is_numeric( $confirmed['lng'] ) ? (float) $confirmed['lng'] : null,
+					'provider'     => 'google',
+					'confirmed_at' => (string) ( $confirmed['confirmed_at'] ?? '' ),
+				);
+			} else {
+				$destination = array(
+					'mode'         => 'manual',
+					'address'      => $values['direccion'],
+					'place_id'     => '',
+					'lat'          => null,
+					'lng'          => null,
+					'provider'     => '',
+					'confirmed_at' => '',
+				);
+			}
+		}
+
 		$customer = array(
 			'nombre'               => $values['nombre'],
 			'telefono'             => $values['telefono'],
@@ -350,7 +404,7 @@ class Freeplast_CQ_Request {
 			'rut'                  => $values['rut'],
 			'giro'                 => $values['giro'],
 			'con_despacho'         => $values['despacho'],
-			'direccion_despacho'   => 'si' === $values['despacho'] ? $values['direccion'] : '',
+			'direccion_despacho'   => null !== $destination ? $destination['address'] : '',
 			'mensaje'              => $values['mensaje'],
 		);
 
@@ -382,35 +436,44 @@ class Freeplast_CQ_Request {
 
 		$idempotency = hash( 'sha256', $token );
 
+		$meta = array(
+			'_fpq_status'        => 'new',
+			'_fpq_customer'      => self::encode_meta( $customer ),
+			'_fpq_items'         => self::encode_meta( $items ),
+			'_fpq_notifications' => Freeplast_CQ_Notifications::initial_state_json(),
+			'_fpq_current'       => self::encode_meta( $current ),
+			'_fpq_empresa'       => $current['empresa'],
+			'_fpq_email'         => $current['email'],
+			'_fpq_history'       => self::encode_meta( $history ),
+			'_fpq_idempotency'   => $idempotency,
+			'_fpq_session'       => $session['hash'],
+		);
+		if ( null !== $destination ) {
+			/* Dispatch-only data: requests without despacho carry no destination. */
+			$meta['_fpq_destination'] = self::encode_meta( $destination );
+		}
+
 		/* Retry with a fresh reference allocation: the sequence is derived,
 		   never reserved, so a concurrent submission may consume it between
 		   reading it and inserting. */
 		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
 			$reference = self::next_reference();
+			$meta['_fpq_reference'] = $reference;
 			$post_id   = wp_insert_post(
 				array(
 					'post_type'   => self::POST_TYPE,
 					'post_status' => 'private',
 					'post_title'  => $reference,
 					'post_author' => 0,
-					'meta_input'  => array(
-						'_fpq_reference'     => $reference,
-						'_fpq_status'        => 'new',
-						'_fpq_customer'      => self::encode_meta( $customer ),
-						'_fpq_items'         => self::encode_meta( $items ),
-						'_fpq_notifications' => Freeplast_CQ_Notifications::initial_state_json(),
-						'_fpq_current'       => self::encode_meta( $current ),
-						'_fpq_empresa'       => $current['empresa'],
-						'_fpq_email'         => $current['email'],
-						'_fpq_history'       => self::encode_meta( $history ),
-						'_fpq_idempotency'   => $idempotency,
-						'_fpq_session'       => $session['hash'],
-					),
+					'meta_input'  => $meta,
 				),
 				true
 			);
 			if ( is_int( $post_id ) && $post_id > 0 ) {
-				return $reference;
+				return array(
+					'id'        => $post_id,
+					'reference' => $reference,
+				);
 			}
 		}
 
@@ -648,7 +711,11 @@ class Freeplast_CQ_Request {
 			$fields .= self::render_text_field( $key, $values[ $key ], $errors[ $key ] ?? null );
 		}
 		$fields .= self::render_despacho( $values['despacho'], $errors['despacho'] ?? null );
-		$fields .= self::render_direccion( $values['direccion'], $errors['direccion'] ?? null, $dispatched );
+		/* Dirección de despacho — the dispatch-conditional block rendered by
+		   Freeplast_CQ_Address (issue #11): Google-assisted confirmation with
+		   the manual fallback, hidden without dispatch and revealed
+		   progressively (the server stays the authority). */
+		$fields .= Freeplast_CQ_Address::render_address_block( $values['direccion'], $errors['direccion'] ?? null, $dispatched, $session['hash'] );
 		$fields .= self::render_mensaje( $values['mensaje'], $errors['mensaje'] ?? null );
 
 		return sprintf(
@@ -721,33 +788,6 @@ class Freeplast_CQ_Request {
 			null === $error ? '' : ' fpcq-field-invalid',
 			'Con despacho',
 			$radios,
-			$inline
-		);
-	}
-
-	/**
-	 * Dirección de despacho — present and required only while Con Despacho
-	 * is Sí (revealed progressively; without JavaScript a Sí submission
-	 * round-trips once through validation, which re-renders it visible).
-	 */
-	private static function render_direccion( string $value, ?string $error, bool $dispatched ): string {
-		$inline = null === $error ? '' : sprintf( '<p class="fpcq-field-error" id="fp-direccion-error">%s</p>', esc_html( $error ) );
-
-		$class = 'fpcq-field fpcq-field-wide';
-		if ( null !== $error ) {
-			$class .= ' fpcq-field-invalid';
-		}
-		if ( ! $dispatched ) {
-			$class .= ' fpcq-hidden';
-		}
-
-		return sprintf(
-			'<div class="%1$s" data-fpcq-address-field><label class="fpcq-field-label" for="fp-direccion">Dirección de despacho</label><textarea class="fpcq-textarea" id="fp-direccion" name="fp_direccion" rows="2" maxlength="%2$d"%3$s%4$s>%5$s</textarea>%6$s</div>',
-			esc_attr( $class ),
-			self::MAX_DIRECCION,
-			$dispatched ? ' required' : '',
-			null === $error ? '' : ' aria-describedby="fp-direccion-error" aria-invalid="true"',
-			esc_textarea( $value ),
 			$inline
 		);
 	}

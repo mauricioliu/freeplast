@@ -41,21 +41,31 @@
  *               (manage_freeplast_quotes) granted to administrators so
  *               the minimal admin detail is capability-protected.
  * Migration 7 — sales workflow (issue #9) + durable notifications
- *               (issue #10): the least-privilege Ventas Freeplast role
+ *               (issue #10) + delivery address and dispatch distance
+ *               (issue #11): the least-privilege Ventas Freeplast role
  *               (read + manage_freeplast_quotes, nothing else) so sales
  *               reaches Cotizaciones without unrelated site
  *               administration; the capability re-asserted for
  *               administrators; the correctable current-contact copy
  *               backfilled onto fp_quote records persisted before this
  *               slice so the Cotizaciones list can sort and search them;
- *               and every fp_quote record persisted before this slice
- *               gains its two pending notification jobs
- *               (_fpq_notifications — new records carry them from the
- *               submission insert itself) and a scheduled delivery
- *               event, so a pre-slice record can never sit undelivered
- *               forever. No new table: the jobs, their delivery state
- *               and the PII-free event log are meta on the records (see
- *               Freeplast_CQ_Notifications). *
+ *               every fp_quote record persisted before this slice gains
+ *               its two pending notification jobs (_fpq_notifications —
+ *               new records carry them from the submission insert
+ *               itself) and a scheduled delivery event, so a pre-slice
+ *               record can never sit undelivered forever (no new table:
+ *               the jobs, their delivery state and the PII-free event
+ *               log are meta on the records, see
+ *               Freeplast_CQ_Notifications); and no table for the
+ *               dispatch-distance slice either — the confirmed
+ *               destination and the distance state live on the fp_quote
+ *               records (issue #8) — but the provisional Warehouse
+ *               origin (Camino El Arrayán 52, San Francisco de
+ *               Mostazal) becomes the stored fp_dispatch_origin option,
+ *               so the client's pending answer about origin selection
+ *               and distance semantics applies as a configuration
+ *               change, not code.
+ *
  * @package Freeplast_Catalog_Quotes
  */
 
@@ -210,6 +220,13 @@ class Freeplast_CQ_Migrations {
 					update_post_meta( $quote_id, Freeplast_CQ_Notifications::META_JOBS, Freeplast_CQ_Notifications::initial_state_json() );
 					Freeplast_CQ_Notifications::schedule_delivery( (string) get_post_meta( $quote_id, '_fpq_reference', true ) );
 				}
+			}
+
+			/* Seed the provisional Warehouse origin (issue #11, see
+			   class-address.php) exactly once; a human edit of the option is
+			   never clobbered. */
+			if ( false === get_option( Freeplast_CQ_Address::ORIGIN_OPTION, false ) ) {
+				add_option( Freeplast_CQ_Address::ORIGIN_OPTION, Freeplast_CQ_Address::DEFAULT_ORIGIN );
 			}
 			$applied = 7;
 		}
