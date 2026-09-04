@@ -11,10 +11,10 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #17, of the
+ * verifies the acceptance criteria of issues #2 through #17 (including
+ *   the issue #9 sales workflow and the issue #10 notifications), of the
  * issue #19 basket-cookie scheme fix, of the issue #20 theme markup
- * hardening and of the issue #23 edge origin-header strip (including
- *   the issue #9 sales workflow and the issue #10 notifications):
+ * hardening and of the issue #23 edge origin-header strip:
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
  *   2. The Freeplast theme and private plugin activate without warnings or fatal errors.
@@ -5287,7 +5287,12 @@ test('the staging edge strips the PHP origin header from proxied responses (issu
   const hidden = [...vhost.matchAll(/^\s*proxy_hide_header\s+([^;]+);/gm)].map((m) => m[1]);
   assert.deepEqual(hidden, ['X-Powered-By'], 'the edge must hide exactly one origin header — X-Powered-By — and nothing else');
   const locationStart = vhost.indexOf('location / {');
-  const locationEnd = vhost.indexOf('\n}', locationStart);
+  assert.ok(locationStart !== -1, 'the vhost must carry the proxied location / block');
+  /* Bound the slice at the block's own indented closing brace so the
+     directive is proven inside location /, not merely somewhere after
+     its opening line. */
+  const locationEnd = vhost.indexOf('\n    }', locationStart);
+  assert.ok(locationEnd !== -1, 'the proxied location / block must be closed');
   const proxiedLocation = vhost.slice(locationStart, locationEnd);
   assert.ok(proxiedLocation.includes('proxy_pass http://127.0.0.1:__LOOPBACK_PORT__;'), 'the proxied location must keep the loopback proxy');
   assert.ok(proxiedLocation.includes('proxy_hide_header X-Powered-By;'), 'the hide directive must sit inside the proxied location / block');
@@ -5295,9 +5300,12 @@ test('the staging edge strips the PHP origin header from proxied responses (issu
   /* 23f.2 — verify.sh walks the acceptance matrix through the edge: an
      authenticated (owner-credential) response must carry no
      X-Powered-By, and a disclosed origin runtime fails verification. */
-  const checkStart = verify.indexOf("grep -i '^x-powered-by:'");
-  assert.ok(checkStart > 0, 'verify.sh must look for the X-Powered-By response header');
-  const poweredCheck = verify.slice(verify.lastIndexOf('\n', checkStart) + 1, checkStart + 600);
+  const verifyLines = verify.split('\n');
+  const grepLine = verifyLines.findIndex((line) => line.includes("grep -i '^x-powered-by:'"));
+  assert.ok(grepLine !== -1, 'verify.sh must look for the X-Powered-By response header');
+  /* The check block spans its grep line through the next blank line. */
+  const blockEnd = verifyLines.findIndex((line, index) => index > grepLine && line.trim() === '');
+  const poweredCheck = verifyLines.slice(grepLine, blockEnd === -1 ? undefined : blockEnd).join('\n');
   assert.ok(poweredCheck.includes('BASIC_AUTH_OWNER_USER'), 'the X-Powered-By check must run authenticated (owner credentials)');
   assert.match(poweredCheck, /\bmiss\b/, 'a disclosed origin runtime must fail verification');
   assert.match(verify, /no X-Powered-By \(origin runtime hidden\)/, 'verify.sh must report the origin-runtime check as part of the walk');
