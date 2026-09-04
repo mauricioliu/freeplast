@@ -233,7 +233,10 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle
-  changes archive/reactivate records, and changed media imports exactly once.
+  changes archive/reactivate records, and changed media imports exactly once;
+  a failure in a later phase rolls the run's own media imports back together
+  with the created posts (zero orphaned attachments), while media reused by
+  checksum is never deleted on any failure path (issue #22).
 
 Synchronizing the catalog by hand against the disposable site:
 
