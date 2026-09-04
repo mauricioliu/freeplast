@@ -78,16 +78,10 @@ class Freeplast_CQ_Address {
 	private const SUGGESTION_TTL = 5 * MINUTE_IN_SECONDS;
 
 	public static function register(): void {
-		add_action( 'admin_post_fp_address_search', array( self::class, 'handle_search' ) );
-		add_action( 'admin_post_nopriv_fp_address_search', array( self::class, 'handle_search' ) );
-		add_action( 'admin_post_fp_address_suggest', array( self::class, 'handle_suggest' ) );
-		add_action( 'admin_post_nopriv_fp_address_suggest', array( self::class, 'handle_suggest' ) );
-		add_action( 'admin_post_fp_address_pick', array( self::class, 'handle_pick' ) );
-		add_action( 'admin_post_nopriv_fp_address_pick', array( self::class, 'handle_pick' ) );
-		add_action( 'admin_post_fp_address_confirm', array( self::class, 'handle_confirm' ) );
-		add_action( 'admin_post_nopriv_fp_address_confirm', array( self::class, 'handle_confirm' ) );
-		add_action( 'admin_post_fp_address_clear', array( self::class, 'handle_clear' ) );
-		add_action( 'admin_post_nopriv_fp_address_clear', array( self::class, 'handle_clear' ) );
+		foreach ( array( 'search', 'suggest', 'pick', 'confirm', 'clear' ) as $operation ) {
+			add_action( "admin_post_fp_address_{$operation}", array( self::class, "handle_{$operation}" ) );
+			add_action( "admin_post_nopriv_fp_address_{$operation}", array( self::class, "handle_{$operation}" ) );
+		}
 
 		/* Staff-only: the distance retry never runs for anonymous callers. */
 		add_action( 'admin_post_fp_distance_retry', array( self::class, 'handle_retry' ) );
@@ -190,7 +184,7 @@ class Freeplast_CQ_Address {
 			}
 			$id          = (string) ( $suggestion['id'] ?? '' );
 			$description = sanitize_text_field( (string) ( $suggestion['description'] ?? '' ) );
-			if ( 1 !== preg_match( '/^[A-Za-z0-9_\-]{1,512}$/', $id ) || '' === $description || mb_strlen( $description ) > 300 ) {
+			if ( ! self::is_place_id( $id ) || '' === $description || mb_strlen( $description ) > 300 ) {
 				continue;
 			}
 			$clean[] = array(
@@ -207,6 +201,11 @@ class Freeplast_CQ_Address {
 	/* ------------------------------------------------------------------ */
 	/* The public address operations                                       */
 	/* ------------------------------------------------------------------ */
+
+	/** Provider place ids are opaque slugs: bounded charset, bounded length. */
+	private static function is_place_id( string $place ): bool {
+		return 1 === preg_match( '/^[A-Za-z0-9_\-]{1,512}$/', $place );
+	}
 
 	/**
 	 * The shared guard: nonce → session (recoverable — JSON for the
@@ -310,7 +309,7 @@ class Freeplast_CQ_Address {
 		$session = self::begin( false );
 
 		$place = isset( $_POST['fp_place'] ) ? sanitize_text_field( wp_unslash( $_POST['fp_place'] ) ) : '';
-		if ( 1 !== preg_match( '/^[A-Za-z0-9_\-]{1,512}$/', $place ) ) {
+		if ( ! self::is_place_id( $place ) ) {
 			self::back( array( 'fpcq_notice' => 'address_error' ) );
 		}
 
@@ -466,8 +465,8 @@ class Freeplast_CQ_Address {
 	 * Hidden without dispatch, exactly like the issue #8 address field.
 	 */
 	public static function render_address_block( string $manual_value, ?string $error, bool $dispatched, string $hash ): string {
-		$state   = self::session_state( $hash );
-		$confirm = null !== $state && 'confirmed' === (string) $state['stage'];
+		$state     = self::session_state( $hash );
+		$confirmed = null !== $state && 'confirmed' === (string) $state['stage'];
 
 		$class = 'fpcq-field fpcq-field-wide fpcq-field-address';
 		if ( null !== $error ) {
@@ -479,7 +478,7 @@ class Freeplast_CQ_Address {
 
 		/* The manual field is required only while dispatched without a
 		   confirmed destination (the JS reveal mirrors this dataset). */
-		$manual_required = $dispatched && ! $confirm;
+		$manual_required = $dispatched && ! $confirmed;
 
 		$inline = null === $error ? '' : sprintf( '<p class="fpcq-field-error" id="fp-direccion-error">%s</p>', esc_html( $error ) );
 
@@ -487,7 +486,7 @@ class Freeplast_CQ_Address {
 			'<div class="%1$s" data-fpcq-address-field><label class="fpcq-field-label" for="fp-direccion">Dirección de despacho</label>%2$s<textarea class="fpcq-textarea" id="fp-direccion" name="fp_direccion" rows="2" maxlength="%3$d" data-fpcq-manual-required="%4$s"%5$s%6$s>%7$s</textarea>%8$s</div>',
 			esc_attr( $class ),
 			self::render_assist( $hash, $state ),
-			400,
+			Freeplast_CQ_Request::MAX_DIRECCION,
 			$manual_required ? '1' : '0',
 			$manual_required ? ' required' : '',
 			null === $error ? '' : ' aria-describedby="fp-direccion-error" aria-invalid="true"',
@@ -507,24 +506,14 @@ class Freeplast_CQ_Address {
 		}
 
 		if ( null === $state ) {
-			return sprintf(
-				'<div class="fpcq-address-assist">%s%s</div>',
-				self::render_search(),
-				self::render_suggestions( self::suggestions( $hash ) )
-			);
+			$inner = self::render_search() . self::render_suggestions( self::suggestions( $hash ) );
+		} elseif ( 'review' === (string) $state['stage'] ) {
+			$inner = self::render_review( $state );
+		} else {
+			$inner = self::render_confirmed( $state );
 		}
 
-		if ( 'review' === (string) $state['stage'] ) {
-			return sprintf(
-				'<div class="fpcq-address-assist">%s</div>',
-				self::render_review( $state )
-			);
-		}
-
-		return sprintf(
-			'<div class="fpcq-address-assist">%s</div>',
-			self::render_confirmed( $state )
-		);
+		return sprintf( '<div class="fpcq-address-assist">%s</div>', $inner );
 	}
 
 	/** The search form — a plain POST the enhancement merely pre-fetches. */
@@ -622,9 +611,7 @@ class Freeplast_CQ_Address {
 	public static function render_admin_distance( WP_Post $post ): string {
 		$destination = json_decode( (string) get_post_meta( $post->ID, self::META_DESTINATION, true ), true );
 		if ( ! is_array( $destination ) ) {
-			return sprintf(
-				'<h2>Distancia de despacho</h2><p class="description">Sin despacho solicitado — no aplica distancia.</p>'
-			);
+			return '<h2>Distancia de despacho</h2><p class="description">Sin despacho solicitado — no aplica distancia.</p>';
 		}
 
 		$distance = json_decode( (string) get_post_meta( $post->ID, self::META_DISTANCE, true ), true );
@@ -727,9 +714,9 @@ class Freeplast_CQ_Google_Http {
 		$body = json_decode( wp_remote_retrieve_body( $response ), true );
 		$out  = array();
 		foreach ( is_array( $body['suggestions'] ?? null ) ? $body['suggestions'] : array() as $suggestion ) {
-			$prediction   = is_array( $suggestion['placePrediction'] ?? null ) ? $suggestion['placePrediction'] : null;
-			$place_id     = is_array( $prediction ) ? (string) ( $prediction['placeId'] ?? '' ) : '';
-			$description  = is_array( $prediction ) ? (string) ( $prediction['text']['text'] ?? '' ) : '';
+			$prediction   = is_array( $suggestion['placePrediction'] ?? null ) ? $suggestion['placePrediction'] : array();
+			$place_id     = (string) ( $prediction['placeId'] ?? '' );
+			$description  = (string) ( $prediction['text']['text'] ?? '' );
 			if ( '' !== $place_id && '' !== $description ) {
 				$out[] = array(
 					'id'          => $place_id,
@@ -820,7 +807,7 @@ class Freeplast_CQ_Google_Http {
 		}
 
 		$body   = json_decode( wp_remote_retrieve_body( $response ), true );
-		$meters = is_array( $body['routes'][0]['distanceMeters'] ?? null ) ? (int) $body['routes'][0]['distanceMeters'] : null;
-		return null === $meters ? null : array( 'meters' => $meters );
+		$meters = $body['routes'][0]['distanceMeters'] ?? null;
+		return is_numeric( $meters ) ? array( 'meters' => (int) $meters ) : null;
 	}
 }

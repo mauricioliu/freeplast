@@ -2327,7 +2327,6 @@ class FP_Fake_Google_Client {
 	private $mode;
 	public function __construct( $mode ) { $this->mode = $mode; }
 	public function suggestions( $query ) {
-		if ( 'suggest_fail' === $this->mode ) { return array(); }
 		return array(
 			array( 'id' => 'fake-place-1', 'description' => 'Av. Providencia 1234, Providencia, Santiago, Chile' ),
 			array( 'id' => 'fake-place-2', 'description' => 'Camino El Arrayán 100, San Francisco de Mostazal, Chile' ),
@@ -2579,7 +2578,7 @@ class FP_Fake_Google_Client {
     assertContains(failedPage.body, 'name="fp_direccion"', 'the manual fallback remains after a provider failure');
     assertAbsent(failedPage.body, 'Dirección confirmada', 'nothing was confirmed');
     const ok3 = await submitAs(token3, { fp_direccion: rural });
-    assert.match(submittedRef(ok3), /^FP-\d{4}-\d{6}$/, 'a validation failure never rejects the request');
+    assert.match(submittedRef(ok3), /^FP-\d{4}-\d{6}$/, 'a resolve failure never rejects the request');
     assert.equal(dispatchOf(submittedRef(ok3)).destination.mode, 'manual');
     fakeMode('ok');
 
@@ -2813,7 +2812,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
     `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the fallback address path (the Google-assisted confirmation arrives with issue #11, below), the acknowledgement/notification emails arrive with their own slice, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
-    `- The Google-assisted Delivery Address confirmation and Dispatch Distance (issue #11) are verified by replacing the Google provider at its narrow adapter boundary (freeplast_cq_google_client) with a mode-switchable fake — no check performs a network call or holds a real credential. The real client is only built when FREEPLAST_GOOGLE_API_KEY is present in the environment ( Places + Routes APIs, Google-console restricted); origin selection (Camino El Arrayán 52 provisional, Santiago pending the client answer) and distance semantics stay the stored-option/filter configuration. Human visual approval remains Gate 3.`,
+    `- The Google-assisted Delivery Address confirmation and Dispatch Distance (issue #11) are verified by replacing the Google provider at its narrow adapter boundary (freeplast_cq_google_client) with a mode-switchable fake — no check performs a network call or holds a real credential. The real client is only built when FREEPLAST_GOOGLE_API_KEY is present in the environment (Places + Routes APIs, Google-console restricted); origin selection (Camino El Arrayán 52 provisional, Santiago pending the client answer) and distance semantics stay the stored-option/filter configuration. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );

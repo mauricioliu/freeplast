@@ -115,11 +115,19 @@
 		return input;
 	}
 
-	function pickForm( suggestion, nonce, action ) {
+	/* The value of one hidden field of the search form (referer, nonce), so
+	   the rendered pick forms carry exactly what the server rendered. */
+	function fieldValue( form, name ) {
+		var input = form.querySelector( 'input[name="' + name + '"]' );
+		return input ? input.value : '';
+	}
+
+	/* One suggestion button: the same plain pick POST the server renders. */
+	function pickForm( suggestion, searchForm ) {
 		var form = document.createElement( 'form' );
 		form.className = 'fpcq-address-pick';
 		form.method = 'post';
-		form.action = action;
+		form.action = searchForm.getAttribute( 'action' );
 
 		var button = document.createElement( 'button' );
 		button.type = 'submit';
@@ -129,22 +137,20 @@
 
 		form.appendChild( hiddenInput( 'action', 'fp_address_pick' ) );
 		form.appendChild( hiddenInput( 'fp_place', suggestion.id || '' ) );
-		form.appendChild( hiddenInput( '_wp_http_referer', '/cotizacion/' ) );
-		form.appendChild( hiddenInput( 'fp_address_nonce', nonce ) );
+		form.appendChild( hiddenInput( '_wp_http_referer', fieldValue( searchForm, '_wp_http_referer' ) ) );
+		form.appendChild( hiddenInput( 'fp_address_nonce', fieldValue( searchForm, 'fp_address_nonce' ) ) );
 		return form;
 	}
 
-	function renderSuggestions( payload, action, nonce ) {
+	function renderSuggestions( payload, searchForm ) {
 		var list = document.querySelector( '[data-fpcq-address-suggestions]' );
 		if ( ! list ) {
 			return;
 		}
-		while ( list.firstChild ) {
-			list.removeChild( list.firstChild );
-		}
+		list.textContent = '';
 		( payload.suggestions || [] ).forEach( function ( suggestion ) {
 			var item = document.createElement( 'li' );
-			item.appendChild( pickForm( suggestion, nonce, action ) );
+			item.appendChild( pickForm( suggestion, searchForm ) );
 			list.appendChild( item );
 		} );
 	}
@@ -154,7 +160,7 @@
 		if ( ! input || 'search' !== input.type || input.name !== 'fp_query' ) {
 			return;
 		}
-		var searchForm = input.closest ? input.closest( 'form.fpcq-address-search' ) : null;
+		var searchForm = input.closest( 'form.fpcq-address-search' );
 		if ( ! searchForm || ! window.fetch || ! window.FormData ) {
 			return; /* the plain Buscar submit is fully functional on its own */
 		}
@@ -182,8 +188,7 @@
 				} )
 				.then( function ( payload ) {
 					if ( payload && payload.ok ) {
-						var nonceField = searchForm.querySelector( 'input[name="fp_address_nonce"]' );
-						renderSuggestions( payload, searchForm.getAttribute( 'action' ), nonceField ? nonceField.value : '' );
+						renderSuggestions( payload, searchForm );
 					}
 				} )
 				.catch( function () {

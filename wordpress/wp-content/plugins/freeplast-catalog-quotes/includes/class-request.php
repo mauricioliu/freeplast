@@ -81,7 +81,8 @@ class Freeplast_CQ_Request {
 		'giro'     => array( 'label' => 'Giro', 'max' => 190, 'type' => 'text', 'autocomplete' => 'off' ),
 	);
 
-	private const MAX_DIRECCION = 400;
+	/** Shared maximum length of the manual Dirección de despacho (rendered by Freeplast_CQ_Address). */
+	public const MAX_DIRECCION = 400;
 	private const MAX_MENSAJE   = 2000;
 
 	public static function register(): void {
@@ -272,13 +273,7 @@ class Freeplast_CQ_Request {
 		   the manual field is the rural/unrecognized fallback). */
 		if ( 'si' === $values['despacho'] ) {
 			$direccion = trim( $area( 'direccion' ) );
-			if ( null !== $confirmed ) {
-				if ( mb_strlen( $direccion ) > self::MAX_DIRECCION ) {
-					$errors['direccion'] = sprintf( 'La dirección de despacho es demasiado larga (máximo %d caracteres).', self::MAX_DIRECCION );
-				} else {
-					$values['direccion'] = $direccion;
-				}
-			} elseif ( '' === $direccion ) {
+			if ( null === $confirmed && '' === $direccion ) {
 				$errors['direccion'] = 'La dirección de despacho es obligatoria cuando solicitas despacho (confírmala con Google o escríbela manualmente).';
 			} elseif ( mb_strlen( $direccion ) > self::MAX_DIRECCION ) {
 				$errors['direccion'] = sprintf( 'La dirección de despacho es demasiado larga (máximo %d caracteres).', self::MAX_DIRECCION );
@@ -375,7 +370,6 @@ class Freeplast_CQ_Request {
 		$idempotency = hash( 'sha256', $token );
 
 		$meta = array(
-			'_fpq_reference'   => '',
 			'_fpq_status'      => 'new',
 			'_fpq_customer'    => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
 			'_fpq_items'       => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
@@ -392,13 +386,14 @@ class Freeplast_CQ_Request {
 		   reading it and inserting. */
 		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
 			$reference = self::next_reference();
+			$meta['_fpq_reference'] = $reference;
 			$post_id   = wp_insert_post(
 				array(
 					'post_type'   => self::POST_TYPE,
 					'post_status' => 'private',
 					'post_title'  => $reference,
 					'post_author' => 0,
-					'meta_input'  => array_merge( $meta, array( '_fpq_reference' => $reference ) ),
+					'meta_input'  => $meta,
 				),
 				true
 			);
@@ -644,6 +639,10 @@ class Freeplast_CQ_Request {
 			$fields .= self::render_text_field( $key, $values[ $key ], $errors[ $key ] ?? null );
 		}
 		$fields .= self::render_despacho( $values['despacho'], $errors['despacho'] ?? null );
+		/* Dirección de despacho — the dispatch-conditional block rendered by
+		   Freeplast_CQ_Address (issue #11): Google-assisted confirmation with
+		   the manual fallback, hidden without dispatch and revealed
+		   progressively (the server stays the authority). */
 		$fields .= Freeplast_CQ_Address::render_address_block( $values['direccion'], $errors['direccion'] ?? null, $dispatched, $session['hash'] );
 		$fields .= self::render_mensaje( $values['mensaje'], $errors['mensaje'] ?? null );
 
@@ -720,13 +719,6 @@ class Freeplast_CQ_Request {
 			$inline
 		);
 	}
-
-	/* Dirección de despacho is rendered by Freeplast_CQ_Address
-	 * (render_address_block, issue #11): the Google-assisted confirmation
-	 * with the manual fallback, hidden without dispatch and revealed
-	 * progressively — without JavaScript a Sí submission round-trips once
-	 * through validation, which re-renders it visible (the server stays
-	 * the authority). */
 
 	/** Mensaje — optional, bounded. */
 	private static function render_mensaje( string $value, ?string $error ): string {
