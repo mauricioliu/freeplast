@@ -32,6 +32,14 @@
  *               collection/submission disclosure without a consent
  *               checkbox. Only the exact legacy placeholder is replaced;
  *               no schema change.
+ * Migration 6 — quote-request submission (issue #8): the non-public
+ *               fp_quote record type (registered on init by
+ *               Freeplast_CQ_Request — no new table: Submitted Details,
+ *               immutable snapshots and the idempotency hash live on the
+ *               records; submission attempts/tokens live in expiring
+ *               transients) and the dedicated sales capability
+ *               (manage_freeplast_quotes) granted to administrators so
+ *               the minimal admin detail is capability-protected.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -107,6 +115,18 @@ class Freeplast_CQ_Migrations {
 				Freeplast_CQ_Shell::privacy_content()
 			);
 			$applied = 5;
+		}
+
+		if ( $applied < 6 ) {
+			// Migration 6 — the Quote Request submission slice (see
+			// class-request.php): no table, but the dedicated sales capability
+			// guarding the minimal Cotizaciones admin surface is granted to
+			// administrators exactly once.
+			$administrator = get_role( 'administrator' );
+			if ( null !== $administrator && ! $administrator->has_cap( Freeplast_CQ_Request::CAPABILITY ) ) {
+				$administrator->add_cap( Freeplast_CQ_Request::CAPABILITY );
+			}
+			$applied = 6;
 		}
 
 		if ( $applied < FREEPLAST_CQ_DB_VERSION ) {

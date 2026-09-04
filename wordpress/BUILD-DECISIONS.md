@@ -6,6 +6,64 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #8: submit a Quote Request
+
+The core customer outcome completes: the shared basket at Cotización becomes
+a one-shot submission into a durable, non-public business record. Decisions:
+1. **The form lives on the sole surface and reads the server basket.**
+   `Freeplast_CQ_Request` (fpcq- v1) renders the request form below the
+   basket lines inside the same `freeplast/basket` block — as its own
+   section, outside the JS-mirrored basket view, so typed customer data
+   survives in-place basket mutations and the form disappears with the last
+   line. Product/options/quantities are never request fields: the handler
+   re-resolves the authenticated basket session against the live catalog,
+   so archived Products drop out and eligibility/options/quantities are the
+   reviewed server state by construction.
+2. **Fields mirror the current form; the address is dispatch-conditional.**
+   Nombre, Teléfono, Email, Nombre Empresa, Rut Empresa, Giro and Con
+   Despacho (exactly si/no) are required; Mensaje is optional and bounded
+   (2000). The manual Dirección de despacho appears and is required only
+   while Con Despacho is Sí — hidden otherwise (progressive JS reveal; a
+   no-JavaScript Sí submission round-trips once through validation, which
+   re-renders it visible, the server stays the authority). Email gets
+   standard validity checks, the telephone accepts international formatting
+   while preserving the entered text plus a normalized stored copy, and the
+   RUT is kept as entered (required + charset bound, no invented checksum).
+3. **Failures retain everything.** Invalid submissions redirect back with a
+   focused linked summary (`role=alert`, anchored links `#fp-<field>`,
+   fragment focus target) plus inline `aria-describedby`/`aria-invalid`
+   errors; the entered values live in a 15-minute transient keyed by the
+   session hash — never in the URL, never in logs — so fields and basket
+   are retained after every invalid attempt. Nonce, session and idempotency
+   token guard failures are recoverable codes that persist nothing.
+4. **Exactly one record per submission.** A successful submission persists
+   one private `fp_quote` post (non-public, no REST, no public URL) titled
+   with its permanent `FP-YYYY-NNNNNN` reference allocated from the year's
+   highest sequence (internal IDs stay internal), carrying the Submitted
+   Details (`_fpq_customer`), immutable per-line snapshots (`_fpq_items`:
+   source id, post id, title, option, quantity, minimum/step used, specs,
+   canonical URL), status `new` and the sha256 idempotency hash. Only then
+   is the basket cleared — the session row survives (empty) so the next
+   visit is a fresh basket instead of an apparent expiry. A persistence
+   failure (filter seam `freeplast_cq_request_persist` or failed insert)
+   shows no success and retains basket plus values.
+5. **Idempotency is token-based, not hope-based.** Each rendered form
+   carries a session-scoped random token kept in a day transient; a
+   submission whose token already served a persisted request redirects to
+   that request's confirmation without creating a second record —
+   refresh/back/repost cannot duplicate. A rebuilt basket renders a fresh
+   token and receives its own reference. The confirmation itself renders
+   only for the session that owns it (a session-scoped transient must match
+   the `fpcq_submitted` reference — the URL alone reveals nothing).
+6. **Minimal capability-protected inspection.** Migration 6 (db version 6,
+   no new table) grants `manage_freeplast_quotes` to administrators; a
+   top-level Cotizaciones menu lists the records (reference, company,
+   email, dispatch, status, created) and the detail shows Submitted Details
+   and the immutable snapshots. The full sales administration (statuses,
+   notes, history, corrections) is issue #10; notifications are #11; the
+   Google-assisted address is #9. No price, Quotation, Order, checkout or
+   customer account is created.
+
 ## 2026-09-03 — Issue #7: complete Quote Basket editing and options
 
 The basket becomes fully editable and option-aware: Color Caja Universal

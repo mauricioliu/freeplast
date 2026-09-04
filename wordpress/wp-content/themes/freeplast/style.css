@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, quote basket and quote-request logic live in the private freeplast-catalog-quotes plugin.
-Version: 0.5.0
+Version: 0.6.0
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -1278,6 +1278,273 @@ a {
   color: var(--fp-muted);
 }
 
+/* ---------- Quote Request submission (issue #8: request form + confirmation) ---------- */
+
+.fpcq-hidden {
+  display: none;
+}
+
+.fpcq-request {
+  padding-block: var(--fp-s-5);
+}
+
+.fpcq-request-title {
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.fpcq-request-intro {
+  max-width: var(--fp-measure);
+  color: var(--fp-muted);
+}
+
+/* Focused linked error summary (tinted/bordered panel, v6 validation states are blue/tint). */
+.fpcq-form-errors {
+  margin: var(--fp-s-4) 0;
+  padding: var(--fp-s-3) var(--fp-s-4);
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-lg);
+}
+
+.fpcq-form-errors:focus {
+  outline: 2px solid var(--fp-blue);
+  outline-offset: 2px;
+}
+
+.fpcq-form-errors-title {
+  margin: 0 0 var(--fp-s-2);
+  color: var(--fp-blue-heading);
+  font-weight: 700;
+}
+
+.fpcq-form-errors ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.fpcq-form-errors li {
+  margin: 2px 0;
+}
+
+.fpcq-form-errors a {
+  color: var(--fp-blue);
+  font-weight: 600;
+}
+
+.fpcq-form-errors-general {
+  margin: var(--fp-s-2) 0 0;
+  color: var(--fp-blue-heading);
+  font-weight: 600;
+}
+
+.fpcq-form-grid {
+  display: grid;
+  gap: var(--fp-s-4);
+}
+
+.fpcq-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fp-s-1);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.fpcq-field-label {
+  color: var(--fp-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fpcq-optional {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.fpcq-input,
+.fpcq-textarea {
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line-strong);
+  border-radius: var(--fp-r-lg);
+  color: var(--fp-ink);
+  font: inherit;
+}
+
+.fpcq-textarea {
+  resize: vertical;
+}
+
+.fpcq-input:focus,
+.fpcq-textarea:focus {
+  outline: none;
+  border-color: var(--fp-blue);
+  box-shadow: 0 0 0 3px rgba(16, 0, 144, 0.14);
+}
+
+.fpcq-field-invalid .fpcq-input,
+.fpcq-field-invalid .fpcq-textarea {
+  border-color: var(--fp-blue);
+  background: var(--fp-tint);
+}
+
+.fpcq-field-error {
+  margin: 0;
+  color: var(--fp-blue-heading);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Con despacho: pill choices (same treatment as the color option chooser). */
+.fpcq-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fp-s-2);
+}
+
+.fpcq-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--fp-s-2);
+  min-height: 44px;
+  padding: 0 var(--fp-s-3);
+  background: var(--fp-paper);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-full);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.fpcq-choice:has(input:checked) {
+  border-color: var(--fp-green);
+  background: var(--fp-green-soft);
+}
+
+.fpcq-choice input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fp-green);
+}
+
+.fpcq-choice:focus-within {
+  outline: 2px solid var(--fp-blue);
+  outline-offset: 2px;
+}
+
+.fpcq-request-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: var(--fp-s-2);
+  padding: var(--fp-s-2) var(--fp-s-5);
+  background: var(--fp-blue);
+  border: none;
+  border-radius: var(--fp-r-lg);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--fp-dur) var(--fp-ease), transform var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-request-submit:hover {
+  background: var(--fp-blue-heading);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.fpcq-request-privacy {
+  max-width: var(--fp-measure);
+  margin-bottom: 0;
+  color: var(--fp-muted);
+  font-size: 13px;
+}
+
+.fpcq-request-privacy a {
+  color: var(--fp-blue);
+}
+
+/* Confirmation: the durable Request Reference is the hero of the page. */
+.fpcq-confirmation {
+  padding-block: var(--fp-s-6);
+}
+
+.fpcq-confirmation-kicker {
+  margin: 0 0 var(--fp-s-2);
+  color: var(--fp-green);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fpcq-confirmation-title {
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.fpcq-confirmation-label {
+  margin: var(--fp-s-4) 0 0;
+  color: var(--fp-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fpcq-confirmation-reference {
+  margin: var(--fp-s-1) 0 var(--fp-s-3);
+  color: var(--fp-blue-heading);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.fpcq-confirmation-note {
+  max-width: var(--fp-measure);
+  margin: 0 0 var(--fp-s-4);
+  color: var(--fp-muted);
+}
+
+.fpcq-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fp-s-3);
+}
+
+.fpcq-confirmation-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--fp-s-2) var(--fp-s-4);
+  background: var(--fp-blue);
+  border-radius: var(--fp-r-lg);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background var(--fp-dur) var(--fp-ease);
+}
+
+.fpcq-confirmation-cta:hover {
+  background: var(--fp-blue-heading);
+  color: #fff;
+}
+
+.fpcq-confirmation-link {
+  color: var(--fp-blue);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .fpcq-basketview-cta {
   display: inline-flex;
   align-items: center;
@@ -1483,6 +1750,14 @@ a {
 @media (min-width: 768px) {
   .fp-island-links {
     display: flex;
+  }
+
+  .fpcq-form-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .fpcq-field-wide {
+    grid-column: 1 / -1;
   }
 
   .fp-burger {

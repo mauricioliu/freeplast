@@ -37,9 +37,11 @@
  * under a stock block theme; the freeplast theme supplies the v6 look:
  *
  *   freeplast/basket-button  header widget: Cotización (n) + mini basket
- *   freeplast/basket         the full /cotizacion/ view with per-line
- *                            update/remove forms (the request form arrives
- *                            with issue #8 on the same page)
+ *   freeplast/basket         the full /cotización/ page: the basket view
+ *                            plus the request form below it (issue #8,
+ *                            Freeplast_CQ_Request) or, after a successful
+ *                            submission, the confirmation with the Request
+ *                            Reference.
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -108,7 +110,7 @@ class Freeplast_CQ_Basket {
 		);
 		register_block_type(
 			'freeplast/basket',
-			array( 'render_callback' => array( self::class, 'render_view' ) )
+			array( 'render_callback' => array( self::class, 'render_page' ) )
 		);
 	}
 
@@ -400,6 +402,30 @@ class Freeplast_CQ_Basket {
 		return count( self::resolved_lines() );
 	}
 
+	/* ------------------------------------------------------------------ */
+	/* Session access for the Quote Request flow (issue #8)                */
+	/* ------------------------------------------------------------------ */
+
+	/** The resolved live session (hash + stored lines), or null. */
+	public static function current_session(): ?array {
+		return self::resolve();
+	}
+
+	/** Clear a presented-but-dead cookie so the guest can simply retry. */
+	public static function clear_stale_cookie(): void {
+		self::clear_cookie();
+	}
+
+	/**
+	 * Clear the basket of a live session (one authoritative write of an
+	 * empty line list). Called only after a Quote Request durably
+	 * persisted — the session itself stays alive, so the next visit is a
+	 * fresh empty basket rather than an apparent expiry.
+	 */
+	public static function clear_basket( array $session ): void {
+		self::save_lines( $session, array() );
+	}
+
 	private static function quantity_label( int $quantity ): string {
 		return 1 === $quantity ? '1 unidad' : sprintf( '%d unidades', $quantity );
 	}
@@ -662,6 +688,14 @@ class Freeplast_CQ_Basket {
 				return 'La cantidad debe ser un número entero mayor que cero.';
 			case 'line':
 				return 'Esa línea ya no está en tu cotización.';
+			case 'basket':
+				return 'Tu cotización está vacía. Agrega productos antes de enviar tu solicitud.';
+			case 'token':
+				return 'Tu solicitud ya no es válida. Vuelve a cargar la página e inténtalo de nuevo.';
+			case 'request_invalid':
+				return 'Revisa el formulario: hay campos que necesitan tu atención.';
+			case 'request_failed':
+				return 'No pudimos guardar tu solicitud. Tu cotización sigue activa; inténtalo de nuevo.';
 		}
 		return null;
 	}
@@ -801,11 +835,11 @@ class Freeplast_CQ_Basket {
 	}
 
 	/**
-	 * The full /cotización/ view: every live line with its own update and
-	 * remove forms (issue #7), so the basket is fully editable with or
-	 * without JavaScript. The request form arrives with issue #8 on this
-	 * same sole quotation surface; both the section and its empty state
-	 * carry the data-fpcq-basket-view marker the enhancement mirrors into.
+	 * The full /cotización/ basket view: every live line with its own update
+	 * and remove forms (issue #7), so the basket is fully editable with or
+	 * without JavaScript. This method renders only the mirrored basket
+	 * section; the /cotización/ page itself is composed by render_page()
+	 * (the request form below, the confirmation above).
 	 */
 	public static function render_view(): string {
 		$lines = self::resolved_lines();
@@ -832,9 +866,23 @@ class Freeplast_CQ_Basket {
 		}
 
 		return sprintf(
-			'<section class="fpcq-basketview" data-fpcq-version="1" data-fpcq-basket-view><h2 class="fpcq-basketview-title">Tu cotización</h2><ul class="fpcq-basketview-lines">%s</ul><p class="fpcq-basketview-note">Revisa tus productos y cantidades. Enviar tu solicitud a Freeplast se habilita en el próximo paso.</p><a class="fpcq-basketview-cta" href="%s">Seguir explorando la tienda</a></section>',
-			$items,
-			esc_url( home_url( '/tienda/' ) )
+			'<section class="fpcq-basketview" data-fpcq-version="1" data-fpcq-basket-view><h2 class="fpcq-basketview-title">Tu cotización</h2><ul class="fpcq-basketview-lines">%s</ul><p class="fpcq-basketview-note">Revisa tus productos y cantidades; el formulario de envío está más abajo en esta misma página.</p></section>',
+			$items
 		);
+	}
+
+	/**
+	 * The /cotización/ page — the sole final submission surface: after a
+	 * successful submission the confirmation with the Request Reference;
+	 * otherwise the editable basket view with the request form below it
+	 * (rendered only while basket lines exist).
+	 */
+	public static function render_page(): string {
+		$confirmation = Freeplast_CQ_Request::render_confirmation();
+		if ( '' !== $confirmation ) {
+			return $confirmation;
+		}
+
+		return self::render_view() . Freeplast_CQ_Request::render_form();
 	}
 }

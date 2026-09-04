@@ -20,7 +20,8 @@ wordpress/
     themes/freeplast/         standalone block theme — v6 shell + v7-A product
     plugins/freeplast-catalog-quotes/
                               private plugin — shell routes, migrations,
-                              fp_product records, catalog synchronization
+                              fp_product records, catalog synchronization,
+                              quote basket + quote-request submission
   .tools/                     pinned downloadable toolchain (gitignored)
   .build/                     disposable WordPress site (gitignored)
 ```
@@ -33,7 +34,8 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#12 acceptance criteria.
+                      # verify the issue-#2 through issue-#12 acceptance
+                      # criteria (including the issue-#8 submission).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -53,9 +55,10 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
 - Home `/` returns HTTP 200 and renders the approved v6 shell — brand,
   INICIO/NOSOTROS/TIENDA navigation, Cotiza Online CTA, hero copy — for
   mobile and desktop user agents, with mobile-first (min-width-only) CSS;
-- `/cotizacion/` renders the quote-basket view (empty state, no request form
-  — submission is issue #8) and the only forms anywhere are the basket
-  choosers and line-edit forms (fpcq-basket-add/update/remove);
+- `/cotizacion/` is the sole final submission surface: it renders the
+  quote-basket view and, below the basket lines, the Quote Request form
+  (issue #8) — never rendered without lines; the only other forms anywhere
+  are the basket choosers and line-edit forms (fpcq-basket-add/update/remove);
 - WooCommerce is absent;
 - WordPress/PHP/SQLite versions and the plugin migration version
   (`fp_db_version`) are reported against the declared expectations;
@@ -105,6 +108,24 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   using the anonymous cookie basket (no user linking), and sessions expire
   30 days after last activity (dead cookie cleared once, empty state routes
   back to Tienda, daily sweep collects expired rows);
+- the Quote Request submission (issue #8) completes the core customer
+  outcome: the form carries the current Freeplast business fields (Nombre,
+  Teléfono, Email, Nombre Empresa, Rut Empresa, Giro, Con Despacho = Sí/No;
+  Mensaje optional/bounded; a manual Dirección de despacho only with
+  dispatch), takes products/options/quantities from the authenticated
+  server basket (never from request fields, archived Products drop out),
+  retains entered values and the basket after every invalid attempt with a
+  focused linked error summary plus inline aria-linked errors, and — once
+  valid — persists exactly one private `fp_quote` record (non-public, no
+  REST, no public URL) with Submitted Details and immutable per-line
+  Product snapshots (source id, option, quantity, rules used, specs,
+  canonical URL), a permanent `FP-YYYY-NNNNNN` Request Reference shown on
+  the session-owned confirmation, a cleared basket only after durable
+  persistence (a forced persistence failure shows no success and retains
+  it), idempotent refresh/back/retry through a session-scoped token, and a
+  minimal capability-protected Cotizaciones admin detail
+  (`manage_freeplast_quotes`); no price, Quotation, Order, checkout or
+  customer account is ever created;
 - the complete v6 content and navigation experience (issue #12) is governed
   by a frozen design contract (`design/design-tokens.json` + `DECISIONS.md`
   with SHA-256-frozen approved prototypes; the rejected v5 rules are not

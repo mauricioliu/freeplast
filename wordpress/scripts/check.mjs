@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#12).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#8, #12).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -73,6 +73,22 @@
  *      usable, the header count and mini basket stay accurate on every
  *      route, templates parse without block recovery, and the theme
  *      contains no Catalog or Quote Request business logic.
+ *  15. The Quote Request submission completes the core customer outcome:
+ *      /cotizacion/ is the sole final submission surface — the request
+ *      form reads Product/options/quantities from the authenticated
+ *      server basket (never duplicated request fields), validates the
+ *      Freeplast business fields server-side (Nombre, Teléfono, Email,
+ *      Nombre Empresa, Rut Empresa, Giro, Con Despacho = Sí/No; Mensaje
+ *      optional/bounded; the manual Dirección de despacho only with
+ *      dispatch), retains entered values and the basket after every
+ *      invalid attempt with a focused linked error summary, persists
+ *      exactly one non-public Quote Request with immutable Product
+ *      snapshots and a permanent FP-YYYY-NNNNNN Request Reference, clears
+ *      the basket only after durable persistence (a persistence failure
+ *      shows no success and retains it), cannot duplicate the record on
+ *      refresh/back/retry (idempotency token), drops archived Product
+ *      lines, and exposes a minimal capability-protected admin detail —
+ *      with no price, Quotation, Order, checkout or customer account.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -101,6 +117,10 @@ const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64; 1440px) AppleWebKit/537.36 C
 
 const CATALOG_SOURCE = join(WORDPRESS_DIR, 'data', 'products.json');
 const CATALOG = JSON.parse(readFileSync(CATALOG_SOURCE, 'utf8'));
+const PLUGIN_MAIN = join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes', 'freeplast-catalog-quotes.php');
+const DB_VERSION = Number(
+  readFileSync(PLUGIN_MAIN, 'utf8').match(/FREEPLAST_CQ_DB_VERSION',\s*(\d+)\s*\)/)?.[1] || 0
+);
 const PRODUCTS = CATALOG.products;
 const PRODUCT_COUNT = PRODUCTS.length;
 const PRODUCT_SLUGS = PRODUCTS.map((p) => p.slug);
@@ -467,7 +487,7 @@ test('Cotización renders a non-functional-safe empty state', async () => {
   const res = await get('/cotizacion/', MOBILE_UA);
   assert.equal(res.status, 200, '/cotizacion/ must return HTTP 200');
   assertContains(res.body, 'Tu cotización está vacía', '/cotizacion/ must render the empty Cotización state');
-  assert.doesNotMatch(res.body, /<form[\s>]/i, '/cotizacion/ must not contain a submission form yet (issue #8 owns submission)');
+  assert.doesNotMatch(res.body, /<form[\s>]/i, '/cotizacion/ must not contain a form while the basket is empty (the request form renders only with basket lines)');
   assert.doesNotMatch(res.body, /action="mailto:/i, 'no mailto form action may be treated as a submission endpoint');
 
   // Basket entry points elsewhere are quantity choosers, never quote-request forms.
@@ -483,12 +503,12 @@ test('Cotización renders a non-functional-safe empty state', async () => {
   assert.equal(
     formCount(home.body),
     chooserCount(home.body),
-    'every form on Home must be a basket quantity chooser — the quote-request form does not exist yet (issue #8)'
+    'every form on Home must be a basket quantity chooser — the request form lives only on /cotizacion/ below basket lines (issue #8)'
   );
 
   section('Cotización state', [
-    '/cotizacion/ renders "Tu cotización está vacía" — empty, non-functional and safe',
-    'No quote-request submission form anywhere; basket choosers are the only forms; prototype mailto/WhatsApp behavior is not a submission endpoint',
+    '/cotizacion/ renders "Tu cotización está vacía" while the basket is empty — no form without lines',
+    'Basket choosers are the only forms outside /cotizacion/; the request form (issue #8) renders there only below basket lines; prototype mailto/WhatsApp behavior is not a submission endpoint',
   ]);
 });
 
@@ -652,7 +672,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
   assert.equal(showUi, 'hidden', 'fp_product must be absent from WordPress editor UI');
   const showMenu = wp(['eval', 'echo get_post_type_object("fp_product")->show_in_menu ? "shown" : "hidden";']).stdout;
   assert.equal(showMenu, 'hidden', 'fp_product must be absent from the administration menu');
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '5', 'migration 5 (v6 content takeover) must be applied');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} (quote-request submission slice) must be applied`);
 
   // Every canonical product URL answers HTTP 200 (mobile first).
   const pages = new Map();
@@ -1794,7 +1814,7 @@ test('the complete v6 content and navigation experience is governed, connected a
       'update_option( "fp_db_version", 4 );',
   ]);
   const migrated = wp(['eval', 'Freeplast_CQ_Migrations::run(); echo get_option( "fp_db_version" );']);
-  assert.equal(migrated.stdout, '5', 're-running the migrations must apply migration 5');
+  assert.equal(migrated.stdout, String(DB_VERSION), `re-running the migrations from 4 must apply migrations 5 and ${DB_VERSION}`);
   const contactoAfter = await get('/contacto/', MOBILE_UA);
   assertContains(contactoAfter.body, 'api.whatsapp.com/send?phone=56968444265', 'migration 5 must upgrade the legacy Contacto content');
   assertContains((await get('/politica-de-privacidad/', MOBILE_UA)).body, 'Qué información recopilamos', 'migration 5 must upgrade the legacy privacy content');
@@ -1821,11 +1841,467 @@ test('the complete v6 content and navigation experience is governed, connected a
   ]);
 });
 
-/* ─── 15. Write VERIFICATION.md and clean up ──────────────────────────── */
+/* ── 15. Quote Request submission (issue #8) ────────────────────── */
+
+test('a guest submits exactly one Quote Request from the authenticated basket', { timeout: 240_000 }, async () => {
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const COLOR_ID = 'fp-caja-universal-cerrada-color';
+  const COLOR_URL = '/producto/caja-universal-cerrada-color/';
+
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const quoteIds = () => wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--orderby=ID', '--order=ASC', '--format=ids']).stdout;
+  const quoteRecord = (reference) =>
+    JSON.parse(
+      wp([
+        'eval',
+        `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${reference}" ) );` +
+          'if ( empty( $posts ) ) { echo "null"; } else { $p = $posts[0]; echo wp_json_encode( array( ' +
+          '"id" => $p->ID, "post_status" => $p->post_status, "title" => $p->post_title, ' +
+          '"status" => (string) get_post_meta( $p->ID, "_fpq_status", true ), ' +
+          '"customer" => json_decode( (string) get_post_meta( $p->ID, "_fpq_customer", true ), true ), ' +
+          '"items" => json_decode( (string) get_post_meta( $p->ID, "_fpq_items", true ), true ), ' +
+          '"idempotency" => (string) get_post_meta( $p->ID, "_fpq_idempotency", true ), ' +
+          '"type_public" => (bool) get_post_type_object( "fp_quote" )->public, ' +
+          '"type_queryable" => (bool) get_post_type_object( "fp_quote" )->publicly_queryable, ' +
+          '"type_rest" => (bool) get_post_type_object( "fp_quote" )->show_in_rest ) ); }',
+      ]).stdout || 'null'
+    );
+
+  const usersTotal = () => Number(wp(['eval', 'echo count_users()["total_users"];']).stdout || '0');
+  const usersBefore = usersTotal();
+  const types = wp(['eval', 'echo implode( ",", get_post_types() );']).stdout;
+  assert.ok(!types.includes('shop_order') && !types.includes('fp_quotation'), 'no Order or Quotation record type may exist');
+
+  /* 15.1 — Without basket lines there is nothing to submit on the sole
+     submission surface. */
+  const emptyCot = await get('/cotizacion/', MOBILE_UA);
+  assert.doesNotMatch(emptyCot.body, /fpcq-request-form/, 'the request form must not render without basket lines');
+
+  /* 15.2 — Build an authenticated two-line basket (plain + Color option). */
+  const productPage = await get(PRODUCT_URL, MOBILE_UA);
+  const addNonce = productPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(addNonce, 'a chooser nonce is needed to build the basket');
+  const add = (over = {}, headers = {}) =>
+    postForm(
+      {
+        action: 'fp_basket_add',
+        fp_product: 'fp-caja-cosechera-3-4',
+        fp_quantity: '5',
+        fp_basket_nonce: addNonce,
+        _wp_http_referer: PRODUCT_URL,
+        ...over,
+      },
+      headers
+    );
+  const seeded = await add();
+  const token = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(token, 'the submission flow needs its own guest session');
+  const colorPage = await get(COLOR_URL, MOBILE_UA);
+  const colorAddNonce = colorPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const colorAdd = await postForm(
+    {
+      action: 'fp_basket_add',
+      fp_product: COLOR_ID,
+      fp_option: 'blanco',
+      fp_quantity: '12',
+      fp_basket_nonce: colorAddNonce,
+      _wp_http_referer: COLOR_URL,
+    },
+    cookieHeader(token)
+  );
+  assert.equal(noticeOf(colorAdd), 'added', 'the Color line must join the basket');
+
+  /* 15.3 — The request form renders below the basket lines with the current
+     Freeplast business fields, its own nonce and the idempotency token. */
+  let cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(cot.body, 'Cotización (2)', 'the basket must carry both lines');
+  assertContains(cot.body, 'class="fpcq-request-form"', 'the request form must render below the basket');
+  for (const field of ['nombre', 'telefono', 'email', 'empresa', 'rut', 'giro']) {
+    assert.ok(
+      new RegExp(`name="fp_${field}"[^>]*required`).test(cot.body),
+      `${field} must be a required input`
+    );
+  }
+  assertContains(cot.body, 'type="radio" name="fp_despacho" value="si" required', 'Con Despacho must be a required Sí choice');
+  assertContains(cot.body, 'type="radio" name="fp_despacho" value="no" required', 'Con Despacho must be a required No choice');
+  assertContains(cot.body, 'name="fp_mensaje"', 'Mensaje must be offered');
+  assert.ok(!/name="fp_mensaje"[^>]*required/.test(cot.body), 'Mensaje must stay optional');
+  assertContains(cot.body, 'fpcq-hidden" data-fpcq-address-field', 'without dispatch selected the Dirección de despacho is omitted (hidden)');
+  assertContains(cot.body, 'name="action" value="fp_request_submit"', 'the form targets the submission operation');
+  assertContains(cot.body, 'href="/politica-de-privacidad/"', 'the form carries its disclosure link');
+  const requestSection = pluginSection(cot.body, 'class="fpcq-request"', 'the request form section must render');
+  assert.doesNotMatch(requestSection, /name="fp_product"/i, 'products must never be request-form fields');
+  assert.doesNotMatch(requestSection, /name="fp_quantity"/i, 'quantities must never be request-form fields');
+  let reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
+  let idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  assert.ok(reqNonce && idemToken, 'the form must be nonce-guarded and carry the idempotency token');
+
+  const validFields = {
+    fp_nombre: 'María González',
+    fp_telefono: '+56 9 6844 4265',
+    fp_email: 'maria@acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización de productos plásticos',
+    fp_despacho: 'si',
+    fp_direccion: 'Camino El Arrayán 52, San Francisco de Mostazal',
+    fp_mensaje: 'Necesitamos las cajas para la próxima cosecha.',
+  };
+  const submit = (over = {}, headers = cookieHeader(token)) =>
+    postForm(
+      {
+        action: 'fp_request_submit',
+        ...validFields,
+        fp_request_nonce: reqNonce,
+        fp_request_token: idemToken,
+        _wp_http_referer: '/cotizacion/',
+        ...over,
+      },
+      headers
+    );
+
+  /* 15.4 — Invalid submissions retain values and basket, and return a
+     focused linked summary plus inline errors. */
+  for (const [label, over] of [
+    ['missing nombre', { fp_nombre: '' }],
+    ['missing teléfono', { fp_telefono: '' }],
+    ['missing email', { fp_email: '' }],
+    ['missing empresa', { fp_empresa: '' }],
+    ['missing rut', { fp_rut: '' }],
+    ['missing giro', { fp_giro: '' }],
+    ['missing despacho', { fp_despacho: '' }],
+    ['malformed email', { fp_email: 'no-es-un-email' }],
+    ['invalid telephone', { fp_telefono: 'llamanos' }],
+    ['invalid dispatch value', { fp_despacho: 'tal vez' }],
+    ['missing dirección with dispatch', { fp_direccion: '' }],
+    ['unbounded mensaje', { fp_mensaje: 'x'.repeat(2001) }],
+  ]) {
+    const res = await submit(over);
+    assert.equal(res.status, 302, `${label}: must answer POST-redirect-GET`);
+    assert.equal(noticeOf(res), 'request_invalid', `${label}: must be a recoverable invalid submission`);
+    assert.ok((res.headers.location || '').includes('#fpcq-form-errors'), `${label}: the redirect must focus the error summary`);
+  }
+
+  // Every required field missing at once: the focused summary links each one.
+  const allMissing = await submit({
+    fp_nombre: '',
+    fp_telefono: '',
+    fp_email: '',
+    fp_empresa: '',
+    fp_rut: '',
+    fp_giro: '',
+    fp_despacho: '',
+    fp_direccion: '',
+    fp_mensaje: '',
+  });
+  assert.equal(noticeOf(allMissing), 'request_invalid', 'an all-empty submission is invalid');
+  const invalidBack = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(invalidBack.body, 'id="fpcq-form-errors"', 'the retained page must carry the error summary');
+  assertContains(invalidBack.body, 'role="alert"', 'the error summary must be announced');
+  for (const key of ['nombre', 'telefono', 'email', 'empresa', 'rut', 'giro', 'despacho']) {
+    assertContains(invalidBack.body, `href="#fp-${key}"`, `the summary must link the ${key} field`);
+  }
+  assertContains(invalidBack.body, 'id="fp-email-error"', 'email must carry its inline error');
+  assertContains(invalidBack.body, 'aria-invalid="true"', 'invalid fields must be marked');
+
+  // One invalid field among valid ones: every other entered value is retained.
+  const oneBad = await submit({ fp_nombre: '' });
+  assert.equal(noticeOf(oneBad), 'request_invalid');
+  const retainedBack = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(retainedBack.body, 'value="maria@acme.cl"', 'the entered email must be retained');
+  assertContains(retainedBack.body, 'value="Agrícola ACME SpA"', 'the entered empresa must be retained');
+  assertContains(retainedBack.body, 'value="76.335.888-6"', 'the entered rut must be retained');
+  assertContains(retainedBack.body, 'value="si" checked', 'the dispatch choice must be retained');
+  assert.ok(!retainedBack.body.includes('fpcq-hidden" data-fpcq-address-field'), 'with dispatch retained Sí the dirección must be visible');
+  assertContains(retainedBack.body, 'Camino El Arrayán 52', 'the entered dirección must be retained');
+  assertContains(retainedBack.body, 'Necesitamos las cajas para la próxima cosecha.', 'the optional mensaje must be retained');
+  assertContains(retainedBack.body, 'Cotización (2)', 'the basket must be retained after invalid submissions');
+  assertContains(retainedBack.body, 'Caja Cosechera 3/4', 'the basket lines must still render');
+  assert.equal(quoteCount(), 0, 'invalid submissions must persist nothing');
+
+  // The missing-dirección-with-dispatch case re-renders the address field
+  // visible (retained Sí) — the server is the authority without JavaScript.
+  const noAddress = await submit({ fp_direccion: '' });
+  assert.equal(noticeOf(noAddress), 'request_invalid');
+  const noAddressBack = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  assertContains(noAddressBack.body, 'La dirección de despacho es obligatoria', 'the dirección error must be explicit');
+  assertContains(noAddressBack.body, 'href="#fp-direccion"', 'the summary must link the dirección field');
+
+  // Guard failures: nonce, session, idempotency token.
+  assert.equal(noticeOf(await submit({ fp_request_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef' })), 'nonce', 'a bad nonce must be rejected');
+  assert.equal(noticeOf(await submit({ fp_request_token: 'deadbeefdeadbeefdeadbeefdeadbeef' })), 'token', 'a foreign idempotency token must be rejected');
+  assert.equal(noticeOf(await submit({}, {})), 'session', 'a sessionless submission must be rejected');
+  assert.equal(quoteCount(), 0, 'guard failures must persist nothing');
+
+  /* 15.5 — A valid submission persists exactly one non-public record,
+     clears the basket and confirms with a permanent reference. */
+  const ok = await submit();
+  assert.equal(ok.status, 302, 'the valid submission must answer POST-redirect-GET');
+  const location = new URL(ok.headers.location, SITE_URL);
+  assert.equal(location.pathname, '/cotizacion/', 'the redirect must return to the sole submission surface');
+  const reference = location.searchParams.get('fpcq_submitted');
+  assert.match(reference, /^FP-\d{4}-\d{6}$/, 'the Request Reference must follow FP-YYYY-NNNNNN');
+
+  const confirmed = await get(`/cotizacion/?fpcq_submitted=${reference}`, MOBILE_UA, cookieHeader(token));
+  assertContains(confirmed.body, reference, 'the confirmation must display the Request Reference');
+  assertContains(confirmed.body, 'Solicitud recibida', 'the confirmation must state the outcome');
+  assertContains(confirmed.body, 'Cotización (0)', 'the basket must be cleared after durable persistence');
+  assertContains(confirmed.body, 'Tu cotización está vacía', 'the cleared basket renders its empty state');
+  assert.doesNotMatch(confirmed.body, /fpcq-request-form/, 'no request form renders after submission');
+  // Refreshing the confirmation keeps the reference and creates nothing.
+  assertContains(
+    (await get(`/cotizacion/?fpcq_submitted=${reference}`, MOBILE_UA, cookieHeader(token))).body,
+    reference,
+    'refreshing the confirmation keeps the reference'
+  );
+  assert.equal(quoteCount(), 1, 'exactly one Quote Request must exist');
+
+  const record = quoteRecord(reference);
+  assert.ok(record, 'the persisted record must be readable');
+  assert.equal(record.post_status, 'private', 'the record must be non-public (private status)');
+  assert.equal(record.title, reference, 'the record title is the business reference');
+  assert.equal(record.status, 'new', 'a fresh request starts in status new');
+  assert.equal(record.type_public, false, 'the record type must not be public');
+  assert.equal(record.type_queryable, false, 'the record type must not be publicly queryable');
+  assert.equal(record.type_rest, false, 'the record type must not be REST-exposed');
+  assert.match(record.idempotency, /^[0-9a-f]{64}$/, 'the idempotency hash must be stored');
+
+  assert.equal(record.customer.nombre, 'María González');
+  assert.equal(record.customer.telefono, '+56 9 6844 4265', 'the entered telephone is preserved');
+  assert.equal(record.customer.telefono_normalizado, '+56968444265', 'a normalized telephone is stored when derivable');
+  assert.equal(record.customer.email, 'maria@acme.cl');
+  assert.equal(record.customer.empresa, 'Agrícola ACME SpA');
+  assert.equal(record.customer.rut, '76.335.888-6');
+  assert.equal(record.customer.giro, 'Comercialización de productos plásticos');
+  assert.equal(record.customer.con_despacho, 'si');
+  assert.equal(record.customer.direccion_despacho, 'Camino El Arrayán 52, San Francisco de Mostazal');
+  assert.equal(record.customer.mensaje, 'Necesitamos las cajas para la próxima cosecha.');
+
+  assert.equal(record.items.length, 2, 'both basket lines submit');
+  const bySource = Object.fromEntries(record.items.map((item) => [item.source_id, item]));
+  const cosechera = bySource['fp-caja-cosechera-3-4'];
+  const universal = bySource[COLOR_ID];
+  assert.ok(cosechera && universal, 'the items must carry the immutable source identity');
+  assert.deepEqual(
+    Object.keys(cosechera).sort(),
+    ['dimensions', 'material', 'minimum', 'option_id', 'option_label', 'post_id', 'quantity', 'source_id', 'step', 'title', 'url', 'weight'],
+    'the immutable snapshot must carry exactly the committed shape (no price fields)'
+  );
+  assert.equal(cosechera.title, 'Caja Cosechera 3/4');
+  assert.equal(cosechera.option_id, '');
+  assert.equal(cosechera.quantity, 5);
+  assert.equal(cosechera.minimum, null, 'unconfirmed minimums snapshot as null');
+  assert.equal(cosechera.step, null);
+  assert.equal(cosechera.material, 'Polietileno de alta densidad reciclado');
+  assert.equal(cosechera.dimensions, '600 x 400 x 180 mm');
+  assert.ok(cosechera.url.includes('/producto/caja-cosechera-3-4/'), 'the snapshot carries the canonical URL');
+  assert.equal(universal.option_id, 'blanco', 'the reviewed option submits with the line');
+  assert.equal(universal.option_label, 'Blanco');
+  assert.equal(universal.quantity, 12);
+  assert.ok(universal.post_id > 0, 'the snapshot carries the Product identity');
+
+  // No public route exposes the record.
+  assert.notEqual((await get(`/?p=${record.id}`, MOBILE_UA)).status, 200, 'the record must have no public URL');
+  assert.notEqual((await get('/wp-json/wp/v2/fp_quote', MOBILE_UA)).status, 200, 'the record must not be REST-queryable');
+
+  /* 15.6 — Idempotency: retrying the same form (refresh/back/repost)
+     returns the existing confirmation and never duplicates the record. */
+  const retry = await submit();
+  assert.equal(retry.status, 302);
+  assert.equal(submittedRef(retry), reference, 'the retry must confirm the same request');
+  assert.equal(quoteCount(), 1, 'the retry must not duplicate the Quote Request');
+  assertContains((await get(`/cotizacion/?fpcq_submitted=${reference}`, MOBILE_UA, cookieHeader(token))).body, reference, 'the retry keeps the confirmation');
+
+  /* 15.7 — A second basket submits a second request without dispatch —
+     the address is omitted, a fresh token is issued, the reference differs. */
+  const reAdd = await postForm(
+    {
+      action: 'fp_basket_add',
+      fp_product: 'fp-caja-tomatera',
+      fp_quantity: '30',
+      fp_basket_nonce: addNonce,
+      _wp_http_referer: PRODUCT_URL,
+    },
+    cookieHeader(token)
+  );
+  assert.equal(noticeOf(reAdd), 'added', 'the session can build a new basket');
+  cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
+  idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  assert.ok(reqNonce && idemToken, 'the fresh form carries its own nonce and token');
+  const ok2 = await submit({ fp_despacho: 'no', fp_direccion: '', fp_mensaje: '' });
+  const reference2 = submittedRef(ok2);
+  assert.match(reference2, /^FP-\d{4}-\d{6}$/);
+  assert.notEqual(reference2, reference, 'each request receives its own unique reference');
+  assert.equal(quoteCount(), 2, 'two Quote Requests now exist');
+  const record2 = quoteRecord(reference2);
+  assert.equal(record2.customer.con_despacho, 'no');
+  assert.equal(record2.customer.direccion_despacho, '', 'without dispatch no address data is stored');
+  assert.equal(record2.items.length, 1, 'only the new basket line submits');
+  assert.equal(record2.items[0].source_id, 'fp-caja-tomatera');
+  assert.equal(record2.items[0].quantity, 30);
+
+  /* 15.8 — A persistence failure shows no success and retains basket and
+     values (the record is created only by durable persistence). */
+  const failAdd = await postForm(
+    {
+      action: 'fp_basket_add',
+      fp_product: 'fp-caja-cosechera-3-4',
+      fp_quantity: '3',
+      fp_basket_nonce: addNonce,
+      _wp_http_referer: PRODUCT_URL,
+    },
+    cookieHeader(token)
+  );
+  assert.equal(noticeOf(failAdd), 'added');
+  cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+  reqNonce = cot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
+  idemToken = cot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  mkdirSync(muDir, { recursive: true });
+  writeFileSync(join(muDir, 'fp-test-no-persist.php'), "<?php\nadd_filter( 'freeplast_cq_request_persist', '__return_false' );\n");
+  try {
+    const failed = await submit({ fp_despacho: 'no', fp_direccion: '', fp_mensaje: '' });
+    assert.equal(failed.status, 302);
+    assert.equal(noticeOf(failed), 'request_failed', 'a persistence failure must not claim success');
+    assert.ok(!(failed.headers.location || '').includes('fpcq_submitted'), 'no confirmation may be shown');
+    assert.equal(quoteCount(), 2, 'a failed persistence must create no record');
+    const failedBack = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
+    assertContains(failedBack.body, 'Cotización (1)', 'the basket must be retained');
+    assertContains(failedBack.body, 'No pudimos guardar tu solicitud', 'the retained page explains the failure');
+    assertContains(failedBack.body, 'value="María González"', 'the entered values must be retained');
+  } finally {
+    rmSync(join(muDir, 'fp-test-no-persist.php'), { force: true });
+  }
+  // The same form (same token) succeeds once the store works again.
+  const ok3 = await submit({ fp_despacho: 'no', fp_direccion: '', fp_mensaje: '' });
+  assert.match(submittedRef(ok3), /^FP-\d{4}-\d{6}$/, 'the retried submission persists');
+  assert.equal(quoteCount(), 3);
+
+  /* 15.9 — Eligibility: an archived Product line drops out of the
+     submission (the basket resolves against the live catalog). */
+  const eligibilitySession = await postForm({
+    action: 'fp_basket_add',
+    fp_product: 'fp-caja-cosechera-3-4',
+    fp_quantity: '7',
+    fp_basket_nonce: addNonce,
+    _wp_http_referer: PRODUCT_URL,
+  });
+  const eligToken = eligibilitySession.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(eligToken, 'the eligibility flow needs its own session');
+  const secondAdd = await postForm(
+    {
+      action: 'fp_basket_add',
+      fp_product: 'fp-caja-frutillera',
+      fp_quantity: '9',
+      fp_basket_nonce: addNonce,
+      _wp_http_referer: '/producto/caja-frutillera/',
+    },
+    cookieHeader(eligToken)
+  );
+  assert.equal(noticeOf(secondAdd), 'added');
+  const frutilleraPostId = wp([
+    'eval',
+    'echo get_posts( array( "post_type" => "fp_product", "post_status" => "any", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fp_source_id", "meta_value" => "fp-caja-frutillera" ) )[0];',
+  ]).stdout;
+  wp(['post', 'update', frutilleraPostId, '--post_status=draft']);
+  const eligCot = await get('/cotizacion/', MOBILE_UA, cookieHeader(eligToken));
+  assertContains(eligCot.body, 'Cotización (1)', 'the archived line drops out before submission');
+  assertAbsent(eligCot.body, 'Caja Frutillera', 'the archived Product must not render');
+  const eligNonce = eligCot.body.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const eligTokenField = eligCot.body.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1];
+  const eligSubmit = await postForm(
+    {
+      action: 'fp_request_submit',
+      ...validFields,
+      fp_despacho: 'no',
+      fp_direccion: '',
+      fp_mensaje: '',
+      fp_request_nonce: eligNonce,
+      fp_request_token: eligTokenField,
+      _wp_http_referer: '/cotizacion/',
+    },
+    cookieHeader(eligToken)
+  );
+  wp(['post', 'update', frutilleraPostId, '--post_status=publish']);
+  const eligRef = submittedRef(eligSubmit);
+  assert.match(eligRef, /^FP-\d{4}-\d{6}$/);
+  const eligRecord = quoteRecord(eligRef);
+  assert.equal(eligRecord.items.length, 1, 'only the published Product submits');
+  assert.equal(eligRecord.items[0].source_id, 'fp-caja-cosechera-3-4');
+  assert.equal(eligRecord.items[0].quantity, 7);
+
+  /* 15.10 — Minimal capability-protected admin inspection. */
+  const adminCookie = wp([
+    'eval',
+    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+  ]).stdout;
+  assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
+  const canManage = wp(['eval', 'echo user_can( 1, "manage_freeplast_quotes" ) ? "yes" : "no";']).stdout;
+  assert.equal(canManage, 'yes', 'administrators receive the dedicated sales capability (migration 6)');
+
+  const list = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: adminCookie });
+  assert.equal(list.status, 200, 'the Cotizaciones list must be reachable for the capability holder');
+  assertContains(list.body, reference, 'the list shows the first reference');
+  assertContains(list.body, reference2, 'the list shows the second reference');
+  assertContains(list.body, 'Agrícola ACME SpA', 'the list shows the company');
+  assertContains(list.body, 'maria@acme.cl', 'the list shows the email');
+
+  const firstId = quoteIds().split(/\s+/)[0];
+  const firstTitle = wp(['post', 'get', firstId, '--field=post_title']).stdout;
+  const detail = await get(`/wp-admin/admin.php?page=fp-quote&p=${firstId}`, MOBILE_UA, { cookie: adminCookie });
+  assert.equal(detail.status, 200, 'the detail view must be reachable for the capability holder');
+  assertContains(detail.body, firstTitle, 'the detail shows the reference');
+  assertContains(detail.body, 'María González', 'the detail shows the Submitted Details');
+  assertContains(detail.body, '+56 9 6844 4265', 'the detail shows the entered telephone');
+  assertContains(detail.body, 'Caja Cosechera 3/4', 'the detail shows the immutable snapshot title');
+  assertContains(detail.body, 'snapshot inmutable', 'the detail marks the immutable snapshot');
+
+  // Without the capability the surface is denied.
+  const subUserId = wp([
+    'eval',
+    'echo (int) wp_insert_user( array( "user_login" => "fp_sinventas", "user_pass" => wp_generate_password( 24 ), "user_email" => "sinventas@example.test" ) );',
+  ]).stdout;
+  assert.ok(Number(subUserId) > 0, 'a capability-less user must be created for the denial check');
+  const subCookie = wp([
+    'eval',
+    `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${subUserId}, time() + 3600, "logged_in" );`,
+  ]).stdout;
+  const deniedList = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: subCookie });
+  assert.notEqual(deniedList.status, 200, 'the Cotizaciones surface must deny users without the capability');
+  assertAbsent(deniedList.body, 'Agrícola ACME SpA', 'no request data may reach a denied user');
+  const deniedDetail = await get(`/wp-admin/admin.php?page=fp-quote&p=${firstId}`, MOBILE_UA, { cookie: subCookie });
+  assert.notEqual(deniedDetail.status, 200, 'the detail surface must deny users without the capability');
+  assertAbsent(deniedDetail.body, 'María González', 'no customer data may reach a denied user');
+
+  /* 15.11 — Nothing but the request was created: no customer account, no
+     price, no order. */
+  assert.equal(usersTotal(), usersBefore + 1, 'only the test denial user was created — submissions create no account');
+  const stored = quoteRecord(reference);
+  assert.ok(
+    !JSON.stringify(stored.items).includes('price') && !JSON.stringify(stored.items).includes('precio'),
+    'no price is ever stored'
+  );
+
+  section('Quote Request submission (issue #8)', [
+    '/cotizacion/ is the sole submission surface: the form renders only below live basket lines; products/options/quantities come from the authenticated server basket, never from request fields',
+    'Nombre, Teléfono, Email, Nombre Empresa, Rut Empresa, Giro and Con Despacho (Sí/No) required; Mensaje optional/bounded; manual Dirección de despacho only with dispatch — all validated server-side',
+    'Invalid submissions retain fields and basket, return a focused linked summary (role=alert) plus inline aria-linked errors; nonce/session/token guard failures persist nothing',
+    'A valid submission persists exactly one private fp_quote record (non-public, no REST) with Submitted Details and immutable per-line snapshots (source id, option, quantity, rules used, specs, canonical URL) — no price fields',
+    'The confirmation shows the permanent unique FP-YYYY-NNNNNN reference; the basket clears only after durable persistence; a persistence failure shows no success and retains basket + values',
+    'Refresh/back/retry with the same idempotency token returns the existing confirmation and never duplicates the record; a second basket receives a fresh token and its own reference',
+    'Archived Product lines drop out of the submission (live-catalog resolution); the telephone stores a normalized copy alongside the entered text',
+    'A minimal capability-protected admin detail lists and inspects the records (reference, company, email, dispatch, snapshot); users without manage_freeplast_quotes are denied; no customer account is created',
+  ]);
+});
+
+/* ─── 16. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + v6 content (issues #2–#12)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + v6 content (issues #2–#8, #12)`,
     ``,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
@@ -1879,6 +2355,13 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Search and 404 keep usable navigation and empty states; the header count and mini basket stay accurate on every route',
     'All theme templates/parts parse without block recovery; the theme contains no Catalog or Quote Request business logic',
     'Migration 5 upgrades the legacy Contacto/privacy placeholders byte-safely; human edits survive',
+    'The Quote Request form renders only below live basket lines on the sole submission surface /cotizacion/; products/options/quantities come from the authenticated server basket, never from request fields',
+    'Nombre, Teléfono, Email, Nombre Empresa, Rut Empresa, Giro and Con Despacho (Sí/No) are required, Mensaje optional/bounded, the manual Dirección de despacho only with dispatch — all validated server-side',
+    'Invalid submissions retain fields and basket with a focused linked error summary plus inline aria-linked errors; nonce/session/token guard failures persist nothing',
+    'A valid submission persists exactly one private fp_quote record (non-public, no REST) with Submitted Details and immutable per-line snapshots (source id, option, quantity, rules used, specs, canonical URL) — no price fields',
+    'The confirmation shows the permanent unique FP-YYYY-NNNNNN Request Reference; the basket clears only after durable persistence; a persistence failure shows no success and retains basket + values',
+    'Refresh/back/retry with the same idempotency token never duplicates the record; a second basket receives a fresh token and its own reference; archived Product lines drop out',
+    'A minimal capability-protected admin detail lists and inspects the records; users without manage_freeplast_quotes are denied; no customer account is created',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -1893,6 +2376,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The 2026 PDF is raster-only; facts not transcribable in this environment (notably the Universal ventilada/color configurations, Tipo Romano and Caja Paltera sheets) render as “Consultar” pending client review, and their media is visibly provisional.`,
     `- The discovery journey (Home featured, Tienda grid/filters, search) is plugin-rendered semantic markup (fpcq- v1) driven only by synchronized catalog metadata; the theme supplies the v6 presentation, and every card opens the basket quantity chooser.`,
     `- The Quote Basket is an anonymous cookie-backed server session (issues #6–#7): the cookie never carries basket data, only its sha256 hash is persisted, and every mutation (add, update, remove) revalidates nonce, session, Product lifecycle/visibility, option identity and whole-unit quantity. The Color Caja Universal configurations require one supported color; the submission form arrives with issue #8 on the same /cotizacion/ surface.`,
+    `- The Quote Request submission (issue #8) is verified through served documents and the persisted fp_quote records: the manual Dirección de despacho is the this-slice address path (Google-assisted confirmation arrives with issue #9), the acknowledgement/notification emails arrive with issue #11, and the full sales administration (statuses, notes, history) with issue #10. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     ``
   );

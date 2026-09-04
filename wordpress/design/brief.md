@@ -19,7 +19,7 @@ dark footer, and a working skip path for keyboard users.
 | `/nosotros/` | Current mission and vision as editable WordPress page content; baseline layout from the theme template, never from Site Editor overrides. |
 | `/tienda/` (+ `/categoria/<c>/`) | Full catalog grid + URL-backed Todos/Agrícola/Otros filters (plugin). |
 | `/producto/<slug>/` | v7 variant A hierarchy with v6 chrome (plugin-rendered). |
-| `/cotizacion/` | The sole quotation surface: basket view (read-only until #7/#8). |
+| `/cotizacion/` | The sole quotation surface: basket view + the Quote Request submission form (issue #8); after submitting, the confirmation with the permanent Request Reference. |
 | `/contacto/` | Current phone, email, WhatsApp, warehouse/map, hours + exactly one CTA into Cotización. No inquiry record, no form. |
 | `/politica-de-privacidad/` | Basic collection/submission disclosure. No acknowledgement checkbox. |
 | search / 404 | Usable navigation and empty states that recover into the catalog. |

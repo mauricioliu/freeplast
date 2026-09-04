@@ -1,5 +1,5 @@
 /**
- * Freeplast Quote Basket — progressive enhancement (issues #6–#7).
+ * Freeplast Quote Basket — progressive enhancement (issues #6–#8).
  *
  * The server stays authoritative: every basket form (add, update, remove)
  * POSTs to the same admin-post.php handlers the plain flow uses. When
@@ -7,6 +7,13 @@
  * the returned state (header count, mini basket, full Cotización view,
  * status notice) in place; without it — or on any fetch/parse failure —
  * the form POSTs normally and the server redirect renders the same state.
+ *
+ * The Quote Request form (issue #8) is deliberately NOT intercepted: it
+ * always submits through the authoritative POST-redirect-GET flow. It
+ * renders as its own section next to the basket view (never inside the
+ * mirrored element), so typed customer data survives every in-place
+ * basket mutation; this script only hides it once the basket empties and
+ * reveals the dispatch address when Con despacho is Sí.
  */
 ( function () {
 	'use strict';
@@ -52,6 +59,12 @@
 			if ( view && payload.view ) {
 				view.outerHTML = payload.view; /* the server re-rendered it, fresh nonces included */
 			}
+			/* The request form stays in step with the basket it submits (its
+		   own section is never replaced, so typed values are untouched). */
+			var requestForm = document.querySelector( '[data-fpcq-request-form]' );
+			if ( requestForm ) {
+				requestForm.hidden = 0 === payload.count;
+			}
 		}
 		document.querySelectorAll( '.fpcq-basket-widget' ).forEach( function ( widget ) {
 			statusFor( widget, payload.message || '' );
@@ -63,6 +76,23 @@
 			} );
 		}
 	}
+
+	/* Dirección de despacho appears and becomes required only with Con
+	   despacho = Sí (the server enforces the same rule on every submit). */
+	document.addEventListener( 'change', function ( event ) {
+		var input = event.target;
+		if ( ! input || 'radio' !== input.type || input.name !== 'fp_despacho' ) {
+			return;
+		}
+		var wrapper = document.querySelector( '[data-fpcq-address-field]' );
+		var address = wrapper ? wrapper.querySelector( 'textarea[name="fp_direccion"]' ) : null;
+		if ( ! wrapper || ! address ) {
+			return;
+		}
+		var wanted = 'si' === input.value;
+		wrapper.classList.toggle( 'fpcq-hidden', ! wanted );
+		address.required = wanted;
+	} );
 
 	document.addEventListener( 'submit', function ( event ) {
 		var form = event.target;
