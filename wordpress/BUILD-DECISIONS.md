@@ -6,6 +6,71 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #13: harden the complete customer and sales journey
+
+The complete Catalog-to-Quote-Request journey is exercised under
+accessibility, abuse, migration, dependency and theme-failure conditions
+closing gaps without changing the agreed domain boundaries. Decisions:
+1. **Abuse resistance without a CAPTCHA (PRD boundary kept).** The request
+   form gains an off-screen honeypot (`fp_referencia`, aria-hidden,
+   tabindex=-1, off-screen inline styles so it is theme-independent); a
+   plausible minimum completion time (2 s) measured from the token's
+   server-side render time (the idempotency-token transient now stores
+   `{token, started}` — the browser is never trusted with the clock); and
+   bounded throttling (5 persisted requests per anonymous session per
+   rolling hour, one expiring transient keyed by the opaque session hash —
+   never a raw IP or email). Only durable persistences count, so invalid
+   attempts, idempotent replays and failed persistences never block an
+   ordinary retry; every rejection is recoverable with values and basket
+   retained and a focused summary.
+2. **Migrations fail safely into a self-healing maintenance state.** The
+   one schema the plugin owns (`basket_sessions`) is verified after
+   `dbDelta` (the `freeplast_cq_schema_ready` filter is the fault-injection
+   seam); a failing migration marks the `fp_maintenance` option, leaves
+   `fp_db_version` untouched and returns — every following request retries
+   the pending migrations. While the flag is set, public routes answer a
+   clear 503 page (purpose, data reassurance, human contact channel,
+   noindex, Retry-After 300) rendered by the plugin (no theme dependency)
+   and wp-admin shows an explanatory notice instead of failing silently;
+   nothing is destroyed. The flag clears itself as soon as a retry
+   completes.
+3. **Uninstall is explicitly non-destructive.** `uninstall.php` keeps every
+   business record (fp_product and fp_quote posts with all their meta,
+   basket sessions, shell pages, dispatch origin, migration version) and
+   only clears what nothing can serve once the code is gone: our scheduled
+   events (fpcq basket sweep + notification delivery — the durable jobs
+   stay on the records and remain resendable) and the expiring `fpcq_*`
+   transients. WP-CLI's `plugin delete` removes files only, so the check
+   drives core's `uninstall_plugin()` routine — exactly what the admin
+   Delete action runs.
+4. **Stock-theme fallback is a plugin obligation.** Because fp_product
+   post content is the `freeplast/product-detail` block and /cotizacion/
+   is the `freeplast/basket` block, the stock Twenty Twenty-Four theme
+   keeps a functional minimal Catalog archive, full product singles with
+   the quantity chooser, the basket/request flow end to end and the
+   Cotizaciones administration; the header count widget is v6 chrome and
+   deliberately not required for functionality.
+5. **Mechanical accessibility evidence.** The check verifies (not claims):
+   logical DOM/tab order, native `<details>` disclosures, the announced
+   mobile sheet, focusable linked error summary (`tabindex=-1` + fragment
+   redirect), labelled fields, `:focus-visible`, `prefers-reduced-motion`
+   collapse, ≥24px targets parsed from the shipped CSS (primary 44px),
+   WCAG AA contrast computed from the frozen palette pairs, and one
+   identical mobile-first document at 375/412/768/1024/1440 px. Human
+   visual approval remains Gate 3.
+6. **Deterministic pace for the older sections.** Existing acceptance
+   sections submit valid forms immediately after rendering; the check's
+   `humanPaced` helper backdates the token's server-side render timestamp
+   (documented in check.mjs), while the issue #13 section exercises the
+   real-time guard: bot-speed rejection, values/basket retained, ordinary
+   retry 2.4 s later succeeds.
+
+Files: plugin (`class-request.php` honeypot/completion-time/throttle,
+`class-basket.php` schema readiness + new notices,
+`class-migrations.php` fail-safe + maintenance flag, bootstrap maintenance
+ guard + 0.8.0, new `uninstall.php`), theme 0.8.0, check.mjs (six new
+sections + pace backdates), docs.
+
 ## 2026-09-04 — Issue #9: the operational sales workflow
 
 The minimally visible record becomes a focused sales workspace:

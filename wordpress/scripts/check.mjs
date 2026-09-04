@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#11, #12).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#13).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,7 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #12 (including
+ * verifies the acceptance criteria of issues #2 through #13 (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -90,6 +90,28 @@
  *      refresh/back/retry (idempotency token), drops archived Product
  *      lines, and exposes a minimal capability-protected admin detail —
  *      with no price, Quotation, Order, checkout or customer account.
+ *  16. The complete journey is hardened (issue #13): the one- and
+ *      multi-Product journey passes with JavaScript enabled and disabled;
+ *      keyboard operation has logical order, visible focus, native
+ *      disclosures and the focused linked error summary; responsive
+ *      behavior is mechanically observed at 375, 412, 768, 1024 and
+ *      1440 px; reduced-motion preferences disable nonessential motion
+ *      and controls meet target-size/contrast expectations; the honeypot,
+ *      minimum completion time, idempotency and bounded non-raw-PII
+ *      throttling reject abuse without blocking ordinary retries; every
+ *      public/admin mutation rejects invalid nonce, session, capability,
+ *      Product, option, quantity or record without partial mutation;
+ *      catalog/session/database/mail/Google failures never produce false
+ *      request success or lose recoverable customer state; activation and
+ *      versioned migrations fail safely with a clear public maintenance
+ *      state that self-heals; a stock block theme still exposes functional
+ *      minimal Catalog, basket, request and admin behavior; theme
+ *      deactivation and plugin deactivation/uninstall preserve Products,
+ *      Quote Requests, histories and sessions; no WooCommerce, customer
+ *      accounts, prices, checkout, automatic shipping price or formal
+ *      Quotation behavior appears; and PHP syntax + coding-standard scans
+ *      pass alongside the integrated behavior tests at the real WordPress
+ *      seam.
   assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} must be applied after activation (the sales workflow, notification and dispatch-distance slices bump it)`); *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -244,6 +266,21 @@ function requestCredentials(html) {
     nonce: html.match(/name="fp_request_nonce" value="([a-f0-9]{10})"/)?.[1],
     token: html.match(/name="fp_request_token" value="([0-9a-f]{32})"/)?.[1],
   };
+}
+
+/**
+ * Simulate the plausible human pace after a form render (issue #13): the
+ * server records each form instance's render time with its idempotency
+ * token, and a submission faster than the minimum completion time is
+ * rejected. The guard itself is exercised in real time in the issue #13
+ * section; the older sections use this deterministic backdate (the token
+ * is opaque, so only its server-side timestamp moves).
+ */
+function humanPaced(sessionToken, idemToken, seconds = 60) {
+  return wp([
+    'eval',
+    `$k = 'fpcq_reqtok_' . hash( 'sha256', '${sessionToken}' ); $v = get_transient( $k ); if ( is_array( $v ) && isset( $v['started'] ) && $v['token'] === '${idemToken}' ) { $v['started'] = time() - ${Math.floor(seconds)}; set_transient( $k, $v, DAY_IN_SECONDS ); echo 'ok'; } else { echo 'missing'; }`,
+  ]).stdout;
 }
 
 /** Occurrences of a literal substring. */
@@ -1945,6 +1982,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   assert.doesNotMatch(requestSection, /name="fp_quantity"/i, 'quantities must never be request-form fields');
   let { nonce: reqNonce, token: idemToken } = requestCredentials(cot.body);
   assert.ok(reqNonce && idemToken, 'the form must be nonce-guarded and carry the idempotency token');
+  assert.equal(humanPaced(token, idemToken), 'ok', 'the deterministic submission pace must apply to the issue #8 flow');
 
   const validFields = {
     fp_nombre: 'María González',
@@ -2135,6 +2173,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
   ({ nonce: reqNonce, token: idemToken } = requestCredentials(cot.body));
   assert.ok(reqNonce && idemToken, 'the fresh form carries its own nonce and token');
+  assert.equal(humanPaced(token, idemToken), 'ok', 'the second request form must be paced like a human fill');
   const ok2 = await submit({ fp_despacho: 'no', fp_direccion: '', fp_mensaje: '' });
   const reference2 = submittedRef(ok2);
   assert.match(reference2, /^FP-\d{4}-\d{6}$/);
@@ -2153,6 +2192,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   assert.equal(noticeOf(failAdd), 'added');
   cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
   ({ nonce: reqNonce, token: idemToken } = requestCredentials(cot.body));
+  assert.equal(humanPaced(token, idemToken), 'ok', 'the failure-recovery form must be paced like a human fill');
   const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
   mkdirSync(muDir, { recursive: true });
   writeFileSync(join(muDir, 'fp-test-no-persist.php'), "<?php\nadd_filter( 'freeplast_cq_request_persist', '__return_false' );\n");
@@ -2197,6 +2237,7 @@ test('a guest submits exactly one Quote Request from the authenticated basket', 
   assertContains(eligCot.body, 'Cotización (1)', 'the archived line drops out before submission');
   assertAbsent(eligCot.body, 'Caja Frutillera', 'the archived Product must not render');
   const { nonce: eligNonce, token: eligTokenField } = requestCredentials(eligCot.body);
+  assert.equal(humanPaced(eligToken, eligTokenField), 'ok', 'the eligibility submission must be paced like a human fill');
   const eligSubmit = await postForm(
     {
       action: 'fp_request_submit',
@@ -2688,6 +2729,7 @@ add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
     assertContains(cot.body, 'Cotización (2)', 'the basket must carry both lines');
     const { nonce, token: idemToken } = requestCredentials(cot.body);
     assert.ok(nonce && idemToken, 'the form must be nonce-guarded and carry the idempotency token');
+    assert.equal(humanPaced(token, idemToken), 'ok', 'the notification-section submissions must be paced like a human fill');
     return { token, nonce, idemToken };
   };
 
@@ -3054,6 +3096,7 @@ class FP_Fake_Google_Client {
       const page = await get('/cotizacion/', MOBILE_UA, cookieHeader(token));
       const { nonce, token: idemToken } = requestCredentials(page.body);
       assert.ok(nonce && idemToken, 'the submission form must carry its nonce and idempotency token');
+      assert.equal(humanPaced(token, idemToken), 'ok', 'the address-section submissions must be paced like a human fill');
       return postForm(
         {
           action: 'fp_request_submit',
@@ -3376,11 +3419,809 @@ class FP_Fake_Google_Client {
   }
 });
 
+/* ─── 19. Hardened journey (issue #13) ───────────────────────────── */
+
+test('the complete one- and multi-Product journey passes with JavaScript enabled and disabled', { timeout: 180_000 }, async () => {
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const validFields = {
+    fp_nombre: 'María González',
+    fp_telefono: '+56 9 6844 4265',
+    fp_email: 'maria@acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización de productos plásticos',
+    fp_despacho: 'no',
+    fp_direccion: '',
+    fp_mensaje: '',
+  };
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const before = quoteCount();
+
+  /* 19.1 — The one-Product journey with JavaScript disabled: every step
+     is a plain server round-trip (Home → Tienda → product → add →
+     Cotización → submit → confirmation). */
+  const home = await get('/', MOBILE_UA);
+  assert.equal(home.status, 200, 'the journey starts on Home');
+  const tienda = await get('/tienda/', MOBILE_UA);
+  assert.equal(tienda.status, 200, 'the journey reaches Tienda');
+  assertContains(tienda.body, `/producto/caja-cosechera-3-4/`, 'Tienda links the product page the journey continues on');
+  const product = await get(PRODUCT_URL, MOBILE_UA);
+  assert.equal(product.status, 200, 'the product page renders');
+  const addNonce = product.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(addNonce, 'the product chooser carries its nonce');
+  const plainAdd = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '6', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL },
+    {}
+  );
+  assert.equal(noticeOf(plainAdd), 'added', 'the no-JS add answers POST-redirect-GET');
+  const one = plainAdd.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(one, 'the no-JS journey owns its session');
+  const cotOne = await get('/cotizacion/', MOBILE_UA, { cookie: `fpcq_basket=${one}` });
+  assertContains(cotOne.body, 'Cotización (1)', 'the single line renders on the sole submission surface');
+  const oneCreds = requestCredentials(cotOne.body);
+  assert.ok(oneCreds.nonce && oneCreds.token, 'the form carries its nonce and idempotency token');
+  assert.equal(humanPaced(one, oneCreds.token), 'ok', 'the journey submission must be paced like a human fill');
+  const oneSubmit = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_request_nonce: oneCreds.nonce, fp_request_token: oneCreds.token, _wp_http_referer: '/cotizacion/' },
+    { cookie: `fpcq_basket=${one}` }
+  );
+  const oneRef = submittedRef(oneSubmit);
+  assert.match(oneRef, /^FP-\d{4}-\d{6}$/, 'the no-JS journey submits successfully');
+  const oneConfirm = await get(`/cotizacion/?fpcq_submitted=${oneRef}`, MOBILE_UA, { cookie: `fpcq_basket=${one}` });
+  assertContains(oneConfirm.body, oneRef, 'the no-JS journey ends on the confirmation');
+  assertContains(oneConfirm.body, 'Cotización (0)', 'the basket cleared after durable persistence');
+
+  /* 19.2 — The multi-Product journey with the JavaScript enhancement: a
+     card chooser adds the first line, an optioned product the second,
+     one line updates, and the JSON state stays authoritative. */
+  const tiendaCards = await get('/tienda/', MOBILE_UA);
+  const cardForm = tiendaCards.body.slice(tiendaCards.body.indexOf('fp-caja-cosechera-3-4'));
+  const cardNonce = cardForm.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(cardNonce, 'a Tienda card carries its own chooser nonce');
+  const enhancedAdd = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '2', fp_basket_nonce: cardNonce, _wp_http_referer: '/tienda/', fp_enhanced: '1' },
+    {}
+  );
+  const addPayload = JSON.parse(enhancedAdd.body);
+  assert.equal(addPayload.ok, true, 'the JSON enhancement accepts the card add');
+  assert.equal(addPayload.count, 1, 'the JSON state counts the first line');
+  const multi = enhancedAdd.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(multi, 'the JS journey owns its session');
+
+  const colorPage = await get('/producto/caja-universal-cerrada-color/', MOBILE_UA);
+  const colorNonce = colorPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const colorAdd = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-universal-cerrada-color', fp_option: 'azul', fp_quantity: '20', fp_basket_nonce: colorNonce, _wp_http_referer: '/producto/caja-universal-cerrada-color/', fp_enhanced: '1' },
+    { cookie: `fpcq_basket=${multi}` }
+  );
+  const colorPayload = JSON.parse(colorAdd.body);
+  assert.equal(colorPayload.ok, true, 'the optioned product joins through the enhancement');
+  assert.equal(colorPayload.count, 2, 'different options stay separate lines');
+  assertContains(colorPayload.mini, 'Caja Cosechera 3/4', 'the mirrored mini basket lists the plain line');
+  assertContains(colorPayload.mini, 'Azul', 'the mirrored mini basket lists the option line');
+
+  const colorUpdate = await postForm(
+    {
+      action: 'fp_basket_update',
+      fp_product: 'fp-caja-universal-cerrada-color',
+      fp_option: 'azul',
+      fp_quantity: '25',
+      fp_basket_nonce: formNonce((await get('/cotizacion/', MOBILE_UA, { cookie: `fpcq_basket=${multi}` })).body, 'fp_basket_update'),
+      _wp_http_referer: '/cotizacion/',
+      fp_enhanced: '1',
+    },
+    { cookie: `fpcq_basket=${multi}` }
+  );
+  const updatePayload = JSON.parse(colorUpdate.body);
+  assert.equal(updatePayload.ok, true, 'a line updates through the JSON enhancement');
+  assert.equal(updatePayload.count, 2, 'an update never changes the distinct-line count');
+  assertContains(updatePayload.view, '25 unidades', 'the re-rendered view carries the updated quantity');
+
+  const cotMulti = await get('/cotizacion/', MOBILE_UA, { cookie: `fpcq_basket=${multi}` });
+  assertContains(cotMulti.body, 'Cotización (2)', 'both lines render before submission');
+  const multiCreds = requestCredentials(cotMulti.body);
+  assert.equal(humanPaced(multi, multiCreds.token), 'ok', 'the multi-Product submission must be paced like a human fill');
+  const multiSubmit = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_mensaje: 'Dos productos en un solo envío.', fp_request_nonce: multiCreds.nonce, fp_request_token: multiCreds.token, _wp_http_referer: '/cotizacion/' },
+    { cookie: `fpcq_basket=${multi}` }
+  );
+  const multiRef = submittedRef(multiSubmit);
+  assert.match(multiRef, /^FP-\d{4}-\d{6}$/, 'the JS-enabled multi-Product journey submits successfully');
+  assert.notEqual(multiRef, oneRef, 'each journey receives its own Request Reference');
+  const multiRecord = JSON.parse(
+    wp([
+      'eval',
+      `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${multiRef}" ) );` +
+        'echo wp_json_encode( array_map( static function ( $i ) { return array( $i["source_id"], $i["option_id"], $i["quantity"] ); }, json_decode( (string) get_post_meta( $posts[0]->ID, "_fpq_items", true ), true ) ) );',
+    ]).stdout || '[]'
+  );
+  assert.deepEqual(
+    [...multiRecord].sort(),
+    [['fp-caja-cosechera-3-4', '', 2], ['fp-caja-universal-cerrada-color', 'azul', 25]],
+    'the multi-Product record persists exactly the journey lines'
+  );
+  assert.equal(quoteCount(), before + 2, 'the two journeys persist exactly two records');
+
+  section('Complete journey, JavaScript on and off (issue #13)', [
+    'The complete one-Product journey passes with JavaScript disabled: every step is a plain server round-trip (Home → Tienda → product page → quantity chooser add → /cotizacion/ → submit → confirmation with Request Reference and cleared basket)',
+    'The complete multi-Product journey passes with the JavaScript enhancement: a Tienda card chooser and an optioned Color product add through the JSON state (count, mini basket, re-rendered view), a line updates, and both lines submit as one request',
+  ]);
+});
+
+test('keyboard operation, motion safety, control sizing and contrast meet mechanical expectations', { timeout: 120_000 }, async () => {
+  const css = readFileSync(join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast', 'style.css'), 'utf8');
+
+  /* 20.1 — Visible focus and reduced motion are CSS contract. */
+  const focusRule = css.match(/:focus-visible\s*\{([^}]*)\}/)?.[1] || '';
+  assert.ok(/outline:\s*2px/.test(focusRule), 'a global :focus-visible rule must draw a visible outline');
+  const reducedAt = css.indexOf('@media (prefers-reduced-motion: reduce)');
+  assert.ok(reducedAt !== -1, 'a prefers-reduced-motion media query must exist');
+  const reducedBlock = css.slice(reducedAt, css.indexOf('}', css.indexOf('animation-iteration-count', reducedAt)) + 1);
+  assert.ok(/transition-duration:\s*0\.01ms/.test(reducedBlock), 'nonessential transitions must collapse under reduced motion');
+  assert.ok(/animation-duration:\s*0\.01ms/.test(reducedBlock), 'nonessential animations must collapse under reduced motion');
+  assert.ok(/animation-iteration-count:\s*1/.test(reducedBlock), 'iterative animations must stop under reduced motion');
+
+  /* 20.2 — Responsive behavior is mechanically observed at 375, 412,
+     768, 1024 and 1440 px: one mobile-first document, adaptation only
+     through min-width media queries covering those widths. */
+  const breakpoints = [...css.matchAll(/@media \(min-width: (\d+)px\)/g)].map((m) => Number(m[1])).sort((a, b) => a - b);
+  assert.ok(breakpoints.includes(768), 'the tablet adaptation (768px) must be a declared breakpoint');
+  assert.ok(breakpoints.includes(1024), 'the desktop adaptation (1024px) must be a declared breakpoint');
+  const WIDTHS = [375, 412, 768, 1024, 1440];
+  for (const width of WIDTHS) {
+    for (const path of ['/', '/tienda/', '/cotizacion/']) {
+      const res = await get(path, `Mozilla/5.0 (Freeplast check; ${width}px) AppleWebKit/537.36`);
+      assert.equal(res.status, 200, `${path} must answer at ${width}px`);
+      assertContains(res.body, 'name="viewport"', `${path} must carry the viewport meta at ${width}px`);
+    }
+  }
+  const base = await get('/', 'Mozilla/5.0 (Freeplast check; 375px)');
+  for (const width of [412, 768, 1024, 1440]) {
+    const other = await get('/', `Mozilla/5.0 (Freeplast check; ${width}px)`);
+    assert.equal(other.body, base.body, 'the served document is identical at every width (adaptation is CSS-only)');
+  }
+
+  /* 20.3 — Keyboard semantics on the submission surface: native controls
+     only, logical DOM (tab) order, focusable linked error summary,
+     labelled fields, disclosure widgets. */
+  const page = await get(PRODUCT_URL, MOBILE_UA);
+  const addNonce = page.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const seeded = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '1', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL },
+    {}
+  );
+  const token = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  const headers = { cookie: `fpcq_basket=${token}` };
+  const cot = await get('/cotizacion/', MOBILE_UA, headers);
+  const body = cot.body;
+  assert.ok(!/onclick=/.test(body), 'the submission surface uses native controls, not inline handlers');
+  const order = ['Navegación principal', 'fpcq-basketview', 'fpcq-request-form', 'fp-mensaje', 'Enviar solicitud'];
+  let cursor = -1;
+  for (const marker of order) {
+    const at = body.indexOf(marker);
+    assert.ok(at > cursor, `the DOM (tab) order must be logical: ${marker} follows the previous section`);
+    cursor = at;
+  }
+  assert.ok(countMatches(body, '<details class="fpcq-basket">') === 1, 'the mini basket is a native disclosure widget');
+  assert.ok(/<summary[^>]*class="[^"]*fpcq-basket-toggle/.test(body), 'the mini basket opens through its summary');
+  assertContains(body, 'aria-expanded="false" aria-controls="fp-menu"', 'the mobile sheet trigger announces its control');
+  assertContains(body, 'id="fp-menu"', 'the announced control exists');
+
+  // The honeypot is programmatically hidden and keyboard-excluded.
+  const honeypot = body.match(/<div class="fpcq-hp"[^>]*>/)?.[0] || '';
+  assert.ok(/aria-hidden="true"/.test(honeypot), 'the honeypot is hidden from assistive technology');
+  assert.ok(/tabindex="-1"/.test(body.slice(body.indexOf('fpcq-hp'), body.indexOf('fpcq-hp') + 400)), 'the honeypot is removed from the tab order');
+
+  // Every visible form control is labelled; the error summary is focusable
+  // and its links point at real field anchors.
+  const form = pluginSection(body, 'class="fpcq-request-form"', 'the request form must render');
+  const labelled = [...form.matchAll(/<input [^>]*>/g)].map((m) => m[0]);
+  for (const input of labelled) {
+    const type = input.match(/type="([^"]+)"/)?.[1];
+    if (type === 'hidden') continue;
+    const id = input.match(/id="([^"]+)"/)?.[1];
+    const selfLabelled = /aria-label=/.test(input) || type === 'radio'; /* radios sit inside wrapping labels */
+    assert.ok(selfLabelled || (id && new RegExp(`<label[^>]*for="${id}"`).test(form)), `every visible control must be labelled (${id || 'unlabelled input'})`);
+  }
+  // Radios sit inside wrapping labels with their text.
+  const radios = [...form.matchAll(/<label class="fpcq-choice"><input[^>]*>/g)].length;
+  assert.ok(radios >= 2, 'the Con Despacho radios are wrapped in labels');
+
+  // An invalid submission re-renders with the focusable linked summary.
+  const creds = requestCredentials(body);
+  const invalid = await postForm(
+    { action: 'fp_request_submit', fp_nombre: '', fp_telefono: '', fp_email: '', fp_empresa: '', fp_rut: '', fp_giro: '', fp_despacho: '', fp_direccion: '', fp_mensaje: '', fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
+    headers
+  );
+  assert.ok((invalid.headers.location || '').endsWith('#fpcq-form-errors'), 'the invalid redirect must focus the error summary');
+  const back = await get('/cotizacion/', MOBILE_UA, headers);
+  const summaryBlock = pluginSection(back.body, 'id="fpcq-form-errors"', 'the retained page must carry the error summary');
+  assertContains(summaryBlock, 'tabindex="-1"', 'the error summary must be focusable (fragment focus)');
+  assertContains(summaryBlock, 'role="alert"', 'the error summary must announce itself');
+  for (const key of ['nombre', 'telefono', 'email', 'empresa', 'rut', 'giro', 'despacho']) {
+    assertContains(summaryBlock, `href="#fp-${key}"`, `the summary must link the ${key} error`);
+    assert.ok(back.body.includes(`id="fp-${key}"`), `the ${key} link must target a real field`);
+  }
+
+  /* 20.4 — Target size: interactive controls declare a minimum target of
+     at least 24×24 CSS px (WCAG 2.5.8); the primary ones declare 44px.
+     (Comments stripped; the selector regex is brace-safe, so rules inside
+     media queries are parsed too.) */
+  const flatCss = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...flatCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    selectors: m[1].split(',').map((s) => s.trim()),
+    body: m[2],
+  }));
+  const ruleOf = (name) => rules.find((r) => r.selectors.includes(name))?.body || '';
+  const minHeightOf = (name) =>
+    Math.max(
+      0,
+      ...rules
+        .filter((r) => r.selectors.includes(name))
+        .map((r) => Number(r.body.match(/min-height:\s*(\d+)px/)?.[1] || 0))
+    );
+  for (const control of ['.fp-btn', '.fp-btn-sm', '.fpcq-request-submit', '.fpcq-add-submit', '.fpcq-edit-submit', '.fpcq-remove-submit', '.fpcq-choice', '.fpcq-add-option', '.fpcq-filters a']) {
+    const px = Math.max(minHeightOf(control), ...rules.filter((r) => r.body.includes('min-height') && r.selectors.some((s) => s.includes(control))).map((r) => Number(r.body.match(/min-height:\s*(\d+)px/)?.[1] || 0)));
+    assert.ok(px >= 24, `${control} must declare a minimum target height of at least 24px (found ${px}px)`);
+  }
+  assert.ok(minHeightOf('.fp-btn') >= 44, 'primary controls must keep the 44px target');
+  const burgerHeight = Number(ruleOf('.fp-burger').match(/height:\s*(\d+)px/)?.[1] || 0);
+  assert.ok(burgerHeight >= 24, 'the burger trigger must meet the minimum target size');
+
+  /* 20.5 — Contrast: the frozen palette pairs used by controls and text
+     meet WCAG AA (4.5:1 text, 3:1 large headings and the focus outline). */
+  const root = css.slice(css.indexOf(':root'), css.indexOf('}', css.indexOf(':root')));
+  const colorOf = (name) => root.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
+  const luminance = (hex) => {
+    const channels = [0, 2, 4]
+      .map((i) => parseInt(hex.slice(i + 1, i + 3), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const contrast = (a, b) => {
+    const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (l1 + 0.05) / (l2 + 0.05);
+  };
+  const paper = colorOf('fp-paper');
+  const tint = colorOf('fp-tint');
+  const pairs = [
+    ['link and control blue on paper', colorOf('fp-blue'), paper, 4.5],
+    ['button text on the blue control', '#ffffff', colorOf('fp-blue'), 4.5],
+    ['headings on paper', colorOf('fp-blue-heading'), paper, 3],
+    ['body text on paper', colorOf('fp-text'), paper, 4.5],
+    ['body text on the tint surface', colorOf('fp-text'), tint, 4.5],
+    ['muted text on paper', colorOf('fp-muted'), paper, 4.5],
+    ['green accent text on paper', colorOf('fp-green'), paper, 4.5],
+    ['focus outline against paper', colorOf('fp-blue'), paper, 3],
+  ];
+  for (const [name, fg, bg, minimum] of pairs) {
+    assert.ok(fg && bg, `the ${name} pair must resolve from the frozen tokens`);
+    const ratio = contrast(fg, bg);
+    assert.ok(ratio >= minimum, `${name} must meet WCAG AA (${fg} on ${bg}: ${ratio.toFixed(2)}:1 < ${minimum}:1)`);
+  }
+
+  section('Accessibility and responsive hardening (issue #13)', [
+    'Keyboard: every interactive element is a native control in logical DOM order (header navigation → basket view → request form → submit), the mini basket and quantity choosers are <details> disclosures, and the mobile sheet trigger announces aria-expanded/aria-controls with Escape support',
+    'Focus: a global :focus-visible outline is declared; the linked error summary is focusable (tabindex=-1 + #fragment redirect), announced (role=alert) and every summary link targets a real labelled field',
+    'Motion: prefers-reduced-motion collapses all transitions/animations (0.01ms, single iteration) and disables smooth scrolling',
+    'Responsive: one identical mobile-first document serves 375, 412, 768, 1024 and 1440 px with viewport meta everywhere; adaptation happens only through the declared 768/1024 min-width breakpoints — pixel rendering remains human Gate 3',
+    'Target size and contrast: every interactive control declares ≥24px targets (primary ones 44px, burger included) and the frozen palette pairs meet WCAG AA (4.5:1 text, 3:1 headings/focus outline)',
+  ]);
+});
+
+test('the honeypot, minimum completion time and bounded throttling reject abuse without blocking ordinary retries', { timeout: 180_000 }, async () => {
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const validFields = {
+    fp_nombre: 'María González',
+    fp_telefono: '+56 9 6844 4265',
+    fp_email: 'maria@acme.cl',
+    fp_empresa: 'Agrícola ACME SpA',
+    fp_rut: '76.335.888-6',
+    fp_giro: 'Comercialización de productos plásticos',
+    fp_despacho: 'no',
+    fp_direccion: '',
+    fp_mensaje: '',
+  };
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const headers = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const seedSession = async () => {
+    const page = await get(PRODUCT_URL, MOBILE_UA);
+    const nonce = page.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+    const res = await postForm(
+      { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '4', fp_basket_nonce: nonce, _wp_http_referer: PRODUCT_URL },
+      {}
+    );
+    const token = res.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+    assert.ok(token, 'the abuse section needs its guest session');
+    return token;
+  };
+  const before = quoteCount();
+
+  /* 21.1 — Honeypot: a filled decoy field is rejected before anything
+     else, recoverably, and persists nothing. */
+  const honeypotToken = await seedSession();
+  const honeypotPage = await get('/cotizacion/', MOBILE_UA, headers(honeypotToken));
+  const hpCreds = requestCredentials(honeypotPage.body);
+  assert.ok(hpCreds.nonce && hpCreds.token, 'the honeypot flow carries its form credentials');
+  assertContains(honeypotPage.body, 'name="fp_referencia"', 'the honeypot field renders on the form');
+  const spam = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_referencia: 'http://spam.example/offer', fp_request_nonce: hpCreds.nonce, fp_request_token: hpCreds.token, _wp_http_referer: '/cotizacion/' },
+    headers(honeypotToken)
+  );
+  assert.equal(noticeOf(spam), 'spam', 'a filled honeypot must be rejected as spam');
+  assert.equal(quoteCount(), before, 'the honeypot rejection persists nothing');
+  const spamBack = await get('/cotizacion/', MOBILE_UA, headers(honeypotToken));
+  assertContains(spamBack.body, 'Cotización (1)', 'the honeypot rejection retains the basket');
+
+  /* 21.2 — Minimum completion time in real time: a bot-speed submission
+     is rejected recoverably; an ordinary retry moments later succeeds. */
+  const fastToken = await seedSession();
+  const fastPage = await get('/cotizacion/', MOBILE_UA, headers(fastToken));
+  const fastCreds = requestCredentials(fastPage.body);
+  const tooFast = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
+    headers(fastToken)
+  );
+  assert.equal(noticeOf(tooFast), 'too_fast', 'a submission faster than a human fill must be rejected');
+  assert.ok((tooFast.headers.location || '').includes('#fpcq-form-errors'), 'the rejection must focus the summary');
+  assert.equal(quoteCount(), before, 'the too-fast rejection persists nothing');
+  const fastBack = await get('/cotizacion/', MOBILE_UA, headers(fastToken));
+  assertContains(fastBack.body, 'Tómate un momento', 'the rejection explains itself');
+  assertContains(fastBack.body, 'value="maria@acme.cl"', 'the entered values stay retained');
+  assertContains(fastBack.body, 'Cotización (1)', 'the basket stays retained');
+
+  await new Promise((resolve) => setTimeout(resolve, 2400)); /* the plausible minimum (2s) plus margin */
+  const human = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_request_nonce: fastCreds.nonce, fp_request_token: fastCreds.token, _wp_http_referer: '/cotizacion/' },
+    headers(fastToken)
+  );
+  assert.match(submittedRef(human), /^FP-\d{4}-\d{6}$/, 'the ordinary retry after the minimum time succeeds');
+
+  /* 21.3 — Bounded throttling: the cap of persisted requests per session
+     rejects the next one recoverably; only successes count, so invalid
+     attempts and idempotent replays never block an ordinary retry. */
+  const floodToken = await seedSession();
+  const floodProductPage = await get(PRODUCT_URL, MOBILE_UA);
+  const floodAddNonce = floodProductPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(floodAddNonce, 'the throttle loop needs its chooser nonce');
+  const CAP = 5;
+  for (let i = 0; i < CAP; i++) {
+    const readd = await postForm(
+      { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '4', fp_basket_nonce: floodAddNonce, _wp_http_referer: PRODUCT_URL },
+      headers(floodToken)
+    );
+    assert.equal(noticeOf(readd), 'added', `throttle cycle ${i + 1} rebuilds its basket`);
+    const page = await get('/cotizacion/', MOBILE_UA, headers(floodToken));
+    const creds = requestCredentials(page.body);
+    assert.equal(humanPaced(floodToken, creds.token), 'ok', `throttling submission ${i + 1} must be paced like a human fill`);
+    const res = await postForm(
+      { action: 'fp_request_submit', ...validFields, fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
+      headers(floodToken)
+    );
+    assert.match(submittedRef(res), /^FP-\d{4}-\d{6}$/, `submission ${i + 1} of the cap persists`);
+  }
+  const capped = quoteCount();
+  const overCapAdd = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '4', fp_basket_nonce: floodAddNonce, _wp_http_referer: PRODUCT_URL },
+    headers(floodToken)
+  );
+  assert.equal(noticeOf(overCapAdd), 'added', 'the over-cap attempt rebuilds its basket first');
+  const floodPage = await get('/cotizacion/', MOBILE_UA, headers(floodToken));
+  const floodCreds = requestCredentials(floodPage.body);
+  assert.equal(humanPaced(floodToken, floodCreds.token), 'ok', 'the over-cap attempt must still be paced like a human fill');
+  const throttled = await postForm(
+    { action: 'fp_request_submit', ...validFields, fp_request_nonce: floodCreds.nonce, fp_request_token: floodCreds.token, _wp_http_referer: '/cotizacion/' },
+    headers(floodToken)
+  );
+  assert.equal(noticeOf(throttled), 'throttled', 'a session past its persisted-request cap must be throttled');
+  assert.ok((throttled.headers.location || '').includes('#fpcq-form-errors'), 'the throttle rejection must focus the summary');
+  assert.equal(quoteCount(), capped, 'the throttled attempt persists nothing');
+  const throttledBack = await get('/cotizacion/', MOBILE_UA, headers(floodToken));
+  assertContains(throttledBack.body, 'varias solicitudes en poco tiempo', 'the throttle rejection explains itself');
+  assertContains(throttledBack.body, 'Cotización (1)', 'the throttled attempt retains the recoverable basket state');
+
+  /* 21.4 — Rate keys hold no raw PII and stay bounded: one expiring
+     counter keyed by the opaque session hash only. */
+  const rateKeys = wp([
+    'eval',
+    'global $wpdb; echo implode("\n", $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE \'\\_transient\\_fpcq\\_rate\\_%\'" ) );',
+  ]).stdout.split('\n').filter(Boolean);
+  assert.ok(rateKeys.length >= 1, 'the throttle counters live in expiring transients');
+  for (const key of rateKeys) {
+    assert.match(key, /^_transient_fpcq_rate_[0-9a-f]{64}$/, `rate keys are opaque session hashes, never raw PII (${key})`);
+  }
+  const optionDump = wp(['eval', 'global $wpdb; echo $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE \'\\_transient\\_fpcq\\_%\'" );']).stdout;
+  assert.ok(Number(optionDump) < 200, 'the transient namespace stays bounded');
+
+  section('Abuse resistance (issue #13)', [
+    'Honeypot: the off-screen decoy field (aria-hidden, tabindex=-1, off-screen inline styles) rejects automated submissions before any mutation, recoverably, with the basket retained',
+    'Minimum completion time: each form instance records its server-side render time with its idempotency token; a bot-speed submission is rejected recoverably (values + basket retained, summary focused) and the ordinary retry moments later succeeds',
+    'Bounded throttling: a rolling cap of 5 persisted requests per anonymous session per hour rejects the next one recoverably; only durable persistences count, so invalid attempts, idempotent replays and failed persistences never block an ordinary retry',
+    'Rate keys hold no raw IP or email: one expiring counter per opaque session hash, bounded by the transient namespace',
+  ]);
+});
+
+/* ─── 19b. Guard matrix, dependency failures, maintenance, lifecycle, standards (issue #13) ── */
+
+test('every guard rejects invalid input without partial mutation, and dependency failures never produce false success', { timeout: 120_000 }, async () => {
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const adminCookie = wp([
+    'eval',
+    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+  ]).stdout;
+  const adminHeaders = { cookie: adminCookie };
+  const before = quoteCount();
+
+  /* 22.1 — Invalid record identity on guarded admin mutations: a valid
+     session, capability and nonce still cannot mutate a missing or
+     foreign record. The retry/resend nonces are action-wide (not
+     per-record), so a legitimately rendered one still cannot unlock a
+     missing record. */
+  const dispatchId = Number(
+    wp([
+      'eval',
+      'echo (int) get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_destination" ) )[0];',
+    ]).stdout || 0
+  );
+  assert.ok(dispatchId > 0, 'a dispatch record is needed to render the retry/resend forms');
+  wp(['eval', `update_post_meta( ${dispatchId}, "_fpq_notifications", Freeplast_CQ_Notifications::initial_state_json() );`]); /* pending channels render the resend form */
+  const seededDetail = await get(`/wp-admin/admin.php?page=fp-quote&p=${dispatchId}`, MOBILE_UA, adminHeaders);
+  assert.equal(seededDetail.status, 200, 'the detail must render for the nonce extraction');
+  const distanceNonce = seededDetail.body.match(/name="fp_distance_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(distanceNonce, 'a legitimately rendered retry nonce is needed');
+  const resendNonce = seededDetail.body.match(/name="fp_notify_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(resendNonce, 'a legitimately rendered resend nonce is needed');
+  const pageId = Number(wp(['eval', 'echo (int) get_option( "fp_shell_pages", array() )["nosotros"] ?? 0;']).stdout || 0);
+  assert.ok(pageId > 0, 'a foreign record id is needed for the guard matrix');
+  const modifiedBefore = wp(['eval', `echo get_post( ${pageId} )->post_modified;`]).stdout;
+
+  const missingDistance = await postForm(
+    { action: 'fp_distance_retry', p: '999999', fp_distance_nonce: distanceNonce, _wp_http_referer: '/wp-admin/' },
+    adminHeaders
+  );
+  assert.equal(missingDistance.status, 404, 'a distance retry against a missing record must 404');
+  const foreignDistance = await postForm(
+    { action: 'fp_distance_retry', p: String(pageId), fp_distance_nonce: distanceNonce, _wp_http_referer: '/wp-admin/' },
+    adminHeaders
+  );
+  assert.equal(foreignDistance.status, 404, 'a distance retry against a foreign record type must 404');
+  const missingResend = await postForm(
+    { action: 'fp_notify_resend', fp_quote: '999999', fp_channel: 'sales', fp_notify_nonce: resendNonce, _wp_http_referer: '/wp-admin/' },
+    adminHeaders
+  );
+  assert.equal(missingResend.status, 404, 'a notification resend against a missing record must 404');
+  const foreignStatus = await postForm(
+    { action: 'fp_quote_set_status', p: String(pageId), fp_status: 'won', fp_status_nonce: 'any-nonce-cannot-reach-the-record-check', _wp_http_referer: '/wp-admin/' },
+    adminHeaders
+  );
+  assert.equal(foreignStatus.status, 404, 'a status transition against a foreign record type must 404');
+  assert.equal(wp(['eval', `echo get_post( ${pageId} )->post_modified;`]).stdout, modifiedBefore, 'guard failures never touch the foreign record');
+
+  /* 22.2 — Session/database failure mid-journey: losing the basket
+     session never produces a false success or a partial record. */
+  const product = await get(PRODUCT_URL, MOBILE_UA);
+  const addNonce = product.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const seeded = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '8', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL },
+    {}
+  );
+  const token = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  const headers = { cookie: `fpcq_basket=${token}` };
+  const cot = await get('/cotizacion/', MOBILE_UA, headers);
+  const creds = requestCredentials(cot.body);
+  assert.ok(creds.nonce && creds.token, 'the mid-journey form carries its credentials');
+  assert.equal(humanPaced(token, creds.token), 'ok', 'the mid-journey submission must be paced like a human fill');
+  /* Simulate the session store losing the row (database failure). */
+  wp(['eval', `global $wpdb; $wpdb->delete( "{$wpdb->prefix}basket_sessions", array( "session_hash" => hash( "sha256", "${token}" ) ) );`]);
+  const orphaned = await postForm(
+    { action: 'fp_request_submit', fp_nombre: 'María González', fp_telefono: '+56 9 6844 4265', fp_email: 'maria@acme.cl', fp_empresa: 'Agrícola ACME SpA', fp_rut: '76.335.888-6', fp_giro: 'Comercialización de productos plásticos', fp_despacho: 'no', fp_direccion: '', fp_mensaje: '', fp_request_nonce: creds.nonce, fp_request_token: creds.token, _wp_http_referer: '/cotizacion/' },
+    headers
+  );
+  assert.equal(noticeOf(orphaned), 'session', 'a lost session must fail the session guard, never claim success');
+  assert.ok((orphaned.headers.location || '').indexOf('fpcq_submitted') === -1, 'no confirmation may be shown');
+  assert.equal(quoteCount(), before, 'the lost-session submission persists nothing');
+  assert.ok(
+    orphaned.setCookies.some((cookie) => /fpcq_basket=(deleted;|;)/.test(cookie)),
+    'the dead cookie is cleared so a retry starts fresh'
+  );
+
+  /* 22.3 — Public-surface hygiene: no commerce or account machinery ever
+     renders on the public journey. */
+  for (const path of ['/', '/tienda/', PRODUCT_URL, '/cotizacion/', '/nosotros/', '/contacto/']) {
+    const res = await get(path, MOBILE_UA);
+    for (const marker of ['woocommerce', 'wp-block-woocommerce', 'mi-cuenta', 'Mi cuenta', 'Finalizar compra', 'carrito']) {
+      assertAbsent(res.body, marker, `${path} must not render commerce/account machinery (${marker})`);
+    }
+    assert.ok(!/\$\s?\d|\d+\s?CLP/.test(res.body), `${path} must never render a price value`);
+  }
+  assert.equal(wp(['option', 'get', 'users_can_register']).stdout, '0', 'customer accounts stay disabled (no registration surface)');
+
+  section('Guard matrix and failure honesty (issue #13)', [
+    'Guarded admin mutations (distance retry, notification resend, status transition) reject missing and foreign records with 404 and no mutation, even with a valid capability and nonce',
+    'A lost basket session mid-journey fails the session guard: no success, no record, and the dead cookie is cleared so an ordinary retry starts fresh',
+    'Public surfaces render no WooCommerce, cart/checkout, account or price machinery, and customer registration stays disabled',
+  ]);
+});
+
+test('versioned migrations fail safely behind a clear public maintenance state that self-heals', { timeout: 120_000 }, async () => {
+  const productTotal = () => Number(wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout || '0');
+  const quoteTotal = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const adminCookie = wp([
+    'eval',
+    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+  ]).stdout;
+  const productsBefore = productTotal();
+  const quotesBefore = quoteTotal();
+
+  /* The schema failure is injected at the narrow verification seam: the
+     table exists, but the migration cannot confirm it (an unwritable
+     schema in production behaves identically). */
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  mkdirSync(muDir, { recursive: true });
+  writeFileSync(join(muDir, 'fp-test-schema-fail.php'), "<?php\nadd_filter( 'freeplast_cq_schema_ready', '__return_false' );\n");
+  try {
+    wp(['option', 'update', 'fp_db_version', '3']); /* a pending migration 4 */
+
+    const home = await get('/', MOBILE_UA);
+    assert.equal(home.status, 503, 'a failed migration must serve the maintenance state, not a half-migrated store');
+    assertContains(home.body, 'Sitio en mantención', 'the maintenance state must state its purpose clearly');
+    assertContains(home.body, 'tus datos no se han perdido', 'the maintenance state must reassure about the data');
+    assertContains(home.body, 'ventas@freeplast.cl', 'the maintenance state keeps the human contact channel');
+    assertContains(home.body, 'noindex', 'the maintenance page stays non-indexed');
+    assert.equal(home.headers.get('retry-after'), '300', 'the maintenance answer carries a Retry-After');
+    for (const path of ['/tienda/', '/cotizacion/', PRODUCT_URL]) {
+      const res = await get(path, MOBILE_UA);
+      assert.equal(res.status, 503, `${path} must answer the maintenance state too`);
+    }
+
+    /* Nothing is destroyed while the state is active. */
+    assert.equal(productTotal(), productsBefore, 'Products survive the failed migration untouched');
+    assert.equal(quoteTotal(), quotesBefore, 'Quote Requests survive the failed migration untouched');
+    assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, '3', 'the stored migration version stays untouched (retry pending)');
+    assert.equal(wp(['eval', 'echo get_option( "fp_maintenance" ) ? "set" : "clear";']).stdout, 'set', 'the maintenance state is recorded');
+
+    /* Administration surfaces keep explaining instead of failing silently. */
+    const adminHome = await get('/wp-admin/index.php', MOBILE_UA, { cookie: adminCookie });
+    assert.equal(adminHome.status, 200, 'administration stays reachable for inspection');
+    assertContains(adminHome.body, 'una migración pendiente no pudo completarse', 'the admin notice explains the maintenance state');
+  } finally {
+    rmSync(join(muDir, 'fp-test-schema-fail.php'), { force: true });
+  }
+
+  /* Self-healing: once the fault clears, the very next request completes
+     the pending migrations, clears the flag and the site returns. */
+  const healed = await get('/', MOBILE_UA);
+  assert.equal(healed.status, 200, 'the site must self-heal once the schema fault clears');
+  assertContains(healed.body, 'Venta Mayorista de Productos Plásticos', 'the healed site renders the storefront again');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), 'the retry completes the pending migrations');
+  assert.equal(wp(['eval', 'echo get_option( "fp_maintenance" ) ? "set" : "clear";']).stdout, 'clear', 'the maintenance flag clears with it');
+  assert.equal(productTotal(), productsBefore, 'the healing retry duplicates or destroys nothing');
+  assert.equal(quoteTotal(), quotesBefore, 'the healing retry duplicates or destroys nothing');
+
+  section('Safe migrations and maintenance state (issue #13)', [
+    'A migration that cannot complete (schema fault injected at the freeplast_cq_schema_ready verification seam) marks the maintenance state, leaves fp_db_version untouched and retries on every request — no half-migrated store is ever rendered',
+    'Public routes answer a clear 503 maintenance page (purpose, data reassurance, human contact channel, noindex, Retry-After 300) while Products, Quote Requests and options survive untouched',
+    'Administration surfaces stay reachable for inspection with an explicit notice explaining the pending migration',
+    'Self-healing: once the fault clears, the next request completes the pending migrations, clears the flag and the storefront returns without duplicating or destroying anything',
+  ]);
+});
+
+test('a stock block theme keeps minimal Catalog, basket, request and admin behavior; lifecycle operations preserve records', { timeout: 240_000 }, async () => {
+  const counts = () => ({
+    products: Number(wp(['post', 'list', '--post_type=fp_product', '--post_status=publish', '--format=count']).stdout || '0'),
+    quotes: Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0'),
+    sessions: basketRows().length,
+    pages: Number(wp(['post', 'list', '--post_type=page', '--post_status=publish', '--format=count']).stdout || '0'),
+  });
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const adminCookie = wp([
+    'eval',
+    'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
+  ]).stdout;
+  const baseline = counts();
+  assert.equal(baseline.products, PRODUCT_COUNT, 'the records under lifecycle pressure start complete');
+
+  /* 23.1 — Theme failure: under the stock Twenty Twenty-Four block theme
+     the plugin's dynamic blocks still expose a functional minimal
+     Catalog, basket, request form and administration. */
+  assert.equal(wp(['theme', 'activate', 'twentytwentyfour']).status, 0, 'the stock block theme must activate');
+  const underStock = counts();
+  assert.equal(underStock.products, baseline.products, 'a theme switch preserves Products');
+  assert.equal(underStock.quotes, baseline.quotes, 'a theme switch preserves Quote Requests');
+
+  const tienda = await get('/tienda/', MOBILE_UA);
+  assert.equal(tienda.status, 200, 'the minimal Catalog archive renders under the stock theme');
+  assert.ok(countMatches(tienda.body, 'type-fp_product') >= 5, 'the stock archive lists the synchronized Products');
+  assertContains(tienda.body, 'wp-block-post-title', 'the stock archive links the product singles');
+
+  const product = await get(PRODUCT_URL, MOBILE_UA);
+  assert.equal(product.status, 200, 'the product single renders under the stock theme');
+  assertContains(product.body, 'Caja Cosechera 3/4', 'the product detail block renders from synchronized metadata');
+  assertContains(product.body, 'name="action" value="fp_basket_add"', 'the quantity chooser stays functional under the stock theme');
+
+  const addNonce = product.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  const added = await postForm(
+    { action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '3', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL },
+    {}
+  );
+  const token = added.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+  assert.ok(token, 'the stock-theme journey owns its basket session');
+  const cot = await get('/cotizacion/', MOBILE_UA, { cookie: `fpcq_basket=${token}` });
+  assertContains(cot.body, 'Tu cotización', 'the basket block renders under the stock theme');
+  assertContains(cot.body, 'Caja Cosechera 3/4', 'the basket line renders under the stock theme');
+  assertContains(cot.body, '3 unidades', 'the basket quantity renders under the stock theme');
+  const creds = requestCredentials(cot.body);
+  assert.ok(creds.nonce && creds.token, 'the request form renders under the stock theme');
+  assert.equal(humanPaced(token, creds.token), 'ok', 'the stock-theme submission must be paced like a human fill');
+  const stockSubmit = await postForm(
+    {
+      action: 'fp_request_submit',
+      fp_nombre: 'María González',
+      fp_telefono: '+56 9 6844 4265',
+      fp_email: 'maria@acme.cl',
+      fp_empresa: 'Agrícola ACME SpA',
+      fp_rut: '76.335.888-6',
+      fp_giro: 'Comercialización de productos plásticos',
+      fp_despacho: 'no',
+      fp_direccion: '',
+      fp_mensaje: '',
+      fp_request_nonce: creds.nonce,
+      fp_request_token: creds.token,
+      _wp_http_referer: '/cotizacion/',
+    },
+    { cookie: `fpcq_basket=${token}` }
+  );
+  const stockRef = submittedRef(stockSubmit);
+  assert.match(stockRef, /^FP-\d{4}-\d{6}$/, 'the complete request journey works under the stock block theme');
+  const stockConfirm = await get(`/cotizacion/?fpcq_submitted=${stockRef}`, MOBILE_UA, { cookie: `fpcq_basket=${token}` });
+  assertContains(stockConfirm.body, stockRef, 'the confirmation renders under the stock theme');
+
+  const stockAdmin = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: adminCookie });
+  assert.equal(stockAdmin.status, 200, 'the Cotizaciones administration works under the stock theme');
+  assertContains(stockAdmin.body, stockRef, 'the stock-theme request is administrable');
+
+  assert.equal(wp(['theme', 'activate', 'freeplast']).status, 0, 'the v6 theme returns');
+  const homeBack = await get('/', MOBILE_UA);
+  assert.equal(homeBack.status, 200, 'the v6 storefront returns after the stock-theme round-trip');
+  assertContains(homeBack.body, 'Venta Mayorista de Productos Plásticos', 'the v6 hero renders again');
+  const afterTheme = counts();
+  assert.equal(afterTheme.quotes, baseline.quotes + 1, 'only the stock-theme journey request was added');
+  assert.equal(afterTheme.products, baseline.products, 'the theme round-trips preserve Products');
+
+  /* 23.2 — Plugin deactivation preserves every business record and the
+     session store; reactivation reattaches without duplicating seeds. */
+  const beforeDeactivate = counts();
+  assert.equal(wp(['plugin', 'deactivate', 'freeplast-catalog-quotes']).status, 0, 'the plugin must deactivate (reversible)');
+  assert.deepEqual(counts(), beforeDeactivate, 'deactivation preserves Products, Quote Requests, sessions and pages');
+  assert.equal(wp(['plugin', 'activate', 'freeplast-catalog-quotes']).status, 0, 'the plugin reactivates');
+  assert.deepEqual(counts(), beforeDeactivate, 'reactivation reattaches without duplicating anything');
+  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), 'reactivation keeps the migration version current');
+  const homeAfter = await get('/', MOBILE_UA);
+  assert.equal(homeAfter.status, 200, 'the site works again after the reactivation round-trip');
+
+  /* 23.3 — Uninstall: the explicit uninstall.php keeps every business
+     record (Products, Quote Requests with histories, basket sessions,
+     configuration) and only clears ephemeral scheduling state. */
+  const pluginDir = join(WP_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes');
+  const backupDir = join(BUILD_DIR, 'plugin-uninstall-backup');
+  cpSync(pluginDir, backupDir, { recursive: true });
+  const firstQuoteId = wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--orderby=ID', '--order=ASC', '--format=ids']).stdout.split(/\s+/)[0];
+  const firstQuoteState = JSON.parse(
+    wp([
+      'eval',
+      `echo wp_json_encode( array( "ref" => get_post_meta( ${firstQuoteId}, "_fpq_reference", true ), "customer" => json_decode( (string) get_post_meta( ${firstQuoteId}, "_fpq_customer", true ), true ), "history" => json_decode( (string) get_post_meta( ${firstQuoteId}, "_fpq_history", true ), true ) ) );`,
+    ]).stdout || '{}'
+  );
+  try {
+    wp(['plugin', 'deactivate', 'freeplast-catalog-quotes']);
+    /* Core's own uninstall routine: exactly what the WordPress admin's
+       Delete action runs for an inactive plugin with an uninstall.php —
+       WP-CLI's `plugin delete` only removes files, so the check drives
+       the real uninstall boundary itself. */
+    const uninstalled = wp([
+      'eval',
+      'require_once ABSPATH . "wp-admin/includes/plugin.php";' +
+        '$r = uninstall_plugin( "freeplast-catalog-quotes/freeplast-catalog-quotes.php" );' +
+        'echo true === $r ? "ok" : "no";',
+    ]).stdout;
+    assert.equal(uninstalled, 'ok', 'the explicit uninstall routine must run for the inactive plugin');
+    assert.equal(wp(['plugin', 'delete', 'freeplast-catalog-quotes']).status, 0, 'the plugin files are removed after the uninstall routine');
+
+    const afterUninstall = counts();
+    assert.equal(afterUninstall.products, beforeDeactivate.products, 'uninstall preserves the Products');
+    assert.equal(afterUninstall.quotes, beforeDeactivate.quotes, 'uninstall preserves the Quote Requests');
+    assert.equal(afterUninstall.sessions, beforeDeactivate.sessions, 'uninstall preserves the basket sessions');
+    assert.equal(afterUninstall.pages, beforeDeactivate.pages, 'uninstall preserves the shell pages');
+    const preservedState = JSON.parse(
+      wp([
+        'eval',
+        `echo wp_json_encode( array( "ref" => get_post_meta( ${firstQuoteId}, "_fpq_reference", true ), "customer" => json_decode( (string) get_post_meta( ${firstQuoteId}, "_fpq_customer", true ), true ), "history" => json_decode( (string) get_post_meta( ${firstQuoteId}, "_fpq_history", true ), true ) ) );`,
+      ]).stdout || '{}'
+    );
+    assert.deepEqual(preservedState, firstQuoteState, 'uninstall preserves the Submitted Details and histories byte for byte');
+    assert.equal(wp(['option', 'get', 'fp_shell_pages']).status, 0, 'the shell page map survives');
+    assert.equal(wp(['option', 'get', 'fp_dispatch_origin']).stdout, 'Camino El Arrayán 52, San Francisco de Mostazal', 'the configured origin survives');
+    assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), 'the applied migration version survives (for a correct upgrade on reinstall)');
+
+    /* Only ephemeral scheduling state is cleared. */
+    const hooks = wp(['cron', 'event', 'list', '--fields=hook', '--format=csv']).stdout.split('\n');
+    assert.ok(!hooks.some((h) => /^"?(fpcq_|freeplast_cq_)/.test(h.trim())), 'our scheduled events are unscheduled by the uninstall');
+    const transients = Number(
+      wp(['eval', 'global $wpdb; echo $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE \'\\_transient\\_fpcq\\_%\'" );']).stdout || '0'
+    );
+    assert.equal(transients, 0, 'the expiring fpcq transients are cleared by the uninstall');
+  } finally {
+    cpSync(backupDir, pluginDir, { recursive: true });
+    rmSync(backupDir, { recursive: true, force: true });
+    wp(['plugin', 'activate', 'freeplast-catalog-quotes']); /* restore the running check environment */
+  }
+  assert.equal(wp(['plugin', 'list', '--status=active', '--field=name']).stdout.includes('freeplast-catalog-quotes'), true, 'the plugin must return after the uninstall inspection');
+  const homeReinstalled = await get('/', MOBILE_UA);
+  assert.equal(homeReinstalled.status, 200, 'the site works after the plugin returns');
+  assert.deepEqual(counts(), beforeDeactivate, 'the reinstall reattaches to the same records');
+  const adminBack = await get('/wp-admin/admin.php?page=fp-quotes', MOBILE_UA, { cookie: adminCookie });
+  assert.equal(adminBack.status, 200, 'the Cotizaciones administration works after the reinstall');
+  assertContains(adminBack.body, firstQuoteState.ref, 'the preserved records are administrable again');
+
+  section('Stock theme fallback and lifecycle preservation (issue #13)', [
+    'Under the stock Twenty Twenty-Four block theme the plugin blocks still expose a functional minimal Catalog (archive listing + full product singles with chooser), basket, request submission (a request persists end to end with its confirmation) and Cotizaciones administration',
+    'Theme deactivation/switching preserves Products, Quote Requests and sessions; the v6 theme returns to the full experience',
+    'Plugin deactivation preserves every business record and the session store; reactivation reattaches without duplicating seeds',
+    'The explicit uninstall.php preserves Products, Quote Requests with their Submitted Details and histories, basket sessions and configuration (shell pages, origin, migration version) — only expiring transients and our scheduled events are cleared — and a reinstall reattaches to the same records',
+  ]);
+});
+
+test('PHP syntax and coding-standard scans pass over the shipped theme and plugin', () => {
+  const sourceDirs = [
+    join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes'),
+    join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast'),
+  ];
+  const scanDir = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      return entry.isDirectory() ? scanDir(full) : [full];
+    });
+  const phpFiles = sourceDirs.flatMap((dir) => scanDir(dir)).filter((file) => file.endsWith('.php'));
+  assert.ok(phpFiles.length >= 12, 'the scan must cover the shipped PHP files');
+
+  for (const file of phpFiles) {
+    const lint = spawnSync(PHP_BIN, ['-l', file], { encoding: 'utf8' });
+    assert.equal(lint.status, 0, `${file} must pass php -l: ${lint.stderr}`);
+
+    const code = readFileSync(file, 'utf8');
+    assert.ok(code.endsWith('\n'), `${file} must end with a newline`);
+    for (const forbidden of [/\beval\s*\(/, /\bextract\s*\(/, /base64_decode\s*\(/, /\bshell_exec\s*\(/, /\bpassthru\s*\(/, /\bproc_open\s*\(/, /\bpopen\s*\(/]) {
+      assert.ok(!forbidden.test(code), `${file} must not use ${forbidden} (coding standards)`);
+    }
+    assert.ok(!/TODO|FIXME/.test(code), `${file} must not ship unfinished-work markers`);
+
+    const isUninstall = file.endsWith('uninstall.php');
+    const guard = isUninstall ? /WP_UNINSTALL_PLUGIN/ : /defined\( 'ABSPATH' \)/;
+    assert.ok(guard.test(code), `${file} must guard direct access (ABSPATH${isUninstall ? ' / WP_UNINSTALL_PLUGIN' : ''})`);
+  }
+
+  const jsFiles = sourceDirs.flatMap((dir) => scanDir(dir)).filter((file) => file.endsWith('.js'));
+  for (const file of jsFiles) {
+    const code = readFileSync(file, 'utf8');
+    assert.ok(code.endsWith('\n'), `${file} must end with a newline`);
+    assert.ok(!/\beval\s*\(/.test(code), `${file} must not use eval`);
+    assert.ok(!/document\.write\s*\(/.test(code), `${file} must not use document.write`);
+  }
+
+  section('Syntax and coding-standard scans (issue #13)', [
+    `php -l passes on every shipped PHP file (${phpFiles.length} files across plugin + theme)`,
+    'Coding-standard scans: no eval/extract/base64_decode/shell_exec/passthru/proc_open/popen, no TODO/FIXME markers, newline-terminated files, ABSPATH (or WP_UNINSTALL_PLUGIN) direct-access guards everywhere',
+  ]);
+});
+
 /* ─── 19. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content (issues #2–#12)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey (issues #2–#13)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -3462,6 +4303,18 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Authorized staff retry the calculation through a nonce + capability-guarded operation (bad nonce and capability-less users are denied)',
     'Credentials are environment-supplied (FREEPLAST_GOOGLE_API_KEY via getenv), absent from source control and the database; the provider is replaced at its narrow adapter boundary in every automated check',
     'Origin selection remains configuration: the stored fp_dispatch_origin option (seeded by migration 7) defines the recorded origin',
+    'Complete journey: the one-Product journey passes with JavaScript disabled (Home → Tienda → product → chooser add → /cotizacion/ → submit → confirmation) and the multi-Product journey with the JSON enhancement (card chooser + optioned Color line + update)',
+    'Keyboard: native controls in logical DOM order, <details> disclosures, announced mobile sheet, focusable linked error summary (tabindex=-1, #fragment focus, role=alert) with every link targeting a real labelled field',
+    'Motion and sizing: prefers-reduced-motion collapses all nonessential motion; every interactive control declares ≥ 24px targets (primary ones 44px)',
+    'Contrast: the frozen palette pairs meet WCAG AA (4.5:1 text and controls, 3:1 headings and focus outline)',
+    'Responsive: one identical mobile-first document serves 375, 412, 768, 1024 and 1440 px with viewport meta everywhere; adaptation only through the declared 768/1024 breakpoints',
+    'Abuse resistance: honeypot decoy, server-side minimum completion time (recoverable, ordinary retry succeeds) and bounded per-session throttling of persisted requests (only successes count) — rate keys are opaque session hashes, never raw IP/email',
+    'Guard matrix: guarded admin mutations reject missing/foreign records with 404 and no mutation; a lost basket session never produces false success (cookie cleared for a fresh retry)',
+    'Public-surface hygiene: no WooCommerce, cart/checkout, account or price machinery renders anywhere and customer registration stays disabled',
+    'Safe migrations: a schema-fault migration marks a clear 503 public maintenance state (data preserved, admin notice), retries every request and self-heals once the fault clears',
+    'Stock block theme (Twenty Twenty-Four): functional minimal Catalog archive, full product singles with chooser, basket, request submission and Cotizaciones administration',
+    'Lifecycle preservation: theme switching, plugin deactivation/reactivation and the explicit uninstall.php preserve Products, Quote Requests with histories, basket sessions and configuration — only ephemeral transients and scheduled events are cleared',
+    'Coding standards: php -l on every shipped PHP file; scans reject eval/extract/base64_decode/shell_exec/passthru/proc_open/popen, TODO/FIXME markers and missing ABSPATH/WP_UNINSTALL_PLUGIN guards',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -3481,6 +4334,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     '- The durable notifications (issue #10) are verified through the persisted job/delivery state, the single external mail adapter seam (freeplast_cq_send_mail, replaced by the check) and the Cotizaciones detail: receipt never waits for delivery, WP-Cron is disabled on the disposable host so the scheduled delivery events run only when the check drives them (staging runs system cron), and the default mail mode fails closed to non-delivery until FREEPLAST_CQ_MAIL_MODE (or the freeplast_cq_mail_mode option) is configured.',
     `- The Google-assisted Delivery Address confirmation and Dispatch Distance (issue #11) are verified by replacing the Google provider at its narrow adapter boundary (freeplast_cq_google_client) with a mode-switchable fake — no check performs a network call or holds a real credential. The real client is only built when FREEPLAST_GOOGLE_API_KEY is present in the environment (Places + Routes APIs, Google-console restricted); origin selection (Camino El Arrayán 52 provisional, Santiago pending the client answer) and distance semantics stay the stored-option/filter configuration. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
+    `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

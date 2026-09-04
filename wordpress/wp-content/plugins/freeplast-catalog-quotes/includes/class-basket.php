@@ -120,9 +120,12 @@ class Freeplast_CQ_Basket {
 
 	/**
 	 * The versioned session table (migration 4). Stores only token hashes
-	 * and line data — never the opaque token itself.
+	 * and line data — never the opaque token itself. Returns whether the
+	 * table is usable afterwards, so a migration that cannot create it can
+	 * fail safely into the maintenance state instead of half-migrating
+	 * (issue #13).
 	 */
-	public static function create_table(): void {
+	public static function create_table(): bool {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		$table   = $wpdb->prefix . 'basket_sessions';
@@ -137,6 +140,9 @@ class Freeplast_CQ_Basket {
 				KEY last_activity (last_activity)
 			) {$collate};"
 		);
+
+		$ready = strtolower( (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) === strtolower( $table );
+		return (bool) apply_filters( 'freeplast_cq_schema_ready', $ready );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -692,6 +698,12 @@ class Freeplast_CQ_Basket {
 				return 'Tu cotización está vacía. Agrega productos antes de enviar tu solicitud.';
 			case 'token':
 				return 'Tu solicitud ya no es válida. Vuelve a cargar la página e inténtalo de nuevo.';
+			case 'spam':
+				return 'No pudimos aceptar tu solicitud. Completa el formulario y envíalo de nuevo.';
+			case 'too_fast':
+				return 'Tómate un momento para completar el formulario y vuelve a enviarlo.';
+			case 'throttled':
+				return 'Has enviado varias solicitudes en poco tiempo. Espera un momento antes de enviar otra.';
 			case 'request_invalid':
 				return 'Revisa el formulario: hay campos que necesitan tu atención.';
 			case 'request_failed':

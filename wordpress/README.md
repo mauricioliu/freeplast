@@ -21,11 +21,14 @@ wordpress/
     plugins/freeplast-catalog-quotes/
                               private plugin — shell routes, migrations,
                               fp_product records, catalog synchronization,
-                              quote basket, quote-request submission,
-                              Google-assisted delivery-address confirmation
-                              and internal dispatch distance, the restricted
-                              sales administration and the durable
-                              sales/customer notifications
+                              quote basket, quote-request submission
+                              (honeypot/minimum-completion-time/bounded
+                              throttling), Google-assisted delivery-address
+                              confirmation and internal dispatch distance,
+                              the restricted sales administration, the
+                              durable sales/customer notifications, the
+                              safe-migration maintenance state and the
+                              non-destructive uninstall.php
   .tools/                     pinned downloadable toolchain (gitignored)
   .build/                     disposable WordPress site (gitignored)
 ```

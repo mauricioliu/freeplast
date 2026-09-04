@@ -109,8 +109,14 @@ class Freeplast_CQ_Migrations {
 
 		if ( $applied < 4 ) {
 			// Migration 4 — the quote-basket session table and the /cotizacion/
-			// takeover (see class-basket.php and class-shell.php).
-			Freeplast_CQ_Basket::create_table();
+			// takeover (see class-basket.php and class-shell.php). The table is
+			// the one schema this plugin owns: when it cannot be created the
+			// migration fails safely — maintenance state, version untouched,
+			// retried on the next request once the fault clears (issue #13).
+			if ( ! Freeplast_CQ_Basket::create_table() ) {
+				self::mark_maintenance();
+				return;
+			}
 
 			self::take_over_page(
 				get_option( 'fp_shell_pages', array() ),
@@ -239,6 +245,12 @@ class Freeplast_CQ_Migrations {
 		$changed = $previous !== $applied;
 		update_option( 'fp_db_version', $applied );
 
+		/* A completed catch-up ends the maintenance state (the flag is only
+		   ever set while a migration could not complete). */
+		if ( $applied >= FREEPLAST_CQ_DB_VERSION && false !== get_option( 'fp_maintenance', false ) ) {
+			delete_option( 'fp_maintenance' );
+		}
+
 		/* Migrations that change routing request a rewrite flush; the flush
 	   itself happens on init once post types are registered
 	   (see flush_if_needed) — flushing during a late plugin activation
@@ -275,6 +287,34 @@ class Freeplast_CQ_Migrations {
 					'ID'           => $page->ID,
 					'post_content' => $content,
 				)
+			);
+		}
+	}
+
+	/**
+	 * Whether a versioned migration could not complete and the site is in
+	 * the maintenance state (public routes answer a clear notice; the
+	 * pending migration retries on every request until the fault clears).
+	 */
+	public static function in_maintenance(): bool {
+		return false !== get_option( 'fp_maintenance', false );
+	}
+
+	/**
+	 * Record the maintenance state without touching the stored version, so
+	 * the pending migrations retry on every following request and no
+	 * half-migrated state is ever rendered as a working store.
+	 */
+	private static function mark_maintenance(): void {
+		if ( false === get_option( 'fp_maintenance', false ) ) {
+			add_option(
+				'fp_maintenance',
+				array(
+					'reason' => 'schema',
+					'since'  => time(),
+				),
+				'',
+				false
 			);
 		}
 	}

@@ -36,6 +36,16 @@
  *     carrying the permanent unique Request Reference (FP-YYYY-NNNNNN).
  *     A persistence failure (filter seam freeplast_cq_request_persist,
  *     or a failed insert) shows no success and retains the basket.
+ *   - Abuse resistance (issue #13) without a CAPTCHA: the form carries
+ *     an off-screen honeypot field (a filled decoy is automated spam —
+ *     rejected before anything else mutates), a plausible minimum
+ *     completion time (the server-side render time of the idempotency
+ *     token — a submission faster than a human fill is rejected
+ *     recoverably with the values and basket retained) and bounded
+ *     throttling (a rolling cap of persisted requests per session inside
+ *     an hour, keyed by the opaque session hash — never a raw IP or
+ *     email — where ordinary retries never count: invalid attempts,
+ *     idempotent replays and failed persistences increment nothing).
  *   - Idempotency: each rendered form carries a session-scoped random
  *     token; a submission with a token that already served a persisted
  *     request redirects back to that request's confirmation without
@@ -91,6 +101,15 @@ class Freeplast_CQ_Request {
 	public const MAX_DIRECCION = 400;
 	private const MAX_MENSAJE   = 2000;
 
+	/** Plausible minimum seconds between the form render and a human submission. */
+	public const MIN_COMPLETION_SECONDS = 2;
+
+	/** Persisted requests allowed per session inside the rolling throttle window. */
+	public const RATE_LIMIT = 5;
+
+	/** The throttle window (one expiring counter per opaque session hash — never raw PII). */
+	private const RATE_WINDOW = HOUR_IN_SECONDS;
+
 	public static function register(): void {
 		register_post_type(
 			self::POST_TYPE,
@@ -133,6 +152,13 @@ class Freeplast_CQ_Request {
 			self::fail( 'nonce' );
 		}
 
+		/* 1b. Honeypot — the off-screen decoy field stays empty for humans; a
+		   filled one is automated spam and mutates nothing. */
+		$decoy = isset( $_POST['fp_referencia'] ) ? sanitize_text_field( wp_unslash( $_POST['fp_referencia'] ) ) : '';
+		if ( '' !== $decoy ) {
+			self::fail( 'spam' );
+		}
+
 		/* 2. Authenticated server basket session — the submission is bound to it. */
 		$session = Freeplast_CQ_Basket::current_session();
 		if ( null === $session ) {
@@ -155,7 +181,8 @@ class Freeplast_CQ_Request {
 			self::redirect( array( 'fpcq_submitted' => $existing ) );
 		}
 
-		if ( get_transient( self::token_key( $session['hash'] ) ) !== $token ) {
+		$issued = self::issued_token( $session['hash'] );
+		if ( null === $issued || $issued['token'] !== $token ) {
 			self::fail( 'token' );
 		}
 
@@ -176,6 +203,25 @@ class Freeplast_CQ_Request {
 		}
 		$values    = $validated['values'];
 		$confirmed = $validated['confirmed'];
+
+		/* 6b. Plausible minimum completion time: the token records when this
+		   form instance was rendered; a faster-than-human fill is rejected
+		   recoverably (values and basket retained) — an ordinary retry a
+		   moment later succeeds. */
+		if ( ( time() - $issued['started'] ) < self::MIN_COMPLETION_SECONDS ) {
+			self::store_attempt( $session['hash'], $values, array(), 'Tómate un momento para completar el formulario y vuelve a enviarlo.' );
+			self::fail( 'too_fast' );
+		}
+
+		/* 6c. Bounded throttling: too many persisted requests from one session
+		   inside the window is abuse. Only successful persistences count, so
+		   invalid attempts, idempotent replays and failed persistences never
+		   block an ordinary retry; the counter is keyed by the opaque session
+		   hash and expires with the window. */
+		if ( self::throttled( $session['hash'] ) ) {
+			self::store_attempt( $session['hash'], $values, array(), 'Has enviado varias solicitudes en poco tiempo. Espera un momento antes de enviar otra.' );
+			self::fail( 'throttled' );
+		}
 
 		/* 7. Persistence seam — a failing store never claims success and
 		   never clears the basket (the values stay retained). */
@@ -217,6 +263,9 @@ class Freeplast_CQ_Request {
 		delete_transient( self::attempt_key( $session['hash'] ) );
 		Freeplast_CQ_Address::clear_session_state( $session['hash'] );
 		set_transient( self::confirm_key( $session['hash'] ), $stored['reference'], DAY_IN_SECONDS );
+
+		/* The throttle counter sees only durable persistences. */
+		self::count_persist( $session['hash'] );
 
 		self::redirect( array( 'fpcq_submitted' => $stored['reference'] ) );
 	}
@@ -588,14 +637,49 @@ class Freeplast_CQ_Request {
 		return 'fpcq_confirm_' . $hash;
 	}
 
-	/** The session's submission token (created on first form render). */
-	private static function ensure_token( string $hash ): string {
-		$token = get_transient( self::token_key( $hash ) );
-		if ( ! is_string( $token ) || 1 !== preg_match( '/^[0-9a-f]{32}$/', $token ) ) {
-			$token = bin2hex( random_bytes( 16 ) );
-			set_transient( self::token_key( $hash ), $token, DAY_IN_SECONDS );
+	private static function rate_key( string $hash ): string {
+		return 'fpcq_rate_' . $hash;
+	}
+
+	/** True when this session already persisted the cap of requests inside the rolling window. */
+	private static function throttled( string $hash ): bool {
+		return (int) get_transient( self::rate_key( $hash ) ) >= self::RATE_LIMIT;
+	}
+
+	/** Count one durable persistence against the session's rolling cap (bounded: one expiring transient). */
+	private static function count_persist( string $hash ): void {
+		$key = self::rate_key( $hash );
+		set_transient( $key, (int) get_transient( $key ) + 1, self::RATE_WINDOW );
+	}
+
+	/**
+	 * The session's issued form token with its server-side render time
+	 * (the completion-time reference), or null when none is valid.
+	 *
+	 * @return array{token: string, started: int}|null
+	 */
+	private static function issued_token( string $hash ): ?array {
+		$stored = get_transient( self::token_key( $hash ) );
+		if ( is_array( $stored ) && 1 === preg_match( '/^[0-9a-f]{32}$/', (string) ( $stored['token'] ?? '' ) ) ) {
+			return array(
+				'token'   => (string) $stored['token'],
+				'started' => (int) ( $stored['started'] ?? 0 ),
+			);
 		}
-		return $token;
+		return null;
+	}
+
+	/** The session's submission token (created with its render time on first form render). */
+	private static function ensure_token( string $hash ): string {
+		$issued = self::issued_token( $hash );
+		if ( null === $issued || 0 === $issued['started'] ) {
+			$issued = array(
+				'token'   => bin2hex( random_bytes( 16 ) ),
+				'started' => time(),
+			);
+			set_transient( self::token_key( $hash ), $issued, DAY_IN_SECONDS );
+		}
+		return $issued['token'];
 	}
 
 	private static function store_attempt( string $hash, array $values, array $errors, string $general ): void {
@@ -650,7 +734,10 @@ class Freeplast_CQ_Request {
 	}
 
 	private static function fail( string $code ): void {
-		$fragment = 'request_invalid' === $code ? '#fpcq-form-errors' : '';
+		/* Recoverable, value-retaining failures focus the summary so a
+		   keyboard user lands on the explanation. */
+		$focused = in_array( $code, array( 'request_invalid', 'too_fast', 'throttled' ), true );
+		$fragment = $focused ? '#fpcq-form-errors' : '';
 		self::redirect( array( 'fpcq_notice' => $code ), $fragment );
 	}
 
@@ -717,6 +804,7 @@ class Freeplast_CQ_Request {
 		   progressively (the server stays the authority). */
 		$fields .= Freeplast_CQ_Address::render_address_block( $values['direccion'], $errors['direccion'] ?? null, $dispatched, $session['hash'] );
 		$fields .= self::render_mensaje( $values['mensaje'], $errors['mensaje'] ?? null );
+		$fields .= self::render_honeypot();
 
 		return sprintf(
 			'<section class="fpcq-request" data-fpcq-version="1" data-fpcq-request-form><h2 class="fpcq-request-title">Envía tu solicitud</h2><p class="fpcq-request-intro">Completa tus datos para que Freeplast prepare tu cotización. Los productos y cantidades provienen de la cotización que revisaste arriba.</p><form class="fpcq-request-form" method="post" action="%1$s">%2$s<div class="fpcq-form-grid">%3$s</div><input type="hidden" name="action" value="fp_request_submit"><input type="hidden" name="fp_request_token" value="%4$s"><input type="hidden" name="_wp_http_referer" value="%5$s"><input type="hidden" name="fp_request_nonce" value="%6$s"><button class="fpcq-request-submit" type="submit">Enviar solicitud</button><p class="fpcq-request-privacy">Al enviar aceptas que Freeplast use estos datos únicamente para preparar y responder tu solicitud. Más información en la <a href="%7$s">Política de privacidad</a>.</p></form></section>',
@@ -804,5 +892,15 @@ class Freeplast_CQ_Request {
 			esc_textarea( $value ),
 			$inline
 		);
+	}
+
+	/**
+	 * The off-screen honeypot (issue #13): visually and programmatically
+	 * hidden from humans (off-screen inline styles keep it self-contained
+	 * under any theme, including a stock block theme); a filled field is
+	 * automated spam and the submission is rejected before any mutation.
+	 */
+	private static function render_honeypot(): string {
+		return '<div class="fpcq-hp" aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;"><label for="fp-referencia">No completar este campo</label><input type="text" id="fp-referencia" name="fp_referencia" value="" tabindex="-1" autocomplete="off"></div>';
 	}
 }
