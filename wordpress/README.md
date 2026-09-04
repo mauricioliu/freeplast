@@ -11,10 +11,14 @@ WooCommerce is not installed.
 ```
 wordpress/
   BUILD-DECISIONS.md          slice-by-slice decisions (read this first)
+  DEPLOYMENT.md               staging resource record + operator runbook (issue #14)
   VERIFICATION.md             generated mechanical proof (npm test)
   design/                     frozen v6 design contract (tokens, hashes, brief)
   data/products.json          versioned catalog source (schema v2, 17 products)
   data/media/                 reviewed local media referenced by the source
+  infra/                      isolated staging deployment (issue #14):
+                              compose stack, Nginx vhost, preflight, deploy,
+                              verify, backup and rollback scripts
   scripts/                    toolchain fetch, bootstrap, checks
   wp-content/
     themes/freeplast/         standalone block theme — v6 shell + v7-A product
@@ -41,11 +45,11 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#12 acceptance
+                      # verify the issue-#2 through issue-#14 acceptance
                       # criteria (including the issue-#8 submission, the
                       # issue-#9 sales workflow, the issue-#10 durable
-                      # notifications and the issue-#11 address/distance
-                      # slice).
+                      # notifications, the issue-#11 address/distance
+                      # slice and the issue-#14 staging artifacts).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -284,3 +288,40 @@ customer-facing discovery journey (issue #5) consumes this file — content is
 never duplicated into the theme, and every “Cotizar” action opens the shared
 quote-basket quantity chooser (issue #6), which never assumes an unseen
 quantity.
+
+## Staging deployment (issue #14)
+
+The isolated, password-protected staging site on OpenClaw is deployed from
+`infra/` and recorded in `DEPLOYMENT.md`: a dedicated
+`freeplast-wordpress` Compose project (MariaDB + WordPress + an on-demand
+WP-CLI sidecar) with private persistent volumes and a loopback-only
+origin at `127.0.0.1:8092`, proxied by one new host-Nginx vhost for
+exactly `freeplast.mliu.site` — TLS through the server's approved
+convention, owner/client Basic Auth, `X-Robots-Tag: noindex` and
+`nginx -t` before every reload.
+
+- `infra/preflight.sh` — read-only collision checks (hostname, port,
+  stack directory, project, volumes, network, disk, DNS, certificate
+  SAN/expiry, existing-container health). Any failure aborts planning;
+  collisions are never adopted or deleted around.
+- `infra/deploy.sh` — one-shot deployment: server-generated secrets
+  (`openssl rand`, mode-0600/0400 files only — never the repository or
+  command output), Compose validation before start, WordPress bootstrap
+  (es_CL, America/Santiago, approved HTTPS URLs, `blog_public 0`,
+  permalinks, theme + plugin), catalog synchronization gated on a
+  zero-change dry run, Nginx backup → vhost → `nginx -t` → reload, and
+  the HTTPS verification walk.
+- `infra/verify.sh` — the acceptance matrix through the public HTTPS
+  surface and WP-CLI (redirect, 401/200 authentication, every route,
+  noindex at both layers, WordPress identity, catalog idempotence,
+  non-live mail mode).
+- `infra/backup.sh` — database dump + WordPress-volume archive with
+  SHA-256 hashes outside the live volumes, plus a restore rehearsal into
+  temporary project names that is torn down afterwards.
+- `infra/rollback.sh` — bounded to the approved-hostname vhost and the
+  `freeplast-wordpress` project; named volumes are retained unless the
+  owner types the explicit purge confirmation.
+
+`npm test` asserts the artifacts structurally (see VERIFICATION.md); the
+on-server execution is the operator runbook recorded in
+`DEPLOYMENT.md`.

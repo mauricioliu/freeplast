@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Freeplast staging — backup and restore rehearsal (issue #14).
+#
+#   1. dump the database through the db service (password via environment),
+#   2. archive the whole WordPress volume through the running container,
+#   3. hash both artifacts into /root/freeplast-wordpress-backups
+#      (outside the live Compose volumes),
+#   4. rehearse the restore into temporary project names only
+#      (freeplast-wordpress-restore), verify the restored catalog count
+#      with WP-CLI, then tear the rehearsal down. The live stack is
+#      never touched.
+#
+# A backup that has not completed its restore rehearsal is not release
+# evidence (OPENCLAW.md). Run before every catalog import, plugin
+# migration or release, and before server-level changes.
+set -euo pipefail
+
+STACK_DIR='/opt/freeplast-wordpress'
+PROJECT='freeplast-wordpress'
+BACKUP_ROOT='/root/freeplast-wordpress-backups'
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+DEST="$BACKUP_ROOT/$STAMP"
+REHEARSAL="${PROJECT}-restore"
+REHEARSAL_PORT='8093'
+
+cd "$STACK_DIR"
+set -a
+. ./.env
+set +a
+
+mkdir -p "$DEST"
+chmod 700 "$DEST"
+printf 'Freeplast staging backup — %s\n' "$STAMP"
+
+# 1. Database (secret travels through the container environment, never argv)
+docker compose --env-file .env exec -T \
+  -e MARIADB_PWD="$MARIADB_ROOT_PASSWORD" db \
+  sh -c 'exec mariadb-dump -uroot --databases "$MARIADB_DATABASE"' > "$DEST/db.sql"
+
+# 2. Files (the whole persistent WordPress volume)
+docker compose --env-file .env exec -T wordpress tar -czf - -C /var/www/html . > "$DEST/files.tgz"
+
+# 3. Hashes, stored outside the live volumes
+sha256sum "$DEST/db.sql" "$DEST/files.tgz" > "$DEST/SHA256SUMS"
+printf 'backup stored in %s\n' "$DEST"
+
+# 4. Restore rehearsal — temporary project names only
+printf 'restore rehearsal into temporary project %s (loopback %s)…\n' "$REHEARSAL" "$REHEARSAL_PORT"
+FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" docker compose --env-file .env -p "$REHEARSAL" up -d db
+for _ in $(seq 1 60); do
+  docker compose --env-file .env -p "$REHEARSAL" exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && break
+  sleep 2
+done
+docker compose --env-file .env -p "$REHEARSAL" exec -T \
+  -e MARIADB_PWD="$MARIADB_ROOT_PASSWORD" db \
+  sh -c 'exec mariadb -uroot' < "$DEST/db.sql"
+FREEPLAST_LOOPBACK_PORT="$REHEARSAL_PORT" docker compose --env-file .env -p "$REHEARSAL" up -d wordpress
+for _ in $(seq 1 60); do
+  curl -s --max-time 5 -o /dev/null "http://127.0.0.1:${REHEARSAL_PORT}/" && break
+  sleep 2
+done
+docker compose --env-file .env -p "$REHEARSAL" exec -T wordpress sh -c 'tar -xzf - -C /var/www/html' < "$DEST/files.tgz"
+
+LIVE_COUNT="$(docker compose --env-file .env run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
+RESTORED_COUNT="$(docker compose --env-file .env -p "$REHEARSAL" run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
+if [[ -n "$LIVE_COUNT" && "$LIVE_COUNT" != "0" && "$RESTORED_COUNT" == "$LIVE_COUNT" ]]; then
+  printf 'restore rehearsal verified: %s fp_product records in both stacks\n' "$LIVE_COUNT"
+else
+  printf 'restore rehearsal FAILED: live=%s restored=%s\n' "${LIVE_COUNT:-?}" "${RESTORED_COUNT:-?}" >&2
+  docker compose --env-file .env -p "$REHEARSAL" down -v --remove-orphans
+  exit 1
+fi
+
+# Teardown of the rehearsal only (project-scoped volumes and containers)
+docker compose --env-file .env -p "$REHEARSAL" down -v --remove-orphans
+printf 'rehearsal torn down — the live stack was never touched\n'
+printf 'backup complete: %s (db.sql + files.tgz + SHA256SUMS)\n' "$DEST"

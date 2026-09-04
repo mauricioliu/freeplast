@@ -45,6 +45,11 @@ Read [OPENCLAW.md](OPENCLAW.md), re-probe the host, and record the exact new pat
 names, loopback port, hostname, volume names and rollback command in
 `wordpress/DEPLOYMENT.md`. Show the bounded impact to the owner.
 
+The executable plan is committed (issue #14): `wordpress/infra/` carries
+the Compose stack, the Nginx vhost and the preflight/deploy/verify/
+backup/rollback scripts; `wordpress/infra/preflight.sh` automates the
+re-probe and collision checks, and `npm test` validates the artifacts.
+
 **Done when:** the owner approves the recorded plan and every collision check is negative.
 
 ### Gate 2 — visual contract
@@ -102,10 +107,13 @@ slugs are `freeplast` and `freeplast-catalog-quotes`.
 
 ### 2. Provision WordPress on OpenClaw
 
-Follow [OPENCLAW.md](OPENCLAW.md). Create a Docker Compose project under
-`/opt/freeplast-wordpress` with separate WordPress and MariaDB services, persistent private
-volumes and loopback-only HTTP. Add the approved Nginx hostname and TLS using the server’s
-existing convention. Run `nginx -t` before reload.
+Follow [OPENCLAW.md](OPENCLAW.md). The committed stack (issue #14) lives in
+`wordpress/infra/`: a `freeplast-wordpress` Compose project with separate
+WordPress and MariaDB services, persistent private volumes, a profile-gated
+WP-CLI sidecar and loopback-only HTTP on `127.0.0.1:8092`; the approved
+Nginx hostname, TLS convention and owner/client Basic Auth render through
+`infra/deploy.sh` (which runs `nginx -t` before every reload). The exact
+operator commands are recorded in `wordpress/DEPLOYMENT.md`.
 
 Bootstrap WordPress through WP-CLI with:
 

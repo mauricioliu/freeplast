@@ -6,6 +6,77 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #14: deploy isolated password-protected staging
+
+The complete build becomes an isolated, reviewable staging site on
+OpenClaw without touching any existing service. The repository carries
+the executable deployment plan (wordpress/infra/ + DEPLOYMENT.md) and
+its mechanical checks; the on-server execution is the documented
+operator step (the authoring environment has no route to the host).
+Decisions:
+1. **Everything new, verified before mutation.** preflight.sh is
+   read-only and fails on any collision: hostname in sites-enabled,
+   bound loopback port, existing stack directory, Compose project,
+   volumes, network, disk under 10 GiB, DNS not resolving here,
+   unreadable/near-expired/insufficient certificate SAN, or an unhealthy
+   existing container. A collision aborts planning — never adoption or
+   deletion of the conflicting resource (OPENCLAW.md).
+2. **A dedicated stack with a loopback-only origin.** Compose project
+   freeplast-wordpress at /opt/freeplast-wordpress: MariaDB 11.4
+   (official healthcheck, no published port, private db_data volume),
+   WordPress 7.1/php8.3 Apache (private wp_data volume, depends on a
+   healthy db, publishes exactly 127.0.0.1:8092→80) and a profile-gated
+   WP-CLI sidecar sharing the volume — started only on demand.
+3. **TLS and authentication at the host Nginx.** One new vhost serves
+   exactly the approved hostname freeplast.mliu.site: HTTP redirects to
+   HTTPS, the certificate paths render from the server's approved
+   convention (.env TLS_CERT_PATH/TLS_KEY_PATH, coverage verified by
+   preflight), owner/client Basic Auth over a generated htpasswd,
+   X-Robots-Tag noindex on every response (backing up WordPress
+   blog_public 0), 64m uploads, dotfile/sensitive-extension denies and
+   the loopback proxy with Host/Forwarded headers. The prior
+   configuration is backed up before the vhost exists and nginx -t
+   validates before every reload.
+4. **Secrets never touch the repository or command output.** deploy.sh
+   (umask 077) generates every secret on the server with openssl rand
+   into /opt/freeplast-wordpress/.env (0600) and .secrets/credentials
+   (0400); the WordPress administrator password travels to WP-CLI
+   through the container environment, never argv; scripts print paths
+   only. .env.example carries names and comments, never values.
+5. **Staging mail stays non-delivery until the owner approves
+   recipients.** The stack pins FREEPLAST_CQ_MAIL_MODE=suppress on top of
+   the plugin's own fail-closed default (issue #10); redirect needs an
+   approved FREEPLAST_CQ_MAIL_TO and verify.sh fails the deployment if
+   the effective mode is ever live.
+6. **The reviewed Catalog is the deployment's content gate.** deploy.sh
+   synchronizes data/products.json through WP-CLI and aborts unless a
+   repeated dry run reports created=0 updated=0 … errors=0.
+7. **Backups precede changes and rollback is bounded.** backup.sh dumps
+   the database (password via environment), archives the WordPress
+   volume, hashes both outside the live volumes and rehearses the
+   restore into temporary freeplast-wordpress-restore names before
+   tearing them down; the Nginx pre-change backup exists before the
+   vhost is written. rollback.sh removes only the approved-hostname
+   vhost and the freeplast-wordpress project — named volumes are
+   retained unless the owner types the explicit purge confirmation, and
+   the static proposals/unrelated projects are re-verified untouched.
+8. **WordPress reports the approved identity.** Bootstrap installs with
+   locale es_CL, timezone America/Santiago, home/site URLs
+   https://freeplast.mliu.site, /%postname%/ permalinks, blog_public 0
+   and DISALLOW_FILE_EDIT; wp-config honors the forwarded HTTPS scheme
+   so admin/REST/media URLs stay HTTPS behind the proxy.
+
+Files: wordpress/infra/ (compose.yaml, .env.example,
+nginx/freeplast.mliu.site.conf, preflight.sh, deploy.sh, verify.sh,
+backup.sh, rollback.sh), wordpress/DEPLOYMENT.md (the resource record +
+operator runbook), scripts (check.mjs issue #14 section + VERIFICATION
+rows), docs (BUILD-DECISIONS, README).
+
+Notes for next iteration: issue #15 is the final slice; the on-server
+staging execution (preflight/deploy/verify output, image digests) and
+Gate 3 human review remain operator/owner steps recorded in
+DEPLOYMENT.md.
+
 ## 2026-09-04 — Issue #13: harden the complete customer and sales journey
 
 The complete Catalog-to-Quote-Request journey is exercised under

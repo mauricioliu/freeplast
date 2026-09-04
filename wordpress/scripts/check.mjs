@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#13).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#14).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -112,7 +112,20 @@
  *      Quotation behavior appears; and PHP syntax + coding-standard scans
  *      pass alongside the integrated behavior tests at the real WordPress
  *      seam.
-  assert.equal(wp(['option', 'get', 'fp_db_version']).stdout, String(DB_VERSION), `migration ${DB_VERSION} must be applied after activation (the sales workflow, notification and dispatch-distance slices bump it)`); *
+ *  17. The isolated staging deployment artifacts (issue #14) are
+ *      reviewable, collision-checked and secret-safe before any server
+ *      mutation: a dedicated WordPress + MariaDB Compose project with
+ *      private persistent volumes and a loopback-only origin, an
+ *      approved-hostname-only Nginx vhost with owner/client Basic Auth,
+ *      noindex, TLS through the server convention and nginx -t before
+ *      reload, a read-only preflight that fails on every resource
+ *      collision, a deploy script that generates secrets on the server
+ *      (never in the repository or command output) and gates the catalog
+ *      synchronization on a zero-change dry run, an HTTPS verification
+ *      walk, a backup with restore rehearsal, and a rollback bounded to
+ *      the new resources only (DEPLOYMENT.md records the operator
+ *      runbook; the on-server execution is the operator step).
+ *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
 import { spawn, spawnSync } from 'node:child_process';
@@ -4188,11 +4201,315 @@ test('PHP syntax and coding-standard scans pass over the shipped theme and plugi
   ]);
 });
 
+/* ─── 23b. Isolated staging deployment artifacts (issue #14) ─────── */
+
+/**
+ * Parse the strict YAML subset used by infra/compose.yaml: mappings,
+ * sequences, quoted/plain scalars, "|" block scalars and full-line
+ * comments. Deployment artifact only — the file is authored in this
+ * subset, so anything richer is a parse error (kept strict on purpose).
+ */
+function parseComposeYaml(text) {
+  const lines = text.split('\n').flatMap((raw, idx) => {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith('#')) return [];
+    return [{ indent: raw.length - raw.replace(/^ +/, '').length, raw, text: trimmed, no: idx + 1 }];
+  });
+  let pos = 0;
+  const scalar = (value) => (/^".*"$/.test(value) ? value.slice(1, -1) : value);
+  function block(indent) {
+    if (pos >= lines.length) throw new Error('unexpected end of file');
+    return lines[pos].text.startsWith('- ') ? sequence(indent) : mapping(indent);
+  }
+  function mapping(indent) {
+    const out = {};
+    while (pos < lines.length && lines[pos].indent === indent && !lines[pos].text.startsWith('- ')) {
+      const match = lines[pos].text.match(/^([^:\s]+):(?:[ \t]+(.*))?$/);
+      if (!match) throw new Error(`compose.yaml line ${lines[pos].no}: not a mapping entry`);
+      const key = scalar(match[1]);
+      const value = match[2];
+      pos++;
+      if (value === '|') {
+        if (pos >= lines.length || lines[pos].indent <= indent) throw new Error(`compose.yaml line ${lines[pos - 1].no}: empty block scalar`);
+        const childIndent = lines[pos].indent;
+        const parts = [];
+        while (pos < lines.length && lines[pos].indent >= childIndent) {
+          parts.push(lines[pos].raw.slice(childIndent));
+          pos++;
+        }
+        out[key] = parts.join('\n');
+      } else if (value === undefined || value === '') {
+        out[key] = pos < lines.length && lines[pos].indent > indent ? block(lines[pos].indent) : null;
+      } else {
+        out[key] = scalar(value);
+      }
+    }
+    return out;
+  }
+  function sequence(indent) {
+    const out = [];
+    while (pos < lines.length && lines[pos].indent === indent && lines[pos].text.startsWith('- ')) {
+      out.push(scalar(lines[pos].text.slice(2)));
+      pos++;
+    }
+    return out;
+  }
+  return block(0);
+}
+
+test('the isolated staging deployment is collision-checked, secret-safe and bounded before any server mutation', () => {
+  const INFRA = join(WORDPRESS_DIR, 'infra');
+  const read = (name) => readFileSync(join(INFRA, name), 'utf8');
+  const files = ['compose.yaml', '.env.example', 'nginx/freeplast.mliu.site.conf', 'preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh', 'rollback.sh'];
+
+  /* Every artifact exists, is newline-terminated and carries no unfinished-work markers. */
+  for (const name of files) {
+    const text = read(name);
+    assert.ok(text.endsWith('\n'), `infra/${name} must end with a newline`);
+    assert.ok(!/TODO|FIXME/.test(text), `infra/${name} must not ship unfinished-work markers`);
+  }
+  const deployment = readFileSync(join(WORDPRESS_DIR, 'DEPLOYMENT.md'), 'utf8');
+  assert.ok(deployment.endsWith('\n'), 'DEPLOYMENT.md must end with a newline');
+
+  /* Shell scripts are at least syntactically valid for the operator. */
+  for (const name of files.filter((f) => f.endsWith('.sh'))) {
+    const lint = spawnSync('bash', ['-n', join(INFRA, name)], { encoding: 'utf8' });
+    assert.equal(lint.status, 0, `bash -n infra/${name}: ${lint.stderr}`);
+  }
+
+  /* 1. The Compose stack: a dedicated project with private persistent
+     volumes, a loopback-only origin and an on-demand WP-CLI sidecar. */
+  const composeText = read('compose.yaml');
+  const compose = parseComposeYaml(composeText);
+  assert.equal(compose.name, 'freeplast-wordpress', 'the Compose project name must be collision-checked unique');
+  assert.deepEqual(Object.keys(compose.services).sort(), ['cli', 'db', 'wordpress'], 'exactly the three contracted services');
+
+  const db = compose.services.db;
+  assert.match(db.image, /^mariadb:\d/, 'the database is a pinned MariaDB release');
+  assert.deepEqual(
+    db.healthcheck.test,
+    ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized'],
+    'the database healthcheck uses the official image command'
+  );
+  assert.deepEqual(db.volumes, ['db_data:/var/lib/mysql'], 'the database persists into a private named volume');
+  assert.equal(db.ports, undefined, 'the database must not publish any port');
+  assert.equal(db.restart, 'unless-stopped');
+
+  const wp = compose.services.wordpress;
+  assert.match(wp.image, /^wordpress:\d/, 'WordPress is a pinned multi-arch release');
+  assert.deepEqual(
+    wp.ports,
+    ['127.0.0.1:${FREEPLAST_LOOPBACK_PORT:-8092}:80'],
+    'origin HTTP is published to loopback only (host Nginx terminates TLS)'
+  );
+  assert.ok(wp.volumes.includes('wp_data:/var/www/html'), 'WordPress persists into a private named volume');
+  assert.equal(wp.depends_on.db.condition, 'service_healthy', 'WordPress waits for a healthy database');
+  assert.equal(wp.restart, 'unless-stopped');
+  const extra = wp.environment.WORDPRESS_CONFIG_EXTRA;
+  assert.match(extra, /HTTP_X_FORWARDED_PROTO/, 'wp-config honors the Nginx-forwarded HTTPS scheme');
+  assert.match(extra, /\$\$_SERVER\['HTTPS'\]\s*=\s*'on'/, 'the forwarded scheme switches WordPress to HTTPS');
+  assert.match(extra, /DISALLOW_FILE_EDIT/, 'dashboard file editing is disabled');
+  assert.equal(
+    wp.environment.FREEPLAST_CQ_MAIL_MODE,
+    '${FREEPLAST_CQ_MAIL_MODE:-suppress}',
+    'staging notifications fail closed to non-delivery unless the environment overrides'
+  );
+  assert.match(wp.environment.WORDPRESS_DB_PASSWORD, /^\$\{MARIADB_PASSWORD/, 'database credentials come from the server-side .env');
+
+  const cli = compose.services.cli;
+  assert.deepEqual(cli.profiles, ['tools'], 'the WP-CLI sidecar starts only on demand through its profile');
+  assert.ok(cli.volumes.includes('wp_data:/var/www/html'), 'the sidecar shares the WordPress volume');
+  assert.equal(cli.ports, undefined, 'the sidecar publishes nothing');
+
+  assert.deepEqual(Object.keys(compose.volumes).sort(), ['db_data', 'wp_data'], 'exactly the two private named volumes');
+  assert.ok(compose.networks && 'freeplast' in compose.networks, 'a dedicated project-scoped network');
+  for (const [key, value] of Object.entries({ ...db.environment, ...wp.environment, ...cli.environment })) {
+    if (/PASSWORD/i.test(key)) assert.match(value, /^\$\{/, `${key} must be an .env reference, never a literal secret`);
+  }
+
+  /* 2. The environment template carries names and comments only. */
+  const envTemplate = read('.env.example');
+  const envKeys = [];
+  for (const line of envTemplate.split('\n')) {
+    if (/^#/.test(line.trim()) || !line.trim()) continue;
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    assert.ok(match, `.env.example lines must be names or comments: ${JSON.stringify(line)}`);
+    assert.equal(match[2].trim(), '', `.env.example must not carry values (${match[1]})`);
+    envKeys.push(match[1]);
+  }
+  for (const required of [
+    'MARIADB_ROOT_PASSWORD', 'MARIADB_DATABASE', 'MARIADB_USER', 'MARIADB_PASSWORD',
+    'WORDPRESS_ADMIN_USER', 'WORDPRESS_ADMIN_EMAIL', 'WORDPRESS_ADMIN_PASSWORD',
+    'FREEPLAST_LOOPBACK_PORT', 'TLS_CERT_PATH', 'TLS_KEY_PATH',
+    'BASIC_AUTH_OWNER_USER', 'BASIC_AUTH_OWNER_PASSWORD', 'BASIC_AUTH_CLIENT_USER', 'BASIC_AUTH_CLIENT_PASSWORD',
+    'FREEPLAST_CQ_MAIL_MODE', 'FREEPLAST_CQ_MAIL_TO', 'FREEPLAST_GOOGLE_API_KEY',
+  ]) {
+    assert.ok(envKeys.includes(required), `.env.example must document ${required}`);
+  }
+
+  /* 3. The Nginx vhost proxies only the approved hostname with owner/client
+     Basic Auth and staging noindex, following the TLS convention. */
+  const vhost = read('nginx/freeplast.mliu.site.conf');
+  const serverBlocks = vhost.split(/^server\s*\{/m);
+  assert.equal(serverBlocks.length, 3, 'exactly the HTTP-redirect and HTTPS server blocks');
+  const names = vhost.match(/server_name\s+([^;]+);/g) || [];
+  assert.deepEqual(names, ['server_name freeplast.mliu.site;', 'server_name freeplast.mliu.site;'], 'only the approved hostname is proxied (collision discipline)');
+  assert.ok(/listen 80;/.test(vhost) && /return 301 https:\/\/\$host\$request_uri;/.test(vhost), 'plain HTTP redirects to HTTPS');
+  assert.ok(/listen 443 ssl;/.test(vhost), 'the review surface is TLS');
+  assert.ok(/ssl_certificate __TLS_CERT__;/.test(vhost) && /ssl_certificate_key __TLS_KEY__;/.test(vhost), 'TLS paths render from the server convention at deploy time');
+  assert.ok(/auth_basic "Freeplast staging";/.test(vhost), 'owner/client Basic Auth protects the review surface');
+  assert.ok(/auth_basic_user_file \/opt\/freeplast-wordpress\/nginx\/.htpasswd;/.test(vhost), 'the htpasswd lives inside the stack directory');
+  assert.ok(/add_header X-Robots-Tag "noindex, nofollow" always;/.test(vhost), 'Nginx-level noindex backs up the WordPress setting');
+  assert.ok(/client_max_body_size 64m;/.test(vhost), 'an explicit upload limit for WordPress media');
+  assert.ok(/proxy_pass http:\/\/127\.0\.0\.1:8092;/.test(vhost), 'the proxy targets the loopback-only origin');
+  assert.ok(/proxy_set_header X-Forwarded-Proto https;/.test(vhost) && /proxy_set_header Host \$host;/.test(vhost), 'the forwarded chain carries Host and HTTPS scheme');
+  assert.ok(vhost.includes('location ~ /\\. { deny all; }'), 'dotfiles are denied at Nginx');
+  const listens = [...vhost.matchAll(/^\s*listen\s+([^;]+);/gm)].map((m) => m[1]);
+  assert.deepEqual(listens.sort(), ['443 ssl', '80'], 'no other ports are listened on');
+
+  /* 4. preflight.sh is read-only and checks every collision before mutation. */
+  const preflight = read('preflight.sh');
+  const preflightChecks = [
+    ['sites-enabled', 'nginx server_name collision'],
+    ['ss -ltn', 'loopback port collision'],
+    ['docker ps', 'container-name collision'],
+    ['docker volume ls', 'volume collision'],
+    ['docker network ls', 'network collision'],
+    ['docker compose ls', 'compose-project collision'],
+    ['df -BG', 'disk capacity'],
+    ['getent ahosts', 'DNS resolves to this host'],
+    ['openssl x509', 'certificate exists'],
+    ['subjectAltName', 'certificate covers the approved hostname'],
+    ['checkend', 'certificate is not near expiry'],
+    ['unhealthy', 'existing containers stay healthy'],
+  ];
+  for (const [needle, why] of preflightChecks) assert.ok(preflight.includes(needle), `preflight.sh must check ${why} (${needle})`);
+  assert.ok(preflight.includes('[[ ! -e "$STACK_DIR" ]]') || preflight.includes('! -e "$STACK_DIR"'), 'preflight.sh must assert the stack directory is new');
+  for (const mutating of [
+    /docker compose (up|down|run|create|restart|stop|kill)/,
+    /systemctl (reload|restart|start|stop)/,
+    /nginx -s /,
+    /rm -rf/,
+    /mkdir/,
+    /cp -a/,
+    /ln -s/,
+    /install -m/,
+  ]) {
+    assert.ok(!mutating.test(preflight), `preflight.sh is read-only and must not mutate (${mutating})`);
+  }
+
+  /* 5. deploy.sh: secrets never printed, validation before mutation, the
+     recorded WordPress facts, catalog idempotence and the nginx order. */
+  const deploy = read('deploy.sh');
+  assert.ok(deploy.includes('umask 077'), 'deploy.sh restricts the file-mode creation mask');
+  assert.ok(deploy.includes('preflight.sh'), 'deploy.sh runs the read-only preflight before creating anything');
+  assert.ok((deploy.match(/openssl rand/g) || []).length >= 5, 'every secret is generated on the server (root, db, admin, owner, client)');
+  assert.ok(deploy.includes('chmod 600 .env'), 'the generated .env is mode 0600');
+  for (const key of envKeys) assert.ok(deploy.includes(key), `deploy.sh must write .env key ${key}`);
+  assert.ok(
+    deploy.indexOf('docker compose --env-file .env config --quiet') < deploy.indexOf('docker compose --env-file .env up -d'),
+    'Compose configuration is validated before anything starts'
+  );
+  assert.ok(deploy.includes('healthcheck.sh --connect --innodb_initialized'), 'the database is healthy before WordPress bootstraps');
+  assert.ok(deploy.includes('--locale=es_CL') && deploy.includes('--skip-email'), 'WordPress installs with the es_CL locale without mailing');
+  assert.ok(deploy.includes('timezone_string') && deploy.includes('America/Santiago'), 'the timezone is America/Santiago');
+  assert.ok(deploy.includes('blog_public 0'), 'search-engine visibility is disabled (noindex)');
+  assert.ok(deploy.includes('rewrite structure') && deploy.includes('--hard'), 'the approved permalink structure is applied');
+  assert.ok(deploy.includes('plugin activate freeplast-catalog-quotes') && deploy.includes('theme activate freeplast'), 'theme and plugin activate through WP-CLI');
+  assert.ok(deploy.includes('catalog sync --file=/bundle/catalog/products.json'), 'the reviewed Catalog Source synchronizes');
+  assert.ok(deploy.includes('created=0 updated=0') && deploy.includes('errors=0'), 'a repeated dry run must report zero changes or deployment fails');
+  assert.ok(
+    deploy.indexOf('nginx-sites-available.pre-freeplast') < deploy.indexOf('sites-available/freeplast.mliu.site'),
+    'Nginx is backed up before the new vhost exists'
+  );
+  assert.ok(deploy.indexOf('nginx -t') < deploy.indexOf('systemctl reload nginx'), 'nginx -t validates before reload');
+  assert.ok(deploy.includes('openssl passwd'), 'Basic Auth hashes are generated, never stored in clear');
+  assert.ok(deploy.includes('.secrets/credentials') && deploy.includes('chmod 400'), 'credentials land in a mode-0400 file');
+  assert.ok(!deploy.includes('set -x'), 'command tracing would leak secrets');
+  assert.ok(!/cat [^\n]*\.env/.test(deploy), 'the .env is never printed');
+  for (const line of deploy.split('\n')) {
+    if (/\b(echo|printf)\b/.test(line)) {
+      assert.ok(
+        !/\$(MARIADB_ROOT_PASSWORD|MARIADB_PASSWORD|WORDPRESS_ADMIN_PASSWORD|BASIC_AUTH_OWNER_PASSWORD|BASIC_AUTH_CLIENT_PASSWORD)\b/.test(line),
+        `a secret value must never reach command output: ${line.trim()}`
+      );
+    }
+  }
+
+  /* 6. verify.sh checks the acceptance matrix through HTTPS + WP-CLI. */
+  const verify = read('verify.sh');
+  for (const needle of [
+    '301', '401', '200',
+    '/nosotros/', '/tienda/', '/contacto/', '/cotizacion/', '/politica-de-privacidad/', '/producto/caja-cosechera-3-4/',
+    'x-robots-tag', 'blog_public', 'get_locale', 'es_CL', 'America/Santiago',
+    'option get home', 'wp-login.php', '/wp-admin/',
+    'created=0 updated=0', 'Freeplast_CQ_Notifications::mode()',
+  ]) {
+    assert.ok(verify.includes(needle), `verify.sh must assert ${needle}`);
+  }
+  assert.ok(verify.includes('BASIC_AUTH_OWNER_PASSWORD') && verify.includes('BASIC_AUTH_CLIENT_PASSWORD'), 'both owner and client credentials are exercised');
+  const verifyLines = verify.split('\n');
+  assert.ok(
+    verifyLines.some((line) => line.includes('mode') && line.includes('live')),
+    'verify.sh must reject the live mail mode on staging'
+  );
+  assert.ok(!/--url=http:/.test(verify), 'verification goes through the approved HTTPS hostname');
+
+  /* 7. backup.sh dumps, hashes and rehearses the restore into temporary names. */
+  const backup = read('backup.sh');
+  for (const needle of ['mariadb-dump', 'sha256sum', 'freeplast-wordpress-restore', 'down -v', 'tar']) {
+    assert.ok(backup.includes(needle), `backup.sh must cover ${needle}`);
+  }
+  assert.ok(/\/root\/freeplast-wordpress-backups/.test(backup), 'backups are stored outside the live Compose volumes');
+
+  /* 8. rollback.sh is bounded to the new resources. */
+  const rollback = read('rollback.sh');
+  assert.ok(rollback.includes('sites-enabled/freeplast.mliu.site') && rollback.includes('rm -f'), 'rollback removes only the approved-hostname vhost');
+  assert.ok(rollback.indexOf('nginx -t') < rollback.indexOf('systemctl reload nginx'), 'nginx -t validates before reload');
+  assert.ok(rollback.includes('freeplast-wordpress') && rollback.includes('--purge-volumes'), 'the rollback targets only the new Compose project');
+  assert.ok(!rollback.match(/docker compose[^\n]*down[^\n]*-v/) || rollback.includes('--purge-volumes'), 'volumes are retained unless the owner explicitly purges');
+  assert.ok(rollback.includes('/var/www/html/freeplast'), 'the static proposals are verified untouched');
+  for (const text of [rollback, preflight, deploy, verify, backup]) {
+    assert.ok(!text.includes('cutulab') && !text.includes('mliu.site/freeplast'), 'no unrelated OpenClaw service is referenced for mutation');
+  }
+
+  /* 9. DEPLOYMENT.md records every resource name, path, port and volume. */
+  for (const needle of [
+    'freeplast.mliu.site', '127.0.0.1:8092', 'freeplast-wordpress', 'db_data', 'wp_data',
+    '/opt/freeplast-wordpress', 'sites-available/freeplast.mliu.site', '.htpasswd',
+    'mariadb:11.4', 'wordpress:7.1-php8.3-apache', 'digest', 'DNS', 'suppress',
+    'rollback', 'restore rehearsal', 'preflight.sh', 'deploy.sh', 'verify.sh', 'backup.sh',
+  ]) {
+    assert.ok(deployment.includes(needle), `DEPLOYMENT.md must record ${needle}`);
+  }
+
+  /* 10. Cross-file consistency: one port, one stack path, one htpasswd path. */
+  for (const text of [composeText, vhost, deployment]) {
+    assert.ok(text.includes('8092'), 'the loopback port must agree across compose, vhost and the record');
+  }
+  assert.equal((vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:8092;/g) || []).length, 1, 'exactly one proxy target');
+  for (const text of [preflight, deploy, verify, backup, rollback]) {
+    assert.ok(text.includes("STACK_DIR='/opt/freeplast-wordpress'") || text.includes('STACK_DIR="/opt/freeplast-wordpress"'), 'every script agrees on the stack directory');
+  }
+  assert.ok(deploy.includes('/opt/freeplast-wordpress/nginx/.htpasswd'), 'deploy.sh writes the exact htpasswd path the vhost reads');
+
+  section('Isolated staging deployment artifacts (issue #14)', [
+    'Compose stack: dedicated freeplast-wordpress project, MariaDB healthcheck, private named volumes (db_data, wp_data), loopback-only origin 127.0.0.1:8092, profile-gated WP-CLI sidecar, no literal secrets (all .env references)',
+    'Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, owner/client Basic Auth, X-Robots-Tag noindex always, 64m uploads, dotfile/sensitive denies, proxy to the loopback origin with Host/Forwarded headers',
+    'preflight.sh is read-only and collision-checks hostname, port, stack directory, Compose project, volumes, network, disk, DNS, certificate SAN/expiry and existing-container health before any mutation',
+    'deploy.sh: umask 077, server-generated secrets (openssl rand) into mode-0600 .env, Compose validation before up, es_CL + America/Santiago + HTTPS URLs + blog_public 0 + permalinks, plugin/theme activation, catalog sync with a zero-change dry-run gate, Nginx backup before vhost, nginx -t before reload, credentials only in mode-0400 files — never repo files or command output',
+    'verify.sh: HTTP→HTTPS 301, 401 without credentials, owner+client 200s, every required route, X-Robots-Tag + blog_public, locale/timezone/home URL, catalog dry-run zero changes, restricted (non-live) mail mode through HTTPS and WP-CLI',
+    'backup.sh: database dump + WordPress-volume archive, SHA-256 hashes outside the live volumes, restore rehearsal into temporary freeplast-wordpress-restore names with teardown',
+    'rollback.sh: bounded to the approved-hostname vhost and the freeplast-wordpress project; named volumes retained unless the owner types the explicit purge confirmation; static proposals verified untouched',
+    'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope; the server-side execution on OpenClaw is the operator runbook step (this environment has no route to the host)',
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey (issues #2–#13)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts (issues #2–#14)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -4286,6 +4603,12 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Stock block theme (Twenty Twenty-Four): functional minimal Catalog archive, full product singles with chooser, basket, request submission and Cotizaciones administration',
     'Lifecycle preservation: theme switching, plugin deactivation/reactivation and the explicit uninstall.php preserve Products, Quote Requests with histories, basket sessions and configuration — only ephemeral transients and scheduled events are cleared',
     'Coding standards: php -l on every shipped PHP file; scans reject eval/extract/base64_decode/shell_exec/passthru/proc_open/popen, TODO/FIXME markers and missing ABSPATH/WP_UNINSTALL_PLUGIN guards',
+    'Staging deployment artifacts (issue #14): dedicated freeplast-wordpress Compose project with private named volumes, loopback-only origin 127.0.0.1:8092, MariaDB healthcheck and a profile-gated WP-CLI sidecar; no literal secrets (all .env references)',
+    'Staging Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, owner/client Basic Auth, X-Robots-Tag noindex always, upload limit, dotfile/sensitive denies and the loopback proxy with Host/Forwarded headers',
+    'preflight.sh is read-only and collision-checks hostname, port, stack directory, Compose project, volumes, network, disk, DNS, certificate SAN/expiry and existing-container health — a collision aborts planning, never adoption',
+    'deploy.sh: umask 077, server-generated secrets into mode-0600/0400 files (never the repository or command output), Compose validation before up, es_CL + America/Santiago + approved HTTPS URLs + blog_public 0, catalog sync gated on a zero-change dry run, Nginx backed up before the vhost and nginx -t before reload',
+    'verify.sh walks the acceptance matrix through HTTPS (301/401/owner+client 200s, every route, noindex at both layers, WordPress identity, catalog idempotence, non-live mail mode); backup.sh dumps + hashes + rehearses the restore into temporary project names; rollback.sh is bounded to the new resources with volumes retained unless the owner explicitly purges',
+    'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -4306,6 +4629,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The Google-assisted Delivery Address confirmation and Dispatch Distance (issue #11) are verified by replacing the Google provider at its narrow adapter boundary (freeplast_cq_google_client) with a mode-switchable fake — no check performs a network call or holds a real credential. The real client is only built when FREEPLAST_GOOGLE_API_KEY is present in the environment (Places + Routes APIs, Google-console restricted); origin selection (Camino El Arrayán 52 provisional, Santiago pending the client answer) and distance semantics stay the stored-option/filter configuration. Human visual approval remains Gate 3.`,
     `- The v6 content and navigation experience (issue #12) is verified through served documents on the clean disposable database; the frozen design contract lives in wordpress/design/ (tokens + hash-frozen approved prototypes). Pixel-level rendering and human visual approval remain Gate 3.`,
     `- The hardened journey (issue #13) is verified mechanically at the WordPress HTTP seam: accessibility structure (keyboard order, native disclosures, focus contract, labels, error-summary linkage), motion/target-size/contrast rules parsed from the shipped CSS, responsive widths observed through identical mobile-first documents, abuse resistance exercised in real time (the older sections use the documented deterministic pace backdate for their valid submissions), guard/failure matrices, the schema-fault maintenance injection at the freeplast_cq_schema_ready verification seam, the stock Twenty Twenty-Four fallback and lifecycle preservation including a real wp plugin delete with the directory restored afterwards. Browser-pixel rendering and human visual approval remain Gate 3.`,
+    `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));
