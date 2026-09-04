@@ -350,7 +350,7 @@ class Freeplast_CQ_Request {
 						'_fpq_status'        => 'new',
 						'_fpq_customer'      => wp_json_encode( $customer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
 						'_fpq_items'         => wp_json_encode( $items, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
-						'_fpq_notifications' => wp_json_encode( Freeplast_CQ_Notifications::initial_state(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ),
+						'_fpq_notifications' => Freeplast_CQ_Notifications::initial_state_json(),
 						'_fpq_idempotency'   => $idempotency,
 						'_fpq_session'       => $session['hash'],
 					),

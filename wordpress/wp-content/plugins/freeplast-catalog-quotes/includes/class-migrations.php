@@ -158,11 +158,7 @@ class Freeplast_CQ_Migrations {
 			);
 			foreach ( $legacy as $id ) {
 				if ( '' === (string) get_post_meta( (int) $id, Freeplast_CQ_Notifications::META_JOBS, true ) ) {
-					update_post_meta(
-						(int) $id,
-						Freeplast_CQ_Notifications::META_JOBS,
-						wp_json_encode( Freeplast_CQ_Notifications::initial_state(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE )
-					);
+					update_post_meta( (int) $id, Freeplast_CQ_Notifications::META_JOBS, Freeplast_CQ_Notifications::initial_state_json() );
 					Freeplast_CQ_Notifications::schedule_delivery( (string) get_post_meta( (int) $id, '_fpq_reference', true ) );
 				}
 			}

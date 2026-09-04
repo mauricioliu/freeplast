@@ -88,6 +88,21 @@ class Freeplast_CQ_Notifications {
 	}
 
 	/* ------------------------------------------------------------------ */
+	/* Persisted meta helpers                                              */
+	/* ------------------------------------------------------------------ */
+
+	/** One record's decoded JSON meta as an array (empty when absent or corrupt). */
+	private static function decoded_meta( int $post_id, string $key ): array {
+		$decoded = json_decode( (string) get_post_meta( $post_id, $key, true ), true );
+		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/** The JSON encoding every persisted notification meta value uses. */
+	private static function encode( array $data ): string {
+		return wp_json_encode( $data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+	}
+
+	/* ------------------------------------------------------------------ */
 	/* The durable jobs                                                    */
 	/* ------------------------------------------------------------------ */
 
@@ -104,6 +119,11 @@ class Freeplast_CQ_Notifications {
 		return $state;
 	}
 
+	/** The initial pending job state, encoded as stored meta (the submission insert and the migration backfill share it). */
+	public static function initial_state_json(): string {
+		return self::encode( self::initial_state() );
+	}
+
 	/** Schedule the delivery event of one reference (fire-and-forget: a scheduling failure leaves the jobs pending for retries and the staff resend). */
 	public static function schedule_delivery( string $reference ): void {
 		if ( '' !== $reference ) {
@@ -113,9 +133,7 @@ class Freeplast_CQ_Notifications {
 
 	/** The persisted job state of one record (pre-slice records read as pending until migration 7 backfills them). */
 	public static function states( int $post_id ): array {
-		$raw     = (string) get_post_meta( $post_id, self::META_JOBS, true );
-		$decoded = '' !== $raw ? json_decode( $raw, true ) : null;
-		$decoded = is_array( $decoded ) ? $decoded : array();
+		$decoded = self::decoded_meta( $post_id, self::META_JOBS );
 
 		$states = array();
 		foreach ( self::CHANNELS as $channel ) {
@@ -138,9 +156,9 @@ class Freeplast_CQ_Notifications {
 	}
 
 	private static function update_channel( int $post_id, string $channel, array $fields ): void {
-		$states            = self::states( $post_id );
+		$states             = self::states( $post_id );
 		$states[ $channel ] = array_merge( $states[ $channel ], $fields );
-		update_post_meta( $post_id, self::META_JOBS, wp_json_encode( $states, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post_id, self::META_JOBS, self::encode( $states ) );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -163,16 +181,22 @@ class Freeplast_CQ_Notifications {
 		$outcomes = array();
 		$states   = self::states( $post->ID );
 		foreach ( self::CHANNELS as $channel ) {
-			$state = $states[ $channel ]['state'];
-			if ( 'pending' === $state ) {
+			$job = $states[ $channel ];
+
+			/* Only pending jobs — and failed jobs below the automatic attempt
+			   cap — are attempted; delivered and suppressed jobs are final. */
+			$attemptable = 'pending' === $job['state']
+				|| ( 'failed' === $job['state'] && (int) $job['attempts'] < self::MAX_AUTO_ATTEMPTS );
+			if ( $attemptable ) {
 				$outcomes[ $channel ] = self::attempt( $post, $channel );
 				continue;
 			}
-			if ( 'failed' === $state && (int) $states[ $channel ]['attempts'] < self::MAX_AUTO_ATTEMPTS ) {
-				$outcomes[ $channel ] = self::attempt( $post, $channel );
-				continue;
+
+			if ( in_array( $job['state'], array( 'sent', 'suppressed' ), true ) ) {
+				$outcomes[ $channel ] = $job['state'];
+			} else {
+				$outcomes[ $channel ] = 'retry_exhausted';
 			}
-			$outcomes[ $channel ] = 'sent' === $state || 'suppressed' === $state ? $state : 'retry_exhausted';
 		}
 		return $outcomes;
 	}
@@ -210,11 +234,8 @@ class Freeplast_CQ_Notifications {
 			return 'sent';
 		}
 
-		/* A transport failure carries its own code unless the policy already
-		   named one (e.g. an invalid recipient). */
-		$failure_code = '' !== $plan['code'] ? $plan['code'] : 'delivery_failed';
-		self::update_channel( $post->ID, $channel, array( 'state' => 'failed', 'code' => $failure_code ) );
-		self::log_event( $post->ID, $channel, 'failed', $failure_code );
+		self::update_channel( $post->ID, $channel, array( 'state' => 'failed', 'code' => 'delivery_failed' ) );
+		self::log_event( $post->ID, $channel, 'failed', 'delivery_failed' );
 		self::schedule_retry( $reference ); /* automatic backoff retry — never a duplicate (state-checked) */
 		return 'failed';
 	}
@@ -236,8 +257,7 @@ class Freeplast_CQ_Notifications {
 		if ( 'sent' === $states[ $channel ]['state'] ) {
 			return 'noop';
 		}
-		$outcome = self::attempt( $post, $channel );
-		return in_array( $outcome, array( 'sent', 'failed', 'suppressed' ), true ) ? $outcome : 'noop';
+		return self::attempt( $post, $channel );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -254,59 +274,77 @@ class Freeplast_CQ_Notifications {
 	 */
 	private static function message( WP_Post $post, string $channel ): array {
 		$reference = (string) get_post_meta( $post->ID, '_fpq_reference', true );
-		$customer  = json_decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ), true );
-		$customer  = is_array( $customer ) ? $customer : array();
-		$items     = json_decode( (string) get_post_meta( $post->ID, '_fpq_items', true ), true );
-		$items     = is_array( $items ) ? $items : array();
+		$customer  = self::decoded_meta( $post->ID, '_fpq_customer' );
+		$items     = self::decoded_meta( $post->ID, '_fpq_items' );
 
-		$received = mysql2date( 'd/m/Y H:i', $post->post_date );
+		$nombre   = (string) ( $customer['nombre'] ?? '' );
+		$email    = (string) ( $customer['email'] ?? '' );
 		$lines    = self::item_lines( $items );
 		$sales_to = self::sales_recipient();
 
 		if ( 'sales' === $channel ) {
-			$telefono     = (string) ( $customer['telefono'] ?? '' );
-			$normalizado  = (string) ( $customer['telefono_normalizado'] ?? '' );
-			$telefono_row = '' !== $normalizado ? sprintf( '%s (normalizado: %s)', $telefono, $normalizado ) : $telefono;
-			$dispatched   = 'si' === (string) ( $customer['con_despacho'] ?? '' );
-			$mensaje      = (string) ( $customer['mensaje'] ?? '' );
+			$telefono      = (string) ( $customer['telefono'] ?? '' );
+			$normalizado   = (string) ( $customer['telefono_normalizado'] ?? '' );
+			$telefono_row  = '' !== $normalizado ? sprintf( '%s (normalizado: %s)', $telefono, $normalizado ) : $telefono;
+			$empresa       = (string) ( $customer['empresa'] ?? '' );
+			$rut           = (string) ( $customer['rut'] ?? '' );
+			$giro          = (string) ( $customer['giro'] ?? '' );
+			$dispatched    = 'si' === (string) ( $customer['con_despacho'] ?? '' );
+			$direccion_row = $dispatched
+				? 'Dirección de despacho: ' . (string) ( $customer['direccion_despacho'] ?? '' )
+				: 'Dirección de despacho: —';
+			$mensaje       = (string) ( $customer['mensaje'] ?? '' );
+			$mensaje_block = '' !== $mensaje ? "Mensaje del cliente\n{$mensaje}\n\n" : '';
+			$despacho      = $dispatched ? 'Sí' : 'No';
+			$received      = mysql2date( 'd/m/Y H:i', $post->post_date );
 
-			$body = sprintf(
-				"Nueva solicitud de cotización recibida desde el sitio.\n\nReferencia: %1\$s\nRecibida: %2\$s\n\nDatos del cliente\n- Nombre: %3\$s\n- Teléfono: %4\$s\n- Email: %5\$s\n- Empresa: %6\$s\n- RUT: %7\$s\n- Giro: %8\$s\n\nDespacho: %9\$s\n%10\$s\n%11\$sProductos solicitados\n%12\$s\nGestiona esta solicitud en la administración Cotizaciones del sitio.\n",
-				$reference,
-				$received,
-				(string) ( $customer['nombre'] ?? '' ),
-				$telefono_row,
-				(string) ( $customer['email'] ?? '' ),
-				(string) ( $customer['empresa'] ?? '' ),
-				(string) ( $customer['rut'] ?? '' ),
-				(string) ( $customer['giro'] ?? '' ),
-				$dispatched ? 'Sí' : 'No',
-				$dispatched ? 'Dirección de despacho: ' . (string) ( $customer['direccion_despacho'] ?? '' ) : 'Dirección de despacho: —',
-				'' !== $mensaje ? sprintf( "Mensaje del cliente\n%s\n\n", $mensaje ) : '',
-				$lines
-			);
+			$body = <<<BODY
+			Nueva solicitud de cotización recibida desde el sitio.
+
+			Referencia: {$reference}
+			Recibida: {$received}
+
+			Datos del cliente
+			- Nombre: {$nombre}
+			- Teléfono: {$telefono_row}
+			- Email: {$email}
+			- Empresa: {$empresa}
+			- RUT: {$rut}
+			- Giro: {$giro}
+
+			Despacho: {$despacho}
+			{$direccion_row}
+			{$mensaje_block}Productos solicitados
+			{$lines}
+			Gestiona esta solicitud en la administración Cotizaciones del sitio.
+
+			BODY;
 
 			return array(
 				'channel'  => $channel,
 				'to'       => $sales_to,
 				'subject'  => sprintf( 'Nueva solicitud de cotización %s', $reference ),
 				'body'     => $body,
-				'reply_to' => sanitize_email( (string) ( $customer['email'] ?? '' ) ),
+				'reply_to' => sanitize_email( $email ),
 				'headers'  => array(),
 			);
 		}
 
-		$body = sprintf(
-			"Hola %1\$s,\n\nRecibimos tu solicitud de cotización. Tu número de referencia es %2\$s — guárdalo para consultarla cuando nos contactes.\n\nProductos solicitados\n%3\$sFreeplast preparará tu cotización con estos productos y cantidades y te contactará al email y teléfono que registraste.\n\nSi tienes preguntas, responde a este correo o escríbenos a %4\$s.\n",
-			(string) ( $customer['nombre'] ?? '' ),
-			$reference,
-			$lines,
-			$sales_to
-		);
+		$body = <<<BODY
+			Hola {$nombre},
+
+			Recibimos tu solicitud de cotización. Tu número de referencia es {$reference} — guárdalo para consultarla cuando nos contactes.
+
+			Productos solicitados
+			{$lines}Freeplast preparará tu cotización con estos productos y cantidades y te contactará al email y teléfono que registraste.
+
+			Si tienes preguntas, responde a este correo o escríbenos a {$sales_to}.
+
+			BODY;
 
 		return array(
 			'channel'  => $channel,
-			'to'       => sanitize_email( (string) ( $customer['email'] ?? '' ) ),
+			'to'       => sanitize_email( $email ),
 			'subject'  => sprintf( 'Recibimos tu solicitud de cotización %s', $reference ),
 			'body'     => $body,
 			'reply_to' => $sales_to,
@@ -340,10 +378,7 @@ class Freeplast_CQ_Notifications {
 	 * unconfigured environment fails closed to non-delivery.
 	 */
 	public static function mode(): string {
-		$mode = strtolower( trim( (string) getenv( 'FREEPLAST_CQ_MAIL_MODE' ) ) );
-		if ( '' === $mode ) {
-			$mode = strtolower( trim( (string) get_option( 'freeplast_cq_mail_mode', '' ) ) );
-		}
+		$mode = strtolower( self::config( 'freeplast_cq_mail_mode', 'FREEPLAST_CQ_MAIL_MODE' ) );
 		return in_array( $mode, array( 'live', 'redirect', 'allowlist', 'suppress' ), true ) ? $mode : 'suppress';
 	}
 
@@ -367,70 +402,59 @@ class Freeplast_CQ_Notifications {
 	private static function policy( array $message ): array {
 		$mode = self::mode();
 
-		if ( 'live' === $mode ) {
-			if ( false === is_email( $message['to'] ) ) {
-				return array(
-					'deliver' => false,
-					'message' => $message,
-					'code'    => 'invalid_recipient',
-				);
-			}
-			$message['headers'] = self::reply_to_headers( $message['reply_to'] );
-			return array(
-				'deliver' => true,
-				'message' => $message,
-				'code'    => '',
-			);
-		}
-
 		/* Every staging mode prefixes the subject visibly. */
-		$message['subject'] = self::STAGING_PREFIX . ' ' . $message['subject'];
-
-		if ( 'redirect' === $mode ) {
-			$override = self::config( 'freeplast_cq_mail_to', 'FREEPLAST_CQ_MAIL_TO' );
-			if ( false === is_email( $override ) ) {
-				return array(
-					'deliver' => false,
-					'message' => $message,
-					'code'    => 'no_redirect_target',
-				);
-			}
-			$message['to']      = $override;
-			$message['headers'] = self::reply_to_headers( $message['reply_to'] );
-			return array(
-				'deliver' => true,
-				'message' => $message,
-				'code'    => '',
-			);
+		if ( 'live' !== $mode ) {
+			$message['subject'] = self::STAGING_PREFIX . ' ' . $message['subject'];
 		}
 
-		if ( 'allowlist' === $mode ) {
-			$allow = array_map(
-				static function ( $address ): string {
-					return strtolower( trim( $address ) );
-				},
-				explode( ',', self::config( 'freeplast_cq_mail_allow', 'FREEPLAST_CQ_MAIL_ALLOW' ) )
-			);
-			if ( ! in_array( strtolower( $message['to'] ), $allow, true ) ) {
-				return array(
-					'deliver' => false,
-					'message' => $message,
-					'code'    => 'not_allowlisted',
-				);
-			}
-			$message['headers'] = self::reply_to_headers( $message['reply_to'] );
-			return array(
-				'deliver' => true,
-				'message' => $message,
-				'code'    => '',
-			);
+		switch ( $mode ) {
+			case 'live':
+				if ( false === is_email( $message['to'] ) ) {
+					return self::suppression( $message, 'invalid_recipient' );
+				}
+				break;
+			case 'redirect':
+				$override = self::config( 'freeplast_cq_mail_to', 'FREEPLAST_CQ_MAIL_TO' );
+				if ( false === is_email( $override ) ) {
+					return self::suppression( $message, 'no_redirect_target' );
+				}
+				$message['to'] = $override;
+				break;
+			case 'allowlist':
+				if ( ! self::is_allowlisted( $message['to'] ) ) {
+					return self::suppression( $message, 'not_allowlisted' );
+				}
+				break;
+			default: /* suppress */
+				return self::suppression( $message, 'non_delivery_mode' );
 		}
 
+		$message['headers'] = self::reply_to_headers( $message['reply_to'] );
+		return array(
+			'deliver' => true,
+			'message' => $message,
+			'code'    => '',
+		);
+	}
+
+	/** The policy result refusing one message with the given suppression code. */
+	private static function suppression( array $message, string $code ): array {
 		return array(
 			'deliver' => false,
 			'message' => $message,
-			'code'    => 'non_delivery_mode',
+			'code'    => $code,
 		);
+	}
+
+	/** Whether one addressee is on the configured approved-recipient allowlist. */
+	private static function is_allowlisted( string $to ): bool {
+		$allow = array_map(
+			static function ( $address ): string {
+				return strtolower( trim( $address ) );
+			},
+			explode( ',', self::config( 'freeplast_cq_mail_allow', 'FREEPLAST_CQ_MAIL_ALLOW' ) )
+		);
+		return in_array( strtolower( $to ), $allow, true );
 	}
 
 	/** The wp_mail headers of one message (Reply-To only; From stays the environment's concern). */
@@ -464,9 +488,7 @@ class Freeplast_CQ_Notifications {
 	/* ------------------------------------------------------------------ */
 
 	private static function log_event( int $post_id, string $channel, string $state, string $code ): void {
-		$raw  = (string) get_post_meta( $post_id, self::META_LOG, true );
-		$logs = '' !== $raw ? json_decode( $raw, true ) : null;
-		$logs = is_array( $logs ) ? $logs : array();
+		$logs = self::decoded_meta( $post_id, self::META_LOG );
 
 		$logs[] = array(
 			'time'    => time(),
@@ -477,7 +499,7 @@ class Freeplast_CQ_Notifications {
 		if ( count( $logs ) > self::LOG_MAX ) {
 			$logs = array_slice( $logs, -self::LOG_MAX );
 		}
-		update_post_meta( $post_id, self::META_LOG, wp_json_encode( $logs, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		update_post_meta( $post_id, self::META_LOG, self::encode( $logs ) );
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -517,19 +539,7 @@ class Freeplast_CQ_Notifications {
 		$states = self::states( $post->ID );
 		$mode   = self::mode();
 
-		$notices = array(
-			'sent'       => 'Notificación enviada.',
-			'failed'     => 'El reenvío falló de nuevo; queda registrado como fallida.',
-			'noop'       => 'La notificación ya estaba enviada; no se reenvió (una entrega exitosa nunca se duplica).',
-			'suppressed' => 'El modo de correo actual suprime los envíos (staging).',
-		);
-		$code = isset( $_GET['fpcq_notify'] ) ? sanitize_key( wp_unslash( $_GET['fpcq_notify'] ) ) : '';
-		$banner = '' !== $code && isset( $notices[ $code ] )
-			? sprintf( '<div class="notice notice-success is-dismissible"><p>%s</p></div>', esc_html( $notices[ $code ] ) )
-			: '';
-
-		$customer = json_decode( (string) get_post_meta( $post->ID, '_fpq_customer', true ), true );
-		$customer = is_array( $customer ) ? $customer : array();
+		$customer = self::decoded_meta( $post->ID, '_fpq_customer' );
 		$recipients = array(
 			'sales'    => self::sales_recipient(),
 			'customer' => (string) ( $customer['email'] ?? '' ),
@@ -548,16 +558,16 @@ class Freeplast_CQ_Notifications {
 
 		$rows = '';
 		foreach ( self::CHANNELS as $channel ) {
-			$state  = $states[ $channel ];
-			$rows  .= sprintf(
+			$job = $states[ $channel ];
+			$rows .= sprintf(
 				'<tr><td>%1$s</td><td>%2$s</td><td><strong>%3$s</strong>%4$s</td><td>%5$d</td><td>%6$s</td><td>%7$s</td></tr>',
 				esc_html( $channel_labels[ $channel ] ),
 				esc_html( $recipients[ $channel ] ),
-				esc_html( $state_labels[ $state['state'] ] ?? $state['state'] ),
-				'' !== (string) $state['code'] ? sprintf( ' <code>%s</code>', esc_html( (string) $state['code'] ) ) : '',
-				(int) $state['attempts'],
-				(int) $state['last_attempt'] > 0 ? esc_html( mysql2date( 'd/m/Y H:i', gmdate( 'Y-m-d H:i:s', (int) $state['last_attempt'] ) ) ) : '—',
-				self::render_resend_form( $post, $channel, $state['state'] )
+				esc_html( $state_labels[ $job['state'] ] ?? $job['state'] ),
+				'' !== (string) $job['code'] ? sprintf( ' <code>%s</code>', esc_html( (string) $job['code'] ) ) : '',
+				(int) $job['attempts'],
+				(int) $job['last_attempt'] > 0 ? esc_html( mysql2date( 'd/m/Y H:i', gmdate( 'Y-m-d H:i:s', (int) $job['last_attempt'] ) ) ) : '—',
+				self::render_resend_form( $post, $channel, $job['state'] )
 			);
 		}
 
@@ -567,11 +577,26 @@ class Freeplast_CQ_Notifications {
 
 		return sprintf(
 			'%1$s<h2>Notificaciones</h2><p class="description">%2$s · %3$s El registro de eventos guarda estados y códigos, nunca datos del cliente.</p><table class="widefat striped"><thead><tr><th>Canal</th><th>Destinatario</th><th>Estado</th><th>Intentos</th><th>Último intento</th><th>Acción</th></tr></thead><tbody>%4$s</tbody></table>',
-			$banner,
+			self::render_resend_notice(),
 			esc_html( sprintf( 'Modo de correo: %s.', $mode ) ),
 			esc_html( $mode_note ),
 			$rows // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- rows are fully escaped by the builder
 		);
+	}
+
+	/** The staff notice of one completed resend (driven by the fpcq_notify redirect parameter). */
+	private static function render_resend_notice(): string {
+		$notices = array(
+			'sent'       => 'Notificación enviada.',
+			'failed'     => 'El reenvío falló de nuevo; queda registrado como fallida.',
+			'noop'       => 'La notificación ya estaba enviada; no se reenvió (una entrega exitosa nunca se duplica).',
+			'suppressed' => 'El modo de correo actual suprime los envíos (staging).',
+		);
+		$code = isset( $_GET['fpcq_notify'] ) ? sanitize_key( wp_unslash( $_GET['fpcq_notify'] ) ) : '';
+		if ( '' === $code || ! isset( $notices[ $code ] ) ) {
+			return '';
+		}
+		return sprintf( '<div class="notice notice-success is-dismissible"><p>%s</p></div>', esc_html( $notices[ $code ] ) );
 	}
 
 	/** The staff resend form of one channel (offered while a delivery is still needed). */

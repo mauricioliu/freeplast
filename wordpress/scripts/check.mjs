@@ -2331,6 +2331,12 @@ test('sales and customer notifications are durable jobs delivered independently 
         (allow === null ? '' : ` update_option( "freeplast_cq_mail_allow", "${allow}" );`),
     ]);
   const runDelivery = (reference) => wp(['eval', `Freeplast_CQ_Notifications::process( "${reference}" );`]);
+  /** Auth cookies of one user (auth + logged_in), for driving guarded admin surfaces. */
+  const authCookie = (userId) =>
+    wp([
+      'eval',
+      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${userId}, time() + 3600, "logged_in" );`,
+    ]).stdout;
 
   /* The single external mail adapter seam: every delivery is recorded and
      answered per the configured behavior (ok | fail | fail:sales |
@@ -2350,20 +2356,13 @@ test('sales and customer notifications are durable jobs delivered independently 
  */
 add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
     $behavior = (string) get_option( 'fp_test_mail_behavior', 'ok' );
-    $deliver  = true;
-    if ( 'fail' === $behavior ) {
-        $deliver = false;
-    } elseif ( 'fail:sales' === $behavior && 'sales' === ( isset( $message['channel'] ) ? $message['channel'] : '' ) ) {
-        $deliver = false;
-    } elseif ( 'fail:customer' === $behavior && 'customer' === ( isset( $message['channel'] ) ? $message['channel'] : '' ) ) {
-        $deliver = false;
-    }
-    if ( ! $deliver ) {
+    $channel  = isset( $message['channel'] ) ? $message['channel'] : '';
+    if ( 'fail' === $behavior || 'fail:' . $channel === $behavior ) {
         return false;
     }
     $log   = get_option( 'fp_test_mail_log', array() );
     $log[] = array(
-        'channel'  => isset( $message['channel'] ) ? $message['channel'] : '',
+        'channel'  => $channel,
         'to'       => isset( $message['to'] ) ? $message['to'] : '',
         'subject'  => isset( $message['subject'] ) ? $message['subject'] : '',
         'reply_to' => isset( $message['reply_to'] ) ? $message['reply_to'] : '',
@@ -2518,10 +2517,7 @@ add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
     assert.equal(failedJobs.sales.state, 'sent', 'the working channel is delivered');
     assert.equal(failedJobs.customer.state, 'failed', 'the failing channel stays failed');
 
-    const adminCookie = wp([
-      'eval',
-      'echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( 1, time() + 3600, "logged_in" );',
-    ]).stdout;
+    const adminCookie = authCookie(1);
     assert.ok(adminCookie.includes('='), 'an admin auth cookie must be generated');
     const failedId = notifyState(failed.reference).id;
     const detail = await get(`/wp-admin/admin.php?page=fp-quote&p=${failedId}`, MOBILE_UA, { cookie: adminCookie });
@@ -2532,16 +2528,19 @@ add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
     const resendNonce = detail.body.match(/name="fp_notify_nonce" value="([a-f0-9]{10})"/)?.[1];
     assert.ok(resendNonce, 'a failed channel offers the staff resend');
     setBehavior('ok');
-    const resent = await postForm(
-      {
-        action: 'fp_notify_resend',
-        fp_quote: String(failedId),
-        fp_channel: 'customer',
-        fp_notify_nonce: resendNonce,
-        _wp_http_referer: `/wp-admin/admin.php?page=fp-quote&p=${failedId}`,
-      },
-      { cookie: adminCookie }
-    );
+    /** POST one staff resend of one channel (the guard cases vary nonce, identity and referer). */
+    const postResend = (channel, nonce, headers = {}, referer = `/wp-admin/admin.php?page=fp-quote&p=${failedId}`) =>
+      postForm(
+        {
+          action: 'fp_notify_resend',
+          fp_quote: String(failedId),
+          fp_channel: channel,
+          fp_notify_nonce: nonce,
+          _wp_http_referer: referer,
+        },
+        headers
+      );
+    const resent = await postResend('customer', resendNonce, { cookie: adminCookie });
     assert.equal(resent.status, 302, 'the resend answers POST-redirect-GET');
     assert.equal(new URL(resent.headers.location, SITE_URL).searchParams.get('fpcq_notify'), 'sent', 'the resend delivers the failed channel');
     const afterResend = mailLog();
@@ -2550,58 +2549,21 @@ add_filter( 'freeplast_cq_send_mail', function ( $result, $message ) {
     assert.equal(notifyState(failed.reference).jobs.customer.state, 'sent', 'the resent channel is delivered');
 
     // A crafted resend of an already-sent channel is a no-op.
-    const noop = await postForm(
-      {
-        action: 'fp_notify_resend',
-        fp_quote: String(failedId),
-        fp_channel: 'sales',
-        fp_notify_nonce: resendNonce,
-        _wp_http_referer: `/wp-admin/admin.php?page=fp-quote&p=${failedId}`,
-      },
-      { cookie: adminCookie }
-    );
+    const noop = await postResend('sales', resendNonce, { cookie: adminCookie });
     assert.equal(new URL(noop.headers.location, SITE_URL).searchParams.get('fpcq_notify'), 'noop', 'an already-sent channel is never resent');
     assert.equal(mailLog().filter((e) => e.channel === 'sales').length, 1, 'already successful delivery cannot be duplicated');
 
     // Guards: bad nonce, no capability, logged out.
-    const badNonce = await postForm(
-      {
-        action: 'fp_notify_resend',
-        fp_quote: String(failedId),
-        fp_channel: 'customer',
-        fp_notify_nonce: 'deadbeefdeadbeefdeadbeefdeadbeef',
-        _wp_http_referer: '/wp-admin/',
-      },
-      { cookie: adminCookie }
-    );
+    const badNonce = await postResend('customer', 'deadbeefdeadbeefdeadbeefdeadbeef', { cookie: adminCookie }, '/wp-admin/');
     assert.notEqual(badNonce.status, 200, 'a bad resend nonce must be rejected');
-    const loggedOut = await postForm({
-      action: 'fp_notify_resend',
-      fp_quote: String(failedId),
-      fp_channel: 'customer',
-      fp_notify_nonce: resendNonce,
-      _wp_http_referer: '/wp-admin/',
-    });
+    const loggedOut = await postResend('customer', resendNonce, {}, '/wp-admin/');
     assert.notEqual(loggedOut.status, 200, 'a logged-out resend must be denied');
     const noCapId = wp([
       'eval',
       'echo (int) wp_insert_user( array( "user_login" => "fp_sinventas2", "user_pass" => wp_generate_password( 24 ), "user_email" => "sinventas2@example.test" ) );',
     ]).stdout;
     assert.ok(Number(noCapId) > 0, 'a capability-less user must be created for the denial check');
-    const noCapCookie = wp([
-      'eval',
-      `echo "wordpress_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${noCapId}, time() + 3600, "auth" ) . "; wordpress_logged_in_" . COOKIEHASH . "=" . wp_generate_auth_cookie( ${noCapId}, time() + 3600, "logged_in" );`,
-    ]).stdout;
-    const denied = await postForm(
-      {
-        action: 'fp_notify_resend',
-        fp_quote: String(failedId),
-        fp_channel: 'customer',
-        fp_notify_nonce: resendNonce,
-        _wp_http_referer: '/wp-admin/',
-      },
-      { cookie: noCapCookie }
-    );
+    const denied = await postResend('customer', resendNonce, { cookie: authCookie(noCapId) }, '/wp-admin/');
     assert.notEqual(denied.status, 200, 'the resend must deny users without the capability');
 
     /* 16.4 — Job creation commits with the record or the whole submission
