@@ -6,6 +6,31 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-04 — Issue #19: the basket cookie Secure flag follows the request scheme
+
+`send_cookie()` set `secure => true` unconditionally — right for this
+HTTPS-only staging, but it silently broke basket persistence on any
+plain-HTTP install (the browser drops the cookie and never sends it
+back).
+
+Decisions:
+
+1. **`is_ssl()` is the single source of the flag.** The cookie sets
+   `secure` from `is_ssl()` instead of hardcoding it: staging terminates
+   TLS at Nginx and its wp-config maps the forwarded `https` scheme onto
+   `$_SERVER['HTTPS']` (Compose `WORDPRESS_CONFIG_EXTRA`), so every TLS
+   request keeps the Secure cookie — staging behavior unchanged — while
+   a plain-HTTP install keeps a working basket. Clearing a stale or
+   expired cookie rides the same scheme, so the clear always matches the
+   cookie the browser actually holds.
+2. **The check exercises the real TLS seam.** The disposable wp-config
+   now mirrors the staging forwarded-proto mapping, and the check
+   presents `X-Forwarded-Proto: https` on one authoritative add and no
+   header on another: the TLS cookie must carry
+   Secure/HttpOnly/SameSite=Lax, the plain-HTTP one
+   HttpOnly/SameSite=Lax without Secure. The older issue #6 assertions
+   now reject a plain-HTTP Secure flag as a regression.
+
 ## 2026-09-04 — Issue #17: one JSON codec for stored meta
 
 Quote Request meta, Catalog Sync and Notifications each carried their
@@ -599,9 +624,9 @@ Decisions:
    the anonymous cookie session.
 
 2. **Sessions are opaque cookies over a versioned table.** The browser
-   receives only a random 256-bit hex token (`fpcq_basket`, Secure,
-   HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is persisted in
-   migration 4's `basket_sessions` table (columns: session_hash,
+   receives only a random 256-bit hex token (`fpcq_basket`, Secure on
+   TLS requests, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash
+   is persisted in migration 4's `basket_sessions` table (columns: session_hash,
    basket_lines JSON, created_at, last_activity; expiry = 30 days after
    last activity). The cookie never carries product, option or customer
    data. NB: the lines column is named `basket_lines` because `lines` is a

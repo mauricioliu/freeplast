@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#17).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#17, #19).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -11,7 +11,8 @@
  * wordpress/.build (fetching pinned tools into wordpress/.tools on first
  * run), activates the Freeplast block theme and the private
  * freeplast-catalog-quotes plugin, serves the site through php -S, and
- * verifies the acceptance criteria of issues #2 through #17 (including
+ * verifies the acceptance criteria of issues #2 through #17 and of the
+ * issue #19 basket-cookie scheme fix (including
  *   the issue #9 sales workflow and the issue #10 notifications):
  *
  *   1. A clean disposable WordPress database boots without manual editor changes.
@@ -45,8 +46,9 @@
  *      Agregar a cotización quantity chooser (cards + product page) adds the
  *      first synchronized Product through an authoritative nonce-guarded
  *      admin-post operation, the browser keeps only an opaque
- *      Secure/HttpOnly/SameSite=Lax cookie (never basket data, only its
- *      sha256 hash stored server-side), the header counts distinct lines
+ *      HttpOnly/SameSite=Lax cookie (Secure follows the request scheme,
+ *      issue #19; never basket data, only its sha256 hash stored
+ *      server-side), the header counts distinct lines
  *      (Cotización (n)) regardless of unit quantity, the mini basket shows
  *      Product/quantity and a route to the full Cotización view across
  *      refreshes, and invalid nonce/session/Product/quantity mutate nothing
@@ -279,6 +281,24 @@ function assertAbsent(haystack, needle, message) {
   );
 }
 
+/**
+ * The basket session-cookie attribute contract for one request scheme
+ * (issue #19): always HttpOnly and SameSite=Lax, while Secure is set
+ * exactly when the request presented TLS — a Secure cookie answered over
+ * plain HTTP would be dropped by the browser and the basket would
+ * silently stop persisting.
+ */
+function assertSessionCookieAttributes(setCookie, { tls, label }) {
+  const attributes = setCookie.toLowerCase(); // PHP writes attributes lowercase
+  const expected = tls ? ['secure', 'httponly', 'samesite=lax'] : ['httponly', 'samesite=lax'];
+  for (const attribute of expected) {
+    assert.ok(attributes.includes(attribute), `the ${label} cookie must be ${attribute}`);
+  }
+  if (!tls) {
+    assert.ok(!attributes.includes('secure'), `the ${label} cookie must not be Secure on plain HTTP — the browser would drop it and the basket would silently break`);
+  }
+}
+
 /** Slugs of every canonical /producto/<slug>/ link, in order of appearance. */
 function productLinks(html) {
   return [...html.matchAll(/\/producto\/([a-z0-9-]+)\//g)].map((m) => m[1]);
@@ -449,6 +469,11 @@ test('disposable WordPress bootstraps from a clean state', { timeout: 240_000 },
   assert.equal(installed.status, 0, 'wp core is-installed must succeed on the clean database');
 
   const meta = JSON.parse(readFileSync(join(BUILD_DIR, '.provisioned.json'), 'utf8'));
+  assert.match(
+    readFileSync(join(WP_DIR, 'wp-config.php'), 'utf8'),
+    /HTTP_X_FORWARDED_PROTO/,
+    'the disposable wp-config must honor the forwarded HTTPS scheme exactly as the staging Compose does (the TLS seam behind the issue #19 cookie check)'
+  );
   section('Disposable installation', [
     `WordPress ${meta.wpVersion} at ${SITE_URL} (SQLite disposable database)`,
     `Bootstrapped from scratch: ${!KEEP_BUILD ? 'yes (clean database)' : 'no (kept existing build)'}`,
@@ -1193,14 +1218,12 @@ test('a guest can add Products to a persistent, secure Quote Basket', { timeout:
   const [sessionCookie] = added.setCookies;
   assert.ok(sessionCookie, 'the browser must receive a session cookie');
 
-  // The cookie is a random opaque 256-bit token: Secure, HttpOnly, SameSite=Lax,
-  // 30-day expiry — and it carries no basket data whatsoever.
+  // The cookie is a random opaque 256-bit token: HttpOnly, SameSite=Lax,
+  // 30-day expiry — and it carries no basket data whatsoever. The check
+  // origin is plain HTTP, so the cookie must not claim Secure (issue #19).
   const token = sessionCookie.match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
   assert.ok(token, 'the cookie must carry the 64-hex-char opaque token');
-  const cookieAttributes = sessionCookie.toLowerCase(); // PHP writes `secure` lowercase
-  for (const attribute of ['secure', 'httponly', 'samesite=lax']) {
-    assert.ok(cookieAttributes.includes(attribute), `the session cookie must be ${attribute}`);
-  }
+  assertSessionCookieAttributes(sessionCookie, { tls: false, label: 'session' });
   assert.match(sessionCookie, /expires=/i, 'the cookie must outlive the visit (30-day persistence)');
 
   // Only a hash of the opaque token is persisted server-side.
@@ -1300,11 +1323,51 @@ test('a guest can add Products to a persistent, secure Quote Basket', { timeout:
   section('Quote Basket (issue #6)', [
     'Agregar a cotización opens a quantity chooser (cards + product page) — never an unseen-quantity add',
     'A positive whole-unit quantity adds Caja Cosechera 3/4 through the authoritative nonce-guarded admin-post operation (POST-redirect-GET)',
-    'The cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
+    'The cookie carries only a random 256-bit opaque token (HttpOnly, SameSite=Lax, 30 days; Secure follows the request scheme — issue #19); only its sha256 hash is stored server-side',
     'The basket survives refresh and navigation; the header counts distinct lines (Cotización (1)) regardless of unit quantity; re-adds merge into the line',
     'The mini basket shows Product, quantity and a route to the full Cotización view',
     'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages (stale cookies cleared for retry)',
     'The JavaScript enhancement receives JSON state and updates the visible count/mini basket; the server remains authoritative',
+  ]);
+});
+
+/* ── 12b. Cookie Secure flag follows the request scheme (issue #19) ──── */
+
+test('the basket cookie sets Secure on TLS requests and omits it on plain HTTP', { timeout: 60_000 }, async () => {
+  const nonce = (await get(PRODUCT_URL, MOBILE_UA)).body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+  assert.ok(nonce, 'the product-page chooser must carry a nonce');
+  const addFields = (over = {}) => ({
+    action: 'fp_basket_add',
+    fp_product: 'fp-caja-cosechera-3-4',
+    fp_quantity: '1',
+    fp_basket_nonce: nonce,
+    _wp_http_referer: PRODUCT_URL,
+    ...over,
+  });
+
+  /* One authoritative add under each scheme — the identical request
+     except for how it presents TLS. */
+  const sessionCookieForScheme = async (extraHeaders, scheme) => {
+    const res = await postForm(addFields(), extraHeaders);
+    assert.equal(res.status, 302, `the add operation must succeed ${scheme}`);
+    const [cookie] = res.setCookies;
+    assert.ok(cookie, `the ${scheme} response must carry the session cookie`);
+    return cookie;
+  };
+
+  /* TLS, presented exactly as staging presents it: the Nginx vhost forwards
+     X-Forwarded-Proto: https and wp-config maps it onto $_SERVER['HTTPS']. */
+  const tlsCookie = await sessionCookieForScheme({ 'x-forwarded-proto': 'https' }, 'under the forwarded TLS scheme');
+  assertSessionCookieAttributes(tlsCookie, { tls: true, label: 'TLS' });
+
+  /* Plain HTTP must keep a working basket: a Secure flag there would make
+     every ordinary browser drop the cookie. */
+  const plainCookie = await sessionCookieForScheme({}, 'over plain HTTP');
+  assertSessionCookieAttributes(plainCookie, { tls: false, label: 'plain-HTTP' });
+
+  section('Basket cookie scheme (issue #19)', [
+    'The basket cookie sets Secure on TLS requests (staging always answers over TLS — staging behavior unchanged)',
+    'The basket cookie omits Secure on plain-HTTP requests so basket persistence keeps working without TLS',
   ]);
 });
 
@@ -5050,7 +5113,7 @@ test('the staging hostname, install root and loopback port are single-sourced in
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec (issues #2–#17)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag (issues #2–#17, #19)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5085,7 +5148,8 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'An archived Product disappears from Home, Tienda, categories, search and related lists, and its URL stops resolving',
     'Agregar a cotización opens a quantity chooser on catalog cards and the product page — never an unseen-quantity add',
     'A positive whole-unit quantity adds Caja Cosechera 3/4 through the authoritative nonce-guarded admin-post operation',
-    'The session cookie carries only a random 256-bit opaque token (Secure, HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
+    'The session cookie carries only a random 256-bit opaque token (HttpOnly, SameSite=Lax, 30 days); only its sha256 hash is stored server-side',
+    'The basket cookie Secure flag follows the request scheme (issue #19): Secure when the request presents TLS the way staging forwards it (X-Forwarded-Proto: https mapped by wp-config), absent on plain HTTP so basket persistence never silently breaks',
     'The basket survives refresh and navigation; the header counts distinct lines (Cotización (n)); the mini basket shows Product, quantity and a route to /cotizacion/',
     'Invalid nonce, session, Product (unknown or archived) and quantity mutate nothing and return recoverable messages; the JavaScript enhancement receives JSON state',
     'Color Caja Universal choosers require one currently supported color (cards + product page); missing/unsupported/foreign options are rejected without mutation',
@@ -5179,6 +5243,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The staging deployment (issue #14) is verified as repository artifacts: the Compose stack, Nginx vhost, preflight/deploy/verify/backup/rollback scripts and DEPLOYMENT.md are parsed and asserted structurally (collision discipline, loopback-only origin, secret hygiene, order of the nginx backup/validation/reload steps, bounded rollback). The OpenClaw host is not reachable from this environment, so the on-server execution — preflight output, image digests, nginx -t and the HTTPS walk — is the operator runbook step recorded in DEPLOYMENT.md; human visual approval (Gate 3) of the deployed site remains pending with it.`,
     `- The verification and operations handoff (issue #15) is wordpress/HANDOFF.md: it records where every verification dimension lives (including the on-server infrastructure/Nginx/browser-console steps that remain operator actions), the 17→17 catalog reconciliation with per-Product provisional facts, the Quote Request acceptance matrix with reproduction pointers, mechanical accessibility observations explicitly labelled as not human approval, the reproducible operator procedures, the Gate 3 review URLs and the exact pending owner/client actions. The shipped theme/plugin ZIPs and their SHA-256 manifest in dist/ are rebuilt deterministically by every npm test run and verified with unzip -t; nothing in the handoff claims visual validation.`,
     `- The staging constants (issue #16) are single-sourced in infra/staging.sh and proven strictly behavior-preserving: the check renders the Nginx vhost template with the shared constants plus the recorded TLS convention and compares it byte-for-byte against the deployed configuration from the issue #14 operator run; the Compose stack resolves to the same loopback-only mapping from the deploy-written .env. The operator re-run (deploy.sh existing-stack path must be a no-op; verify.sh must still report “verification clean”) is recorded in DEPLOYMENT.md as the next on-server step.`,
+    `- The basket cookie Secure flag follows the request scheme (issue #19): send_cookie() derives it from is_ssl() — the staging wp-config maps the Nginx-forwarded https scheme onto \$_SERVER['HTTPS'], so TLS responses keep the Secure cookie (staging behavior unchanged) and plain-HTTP installs keep a working basket. The disposable wp-config mirrors that mapping and the check presents both schemes at the real admin-post seam.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

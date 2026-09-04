@@ -10,9 +10,10 @@
  *   - Anonymous and cookie-based, including while a WordPress staff account
  *     happens to be logged in. There is no customer-account linking and no
  *     guest-to-login merge behavior.
- *   - The cookie carries only a random 256-bit opaque token (Secure,
- *     HttpOnly, SameSite=Lax, 30 days) — never product, option or customer
- *     data. Only its sha256 hash is persisted server-side, in the versioned
+ *   - The cookie carries only a random 256-bit opaque token (HttpOnly,
+ *     SameSite=Lax, 30 days; Secure follows the request scheme — issue #19)
+ *     — never product, option or customer data. Only its sha256 hash is
+ *     persisted server-side, in the versioned
  *     basket_sessions table (migration 4). Sessions expire 30 days after
  *     the last activity; a daily sweep collects the expired rows and a
  *     presented-but-dead cookie is cleared once with a recoverable notice.
@@ -318,7 +319,7 @@ class Freeplast_CQ_Basket {
 			array(
 				'expires'  => $expires,
 				'path'     => COOKIEPATH ? COOKIEPATH : '/',
-				'secure'   => true, // staging serves TLS; loopback is a trustworthy origin
+				'secure'   => is_ssl(), // issue #19: follows the request scheme — staging maps the Nginx-forwarded https scheme onto $_SERVER['HTTPS']; a plain-HTTP install keeps a working basket
 				'httponly' => true,
 				'samesite' => 'Lax',
 			)
