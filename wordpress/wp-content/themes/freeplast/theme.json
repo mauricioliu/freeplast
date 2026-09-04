@@ -17,6 +17,9 @@
         { "slug": "text", "color": "#3a3a3a", "name": "Text" },
         { "slug": "tint", "color": "#f4f5f7", "name": "Tint" },
         { "slug": "muted", "color": "#6b6b72", "name": "Muted" },
+        { "slug": "muted-dark", "color": "#9b9b9b", "name": "Muted Dark" },
+        { "slug": "dark", "color": "#181818", "name": "Dark" },
+        { "slug": "dark-raised", "color": "#272727", "name": "Dark Raised" },
         { "slug": "paper", "color": "#ffffff", "name": "Paper" }
       ]
     },
@@ -63,7 +66,7 @@
     "elements": {
       "heading": {
         "typography": {
-          "fontWeight": "800"
+          "fontWeight": "700"
         }
       },
       "link": {

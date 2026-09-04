@@ -12,6 +12,7 @@ WooCommerce is not installed.
 wordpress/
   BUILD-DECISIONS.md          slice-by-slice decisions (read this first)
   VERIFICATION.md             generated mechanical proof (npm test)
+  design/                     frozen v6 design contract (tokens, hashes, brief)
   data/products.json          versioned catalog source (schema v2, 17 products)
   data/media/                 reviewed local media referenced by the source
   scripts/                    toolchain fetch, bootstrap, checks
@@ -32,7 +33,7 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#6 acceptance criteria.
+                      # verify the issue-#2 through issue-#12 acceptance criteria.
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -104,6 +105,21 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   using the anonymous cookie basket (no user linking), and sessions expire
   30 days after last activity (dead cookie cleared once, empty state routes
   back to Tienda, daily sweep collects expired rows);
+- the complete v6 content and navigation experience (issue #12) is governed
+  by a frozen design contract (`design/design-tokens.json` + `DECISIONS.md`
+  with SHA-256-frozen approved prototypes; the rejected v5 rules are not
+  used): Logo/Inicio, Nosotros, Tienda, Cotización count/CTA and Contacto
+  navigate to their approved destinations, Home keeps the concise v6
+  composition (Nosotros + contact sections, the eight Featured Products and
+  a Quote Basket summary/CTA — never a second submission form), Nosotros
+  renders editable mission/vision page content, Contacto renders the current
+  phone/email/WhatsApp/warehouse-map/hours plus one CTA into Cotización (no
+  Inquiry record), Política de privacidad discloses collection/submission
+  without a consent checkbox, search and 404 keep usable navigation/empty
+  states, the header count and mini basket stay accurate on every route, all
+  templates parse without block recovery (migration 5 upgrades the legacy
+  Contacto/privacy placeholders byte-safely), and the theme contains no
+  Catalog or Quote Request business logic;
 - unknown keys, duplicate identity, invalid slugs, unsupported color options
   and failed media imports exit non-zero with no partial catalog mutation;
   products missing from the source are warnings only, only explicit lifecycle

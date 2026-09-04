@@ -11,7 +11,6 @@ This file records the decisions taken per slice. Newest first.
 The basket becomes fully editable and option-aware: Color Caja Universal
 lines require one supported color, quantities update, lines remove, and
 sessions expire — with or without JavaScript. Decisions:
-
 1. **Options are a required chooser, not free text.** A Product whose
    reviewed source declares options (the two Caja Universal Color
    configurations) renders a required radio group (blanco, rojo, amarillo,
@@ -21,7 +20,6 @@ sessions expire — with or without JavaScript. Decisions:
    option; a Product without options accepts none. Line identity is
    Product+option: re-adding the same pair merges quantities while
    different options stay separate lines.
-
 2. **Editing is the same authoritative pattern as adding.** Two new
    nonce-guarded admin-post operations (`fp_basket_update`,
    `fp_basket_remove`) share the add handler's validate-everything-first
@@ -33,7 +31,6 @@ sessions expire — with or without JavaScript. Decisions:
    editing works with JavaScript disabled; the enhancement POSTs the same
    forms with `fp_enhanced=1` and mirrors the returned JSON (count, mini
    basket, message and the re-rendered view with fresh nonces) in place.
-
 3. **Failures stay recoverable and mutation-free.** Malformed submissions
    (bad nonce, dead session, unknown or archived Product, unsupported or
    missing option, non-positive/fractional quantity, absent line) are
@@ -42,7 +39,6 @@ sessions expire — with or without JavaScript. Decisions:
    are enforced whenever the source carries them (proven by a fixture sync
    with minimum_quantity 10 / quantity_step 5); while they stay absent any
    positive whole unit is accepted and no minimum is claimed.
-
 4. **Sessions expire 30 days after last activity, visibly.** Expired
    sessions already resolve as absent; now a front-end request presenting a
    dead cookie is cleared once and bounced to the same URL with
@@ -51,11 +47,64 @@ sessions expire — with or without JavaScript. Decisions:
    `fpcq_basket_gc` sweep deletes the expired rows so anonymous sessions
    never accumulate forever (Quote Requests, arriving with issue #8, are
    business records and never expire this way).
-
 5. **Staff browsers stay anonymous.** A logged-in WordPress browser keeps
    using the cookie basket: choosers render user-scoped nonces and the add
    still targets the same anonymous session row — verified end to end with
    a real auth cookie pair. No usermeta basket linking exists.
+## 2026-09-03 — Issue #12: complete the v6 content and navigation experience
+The static one-page prototype is fully replaced by the approved WordPress
+information architecture, under a frozen v6 design contract. Decisions:
+1. **The design contract is frozen, not implied.** `wordpress/design/`
+   now carries `design-tokens.json` (the v6 typography/color/spacing/shape/
+   motion/controls/navigation/interaction tokens extracted verbatim from the
+   approved prototype), `DECISIONS.md` (source URLs + SHA-256 hashes of the
+   six approved v6/v7-A files, recomputed by `npm test` on every run so
+   prototype drift is a failure) and `brief.md` (per-route behavior). The
+   rejected v5 rules were removed from the governing docs (TARGET.md,
+   RUNBOOK.md) — a sentence may mention v5 only to reject it.
+2. **The v5-inherited control styling is corrected to v6.** The green
+   rectangular ≥48px CTA came from the obsolete v5 TARGET contract; the
+   frozen v6 contract makes the primary control blue `#100090` (hover
+   `#0b078c`), 44px min-height, 8px radius, weight 600 — green remains the
+   accent (kickers, mission/vision labels) and a documented `.btn-green`
+   variant. The island became the v6 floating pill (glass + backdrop blur,
+   sticky instead of fixed), headings weight 700, and dark surfaces use the
+   v6 dark tokens (`#181818` footer, `#272727` raised strip). Recorded
+   adaptations (compact cards with 8px radius because they embed chooser
+   forms, no one-page scroll-spy/reveal) live in DECISIONS.md.
+3. **Home keeps the concise v6 composition.** front-page.html adds the
+   concise Nosotros section (current mission/vision summary + link to the
+   standalone page), the **Cotiza Online** section — a Quote Basket
+   summary/CTA into `/cotizacion/` explaining that the selection is saved
+   and the header count follows the visitor, never a second submission
+   form — and a concise contact section (phone/WhatsApp/email/map/hours).
+4. **Contacto completes without creating an Inquiry domain.** Migration 5
+   replaces exactly the legacy seeded placeholder (byte-compared, human
+   edits untouched) with the current contact surface: warehouse + map link,
+   phone, WhatsApp, email, hours, and exactly one CTA into `/cotizacion/`.
+   No form exists on the page — the only quotation surface stays
+   `/cotizacion/`.
+5. **Política de privacidad carries the agreed basic disclosure.** What is
+   collected (cotización fields + basket products), the purpose, the
+   recipient (Freeplast / ventas@freeplast.cl), the anonymous 30-day basket
+   session, and a queries path — explicitly without any acknowledgement
+   checkbox (PRD #1). Also linked from every footer.
+6. **Navigation reaches every approved destination.** CONTACTO joined the
+   desktop island nav (it was already in the mobile sheet); the footer
+   links the Contacto page and the privacy policy; the logo/INICIO,
+   NOSOTROS, TIENDA links and the Cotización count/mini-basket widget were
+   already correct. The header count and mini basket are asserted accurate
+   on every route (home, nosotros, tienda, category, product, cotización,
+   contacto, política, search, 404) with a two-line basket.
+7. **Nosotros stays editable page content.** The mission/vision render as
+   WordPress page blocks; the check proves editability by editing the page
+   through WP-CLI and observing the rendered change. Baseline layout comes
+   from the theme's page template, never from Site Editor overrides.
+8. **Templates parse without block recovery, and the theme stays pure
+   presentation.** Every template/part is parsed with `parse_blocks` and
+   asserted free of unparsed block markup and unbalanced delimiters; a
+   static scan forbids Catalog/Quote Request logic tokens (queries, post
+   types, plugin tables, POST endpoints) anywhere in the theme.
 
 ## 2026-09-03 — Issue #6: add Products to a persistent Quote Basket
 

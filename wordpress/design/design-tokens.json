@@ -1,0 +1,186 @@
+{
+  "$comment": "Freeplast frozen v6 design contract (issue #12). Extracted verbatim from the approved prototype propuesta-textos-originales (https://mliu.site/freeplast/v6/) — see DECISIONS.md for sources, SHA-256 hashes and the recorded theme adaptations. The theme must implement these tokens; the obsolete v5 editorial rules (Newsreader/Outfit, square geometry, hairline rules) must not be used.",
+  "version": 1,
+  "frozen": true,
+  "source": {
+    "storefront": {
+      "prototype": "propuesta-textos-originales/",
+      "published": "https://mliu.site/freeplast/v6/"
+    },
+    "productPage": {
+      "prototype": "product-page-prototype/?variant=A",
+      "published": "https://mliu.site/freeplast/v7/?variant=A",
+      "hierarchy": [
+        "breadcrumb",
+        "gallery + summary",
+        "description",
+        "quick specs (4)",
+        "quote action",
+        "specification table",
+        "related products"
+      ]
+    }
+  },
+  "typography": {
+    "fontFamily": "Manrope",
+    "fallbacks": "ui-sans-serif, system-ui, sans-serif",
+    "weights": [400, 500, 600, 700],
+    "body": { "size": "16px", "lineHeight": "24px", "weight": 400 },
+    "headings": { "weight": 700, "color": "#0b078c", "letterSpacing": "-0.02em" },
+    "scale": {
+      "xs": { "size": "12px", "lineHeight": "16px" },
+      "sm": { "size": "14px", "lineHeight": "20px" },
+      "base": { "size": "16px", "lineHeight": "24px" },
+      "lg": { "size": "18px", "lineHeight": "28px" },
+      "xl": { "size": "20px", "lineHeight": "28px" },
+      "2xl": { "size": "24px", "lineHeight": "32px" },
+      "3xl": { "size": "30px", "lineHeight": "36px" },
+      "4xl": { "size": "36px", "lineHeight": "40px" },
+      "5xl": { "size": "48px", "lineHeight": "1", "minWidth": 768 },
+      "6xl": { "size": "60px", "lineHeight": "1", "minWidth": 1280 }
+    },
+    "heroH1": { "mobile": { "size": "36px", "lineHeight": "40px" }, "768": "48px", "1280": "60px" },
+    "numerals": "tabular-nums"
+  },
+  "color": {
+    "blue": "#100090",
+    "blue-heading": "#0b078c",
+    "green": "#306020",
+    "green-soft": "#558948",
+    "ink": "#17181c",
+    "text": "#3a3a3a",
+    "paper": "#ffffff",
+    "tint": "#f4f5f7",
+    "dark": "#181818",
+    "dark-raised": "#272727",
+    "muted": "#6b6b72",
+    "muted-dark": "#9b9b9b",
+    "line": "rgba(16, 0, 144, 0.14)",
+    "line-strong": "rgba(16, 0, 144, 0.3)",
+    "line-dark": "rgba(255, 255, 255, 0.16)",
+    "roles": {
+      "primaryAction": "blue",
+      "primaryActionHover": "blue-heading",
+      "accent": "green",
+      "accentSoft": "green-soft",
+      "links": "blue",
+      "headings": "blue-heading",
+      "darkSurfaces": "dark",
+      "mutedText": "muted",
+      "mutedTextOnDark": "muted-dark"
+    }
+  },
+  "spacing": {
+    "scale": {
+      "0": "0",
+      "25": "2px",
+      "50": "4px",
+      "75": "8px",
+      "100": "12px",
+      "200": "16px",
+      "300": "24px",
+      "400": "32px",
+      "500": "40px",
+      "600": "48px",
+      "700": "64px",
+      "800": "80px",
+      "900": "96px"
+    },
+    "sectionPaddingBlock": { "mobile": "64px", "768": "96px" }
+  },
+  "shape": {
+    "radii": {
+      "sm": "2px",
+      "default": "4px",
+      "md": "6px",
+      "lg": "8px",
+      "xl": "12px",
+      "2xl": "16px",
+      "3xl": "24px",
+      "full": "9999px"
+    },
+    "roles": {
+      "buttonsAndInputs": "lg",
+      "islandAndChips": "full",
+      "cards": "3xl (prototype plates) / lg (compact WordPress cards with nested forms — see DECISIONS.md)",
+      "panels": "2xl",
+      "heroVisual": "3xl"
+    },
+    "shadows": "only on hover/elevation of cards and the island (soft blue-tinted); none on controls"
+  },
+  "motion": {
+    "ease": "cubic-bezier(0.32, 0.72, 0, 1)",
+    "duration": "700ms",
+    "durationSlow": "900ms",
+    "hoverLift": "translateY(-2px) (buttons), translateY(-4px) (cards)",
+    "activePress": "scale(0.98)",
+    "reducedMotion": "nonessential motion disabled under prefers-reduced-motion: reduce"
+  },
+  "layout": {
+    "shell": "1152px",
+    "measure": "680px",
+    "navHeight": "58px",
+    "breakpoints": { "md": 768, "lg": 1024, "nav": 900 },
+    "mobileFirst": true,
+    "designWidth": "~412px first",
+    "mediaQueries": "min-width only"
+  },
+  "controls": {
+    "button": {
+      "background": "blue",
+      "color": "paper",
+      "minHeight": "44px",
+      "padding": "8px 12px",
+      "radius": "lg",
+      "fontWeight": 600,
+      "hover": "blue-heading background + lift",
+      "variantGhost": "transparent bg, blue text, line-strong border",
+      "variantGreen": "green bg (hover green-soft) — accent variant, not the default",
+      "small": { "minHeight": "36px", "size": "sm" }
+    },
+    "input": {
+      "padding": "12px 16px",
+      "border": "1px line",
+      "radius": "lg",
+      "background": "paper",
+      "color": "ink",
+      "focus": "blue border + 3px rgba(16,0,144,0.14) ring, no default outline"
+    },
+    "focusVisible": "2px solid blue outline, offset 2px (green-soft on dark surfaces)",
+    "targets": "primary actions >= 44px, chips and nav controls comfortable to the touch"
+  },
+  "navigation": {
+    "composition": "island: logo/INICIO, NOSOTROS, TIENDA (desktop), Cotiza Online CTA / Cotización count, burger (< 900px)",
+    "island": {
+      "shape": "full pill",
+      "background": "rgba(255, 255, 255, 0.82)",
+      "backdropFilter": "blur(24px) saturate(1.6)",
+      "border": "1px line",
+      "shadow": "0 4px 24px rgba(16, 0, 144, 0.1)"
+    },
+    "mobileSheet": "fullscreen glass overlay (blur 48px), large nav labels, contact foot",
+    "routes": {
+      "logo/INICIO": "/",
+      "NOSOTROS": "/nosotros/",
+      "TIENDA": "/tienda/",
+      "Cotiza Online / Cotización count": "/cotizacion/",
+      "Contacto": "/contacto/ (site navigation and footer per the v6 composition)"
+    },
+    "activeState": "aria-current on the active filter/link; blue chip background"
+  },
+  "interactions": {
+    "hover": "color/border shifts + gentle lift; card media scale 1.04",
+    "cards": "hover elevate with soft blue shadow; active press",
+    "forms": "authoritative server POST; JavaScript only enhances (basket); inline validation states use blue/tint, never red-only failure",
+    "emptyStates": "tinted bordered panels naming the situation and offering recovery links",
+    "progressiveEnhancement": "shell navigates and quotes without any JavaScript"
+  },
+  "obsolete": {
+    "v5": {
+      "prototypes": ["propuesta-editorial/", "design-system/freeplast-editorial/"],
+      "published": "https://mliu.site/freeplast/v5/",
+      "rules": "Newsreader display face, Outfit UI face, square geometry, pills forbidden, hairline rules, paper editorial grid",
+      "status": "rejected — must not be used"
+    }
+  }
+}
