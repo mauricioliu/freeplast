@@ -263,7 +263,6 @@ class Freeplast_CQ_Request {
 			self::fail( 'request_failed' );
 		}
 
-
 		/* 8. Persist exactly one record with the immutable snapshots (the
 		   confirmed destination is stored with it, issue #11) — and its
 		   two durable notification jobs, in the very same insert: request and
@@ -278,7 +277,7 @@ class Freeplast_CQ_Request {
 		   owner's confirmation instead of persisting a second copy of the
 		   lines. */
 		$idempotency = hash( 'sha256', $token );
-		$claim = self::claim_attempt( $idempotency, $session['hash'] );
+		$claim       = self::claim_attempt( $idempotency, $session['hash'] );
 		if ( 'recovered' === $claim['state'] ) {
 			self::recover( $session['hash'], $claim['reference'] );
 		}
@@ -543,7 +542,6 @@ class Freeplast_CQ_Request {
 			$items[] = self::snapshot( $line );
 		}
 
-
 		/* Durable-job creation seam: the record and its notification jobs
 		   are one unit — when the jobs cannot be created, the whole
 		   persistence aborts (no record, no success, basket retained). */
@@ -753,8 +751,8 @@ class Freeplast_CQ_Request {
 	 * @return array{state: 'owned'|'recovered'|'foreign'|'busy', reference?: string}
 	 */
 	private static function claim_attempt( string $idempotency, string $hash ): array {
-		$key     = self::claim_key( $idempotency );
-		$attempt = static function () use ( $hash ): array {
+		$key         = self::claim_key( $idempotency );
+		$fresh_claim = static function () use ( $hash ): array {
 			return array(
 				'session'   => $hash,
 				'reference' => '',
@@ -764,7 +762,7 @@ class Freeplast_CQ_Request {
 		$give_up_at = microtime( true ) + self::CLAIM_WAIT_SECONDS;
 
 		while ( true ) {
-			if ( self::insert_claim_row( $key, $attempt() ) ) {
+			if ( self::insert_claim_row( $key, $fresh_claim() ) ) {
 				return array( 'state' => 'owned' );
 			}
 
@@ -773,12 +771,13 @@ class Freeplast_CQ_Request {
 				$ours      = hash_equals( (string) ( $held['session'] ?? '' ), $hash );
 				$reference = (string) ( $held['reference'] ?? '' );
 				if ( '' !== $reference ) {
-					return $ours
-						? array(
+					if ( $ours ) {
+						return array(
 							'state'     => 'recovered',
 							'reference' => $reference,
-						)
-						: array( 'state' => 'foreign' );
+						);
+					}
+					return array( 'state' => 'foreign' );
 				}
 				if ( $ours && ( (int) ( $held['started'] ?? 0 ) + self::CLAIM_TAKEOVER_SECONDS ) < time() ) {
 					$landed = self::find_by_idempotency( $idempotency, $hash );
@@ -789,7 +788,7 @@ class Freeplast_CQ_Request {
 							'reference' => $landed,
 						);
 					}
-					update_option( $key, $attempt(), false );
+					update_option( $key, $fresh_claim(), false );
 					return array( 'state' => 'owned' );
 				}
 			}
@@ -818,7 +817,8 @@ class Freeplast_CQ_Request {
 			)
 		);
 		$wpdb->suppress_errors( $suppress );
-		return false !== $result && null !== $result;
+
+		return false !== $result;
 	}
 
 	/**

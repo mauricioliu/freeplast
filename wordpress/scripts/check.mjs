@@ -415,7 +415,8 @@ function humanPaced(sessionToken, idemToken, seconds = 60) {
 
 /**
  * A complete valid set of request-form fields (Con Despacho: No) shared
- * by every issue #13 section that drives a submission. The older sections
+ * by every section that drives a plain submission (the issue #13 abuse
+ * checks and the issue #24 concurrent attempts). The older sections
  * keep their own dispatch-oriented copies.
  */
 const VALID_REQUEST_FIELDS = {
@@ -4373,18 +4374,6 @@ add_filter( 'freeplast_cq_request_persist', static function ( $ok ) {
 `
   );
 
-  const RACE_FIELDS = {
-    fp_nombre: 'María González',
-    fp_telefono: '+56 9 6844 4265',
-    fp_email: 'maria@acme.cl',
-    fp_empresa: 'Agrícola ACME SpA',
-    fp_rut: '76.335.888-6',
-    fp_giro: 'Comercialización de productos plásticos',
-    fp_despacho: 'no',
-    fp_direccion: '',
-    fp_mensaje: '',
-  };
-
   /** A guest session holding the two-line race basket, with form credentials. */
   const prepareAttempt = async () => {
     const productPage = await get(PRODUCT_URL, MOBILE_UA);
@@ -4410,7 +4399,7 @@ add_filter( 'freeplast_cq_request_persist', static function ( $ok ) {
 
   const submitWith = (attempt, over = {}) =>
     postForm(
-      { action: 'fp_request_submit', ...RACE_FIELDS, fp_request_nonce: attempt.nonce, fp_request_token: attempt.token, _wp_http_referer: '/cotizacion/', ...over },
+      { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: attempt.nonce, fp_request_token: attempt.token, _wp_http_referer: '/cotizacion/', ...over },
       cookieHeader(attempt.session)
     );
 
@@ -4489,38 +4478,25 @@ add_filter( 'freeplast_cq_request_persist', static function ( $ok ) {
 
     /* AC: another session cannot recover data or references that are not
        its own — a copied token recovers nothing and no key is exposed. */
-    const owner = { token: '', reference: '', session: '' };
+    const owner = await prepareAttempt();
+    const ownerReference = submittedRef(await submitWith(owner));
+    assert.match(ownerReference, /^FP-\d{4}-\d{6}$/, 'the owner attempt must persist for the isolation check');
     {
-      const productPage = await get(PRODUCT_URL, MOBILE_UA);
-      const addNonce = productPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
-      const seeded = await postForm({ action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '5', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL });
-      owner.session = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
-      const colorPage = await get(COLOR_URL, MOBILE_UA);
-      const colorNonce = colorPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
-      await postForm({ action: 'fp_basket_add', fp_product: COLOR_ID, fp_option: 'blanco', fp_quantity: '12', fp_basket_nonce: colorNonce, _wp_http_referer: COLOR_URL }, cookieHeader(owner.session));
-      const cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(owner.session));
-      const creds = requestCredentials(cot.body);
-      assert.equal(humanPaced(owner.session, creds.token), 'ok', 'the owner submission must be paced like a human fill');
-      owner.token = creds.token;
-      const okRes = await postForm(
-        { action: 'fp_request_submit', ...RACE_FIELDS, fp_request_nonce: creds.nonce, fp_request_token: owner.token, _wp_http_referer: '/cotizacion/' },
-        cookieHeader(owner.session)
-      );
-      owner.reference = submittedRef(okRes);
-      assert.match(owner.reference, /^FP-\d{4}-\d{6}$/, 'the owner attempt must persist for the isolation check');
       const count = quoteCount(); /* isolation baseline */
 
+      /* The stranger submits with its own valid nonce but the owner's
+         copied idempotency token — recovery must stay session-bound. */
       const stranger = await prepareAttempt();
       const stolen = await postForm(
-        { action: 'fp_request_submit', ...RACE_FIELDS, fp_request_nonce: stranger.nonce, fp_request_token: owner.token, _wp_http_referer: '/cotizacion/' },
+        { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: stranger.nonce, fp_request_token: owner.token, _wp_http_referer: '/cotizacion/' },
         cookieHeader(stranger.session)
       );
       assert.equal(noticeOf(stolen), 'token', 'a copied token in another session must be rejected recoverably');
       assert.ok(!submittedRef(stolen), 'a copied token may not hand the foreign reference to another session');
       assert.equal(quoteCount(), count, 'the copied-token attempt must persist nothing');
-      const strangerView = await get(`/cotizacion/?fpcq_submitted=${owner.reference}`, MOBILE_UA, cookieHeader(stranger.session));
+      const strangerView = await get(`/cotizacion/?fpcq_submitted=${ownerReference}`, MOBILE_UA, cookieHeader(stranger.session));
       assertAbsent(strangerView.body, 'Solicitud recibida', 'another session must not see the foreign confirmation');
-      assertAbsent(strangerView.body, owner.reference, 'the foreign reference must not render in another session');
+      assertAbsent(strangerView.body, ownerReference, 'the foreign reference must not render in another session');
     }
 
     /* AC: a new legitimate request after completion stays possible even
@@ -4531,12 +4507,12 @@ add_filter( 'freeplast_cq_request_persist', static function ( $ok ) {
       const okAgain = await submitWith(again);
       const newReference = submittedRef(okAgain);
       assert.match(newReference, /^FP-\d{4}-\d{6}$/, 'the new legitimate request persists');
-      assert.notEqual(newReference, owner.reference, 'identical content still receives its own unique reference');
+      assert.notEqual(newReference, ownerReference, 'identical content still receives its own unique reference');
       assert.equal(quoteCount(), baseline + 1, 'the new legitimate request adds exactly one record');
       const newIdem = createHash('sha256').update(again.token).digest('hex');
       assert.equal(recordsForAttempt(newIdem), 1, 'the new attempt owns exactly its own record');
       section('Same-content resubmission (issue #24)', [
-        `a fresh attempt with identical products, quantities and customer data created ${newReference}, distinct from ${owner.reference}`,
+        `a fresh attempt with identical products, quantities and customer data created ${newReference}, distinct from ${ownerReference}`,
       ]);
     }
 
