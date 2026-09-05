@@ -50,7 +50,16 @@
  *     token; a submission with a token that already served a persisted
  *     request redirects back to that request's confirmation without
  *     creating a second record — refresh, back navigation and retry
- *     cannot duplicate a Quote Request.
+ *     cannot duplicate a Quote Request (issue #8). The recovery is bound
+ *     to the submitting session (issue #24): a copied token in another
+ *     session recovers nothing. Two truly concurrent POSTs of the same
+ *     attempt (two tabs, a retry fired while the first is in flight) are
+ *     serialized by an atomic per-attempt claim, so exactly one record,
+ *     one reference and one set of receipt-notification jobs ever exist;
+ *     the losing POST recovers the winner's confirmation (or fails
+ *     recoverably with basket and values retained while the winner is
+ *     still in flight) and a later resubmission of the same attempt
+ *     always recovers the original confirmation.
  *   - A minimal capability-protected administration surface
  *     (Cotizaciones → fp-quotes / fp-quote, capability
  *     manage_freeplast_quotes granted to administrators by migration 6)
@@ -110,6 +119,21 @@ class Freeplast_CQ_Request {
 	/** The throttle window (one expiring counter per opaque session hash — never raw PII). */
 	private const RATE_WINDOW = HOUR_IN_SECONDS;
 
+	/** Options-table key prefix of the atomic per-attempt claims (issue #24). */
+	private const CLAIM_PREFIX = 'fpcq_claim_';
+
+	/** How long a concurrent POST of an in-flight attempt waits for the owner before failing recoverably. */
+	private const CLAIM_WAIT_SECONDS = 3;
+
+	/** The poll interval of that wait. */
+	private const CLAIM_POLL_MICROSECONDS = 100000;
+
+	/** How long an unfinalized claim may sit before the same session may take it over (a winner died mid-flight). */
+	private const CLAIM_TAKEOVER_SECONDS = 30;
+
+	/** Claim rows older than this are swept by the daily housekeeping event; the record meta stays the durable layer. */
+	private const CLAIM_MAX_AGE = 7 * DAY_IN_SECONDS;
+
 	public static function register(): void {
 		register_post_type(
 			self::POST_TYPE,
@@ -136,6 +160,10 @@ class Freeplast_CQ_Request {
 
 		add_action( 'admin_post_fp_request_submit', array( self::class, 'handle_submit' ) );
 		add_action( 'admin_post_nopriv_fp_request_submit', array( self::class, 'handle_submit' ) );
+
+		/* Attempt-claim housekeeping rides the existing daily sweep event
+		   (issue #24): the claims only serve the short concurrent window. */
+		add_action( Freeplast_CQ_Basket::GC_EVENT, array( self::class, 'sweep_claims' ) );
 
 		/* The Cotizaciones administration surface is owned by
 	   Freeplast_CQ_Admin since the issue #9 sales workflow slice. */
@@ -174,11 +202,15 @@ class Freeplast_CQ_Request {
 			self::fail( 'token' );
 		}
 
-		/* 4. Duplicate: this token already served a persisted request — never a second record. */
-		$existing = self::find_by_token( $token );
+		/* 4. Duplicate: this token already served a persisted request — never a
+		   second record. The recovery is bound to the submitting session
+		   (issue #24): the record remembers its owning session hash, so a
+		   copied token presented by another session recovers nothing (the
+		   flow below rejects it as an unknown token) and no reference or
+		   confirmation ever crosses sessions. */
+		$existing = self::find_by_token( $token, $session['hash'] );
 		if ( null !== $existing ) {
-			set_transient( self::confirm_key( $session['hash'] ), $existing, DAY_IN_SECONDS );
-			self::redirect( array( 'fpcq_submitted' => $existing ) );
+			self::recover( $session['hash'], $existing );
 		}
 
 		$issued = self::issued_token( $session['hash'] );
@@ -235,12 +267,37 @@ class Freeplast_CQ_Request {
 		/* 8. Persist exactly one record with the immutable snapshots (the
 		   confirmed destination is stored with it, issue #11) — and its
 		   two durable notification jobs, in the very same insert: request and
-		   jobs commit together or fail together (issue #10). */
-		$stored = self::persist( $session, $token, $values, $lines, $confirmed );
-		if ( null === $stored ) {
+		   jobs commit together or fail together (issue #10).
+
+		   The attempt itself is claimed atomically first (issue #24): two
+		   concurrent POSTs of the same form must never both reach the
+		   insert. The claim is a plain INSERT into the options table keyed
+		   by the attempt's idempotency hash — the unique option_name
+		   rejects the second insert on either database engine, so only the
+		   owner persists; a racing POST of the same attempt recovers the
+		   owner's confirmation instead of persisting a second copy of the
+		   lines. */
+		$idempotency = hash( 'sha256', $token );
+		$claim = self::claim_attempt( $idempotency, $session['hash'] );
+		if ( 'recovered' === $claim['state'] ) {
+			self::recover( $session['hash'], $claim['reference'] );
+		}
+		if ( 'owned' !== $claim['state'] ) {
+			/* The owner is still in flight ('busy') or holds a foreign
+			   session ('foreign'): nothing was persisted, so the recoverable
+			   failure retains the values and the basket — the customer's
+			   resubmission of this attempt recovers the original request. */
 			self::store_attempt( $session['hash'], $values, array(), $failure );
 			self::fail( 'request_failed' );
 		}
+
+		$stored = self::persist( $session, $idempotency, $values, $lines, $confirmed );
+		if ( null === $stored ) {
+			self::release_claim( $idempotency );
+			self::store_attempt( $session['hash'], $values, array(), $failure );
+			self::fail( 'request_failed' );
+		}
+		self::finalize_claim( $idempotency, $stored['reference'] );
 
 		/* 8b. Dispatch Distance (issue #11): calculated after durable
 		   persistence — a provider failure records a pending/error state
@@ -433,9 +490,12 @@ class Freeplast_CQ_Request {
 	 * immutable item snapshots and the dispatch destination (issue #11).
 	 * Null when the insert fails.
 	 *
+	 * @param string $idempotency The attempt's idempotency hash (issue #24 —
+	 *                            derived once in handle_submit and shared with
+	 *                            the atomic attempt claim).
 	 * @return array{id: int, reference: string}|null
 	 */
-	private static function persist( array $session, string $token, array $values, array $lines, ?array $confirmed ): ?array {
+	private static function persist( array $session, string $idempotency, array $values, array $lines, ?array $confirmed ): ?array {
 		/* The dispatch destination: the customer-confirmed Google result,
 		   or the manual fallback text (null without dispatch). Provider
 		   terms: place ids are stored without limitation; the formatted
@@ -503,8 +563,6 @@ class Freeplast_CQ_Request {
 				'staff' => 0,
 			),
 		);
-
-		$idempotency = hash( 'sha256', $token );
 
 		$meta = array(
 			'_fpq_status'        => 'new',
@@ -622,8 +680,22 @@ class Freeplast_CQ_Request {
 		return sprintf( 'FP-%d-%06d', $year, $highest + 1 );
 	}
 
-	/** The reference of the request a token already served, or null. */
-	private static function find_by_token( string $token ): ?string {
+	/**
+	 * The reference of the request a token already served to the presenting
+	 * session, or null. The lookup is bound to the owning session (issue
+	 * #24): the record remembers the session hash that submitted it, so a
+	 * token copied to another session resolves as unknown instead of
+	 * handing over the foreign reference.
+	 */
+	private static function find_by_token( string $token, string $hash ): ?string {
+		return self::find_by_idempotency( hash( 'sha256', $token ), $hash );
+	}
+
+	/**
+	 * The reference the idempotency hash already produced for this session,
+	 * or null (absent, or owned by a different session — issue #24).
+	 */
+	private static function find_by_idempotency( string $idempotency, string $hash ): ?string {
 		$posts = get_posts(
 			array(
 				'post_type'        => self::POST_TYPE,
@@ -633,13 +705,186 @@ class Freeplast_CQ_Request {
 				'suppress_filters' => true,
 				'fields'           => 'ids',
 				'meta_key'         => '_fpq_idempotency', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'meta_value'       => hash( 'sha256', $token ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'meta_value'       => $idempotency, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 			)
 		);
 		if ( array() === $posts ) {
 			return null;
 		}
-		return (string) get_post_meta( (int) $posts[0], '_fpq_reference', true );
+		$post_id = (int) $posts[0];
+		if ( ! hash_equals( (string) get_post_meta( $post_id, '_fpq_session', true ), $hash ) ) {
+			return null;
+		}
+		return (string) get_post_meta( $post_id, '_fpq_reference', true );
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* The atomic per-attempt claim (issue #24)                            */
+	/* ------------------------------------------------------------------ */
+
+	/** The options-table claim key of one attempt. */
+	private static function claim_key( string $idempotency ): string {
+		return self::CLAIM_PREFIX . $idempotency;
+	}
+
+	/**
+	 * Claim one submission attempt atomically: two concurrent POSTs of the
+	 * same form (two tabs, a retry fired while the first is in flight) must
+	 * produce exactly one Quote Request. The claim is a single options row
+	 * keyed by the attempt's idempotency hash, inserted as a plain INSERT:
+	 * the unique option_name rejects the second insert on either database
+	 * engine, so exactly one concurrent request owns the attempt and the
+	 * loser never reaches the record insert. The option API is bypassed on
+	 * purpose here — add_option() writes an upsert (ON DUPLICATE KEY
+	 * UPDATE) and answers later reads from the per-request cache, either of
+	 * which would hide a defeat.
+	 *
+	 * The loser waits a bounded moment for the owner to finalize and then
+	 * recovers the winner's confirmation ('recovered'); when the owner
+	 * holds a foreign session ('foreign') or is still in flight past the
+	 * wait budget ('busy') nothing is persisted and the submission fails
+	 * recoverably. An empty claim older than the takeover grace period
+	 * belongs to a winner that died mid-flight: the same session first
+	 * recovers a record that landed without its finalization, else resumes
+	 * the attempt itself (a deliberate update_option — unreachable for
+	 * genuinely concurrent requests, which arrive seconds apart), so a
+	 * crashed request can never wedge the token.
+	 *
+	 * @return array{state: 'owned'|'recovered'|'foreign'|'busy', reference?: string}
+	 */
+	private static function claim_attempt( string $idempotency, string $hash ): array {
+		$key     = self::claim_key( $idempotency );
+		$attempt = static function () use ( $hash ): array {
+			return array(
+				'session'   => $hash,
+				'reference' => '',
+				'started'   => time(),
+			);
+		};
+		$give_up_at = microtime( true ) + self::CLAIM_WAIT_SECONDS;
+
+		while ( true ) {
+			if ( self::insert_claim_row( $key, $attempt() ) ) {
+				return array( 'state' => 'owned' );
+			}
+
+			$held = self::read_claim_row( $key );
+			if ( is_array( $held ) ) {
+				$ours      = hash_equals( (string) ( $held['session'] ?? '' ), $hash );
+				$reference = (string) ( $held['reference'] ?? '' );
+				if ( '' !== $reference ) {
+					return $ours
+						? array(
+							'state'     => 'recovered',
+							'reference' => $reference,
+						)
+						: array( 'state' => 'foreign' );
+				}
+				if ( $ours && ( (int) ( $held['started'] ?? 0 ) + self::CLAIM_TAKEOVER_SECONDS ) < time() ) {
+					$landed = self::find_by_idempotency( $idempotency, $hash );
+					if ( null !== $landed ) {
+						self::finalize_claim( $idempotency, $landed );
+						return array(
+							'state'     => 'recovered',
+							'reference' => $landed,
+						);
+					}
+					update_option( $key, $attempt(), false );
+					return array( 'state' => 'owned' );
+				}
+			}
+			if ( microtime( true ) >= $give_up_at ) {
+				return array( 'state' => 'busy' );
+			}
+			usleep( self::CLAIM_POLL_MICROSECONDS );
+		}
+	}
+
+	/**
+	 * The atomic test-and-set of one attempt claim: the plain INSERT fails
+	 * against the options table's unique option_name when the attempt is
+	 * already claimed. The expected duplicate-key error of the losing
+	 * request is suppressed — the defeat is information, not a fault.
+	 */
+	private static function insert_claim_row( string $key, array $claim ): bool {
+		global $wpdb;
+		$suppress = $wpdb->suppress_errors();
+		$wpdb->suppress_errors( true );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				"INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )",
+				$key,
+				maybe_serialize( $claim )
+			)
+		);
+		$wpdb->suppress_errors( $suppress );
+		return false !== $result && null !== $result;
+	}
+
+	/**
+	 * The stored claim row of one attempt, read straight from the database —
+	 * the per-request options cache would answer with the reader's own
+	 * write, and the inspection must see the stored row.
+	 *
+	 * @return array|null The decoded claim, or null when the row is absent.
+	 */
+	private static function read_claim_row( string $key ): ?array {
+		global $wpdb;
+		$raw = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $key ) );
+		if ( null === $raw || false === $raw || '' === $raw ) {
+			return null;
+		}
+		$claim = maybe_unserialize( (string) $raw );
+		return is_array( $claim ) ? $claim : null;
+	}
+
+	/** Record the persisted reference on the attempt claim (the recovery data a concurrent retry reads). */
+	private static function finalize_claim( string $idempotency, string $reference ): void {
+		$key  = self::claim_key( $idempotency );
+		$held = get_option( $key );
+		if ( is_array( $held ) && '' === (string) ( $held['reference'] ?? '' ) ) {
+			$held['reference'] = $reference;
+			update_option( $key, $held, false );
+		}
+	}
+
+	/** Release an unfinalized claim (the persistence failed) so a retry of the attempt starts clean. */
+	private static function release_claim( string $idempotency ): void {
+		delete_option( self::claim_key( $idempotency ) );
+	}
+
+	/**
+	 * Collect attempt claims older than a week (runs with the daily basket
+	 * sweep): the durable idempotency binding lives on the record meta, so
+	 * the claim rows only serve the short concurrent window and their
+	 * namespace stays bounded.
+	 *
+	 * @return int Deleted claim rows.
+	 */
+	public static function sweep_claims(): int {
+		global $wpdb;
+		$names = $wpdb->get_col(
+			$wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( self::CLAIM_PREFIX ) . '%' )
+		);
+		$swept = 0;
+		foreach ( $names as $name ) {
+			$claim = get_option( (string) $name );
+			if ( is_array( $claim ) && ( (int) ( $claim['started'] ?? 0 ) < time() - self::CLAIM_MAX_AGE ) ) {
+				$swept += delete_option( (string) $name ) ? 1 : 0;
+			}
+		}
+		return $swept;
+	}
+
+	/**
+	 * The confirmation recovery (issue #24): the retrying client of an
+	 * already-persisted attempt is sent back to the original request's
+	 * confirmation — the reference never crosses sessions because every
+	 * recovery path verified the owning session hash first.
+	 */
+	private static function recover( string $hash, string $reference ): void {
+		set_transient( self::confirm_key( $hash ), $reference, DAY_IN_SECONDS );
+		self::redirect( array( 'fpcq_submitted' => $reference ) );
 	}
 
 	/* ------------------------------------------------------------------ */
