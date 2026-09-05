@@ -9,8 +9,8 @@
    products have no instruction marker and stay untouched. */
 (function () {
   'use strict';
-  var BUTTON = '.single_add_to_cart_button';
-  var HINT = '[data-fp-variation-hint]';
+  var BUTTON_SELECTOR = '.single_add_to_cart_button';
+  var HINT_SELECTOR = '[data-fp-variation-hint]';
   var TEXTS = {
     unavailable: 'Esa combinación no está disponible. Prueba con otra.',
     pending: 'Agregando a Productos a Cotizar…'
@@ -47,8 +47,8 @@
   }
 
   function watch(form) {
-    var button = form.querySelector(BUTTON);
-    var hint = form.querySelector(HINT);
+    var button = form.querySelector(BUTTON_SELECTOR);
+    var hint = form.querySelector(HINT_SELECTOR);
     if (!button || !hint) { return; }
     var defaultText = hint.textContent;
     var pending = false;

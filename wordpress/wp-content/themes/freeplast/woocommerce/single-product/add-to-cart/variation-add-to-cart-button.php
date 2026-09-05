@@ -46,8 +46,10 @@ if ( empty( $fp_variation_labels ) ) {
 } elseif ( 1 === count( $fp_variation_labels ) ) {
 	$fp_selection = $fp_variation_labels[0];
 } else {
-	$fp_selection = implode( ', ', array_slice( $fp_variation_labels, 0, -1 ) ) . ' y ' . $fp_variation_labels[ count( $fp_variation_labels ) - 1 ];
+	$fp_last_label = array_pop( $fp_variation_labels );
+	$fp_selection = implode( ', ', $fp_variation_labels ) . ' y ' . $fp_last_label;
 }
+$fp_element_class = wc_wp_theme_get_element_class_name( 'button' );
 $fp_hint_id = 'fp-variation-hint-' . absint( $product->get_id() );
 ?>
 <div class="woocommerce-variation-add-to-cart variations_button">
@@ -67,7 +69,7 @@ $fp_hint_id = 'fp-variation-hint-' . absint( $product->get_id() );
 	do_action( 'woocommerce_after_add_to_cart_quantity' );
 	?>
 
-	<button type="submit" class="single_add_to_cart_button button alt<?php echo esc_attr( wc_wp_theme_get_element_class_name( 'button' ) ? ' ' . wc_wp_theme_get_element_class_name( 'button' ) : '' ); ?> wc-variation-selection-needed disabled" aria-disabled="true" aria-describedby="<?php echo esc_attr( $fp_hint_id ); ?>"><?php echo esc_html( $product->single_add_to_cart_text() ); ?></button>
+	<button type="submit" class="single_add_to_cart_button button alt<?php echo $fp_element_class ? ' ' . esc_attr( $fp_element_class ) : ''; ?> wc-variation-selection-needed disabled" aria-disabled="true" aria-describedby="<?php echo esc_attr( $fp_hint_id ); ?>"><?php echo esc_html( $product->single_add_to_cart_text() ); ?></button>
 
 	<?php do_action( 'woocommerce_after_add_to_cart_button' ); ?>
 

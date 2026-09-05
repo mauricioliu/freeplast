@@ -22,16 +22,17 @@ for(const dep of Object.values(deps)){if(!/^[a-f0-9]{64}$/.test(dep.sha256)||!de
 // Issue #28: behavioral states of the variation add-to-cart button script (initial, selected, cleared, unavailable, pending).
 const variationStateSource=readFileSync(path.join(root,'wp-content/themes/freeplast/assets/js/variation-button-state.js'),'utf8');
 const variationState=new Function('module',variationStateSource+'\nreturn module.exports;')({exports:{}});
-function fakeButton(classes){const set=new Set(classes.split(' ').filter(Boolean));return {id:'',attrs:{},classList:{contains:c=>set.has(c)},setAttribute(n,v){this.attrs[n]=String(v);},removeAttribute(n){delete this.attrs[n];}};}
-function fakeHint(){return {id:'fp-variation-hint-25',hidden:false,textContent:''};}
-function assertVariationState(ok,message){if(!ok)throw Error(message);checks++;}
 const DEFAULT_HINT='Selecciona Color para agregar este producto a Productos a Cotizar.';
-function variationCase(classes){const button=fakeButton(classes);const hint=fakeHint();hint.textContent=DEFAULT_HINT;return {button,hint};}
+function fakeButton(classes){const set=new Set(classes.split(' ').filter(Boolean));return {attrs:{},classList:{contains:c=>set.has(c)},setAttribute(n,v){this.attrs[n]=String(v);},removeAttribute(n){delete this.attrs[n];}};}
+function fakeHint(){return {id:'fp-variation-hint-25',hidden:false,textContent:DEFAULT_HINT};}
+function assertVariationState(ok,message){if(!ok)throw Error(message);checks++;}
+function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint()};}
 // Initial (no colour chosen): unavailable, described by the visible instruction.
 {
  const {button,hint}=variationCase('single_add_to_cart_button button alt wp-element-button disabled wc-variation-selection-needed');
- assertVariationState(variationState.stateOf(button)==='selection-needed','initial state is selection-needed');
- variationState.applyState(button,hint,variationState.stateOf(button),hint.textContent,false);
+ const state=variationState.stateOf(button);
+ assertVariationState(state==='selection-needed','initial state is selection-needed');
+ variationState.applyState(button,hint,state,hint.textContent,false);
  assertVariationState(button.attrs['aria-disabled']==='true','initial state exposes aria-disabled=true');
  assertVariationState(button.attrs['aria-describedby']==='fp-variation-hint-25','initial state links the instruction via aria-describedby');
  assertVariationState(hint.hidden===false&&hint.textContent===DEFAULT_HINT,'initial state shows the attribute-naming instruction');
@@ -40,8 +41,9 @@ function variationCase(classes){const button=fakeButton(classes);const hint=fake
 // Colour selected: enabled with explicit state, instruction hidden.
 {
  const {button,hint}=variationCase('single_add_to_cart_button button alt wp-element-button');
- assertVariationState(variationState.stateOf(button)==='enabled','a chosen variation enables the button');
- variationState.applyState(button,hint,variationState.stateOf(button),hint.textContent,false);
+ const state=variationState.stateOf(button);
+ assertVariationState(state==='enabled','a chosen variation enables the button');
+ variationState.applyState(button,hint,state,hint.textContent,false);
  assertVariationState(button.attrs['aria-disabled']==='false','enabled state is explicit aria-disabled=false');
  assertVariationState(!('aria-describedby' in button.attrs),'enabled state drops the instruction link');
  assertVariationState(hint.hidden===true,'enabled state hides the instruction');
@@ -57,8 +59,9 @@ function variationCase(classes){const button=fakeButton(classes);const hint=fake
 // Unavailable combination: unavailable with its own instruction.
 {
  const {button,hint}=variationCase('single_add_to_cart_button button alt wp-element-button disabled wc-variation-is-unavailable');
- assertVariationState(variationState.stateOf(button)==='unavailable','an unpurchasable combination is unavailable');
- variationState.applyState(button,hint,variationState.stateOf(button),hint.textContent,false);
+ const state=variationState.stateOf(button);
+ assertVariationState(state==='unavailable','an unpurchasable combination is unavailable');
+ variationState.applyState(button,hint,state,hint.textContent,false);
  assertVariationState(button.attrs['aria-disabled']==='true'&&hint.hidden===false,'unavailable state stays semantic');
  assertVariationState(hint.textContent===variationState.TEXTS.unavailable,'unavailable state swaps the instruction');
 }
