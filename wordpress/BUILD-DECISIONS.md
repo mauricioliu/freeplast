@@ -8,6 +8,15 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-05 — Issue #28: accessible selection state on the variable product sheet (Woo stack)
+
+Finding WA-05 of the post-migration acceptance review: the variable product's add-to-cart button looked disabled only through a CSS class — no `disabled`, no `aria-disabled` — so its 3.51:1 dimmed text was measured as an available control and no technology could tell the state. Verified in the pinned Woo 11.1.0 sources that the state exists only as JS-toggled classes. Decision (theme **1.0.3**, pending deploy):
+
+- **State at the render origin, semantics everywhere:** template override `woocommerce/single-product/add-to-cart/variation-add-to-cart-button.php` ships Woo's own initial availability classes plus `aria-disabled="true"` and an `aria-describedby` link to a visible, attribute-naming instruction («Selecciona Color para agregar este producto a Productos a Cotizar.») — true before any JavaScript runs. No real `disabled` attribute: the no-JS flow stays operable and server validation keeps owning rejection of variation-less submissions.
+- **Mirror, never decide:** `assets/js/variation-button-state.js` keeps the aria state and instruction in step with the classes Woo's own variation form toggles (class-attribute `MutationObserver`), covering initial, selected (`aria-disabled="false"`, instruction hidden), cleared (initial restored), unpurchasable combination and the pending submission (`aria-busy="true"`; reset on bfcache `pageshow`). Availability rules, native guidance clicks, simple products (no `simple.php` override), the photo notice and stock information are untouched.
+- **Honest contrast:** the inactive look is exempt (real inactive semantics), and the theme still replaces Woo's 3.5:1 opacity blend with an explicit AA-passing muted style (4.85:1); enabled stays 14.74:1, hover 7.45:1, instruction 11.37:1. The distinction is documented, not papered over with a label.
+- Offline assertions 53 → 76; syntax/behavioral checks 15 → 33; `verify-woo-http.py` asserts the delivered HTML state. Staging deploy, browser axe re-run, keyboard walkthrough and screen-reader/mobile acceptance remain the operator/human steps (see WOO-MIGRATION.md).
+
 ## 2026-09-05 — Issue #30: restore the header Productos a Cotizar line count (Woo stack)
 
 Finding 2 of the 2026-09-05 afternoon site validation: the Woo migration dropped the header line count («Productos a Cotizar (n)») — a static `wp:html` link, no logic anywhere, undocumented cut. Decision (adapter 1.1.0, theme 1.0.1, pending deploy):

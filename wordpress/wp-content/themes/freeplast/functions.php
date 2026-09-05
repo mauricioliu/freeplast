@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.2' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.3' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -91,5 +91,8 @@ add_action(
 		wp_enqueue_style( 'freeplast-woo-theme', get_template_directory_uri().'/assets/css/woo.css', array('freeplast-shell'), FREEPLAST_THEME_VERSION );
 		wp_enqueue_script( 'freeplast-nav', get_template_directory_uri() . '/assets/js/nav.js', array(), FREEPLAST_THEME_VERSION, true );
 		wp_enqueue_script( 'freeplast-basket-count', get_template_directory_uri() . '/assets/js/basket-count.js', array(), FREEPLAST_THEME_VERSION, true );
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			wp_enqueue_script( 'freeplast-variation-state', get_template_directory_uri() . '/assets/js/variation-button-state.js', array(), FREEPLAST_THEME_VERSION, true );
+		}
 	}
 );

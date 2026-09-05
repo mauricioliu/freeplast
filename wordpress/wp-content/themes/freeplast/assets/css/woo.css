@@ -30,6 +30,14 @@
 .woocommerce-billing-fields, .woocommerce-additional-fields { margin-block: 24px; }
 .woocommerce-checkout #payment { background: var(--fp-tint); }
 .woocommerce .woocommerce-notices-wrapper { scroll-margin-top: 90px; }
+/* Issue #28 (WA-05): the variation button's state is semantic, not just a class.
+   aria-disabled="true" is the real inactive state — contrast is exempt for it,
+   but the explicit muted style below still passes AA (4.85:1) and never relies
+   on the 3.5:1 opacity blend Woo applies to .disabled. The enabled button keeps
+   white on --fp-blue (14.7:1). Hover must not reactivate the look. */
+.woocommerce button.single_add_to_cart_button.button[aria-disabled="true"], .woocommerce button.single_add_to_cart_button.button[aria-disabled="true"]:hover { background: var(--fp-tint); color: var(--fp-muted); opacity: 1; cursor: not-allowed; }
+.fp-variation-hint { margin: 12px 0 0; font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--fp-text); }
+.fp-variation-hint[hidden] { display: none; }
 @media (max-width: 599px) {
  .woocommerce ul.products li.product, .woocommerce-page ul.products li.product { width: 100%; float: none; margin: 0 0 32px; }
  .woocommerce .col2-set .col-1, .woocommerce .col2-set .col-2 { width: 100%; float: none; }

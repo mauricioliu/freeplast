@@ -98,4 +98,53 @@ check(str_contains($review_html,'Por cotizar'),'Totals zone states the intention
 foreach(array('$0','woocommerce-Price-amount','product-total','Subtotal') as $leak) {
     check(!str_contains($review_html,$leak),'Review table HTML carries no '.$leak);
 }
-echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table)\n";
+// Issue #28: the variable-product button exposes its real state semantically (WA-05).
+$variation_button=__DIR__.'/../wp-content/themes/freeplast/woocommerce/single-product/add-to-cart/variation-add-to-cart-button.php';
+check(is_file($variation_button),'The theme owns the variation cart-button override (render-origin fix)');
+check(!is_file(__DIR__.'/../wp-content/themes/freeplast/woocommerce/single-product/add-to-cart/simple.php'),'Simple products keep the pinned Woo button: no override');
+$variation_button_source=file_get_contents($variation_button);
+foreach(array('woocommerce_before_add_to_cart_button','woocommerce_before_add_to_cart_quantity','woocommerce_quantity_input','woocommerce_after_add_to_cart_quantity','woocommerce_after_add_to_cart_button','wc_wp_theme_get_element_class_name') as $native_surface) {
+    check(str_contains($variation_button_source,$native_surface),'Variation button keeps the native surface '.$native_surface);
+}
+foreach(array('name="add-to-cart"','name="product_id"','name="variation_id"') as $hidden_input) {
+    check(str_contains($variation_button_source,$hidden_input),'Variation button keeps the native hidden input '.$hidden_input);
+}
+$functions_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/functions.php');
+check(str_contains($functions_source,'variation-button-state.js'),'The state-mirroring script ships with the theme');
+check(str_contains($functions_source,'is_product()'),'The state-mirroring script enqueues on product pages only');
+check(str_contains($woo_css,'button.single_add_to_cart_button.button[aria-disabled="true"]'),'The inactive button look is explicit, not an opacity blend');
+check(str_contains($woo_css,'fp-variation-hint'),'The associated instruction is styled and visible');
+
+// Offline render of the override with a controlled variable product: initial (no colour chosen) state.
+if (!class_exists('WC_Product_Attribute')) {
+    class WC_Product_Attribute {
+        public function __construct(private string $name, private bool $variation) {}
+        public function get_name(): string { return $this->name; }
+        public function get_variation(): bool { return $this->variation; }
+    }
+}
+if (!function_exists('wc_attribute_label')) { function wc_attribute_label($name,$product='') { return 'Color'; } }
+if (!function_exists('wc_wp_theme_get_element_class_name')) { function wc_wp_theme_get_element_class_name($type) { return 'wp-element-button'; } }
+if (!function_exists('woocommerce_quantity_input')) { function woocommerce_quantity_input($args,$product=null) { echo '<input type="number" class="qty" />'; } }
+if (!function_exists('wc_stock_amount')) { function wc_stock_amount($value) { return $value; } }
+if (!function_exists('absint')) { function absint($value) { return abs((int)$value); } }
+class FPW_Fake_Variable_Product {
+    public function is_type(string $type): bool { return 'variable'===$type; }
+    public function get_id(): int { return 25; }
+    public function get_attributes(): array { return array('pa_color'=>new WC_Product_Attribute('pa_color',true),'garantia'=>new WC_Product_Attribute('garantia',false)); }
+    public function get_min_purchase_quantity(): int { return 1; }
+    public function get_max_purchase_quantity(): int { return -1; }
+    public function single_add_to_cart_text(): string { return 'Agregar a Productos a Cotizar'; }
+}
+$product=new FPW_Fake_Variable_Product();
+ob_start(); require $variation_button; $button_html=ob_get_clean();
+check(str_contains($button_html,'wc-variation-selection-needed disabled'),'Initial availability classes render at the origin, matching Woo\'s own variation form state');
+check(str_contains($button_html,'aria-disabled="true"'),'The initial delivered state exposes aria-disabled (no false enable)');
+check(str_contains($button_html,'aria-describedby="fp-variation-hint-25"'),'The button links its associated instruction through aria-describedby');
+check(str_contains($button_html,'Selecciona Color para agregar este producto a Productos a Cotizar.'),'The visible instruction names the real variation attribute');
+check(!preg_match('/<button[^>]*\sdisabled[\s=>]/',$button_html),'No real disabled attribute: the no-JS flow stays operable and server validation owns rejection');
+check(str_contains($button_html,'Agregar a Productos a Cotizar'),'The accessible name is the reviewed visible label');
+check(str_contains($button_html,'class="qty"'),'Quantity input keeps rendering through the native hook');
+check(str_contains($button_html,'data-fp-variation-hint'),'The instruction carries the state-script marker');
+
+echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state)\n";

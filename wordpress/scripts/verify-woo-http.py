@@ -34,6 +34,13 @@ class Inputs(HTMLParser):
 status, cart=request('/wp-json/wc/store/v1/cart',api=True);assert status==200
 status, products=request('/wp-json/wc/store/v1/products?slug=caja-cosechera-3-4',api=True);simple=products[0]['id']
 status, parents=request('/wp-json/wc/store/v1/products?slug=caja-universal-cerrada-color',api=True);parent=parents[0]['id']
+# Issue #28: the ficha's variable button exposes its unavailable state semantically in the delivered HTML (WA-05).
+status, product_html=request('/producto/caja-universal-cerrada-color/');assert status==200
+assert re.search(r'<button[^>]*single_add_to_cart_button[^>]*aria-disabled="true"',product_html),'variable button ships without aria-disabled'
+assert 'wc-variation-selection-needed disabled' in product_html,'variable button ships without the initial availability classes'
+assert f'aria-describedby="fp-variation-hint-{parent}"' in product_html,'variable button lacks its describedby instruction link'
+assert re.search(r'data-fp-variation-hint[^>]*>Selecciona Color ',product_html),'attribute-naming instruction missing from the delivered HTML'
+assert not re.search(r'<button[^>]*single_add_to_cart_button[^>]*\sdisabled[\s=>]',product_html),'button must stay operable (no real disabled attribute)'
 # The native Store API validates variant selection and quantities.
 status,bad=request('/wp-json/wc/store/v1/cart/add-item',{'id':parent,'quantity':1},True);assert status==400,(status,bad)
 status,cart=request('/wp-json/wc/store/v1/cart/add-item',{'id':simple,'quantity':70},True);assert status in (200,201),(status,cart)
@@ -61,5 +68,5 @@ assert status==200 and 'Solicitud recibida' in confirmation
 assert 'Caja Cosechera' in confirmation and '140' in confirmation and 'Rojo' in confirmation
 status,cart=request('/wp-json/wc/store/v1/cart',api=True);assert not cart['items']
 order_id=int(re.search(r'/order-received/(\d+)',url.path).group(1))
-for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'test_order_id':order_id}.items():
+for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'variation_button_state':True,'test_order_id':order_id}.items():
     print(f'{name}: {json.dumps(value)}')
