@@ -211,10 +211,6 @@ check(fpw_is_order_limited_staff(),'Ventas (edit_shop_orders, no manage_woocomme
 $GLOBALS['fpw_user_caps']['manage_woocommerce']=true;
 check(!fpw_is_order_limited_staff(),'Managers are not order-limited: native behavior stays untouched');
 $GLOBALS['fpw_user_caps']=array();
-// Users without order caps are untouched by the ventas guards
-$GLOBALS['fpw_user_caps']=array();
-// Users without order caps are untouched by the ventas guards
-$GLOBALS['fpw_user_caps']=array();
 check(!fpw_is_order_limited_staff(),'Users without order caps are untouched by the ventas guards');
 
 // Woo locks wp-admin to users without the edit_posts primitive by default; ventas enters through the order caps alone.
@@ -244,7 +240,7 @@ $GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
 $_REQUEST=array('action'=>'woocommerce_add_order_note','note_type'=>'customer');
 $_POST=array('note_type'=>'customer');
 fpw_force_private_sales_note();
-check($_REQUEST['note_type']===''&&$_POST['note_type']=='','A crafted customer-note POST from ventas is normalized to private');
+check($_REQUEST['note_type']==='' && $_POST['note_type']==='','A crafted customer-note POST from ventas is normalized to private');
 $_REQUEST=array('action'=>'woocommerce_add_order_note','note_type'=>'');
 fpw_force_private_sales_note();
 check($_REQUEST['note_type']==='','Private notes pass through unchanged');

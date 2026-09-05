@@ -242,7 +242,7 @@ function fpw_sales_order_actions( array $actions ): array {
 	}
 	return $actions;
 }
-add_filter( 'woocommerce_order_actions', 'fpw_sales_order_actions', 10, 1 );
+add_filter( 'woocommerce_order_actions', 'fpw_sales_order_actions' );
 
 /**
  * …and denied on the server even for a crafted post: both email resends

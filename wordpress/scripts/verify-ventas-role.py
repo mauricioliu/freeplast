@@ -11,25 +11,26 @@ Notes it adds persist on one existing TECHNICAL request (billing email on
 example.*, or --order-id). Never point at production. No cookies, nonces,
 passwords or personal data are printed.
 """
-import secrets, sys, re, json, urllib.request, urllib.parse, urllib.error, http.cookiejar
+import os, secrets, sys, re, json, urllib.request, urllib.parse, urllib.error, http.cookiejar
 BASE = 'https://freeplast.mliu.site'
-if sys.argv[1:] in ([], ['--help']):
+args = sys.argv[1:]
+if args in ([], ['--help']):
     print(__doc__)
     print('help: FREEPLAST_SALES_ADMIN_USER=... FREEPLAST_SALES_ADMIN_PASS=... python3 wordpress/scripts/verify-ventas-role.py --execute-staging [--order-id N]')
     print('warning: the temporary sales account is provisioned and removed by this script; verify staging mail containment first')
     raise SystemExit(0)
-if sys.argv[1:] and sys.argv[1:] != ['--execute-staging'] and '--order-id' not in sys.argv[1:]:
+if args and args != ['--execute-staging'] and '--order-id' not in args:
     print('error: unknown arguments\nhelp: supported flags are --help, --execute-staging, --order-id N')
     raise SystemExit(2)
-if '--execute-staging' not in sys.argv:
+if '--execute-staging' not in args:
     print('error: staging execution must be explicit\nhelp: add --execute-staging')
     raise SystemExit(2)
-ADMIN_USER = __import__('os').environ.get('FREEPLAST_SALES_ADMIN_USER')
-ADMIN_PASS = __import__('os').environ.get('FREEPLAST_SALES_ADMIN_PASS')
+ADMIN_USER = os.environ.get('FREEPLAST_SALES_ADMIN_USER')
+ADMIN_PASS = os.environ.get('FREEPLAST_SALES_ADMIN_PASS')
 if not ADMIN_USER or not ADMIN_PASS:
     print('error: set FREEPLAST_SALES_ADMIN_USER and FREEPLAST_SALES_ADMIN_PASS (staging admin, never printed)')
     raise SystemExit(2)
-order_id = int(sys.argv[sys.argv.index('--order-id') + 1]) if '--order-id' in sys.argv else 0
+order_id = int(args[args.index('--order-id') + 1]) if '--order-id' in args else 0
 
 results = {}
 def ok(name, condition, detail=''):
@@ -42,8 +43,7 @@ class Session:
     def __init__(self):
         self.jar = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
-        self.nonce_header = None
-    def request(self, path, data=None, retry_login=None):
+    def request(self, path, data=None):
         body = urllib.parse.urlencode(data).encode() if data is not None else None
         req = urllib.request.Request(BASE + path, data=body, headers={'Content-Type': 'application/x-www-form-urlencoded'} if body else {})
         try:
