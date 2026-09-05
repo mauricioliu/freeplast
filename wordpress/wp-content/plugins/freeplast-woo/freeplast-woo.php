@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -51,6 +51,25 @@ add_action('woocommerce_single_product_summary', static function() {
 		echo '<p class="fp-photo-note">Fotografía referencial. La imagen puede no representar el color o la configuración seleccionados.</p>';
 	}
 }, 25);
+
+/**
+ * Header Productos a Cotizar count: distinct cart lines, never units. Every
+ * variant/colour is its own line (Woo keys each cart entry by product +
+ * variation + attributes), so counting cart entries is the contract-v6 line
+ * definition. Zero when Woo or the cart is unavailable, so every route renders
+ * a coherent state without extra per-request queries beyond the session cart
+ * Woo already loads.
+ */
+function fpw_cart_line_count(): int {
+	if ( ! function_exists( 'WC' ) || ! WC()->cart ) { return 0; }
+	return count( WC()->cart->get_cart() );
+}
+
+/** The header count participates in Woo's native add-to-cart fragment refresh. */
+add_filter( 'woocommerce_add_to_cart_fragments', static function ( $fragments ) {
+	$fragments['span.fpw-basket-count'] = '<span class="fpw-basket-count">' . (int) fpw_cart_line_count() . '</span>';
+	return $fragments;
+} );
 
 /** One definition for local fields; native Woo validates and persists the billing fields. */
 function fpw_checkout_fields( $fields ) {

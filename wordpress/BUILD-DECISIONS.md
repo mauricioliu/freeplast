@@ -8,6 +8,15 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-05 — Issue #30: restore the header Productos a Cotizar line count (Woo stack)
+
+Finding 2 of the 2026-09-05 afternoon site validation: the Woo migration dropped the header line count («Productos a Cotizar (n)») — a static `wp:html` link, no logic anywhere, undocumented cut. Decision (adapter 1.1.0, theme 1.0.1, pending deploy):
+
+- **One definition, owned by the Woo boundary:** `fpw_cart_line_count()` in `freeplast-woo` returns `count( WC()->cart->get_cart() )` — Woo keys cart entries by product + variation + attributes, so counting entries is the contract-v6 line definition (variants/colours are separate lines, quantities are not lines). Reads the cart; no parallel session/persistence service (ADR-0001).
+- **Three native surfaces, one number:** (1) server render on every public route via a `{{FREEPLAST_BASKET_COUNT}}` token resolved by a `render_block` filter — the established `{{FREEPLAST_THEME_URL}}` mechanism — so no-JS navigation always shows the real count; (2) Woo's native add-to-cart fragments refresh the same span on classic AJAX card adds (verified against the pinned 11.1.0 `WC_AJAX::add_to_cart` → `add-to-cart.js` fragment application); (3) new `assets/js/basket-count.js` subscribes to the cart block's `wc/store/cart` data store and re-renders from `getCartData().items.length` — the surface fragments cannot see (Store API quantity/remove/empty). The watcher renders nothing until the store resolves its cart, so the server value is never flashed over.
+- **Empty state documented:** the link always carries the number, `(0)` when empty — coherent on first paint, no flicker; adapter-absent degrades to no number rather than a wrong one.
+- Offline assertions grew 16 → 30 (line semantics, fragment contract, header-markup contract, token resolution). Staging deploy, browser add/change/remove/empty walkthrough and narrow-width visual review remain the operator/human steps.
+
 ## 2026-09-05 — Issue #24: one attempt, one Quote Request under concurrent submission
 
 Two POSTs of the same submission attempt (same anonymous session, same
