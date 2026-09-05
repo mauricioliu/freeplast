@@ -8,6 +8,10 @@ Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo imple
 
 Offline checks remain 29; read-only runtime checks passed 68 after three new technical orders. Admin private-note persistence and unpriced HTML request-email rendering checked; real delivery, restricted-user login, physical mobile acceptance and performance measurements remain pending. See the review for exact scope rather than interpreting these checks as full acceptance.
 
+### Merge record for findings WA-01 (#24) and WA-04 (#27) — 2026-09-05
+
+The `ralph/issue-24` (one attempt, one request under concurrent submission) and `ralph/issue-27` (named links on the featured cards) branches were developed against pre-migration `main` and merged **into the retired implementation preserved under `legacy/`** (rename-detected; the retired suite `scripts/check.mjs`, its VERIFICATION/HANDOFF/BUILD-DECISIONS records and the deterministic `dist/` plugin ZIP — rebuilt from the merged legacy source via `scripts/rebuild-legacy-plugin-zip.mjs` — carry both fixes). The deployed Woo stack was **not** modified: the live duplicate-order (WA-01) and unnamed-link (WA-04) defects still need bounded Woo-side fixes — a checkout idempotency/claim integration in `freeplast-woo` for #24 and accessible card link naming in the Woo-rendered Home for #27 — each with its own Woo-native regression before either finding can be considered closed on staging. Issues #24/#27 were closed by the merge pipeline; reopen or file follow-ups if the Woo-side port is required (it is, per the acceptance criteria).
+
 ## Current implementation
 
 - Existing WordPress 7.1 / PHP 8.3 / MariaDB stack, `/opt/freeplast-wordpress` on SSH alias `openclaw`; Nginx/hostname unchanged.
