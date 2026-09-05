@@ -262,6 +262,19 @@ class Freeplast_CQ_Products {
 	}
 
 	/**
+	 * The product's visible title text — and therefore the accessible name of
+	 * every rendered product link (issue #27). A record published without a
+	 * title (content-injected outside the reviewed source; synchronization can
+	 * never create one) falls back to its slug, so a catalog card, related
+	 * Product or basket line can never render an empty, nameless keyboard
+	 * stop. Real content, never an aria-label painted onto an empty link.
+	 */
+	public static function accessible_title( WP_Post $post ): string {
+		$title = trim( (string) get_the_title( $post ) );
+		return '' !== $title ? $title : $post->post_name;
+	}
+
+	/**
 	 * Up to three related Products in the reviewed related_ids order —
 	 * never query or runtime order. Archived (draft) or missing ids drop
 	 * out silently.
@@ -305,7 +318,7 @@ class Freeplast_CQ_Products {
 				'<li class="fpcq-related-item"><a href="%s">%s<span>%s</span></a></li>',
 				esc_url( get_permalink( $related_post ) ),
 				get_the_post_thumbnail( $related_post, 'thumbnail', array( 'class' => 'fpcq-related-image' ) ),
-				esc_html( get_the_title( $related_post ) )
+				esc_html( self::accessible_title( $related_post ) )
 			);
 		}
 

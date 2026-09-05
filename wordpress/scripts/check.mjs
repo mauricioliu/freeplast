@@ -202,6 +202,16 @@
  *      so the outcomes and messages for the same inputs are identical
  *      by construction; the text-field contract (TEXT_FIELDS) remains
  *      the single field list both surfaces iterate.
+ *  26. Every rendered link names itself (issue #27): a link-name audit
+ *      (the axe link-name rule, computed over the HTML WordPress actually
+ *      delivers — featured-card, block and content output included) runs
+ *      over Home, Tienda, search and the product page, the Featured cards
+ *      must keep exactly one anchor per Product named by its visible
+ *      reviewed title (never an aria-label painted onto an empty
+ *      redundant link), and a titleless content-injected record still
+ *      renders a named card link because the shared accessible-title
+ *      helper falls back to the product slug instead of shipping an
+ *      empty keyboard stop.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -364,6 +374,67 @@ function pluginSection(html, marker, message) {
   const start = html.indexOf(marker);
   assert.ok(start !== -1, message);
   return html.slice(start, html.indexOf('</section>', start));
+}
+
+/* The entities WordPress writes into served text (esc_html/esc_attr emit
+   raw UTF-8 except for the five XML specials; numeric refs appear in
+   core-generated strings). One combined pass, so `&amp;lt;` never
+   double-decodes. */
+const TEXT_ENTITY = /&(?:#(\d+)|#x([0-9a-fA-F]+)|amp|lt|gt|quot|apos);/g;
+
+/** Decode the character references served text can carry. */
+function decodeServedText(value) {
+  return String(value).replace(TEXT_ENTITY, (entity, dec, hex, name) => {
+    if (dec) return String.fromCodePoint(Number(dec));
+    if (hex) return String.fromCodePoint(parseInt(hex, 16));
+    return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[name];
+  });
+}
+
+/** Visible text of one HTML fragment: tags dropped, entities decoded, whitespace collapsed. */
+function servedText(html) {
+  return decodeServedText(String(html).replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+/** Attributes of one opening tag, as a lowercase-name map (WordPress quotes attribute values). */
+function tagAttributes(tag) {
+  return Object.fromEntries(
+    [...tag.matchAll(/([a-zA-Z_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((m) => [m[1].toLowerCase(), m[2] ?? m[3] ?? ''])
+  );
+}
+
+/**
+ * The link-name audit (issue #27): the axe-core `link-name` rule computed
+ * over the HTML WordPress actually delivers — plugin blocks, theme parts
+ * and editor/content output included, nothing excluded. Per the accessible
+ * name algorithm, an <a href> is named when its flattened content has text,
+ * or carries a non-empty aria-label, a resolvable aria-labelledby, a title,
+ * or (last resort) an image whose alt contributes the name. Anchors without
+ * href are not links (axe skips them too); aria-hidden="true" anchors are
+ * outside the accessibility tree. Returns the offending anchors so a
+ * failure message can show exactly which link stopped the keyboard empty.
+ */
+function namelessLinks(html) {
+  const anchors = [];
+  /* Anchors do not nest in WordPress frontend markup (core and the plugin
+     never emit an <a> inside an <a>), so a greedy-anchored scan is exact
+     here and keeps the audit dependency-free. */
+  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
+    const attributes = tagAttributes(match[1]);
+    if (!('href' in attributes) || attributes['aria-hidden'] === 'true') continue;
+    const labelledby = (attributes['aria-labelledby'] || '').split(/\s+/).filter(Boolean);
+    const labelledbyResolved =
+      labelledby.length > 0 && labelledby.every((id) => new RegExp(`id="${id}"`).test(html));
+    const name =
+      servedText(match[2]) ||
+      (attributes['aria-label'] || '').trim() ||
+      (labelledbyResolved ? 'named' : '') ||
+      (attributes.title || '').trim() ||
+      [...match[2].matchAll(/<img\b[^>]*>/g)].map((img) => (tagAttributes(img[0]).alt || '').trim()).find(Boolean) ||
+      '';
+    if (!name) anchors.push({ href: attributes.href, tag: match[0].slice(0, 160) });
+  }
+  return anchors;
 }
 
 /** The basket nonce of the form posting one admin-post action. */
@@ -5811,11 +5882,117 @@ test('email, telephone and RUT validation is defined once and shared by both sur
   ]);
 });
 
+/* ─── 23h. Every rendered link names itself (issue #27) ─────────── */
+
+test('the link-name audit passes over the HTML WordPress delivers and the discovery cards name themselves from content (issue #27)', { timeout: 120_000 }, async () => {
+  /* 27.1 — The audit detects the reported defect (revisión post-migración
+     2026-09-05, WA-04: eight tabbable anchors without an accessible name in
+     the Featured Product cards, the tree showing them unlabeled): the exact
+     pattern — one image-only anchor per card, eight cards — must fail the
+     audit, and a cosmetic aria-label painted onto the same empty link is
+     the band-aid the acceptance criteria forbid, not a fix. */
+  const reportedPattern = FEATURED_SLUGS.map(
+    (slug) =>
+      `<li class="fpcq-card"><a class="fpcq-card-media" href="${SITE_URL}/producto/${slug}/"><img src="${SITE_URL}/wp-content/uploads/reported.webp" alt="" loading="lazy" /></a></li>`
+  ).join('');
+  const reported = namelessLinks(reportedPattern);
+  assert.equal(reported.length, FEATURED_SLUGS.length, 'the audit must flag every image-only anchor of the reported featured-card defect pattern');
+  assert.deepEqual(
+    reported.map((anchor) => anchor.href),
+    FEATURED_SLUGS.map((slug) => `${SITE_URL}/producto/${slug}/`),
+    'the flagged anchors must be exactly the reported featured-card links'
+  );
+  const bandAid = namelessLinks(reportedPattern.replace('class="fpcq-card-media"', 'aria-label="producto" class="fpcq-card-media"'));
+  assert.equal(bandAid.length, FEATURED_SLUGS.length - 1, 'an aria-label silences only the single link it is painted on — the audit must still flag the other seven');
+
+  /* 27.2 — The rendered Home passes the same audit, and the Featured cards
+     keep exactly one anchor per Product named by its visible reviewed
+     title: no empty keyboard stops, no redundant duplicates, images and
+     names preserved, the native Cotizar chooser untouched. */
+  const home = await get('/', MOBILE_UA);
+  assert.equal(home.status, 200, 'Home must return HTTP 200 for the audit');
+  assert.deepEqual(namelessLinks(home.body), [], 'every link on the rendered Home must carry an accessible name');
+  const featuredSection = pluginSection(home.body, 'class="fpcq-featured"', 'Home must render the Featured Products section for the audit');
+  const cardAnchors = [...featuredSection.matchAll(/<a class="fpcq-card-main" href="([^"]+)">([\s\S]*?)<\/a>/g)];
+  assert.equal(cardAnchors.length, FEATURED_SLUGS.length, 'each Featured card must render exactly one product link — no redundant duplicate anchors');
+  cardAnchors.forEach((anchor, index) => {
+    const product = PRODUCT_BY_SLUG.get(FEATURED_SLUGS[index]);
+    assert.match(anchor[1], new RegExp(`/producto/${product.slug}/$`), `the Featured card ${index + 1} must keep the canonical product destination`);
+    const name = servedText(anchor[2]);
+    assert.ok(name.length > 0, `the Featured card ${index + 1} link must not be empty`);
+    assert.ok(name.includes(product.title), `the Featured card ${index + 1} link must name itself with the reviewed title “${product.title}” from its own visible content`);
+    assert.match(anchor[2], /<img[^>]*class="fpcq-card-image[ "]/, `the Featured card ${index + 1} must keep its image inside the named card link`);
+  });
+  assert.equal(countMatches(featuredSection, '>Cotizar</summary>'), FEATURED_SLUGS.length, 'every Featured card must keep its native named Cotizar chooser');
+
+  /* 27.3 — The surfaces that share the card rendering pass the audit too:
+     the full Tienda grid, search results with product cards and the product
+     page with its related Products. */
+  for (const [label, path] of [['Tienda', '/tienda/'], ['search', '/?s=caja'], ['the product page', PRODUCT_URL]]) {
+    const res = await get(path, MOBILE_UA);
+    assert.equal(res.status, 200, `${label} must return HTTP 200 for the audit`);
+    assert.deepEqual(namelessLinks(res.body), [], `every link on ${label} must carry an accessible name (shared rendering must not regress)`);
+  }
+
+  /* 27.4 — The HTML WordPress actually delivers includes content-side
+     records: a published fp_product injected without title, category or
+     excerpt (the editor/content path outside the reviewed source; the
+     empty-content guard is bypassed at the wp_insert_post seam exactly
+     because the reviewed source can never produce such a record) would
+     render an entirely empty card link — the reported defect class. It
+     must still render a NAMED link, falling back to its slug, and Home
+     must return to exactly the approved eight after it is removed. */
+  const seededId = wp(
+    [
+      'eval',
+      'add_filter( "wp_insert_post_empty_content", "__return_false" );' +
+        '$id = wp_insert_post( array( "post_type" => "fp_product", "post_status" => "publish", "post_title" => "", "post_content" => "", "post_excerpt" => "", "post_name" => "producto-sin-titulo-control" ), true );' +
+        'if ( is_wp_error( $id ) || ! $id ) { WP_CLI::error( "seed failed" ); }' +
+        'echo $id;',
+    ]
+  ).stdout.trim();
+  assert.match(seededId, /^\d+$/, 'the content-injected record must exist for the audit');
+  try {
+    wp(['post', 'meta', 'update', seededId, '_fp_featured', '1']);
+    wp(['post', 'meta', 'update', seededId, '_fp_featured_order', '0']);
+
+    const seededHome = await get('/', MOBILE_UA);
+    assertContains(seededHome.body, 'producto-sin-titulo-control', 'the content-injected record must render in the audited Featured HTML');
+    assert.match(
+      seededHome.body,
+      /<h3 class="fpcq-card-title">producto-sin-titulo-control<\/h3>/,
+      'the titleless record must fall back to its slug as the card title so its link names itself from real content'
+    );
+    assert.deepEqual(
+      namelessLinks(seededHome.body),
+      [],
+      'a titleless, uncategorized, excerptless record must not render a nameless Featured card link'
+    );
+  } finally {
+    wp(['post', 'delete', seededId, '--force']);
+  }
+
+  const restoredHome = await get('/', MOBILE_UA);
+  assert.deepEqual(
+    productLinks(pluginSection(restoredHome.body, 'class="fpcq-featured"', 'Home must render the Featured Products section after cleanup')),
+    FEATURED_SLUGS,
+    'after the injected record is removed, Home must render exactly the approved eight Featured Products in source-controlled order again'
+  );
+  assert.deepEqual(namelessLinks(restoredHome.body), [], 'the restored Home must pass the audit');
+
+  section('Every rendered link names itself (issue #27)', [
+    'A link-name audit (the axe link-name rule over the served HTML, nothing excluded) runs over Home, Tienda, search and the product page: every <a href> carries an accessible name from text content, aria-label, a resolvable aria-labelledby, title or an alt-bearing image',
+    'The audit demonstrably flags the reported defect pattern: eight image-only featured-card anchors fail it, and an aria-label painted onto one empty link silences only that link',
+    'The Featured cards keep exactly one anchor per Product — canonical destination, reviewed title as the visible accessible name, image inside the named link, native Cotizar chooser — never a redundant empty anchor',
+    'A titleless content-injected Product record still renders a named card link (shared accessible-title fallback to the slug); removing it restores the approved eight Featured Products',
+  ]);
+});
+
 /* ─── 24. Write VERIFICATION.md and clean up ──────────────────────────── */
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + shared contact-field validators + posted-place-validated address confirm + synchronization rollback discipline + edge-stripped origin header (issues #2–#23)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + shared contact-field validators + posted-place-validated address confirm + synchronization rollback discipline + edge-stripped origin header + nameless-link-free discovery rendering (issues #2–#23, #27)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5928,6 +6105,9 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Both surfaces validate the contact fields identically for the same inputs (issue #18): per-field agreement across valid, invalid-format, empty, boundary and overlong cases, with the exact shared messages and the sanitized email stored',
     'The text-field contract (TEXT_FIELDS) remains the single field list both surfaces iterate (issue #18)',
     'The staging edge strips the origin runtime header (issue #23): the proxied location of the vhost template hides exactly one origin header — X-Powered-By — via proxy_hide_header, and verify.sh asserts an authenticated response through the HTTPS edge carries none',
+    'Every rendered link names itself (issue #27): the link-name audit (the axe link-name rule, computed over the HTML WordPress actually delivers — plugin blocks, theme parts and content output included, nothing excluded) passes over Home, Tienda, search and the product page, and demonstrably flags the reported eight image-only featured-card anchors (an aria-label painted onto one empty link silences only that link)',
+    'The Featured cards keep exactly one anchor per Product (issue #27): canonical destination, the reviewed title as the visible accessible name, the image inside the named link and the native Cotizar chooser — never a redundant empty anchor',
+    'A titleless content-injected Product record still renders a named card link (issue #27): the shared accessible-title helper falls back to the slug, and removing the record restores the approved eight Featured Products exactly',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -5957,6 +6137,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
     `- The contact-field validation (issue #18) is one shared definition: Freeplast_CQ_Request::validated_contact_formats owns the Email/Teléfono/Rut Empresa acceptance patterns and user-facing messages, and both the Quote Request intake (validated_fields) and the sales contact correction (Freeplast_CQ_Admin::validated_contact) delegate to it, so identical inputs cannot produce different outcomes. The check scans the plugin for the cloned patterns/messages (exactly one definition site) and drives both surfaces' full validation paths with the same posted inputs across valid, invalid-format, empty, boundary and overlong cases, requiring identical per-field results. Behavior-preserving: the text-field contract (TEXT_FIELDS) stays the single field list both surfaces iterate, the required/length messages are untouched, and the email keeps being stored in its WordPress-sanitized form.`,
     `- The Delivery Address confirm posted-place validation (issue #21) rides the existing nonce+session guard: the confirm action compares the posted fp_place with the session transient's place_id — a matching post confirms exactly as before, and a tampered, stale or absent post takes the recoverable address-error redirect without touching the stored state, so a forged or outdated form can no longer confirm a destination the customer never reviewed.`,
+    `- The link-name audit (issue #27) is a dependency-free, server-side computation of the axe link-name rule over the served HTML — the same documents a browser receives, with plugin block output, theme parts and any content-side markup included and nothing excluded from the auditor. The origin review (post-migration review of 2026-09-05, finding WA-04) reported eight tabbable anchors without an accessible name in the Featured Product cards; the check reproduces exactly that pattern and requires the audit to flag all eight (and shows an aria-label on one link silences only that link), so the regression cannot be re-hidden with cosmetic attributes. The repository renderer's contract is enforced end-to-end: one anchor per card named by visible reviewed content, and a titleless content-injected record falls back to its slug instead of shipping an empty keyboard stop. This is a mechanical observation only — screen-reader and keyboard acceptance remain human review (Gate 3).`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

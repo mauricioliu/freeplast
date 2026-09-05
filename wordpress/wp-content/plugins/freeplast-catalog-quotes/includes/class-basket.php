@@ -805,7 +805,7 @@ class Freeplast_CQ_Basket {
 			$items .= sprintf(
 				'<li class="fpcq-basket-line"><a class="fpcq-basket-line-title" href="%1$s">%2$s</a>%3$s<span class="fpcq-basket-line-qty">%4$s</span></li>',
 				esc_url( get_permalink( $line['product'] ) ),
-				esc_html( get_the_title( $line['product'] ) ),
+				esc_html( Freeplast_CQ_Products::accessible_title( $line['product'] ) ),
 				$option,
 				esc_html( self::quantity_label( $line['quantity'] ) )
 			);
@@ -880,7 +880,7 @@ class Freeplast_CQ_Basket {
 			$items .= sprintf(
 				'<li class="fpcq-basketview-line"><div class="fpcq-basketview-line-info"><a class="fpcq-basketview-line-title" href="%1$s">%2$s</a>%3$s<span class="fpcq-basketview-qty">%4$s</span></div>%5$s</li>',
 				esc_url( get_permalink( $line['product'] ) ),
-				esc_html( get_the_title( $line['product'] ) ),
+				esc_html( Freeplast_CQ_Products::accessible_title( $line['product'] ) ),
 				$option,
 				esc_html( self::quantity_label( $line['quantity'] ) ),
 				self::render_edit_forms( $line )
