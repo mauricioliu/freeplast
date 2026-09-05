@@ -2,6 +2,7 @@
 // Offline checks only. Never starts a server or sends a quote request.
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const root=fileURLToPath(new URL('..',import.meta.url));
@@ -75,5 +76,13 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
 run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
+// Issue #26: drive the REAL pinned cart-block store (vendored wc-blocks-data 11.1.0) with the
+// REAL shipped feedback script through success, connection loss, server error and recovery.
+{const {runCartStoreScenarios}=await import('./woo-cart-store-harness.mjs');
+ const bundle=path.join(root,'scripts/vendor/wc-blocks-data-11.1.0.js');
+ const sidecar=JSON.parse(readFileSync(path.join(root,'scripts/vendor/wc-blocks-data-11.1.0.json'),'utf8'));
+ if(createHash('sha256').update(readFileSync(bundle)).digest('hex')!==sidecar.file_sha256) throw Error('Vendored wc-blocks-data hash mismatch against its sidecar');
+ checks+=2; // bundle integrity + sidecar verification
+ checks+=await runCartStoreScenarios(bundle,path.join(root,'wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js'));}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);
 console.log('scope: offline only; no Woo runtime or visual approval implied');

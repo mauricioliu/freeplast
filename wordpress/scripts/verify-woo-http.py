@@ -67,6 +67,9 @@ url=urllib.parse.urlparse(result['redirect']);status,confirmation=request(url.pa
 assert status==200 and 'Solicitud recibida' in confirmation
 assert 'Caja Cosechera' in confirmation and '140' in confirmation and 'Rojo' in confirmation
 status,cart=request('/wp-json/wc/store/v1/cart',api=True);assert not cart['items']
+# Issue #26: the Productos a Cotizar page delivers the quantity-change feedback bridge (WA-03).
+status,cart_html=request('/cotizacion/');assert status==200
+assert 'cart-quantity-feedback' in cart_html,'Productos a Cotizar page ships without the quantity-change feedback bridge'
 order_id=int(re.search(r'/order-received/(\d+)',url.path).group(1))
-for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'variation_button_state':True,'test_order_id':order_id}.items():
+for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'variation_button_state':True,'cart_quantity_feedback_delivered':True,'test_order_id':order_id}.items():
     print(f'{name}: {json.dumps(value)}')

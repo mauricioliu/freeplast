@@ -1,0 +1,11 @@
+{
+  "file": "wc-blocks-data-11.1.0.js",
+  "source": "https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip",
+  "path_inside_zip": "woocommerce/assets/client/blocks/wc-blocks-data.js",
+  "zip_sha256": "6bae9bf74d722b6deb15f049687c311cfafc26e3a5d8fa55ac6ea4b9a3a8df19",
+  "file_sha256": "1afce4a8415f5f957973bdae003a526cee93f61dd31459888139d40706e77bc0",
+  "version": "11.1.0",
+  "license": "GPL-2.0-or-later",
+  "reason": "Offline regression for issue #26 drives the REAL cart block data store (wc/store/cart) shipped to browsers: changeCartItemQuantity/receiveError semantics, pending flags and quantities are exercised exactly as deployed. Not loaded by any site surface; only check-woo.mjs evaluates it in Node against stubbed wp.* plumbing.",
+  "verify": "unzip woocommerce/assets/client/blocks/wc-blocks-data.js and compare sha256 against woo-dependencies.json's woocommerce.zip hash chain"
+}
