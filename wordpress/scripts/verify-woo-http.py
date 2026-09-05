@@ -32,6 +32,15 @@ class Inputs(HTMLParser):
         a=dict(attrs)
         if tag=='input' and a.get('type')=='hidden' and a.get('name'): self.values[a['name']]=a.get('value','')
 status, cart=request('/wp-json/wc/store/v1/cart',api=True);assert status==200
+# Issue #27 (WA-04): the delivered Home featured grid runs through the adapter's
+# dynamic block — Woo's own loop markup with self-naming links, no wpautop damage.
+status, home=request('/');assert status==200
+assert 'wp-block-shortcode' not in home,'Home still renders the grid through the wp:shortcode wpautop renderer'
+import re as _re
+_card=_re.search(r'<a href="[^"]*" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">(?:(?!</a>).)*</a>',home,_re.S)
+assert _card,'Home renders no native product link'
+assert '</p>' not in _card.group(0),'wpautop damage inside the product link'
+assert _re.search(r'<h2[^>]*>[^<]+</h2>',_card.group(0)),'the product link does not carry its title'
 status, products=request('/wp-json/wc/store/v1/products?slug=caja-cosechera-3-4',api=True);simple=products[0]['id']
 status, parents=request('/wp-json/wc/store/v1/products?slug=caja-universal-cerrada-color',api=True);parent=parents[0]['id']
 # Issue #28: the ficha's variable button exposes its unavailable state semantically in the delivered HTML (WA-05).
@@ -71,5 +80,5 @@ status,cart=request('/wp-json/wc/store/v1/cart',api=True);assert not cart['items
 status,cart_html=request('/cotizacion/');assert status==200
 assert 'cart-quantity-feedback' in cart_html,'Productos a Cotizar page ships without the quantity-change feedback bridge'
 order_id=int(re.search(r'/order-received/(\d+)',url.path).group(1))
-for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'variation_button_state':True,'cart_quantity_feedback_delivered':True,'test_order_id':order_id}.items():
+for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'variation_button_state':True,'cart_quantity_feedback_delivered':True,'home_featured_grid_unamaged':True,'test_order_id':order_id}.items():
     print(f'{name}: {json.dumps(value)}')

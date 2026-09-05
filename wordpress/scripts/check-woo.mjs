@@ -84,5 +84,10 @@ run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
  if(createHash('sha256').update(readFileSync(bundle)).digest('hex')!==sidecar.file_sha256) throw Error('Vendored wc-blocks-data hash mismatch against its sidecar');
  checks+=2; // bundle integrity + sidecar verification
  checks+=await runCartStoreScenarios(bundle,path.join(root,'wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js'));}
+// Issue #1 (Woo-side ports of #24/#27): boot the disposable WP+Woo stack and exercise the
+// delivered Home card contract (WA-04) and the concurrent-checkout attempt claim (WA-01)
+// over real HTTP — loopback only; the port is refused if a foreign server owns it.
+{const {runStackHarness}=await import('./woo-stack-harness.mjs');
+ checks+=await runStackHarness();}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);
-console.log('scope: offline only; no Woo runtime or visual approval implied');
+console.log('scope: offline unit checks + disposable local stack (loopback only); no staging, no external hosts, no submissions, no Woo runtime or visual approval implied');

@@ -1,10 +1,15 @@
 <?php
 /** Offline unit checks of the small local field boundary, not a WooCommerce simulation. */
 define('ABSPATH',__DIR__);
+define('DAY_IN_SECONDS',86400); // WordPress core constant, absent offline
 $registered_filters=array();
-function add_action(...$args) {}
+$registered_actions=array();
+function add_action(...$args) { global $registered_actions; $registered_actions[$args[0]][]=$args[1] ?? null; }
 function add_filter(...$args) { global $registered_filters; $registered_filters[$args[0]][]=$args[1]; }
 function register_activation_hook(...$args) {}
+function wp_json_encode($data,$flags=0) { return json_encode($data,$flags); }
+function absint($value) { return abs((int)$value); }
+function sanitize_textarea_field($value) { return trim(strip_tags((string)$value)); }
 class WP_Error {
     public array $codes=array();
     public function add($code,$message,$data=null) { $this->codes[]=$code; }
@@ -32,7 +37,7 @@ foreach($cases as $index=>[$data,$fails]) { $errors=new WP_Error();fpw_validate_
 // Issue #30: the header Productos a Cotizar count reads the Woo cart — distinct lines, never units.
 check(!function_exists('WC'),'WooCommerce stub is not loaded yet');
 check(fpw_cart_line_count()===0,'Absent WooCommerce renders a zero line count');
-class FPW_Fake_WC { public $cart=null; }
+class FPW_Fake_WC { public $cart=null; public $session=null; }
 class FPW_Fake_Cart { public array $lines=array(); public function get_cart() { return $this->lines; } }
 if (!function_exists('WC')) { $GLOBALS['fpw_woo']=new FPW_Fake_WC(); function WC() { return $GLOBALS['fpw_woo']; } }
 check(fpw_cart_line_count()===0,'Empty cart renders a zero line count');
@@ -266,4 +271,199 @@ $style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.c
 check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');
 check($style_version[1]===FREEPLAST_THEME_VERSION,'style.css Version header matches FREEPLAST_THEME_VERSION — a cache-bust bump moves both');
 
-echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role)\n";
+// Issue #27 (WA-04): Home renders the featured grid through the adapter's plugin-rendered dynamic
+// block, not wp:shortcode — WordPress' core/shortcode renderer runs wpautop() over the shortcode's
+// EXPANDED output and splits the native product link at its internal blank lines (the unnamed-link
+// defect). The block executes the SAME native Woo [products] shortcode inside do_blocks, where no
+// wpautop runs, so the delivered card markup is Woo's own loop with self-naming links.
+$front_page=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/templates/front-page.html');
+check(str_contains($front_page,'wp:freeplast-woo/featured-products {"limit":8,"columns":4}'),'Home renders the featured grid through the plugin-rendered dynamic block');
+check(!str_contains($front_page,'wp:shortcode') && !str_contains($front_page,'[products'),'Home no longer exposes the shortcode output to the wp:shortcode wpautop renderer');
+$init_callbacks=$registered_actions['init'] ?? array();
+check(count($init_callbacks)>0,'The adapter registers init actions');
+$block_registered=false;
+foreach($init_callbacks as $callback) {
+	if (!is_object($callback)) { continue; }
+	$GLOBALS['fpw_registered_blocks']=array();
+	if (!function_exists('register_block_type')) { function register_block_type($name,$args=array()) { $GLOBALS['fpw_registered_blocks'][$name]=$args; } }
+	$callback();
+	if (isset($GLOBALS['fpw_registered_blocks']['freeplast-woo/featured-products'])) { $block_registered=$GLOBALS['fpw_registered_blocks']['freeplast-woo/featured-products']; break; }
+}
+unset($GLOBALS['fpw_registered_blocks']);
+check(is_array($block_registered),'The adapter registers the freeplast-woo/featured-products block on init');
+check(($block_registered['render_callback'] ?? '')==='fpw_render_featured_products','The featured grid block renders through the adapter callback');
+if (!function_exists('do_shortcode')) { function do_shortcode($text) { $GLOBALS['fpw_shortcode_input']=$text; return 'NATIVE-WOO-LOOP-MARKUP'; } }
+$GLOBALS['fpw_shortcode_input']='';
+check(fpw_render_featured_products(array('limit'=>8,'columns'=>4))==='NATIVE-WOO-LOOP-MARKUP','The featured grid block returns the native Woo loop markup unchanged (no own card markup)');
+check($GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order"]','The featured grid block delegates to the native Woo products shortcode verbatim');
+check(fpw_render_featured_products(array())==='NATIVE-WOO-LOOP-MARKUP' && $GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order"]','Defaults reproduce the reviewed featured grid');
+unset($GLOBALS['fpw_shortcode_input']);
+
+// Issue #24 (WA-01): one attempt, one Quote Request. The claim is an atomic per-attempt options row
+// (plain INSERT against the unique option_name); the loser recovers the winner's order through Woo's
+// own woocommerce_create_order short-circuit. State machine over a fake wpdb with unique-key semantics.
+class FPW_Fake_wpdb {
+	public array $options_table=array();
+	public string $prefix='fp_';
+	public string $options='wp_options';
+	public function __construct() { $this->options_table=&$GLOBALS['fpw_options_table']; }
+	public function suppress_errors($set=null) { return false; }
+	public function esc_like($text) { return addcslashes($text,'_%\\'); }
+	public function prepare($sql,...$args) {
+		foreach($args as $arg) { $pos=strpos($sql,'%s'); $sql=substr($sql,0,$pos)."'".$arg."'".substr($sql,$pos+2); }
+		return $sql;
+	}
+	public function query($sql) {
+		if (preg_match("/INSERT INTO \{?\w*options\}? \( option_name, option_value, autoload \) VALUES \( '(.+?)', '(.*)', 'off' \)$/s",$sql,$m)) {
+			if (array_key_exists($m[1],$this->options_table)) { return false; } // the unique option_name rejects the loser
+			$this->options_table[$m[1]]=$m[2]; return 1;
+		}
+		if (preg_match("/UPDATE \{?\w*options\}? SET option_value = '(.*)' WHERE option_name = '(.+)'$/s",$sql,$m)) {
+			if (!array_key_exists($m[2],$this->options_table)) { return 0; }
+			$this->options_table[$m[2]]=$m[1]; return 1;
+		}
+		if (preg_match("/DELETE FROM \{?\w*options\}? WHERE option_name = '(.+)'$/",$sql,$m)) {
+			$found=array_key_exists($m[1],$this->options_table)?1:0;
+			unset($this->options_table[$m[1]]); return $found;
+		}
+		return 0;
+	}
+	public function get_var($sql) {
+		if (preg_match("/SELECT option_value FROM \{?\w*options\}? WHERE option_name = '(.+)'$/",$sql,$m)) { return $this->options_table[$m[1]] ?? null; }
+		return null;
+	}
+	public function get_col($sql) {
+		if (preg_match("/SELECT option_name FROM \{?\w*options\}? WHERE option_name LIKE '(.+)'$/",$sql,$m)) {
+			$prefix=str_replace(array('\_','\%','\\'),array('_','%','\\'),$m[1]);
+			if (str_ends_with($prefix,'%')) { $prefix=substr($prefix,0,-1); }
+			return array_values(array_filter(array_keys($this->options_table),static fn($name)=>str_starts_with($name,$prefix)));
+		}
+		return array();
+	}
+}
+$GLOBALS['fpw_options_table']=array();
+$GLOBALS['wpdb']=new FPW_Fake_wpdb();
+if (!function_exists('get_option')) { function get_option($name,$default=false) { return $GLOBALS['fpw_options_table'][$name] ?? $default; } }
+if (!function_exists('update_option')) { function update_option($name,$value,$autoload=null) { $GLOBALS['fpw_options_table'][$name]=is_scalar($value)||is_null($value)?$value:json_encode($value); return true; } }
+if (!function_exists('delete_option')) { function delete_option($name) { unset($GLOBALS['fpw_options_table'][$name]); return true; } }
+
+// A fake session/cart on the existing fake WooCommerce, and a fake checkout carrying posted data.
+$GLOBALS['fpw_session_customer_id']='abc123';
+class FPW_Fake_Session { public function get_customer_id() { return $GLOBALS['fpw_session_customer_id']; } }
+class FPW_Fake_Cart_Hash extends FPW_Fake_Cart {
+	public function __construct(private string $hash='') {}
+	public function get_cart_hash(): string { return $this->hash; }
+}
+class FPW_Fake_Checkout { public function __construct(private array $posted) {} public function get_posted_data(): array { return $this->posted; } }
+$GLOBALS['fpw_woo']->session=new FPW_Fake_Session();
+$GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart_Hash('');
+function fpw_attempt_posted(array $overrides=array()): array {
+	return array_merge(array('billing_first_name'=>'Cliente','billing_phone'=>'+56 9 1234 5678','billing_email'=>'cliente@example.invalid','billing_company'=>'Empresa','billing_fp_rut'=>'76.123.456-7','billing_fp_giro'=>'Giro','billing_fp_dispatch'=>'no','billing_fp_address'=>'','order_comments'=>'','payment_method'=>'quotes-gateway'),$overrides);
+}
+$attempt_hash=fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted()));
+check(preg_match('/^[a-f0-9]{64}$/',$attempt_hash)===1,'The attempt idempotency hash is a sha256');
+check(fpw_checkout_attempt_hash(new FPW_Fake_Checkout(array_reverse(fpw_attempt_posted(),true)))===$attempt_hash,'The attempt hash is independent of the posted field order');
+check(fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted(array('billing_fp_dispatch'=>'si','billing_fp_address'=>'Otra dirección'))))!==$attempt_hash,'A changed posted field changes the attempt hash');
+$GLOBALS['fpw_session_customer_id']='other-session';
+check(fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted()))!==$attempt_hash,'Another session produces another attempt hash');
+$GLOBALS['fpw_session_customer_id']='abc123';
+$GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart_Hash('changed-cart');
+check(fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted()))!==$attempt_hash,'A changed cart changes the attempt hash');
+$GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart_Hash('');
+check(fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted()))===$attempt_hash,'The same session, cart and data reproduce the attempt hash');
+
+// All Woo seams the claim machinery touches, as recorded stubs (the durable
+// attempt binding is a direct-SQL lookup row, never a wc_get_orders meta_query:
+// Woo's posts store silently ignores meta_query since 9.2).
+if (!function_exists('wc_add_order_note')) { function wc_add_order_note($order_id,$note,$is_customer_note=true) { $GLOBALS['fpw_order_notes'][]=array($order_id,$note,$is_customer_note); return true; } }
+$GLOBALS['fpw_order_notes']=array();
+class FPW_Fake_QWC_Instance {}
+class FPW_Fake_Hook {
+	public array $callbacks=array();
+	public function __construct() { $this->callbacks[10]['qwc_hook']=array('function'=>array(new FPW_Fake_QWC_Instance(),'qwc_init_quote_emails')); }
+	public function removed($priority,$callable) { foreach($this->callbacks[$priority]??array() as $id=>$cb) { if($cb['function']===$callable) { unset($this->callbacks[$priority][$id]); return true; } } return false; }
+}
+$GLOBALS['wp_filter']=array('woocommerce_checkout_order_processed'=>new FPW_Fake_Hook());
+if (!function_exists('remove_action')) { function remove_action($hook,$callable,$priority=10) { return $GLOBALS['wp_filter'][$hook]->removed($priority,$callable); } }
+
+// Owned attempt, end to end through the filter: Woo's short-circuit receives null and proceeds natively.
+check(!isset($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]),'A fresh site holds no claim for the attempt');
+$checkout=new FPW_Fake_Checkout(fpw_attempt_posted());
+check(fpw_checkout_claim(null,$checkout)===null,'An owned attempt lets Woo create the order (the filter passes null through)');
+$row=json_decode($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]??'',true);
+check(is_array($row) && $row['order_id']===0 && $row['session']===fpw_session_fingerprint() && $row['started']>0,'The claim row stores the owning session, no order and its start time');
+check(fpw_pending_attempt()===$attempt_hash,'The owned attempt is this request\'s pending attempt');
+
+// The order Woo is creating binds the attempt identity durably (see the registration checks below).
+
+// The concurrent loser: the INSERT loses, the owner is in flight, the wait budget is exhausted → recoverable failure state.
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>fpw_session_fingerprint(),'order_id'=>0,'started'=>time()));
+$claim=fpw_checkout_attempt_claim($attempt_hash,0.05);
+check($claim['state']==='busy','A busy concurrent attempt reports the recoverable busy state');
+try {
+	fpw_checkout_claim(null,$checkout);
+	check(false,'A busy attempt must fail the checkout recoverably');
+} catch (Exception $e) {
+	check(str_contains($e->getMessage(),'no se creará una solicitud duplicada'),'The busy attempt throws the recoverable Spanish message into Woo\'s own notice handling');
+}
+
+// The winner finalizes; the loser (or a retry) recovers the winner's own order through the same filter.
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>fpw_session_fingerprint(),'order_id'=>68,'started'=>time()));
+check(fpw_checkout_claim(null,$checkout)===68,'A finalized claim recovers the winner\'s own order through Woo\'s short-circuit');
+check(count($GLOBALS['wp_filter']['woocommerce_checkout_order_processed']->callbacks[10]??array())===0,'A folded attempt no longer re-fires the quotes extension\'s request notifications');
+check($GLOBALS['fpw_order_notes']===array(array(68,'Solicitud duplicada (reintento concurrente) fusionada en este pedido por el control de intentos de Freeplast.',false)),'The folded attempt leaves one honest private trace on the record it joins');
+
+// The durable binding: the claim row is gone but the lookup row carries the attempt — replays fold for the record's lifetime.
+unset($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]);
+$GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]='68';
+$claim=fpw_checkout_attempt_claim($attempt_hash,0.0);
+check($claim['state']==='recovered' && $claim['order_id']===68,'A replay of a swept attempt folds into the landed order through its lookup row');
+
+// Takeover: an unfinalized claim past the grace period belongs to a winner that died mid-flight.
+unset($GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]);
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>fpw_session_fingerprint(),'order_id'=>0,'started'=>time()-FPW_CLAIM_TAKEOVER_SECONDS-1));
+$claim=fpw_checkout_attempt_claim($attempt_hash,0.0);
+check($claim['state']==='owned','The same session resumes an attempt whose winner died past the grace period');
+$row=json_decode($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]??'',true);
+check(is_array($row) && $row['order_id']===0 && abs($row['started']-time())<3,'The takeover writes a fresh claim row');
+// …and a landed order is recovered instead.
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>fpw_session_fingerprint(),'order_id'=>0,'started'=>time()-FPW_CLAIM_TAKEOVER_SECONDS-1));
+$GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]='91';
+$claim=fpw_checkout_attempt_claim($attempt_hash,0.0);
+check($claim['state']==='recovered' && $claim['order_id']===91,'A record that landed without finalization is recovered at takeover time');
+
+// A foreign-session claim never leaks its order to this session (defensive; the hash binds the session).
+unset($GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]);
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>hash('sha256','foreign'),'order_id'=>7,'started'=>time()));
+$claim=fpw_checkout_attempt_claim($attempt_hash,0.05);
+check($claim['state']==='busy','A foreign-session claim at this attempt\'s key is not recoverable by this session');
+unset($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]);
+
+// Finalization writes the order id; release deletes the claim; the sweep removes only expired rows.
+$GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('session'=>fpw_session_fingerprint(),'order_id'=>0,'started'=>time()));
+fpw_finalize_attempt_claim($attempt_hash,77);
+$row=json_decode($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]??'',true);
+check($row['order_id']===77,'Finalization records the winner\'s order id on the claim');
+check($GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]==='77','Finalization writes the durable lookup row (unique option_name → order id)');
+fpw_release_attempt_claim($attempt_hash);
+check(!isset($GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]),'A released attempt leaves no claim row');
+$GLOBALS['fpw_options_table']['fpw_claim_expired']=json_encode(array('session'=>'x','order_id'=>0,'started'=>time()-FPW_CLAIM_MAX_AGE-1));
+$GLOBALS['fpw_options_table']['fpw_claim_fresh']=json_encode(array('session'=>'x','order_id'=>0,'started'=>time()));
+check(fpw_sweep_attempt_claims()===1,'The opportunistic sweep removes exactly the expired claim rows');
+check(isset($GLOBALS['fpw_options_table']['fpw_claim_fresh']) && !isset($GLOBALS['fpw_options_table']['fpw_claim_expired']),'The sweep keeps in-window claims');
+check(isset($GLOBALS['fpw_options_table']['fpw_attempt_'.$attempt_hash]),'The sweep never touches the durable lookup rows');
+
+// Woo seam registration: the claim rides Woo's own order-creation short-circuit and its create/exception lifecycle.
+check(in_array('fpw_checkout_claim',$registered_filters['woocommerce_create_order']??array(),true),'The claim integrates Woo\'s own woocommerce_create_order short-circuit');
+$create_callbacks=$registered_actions['woocommerce_checkout_create_order']??array();
+check(count($create_callbacks)>=2,'The order-creation hook carries both the attempt binding and the local field meta');
+check(count($registered_actions['woocommerce_checkout_order_created']??array())>=1,'The claim finalizes on woocommerce_checkout_order_created');
+check(count($registered_actions['woocommerce_checkout_order_exception']??array())>=1,'The claim releases on woocommerce_checkout_order_exception');
+// The attempt meta is bound on the created order.
+class FPW_Fake_Order { public array $meta=array(); public function update_meta_data($key,$value) { $this->meta[$key]=$value; } public function get_id(): int { return 0; } }
+$order=new FPW_Fake_Order();
+foreach($create_callbacks as $callback) { if (is_object($callback)) { $callback($order,fpw_attempt_posted()); } }
+check(($order->meta['_fpw_attempt']??'')===$attempt_hash,'An owned attempt binds its identity durably on the created order');
+unset($GLOBALS['fpw_options_table'],$GLOBALS['wpdb'],$GLOBALS['fpw_order_notes'],$GLOBALS['fpw_session_customer_id'],$GLOBALS['wp_filter']);
+
+echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + checkout attempt claim)\n";

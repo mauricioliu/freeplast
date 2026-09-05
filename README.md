@@ -48,7 +48,7 @@ and `http://mliu:4173/product-page-prototype/?variant=A` for the product-page pr
 
 **Current WordPress implementation (2026-09-05):** WooCommerce + free Quotes for WooCommerce + a small Freeplast adapter. Start at `wordpress/WOO-MIGRATION.md` and `docs/adr/0001-woocommerce-quote-only.md`. The custom catalog/basket implementation is retired under `wordpress/legacy/`.
 
-**Checks:** `npm test` performs offline PHP/JS and local field checks only; it does not start a server or send requests. `npm run woo:package` creates the checksum-pinned deployment bundle. Explicit staging regression and backup/restore commands are documented in `wordpress/WOO-MIGRATION.md`.
+**Checks:** `npm test` runs the offline PHP/JS and field checks, the pinned cart-block store scenarios, and the disposable local-stack regression (it boots a throwaway WordPress + WooCommerce installation under `wordpress/.build/` and drives real HTTP against `http://127.0.0.1:8091` only — never staging, never any external host; `FREEPLAST_SKIP_STACK=1` skips the stack part). `npm run woo:package` creates the checksum-pinned deployment bundle. Explicit staging regression and backup/restore commands are documented in `wordpress/WOO-MIGRATION.md`.
 
 **Live `freeplast.cl` performance:** when diagnosing or fixing slowness on the current
 production WooCommerce site, read `docs/agents/freeplast-wordpress/LIVE-PERFORMANCE.md`.

@@ -1,20 +1,25 @@
 #!/usr/bin/env node
 /**
- * Provision the disposable Freeplast WordPress installation (issue #2).
+ * Provision the disposable Freeplast WordPress + WooCommerce installation
+ * (issue #2; Woo-era replacement per ADR-0001, issue #1 follow-ups #24/#27).
  *
  * Creates a clean WordPress + SQLite site under wordpress/.build/wp:
  *
  *   1. extracts pinned WordPress core (tools fetched by fetch-tools.sh),
- *   2. copies the repository's theme and plugin into wp-content,
+ *   2. copies the repository's theme and the freeplast-woo adapter into wp-content,
  *   3. installs the sqlite-database-integration drop-in,
- *   4. writes wp-config.php, installs WordPress, activates the theme and
- *      the private plugin, and disables search-engine visibility.
+ *   4. installs and activates the pinned WooCommerce + Quotes for WooCommerce
+ *      zips (woo-dependencies.json, hash-verified), creates the Woo pages
+ *      and two featured test products,
+ *   5. writes wp-config.php, installs WordPress, activates the theme and the
+ *      adapter, and disables search-engine visibility.
  *
- * Idempotent when the build already exists (wordpress/.build/.provisioned.json).
- * Pass --fresh (or set FREEPLAST_KEEP_BUILD=0 after wiping) to rebuild.
+ * Idempotent when the build already exists (wordpress/.build/.provisioned.json):
+ * wp-content is re-synced and the active components re-checked. Pass --fresh
+ * to rebuild from scratch.
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +42,7 @@ function wp(args) {
   return sh(PHP, [WPCLI, ...args, `--url=${SITE_URL}`, '--quiet'], { cwd: WP_DIR }).trim();
 }
 
-console.log('Bootstrapping disposable Freeplast WordPress…');
+console.log('Bootstrapping disposable Freeplast WordPress + WooCommerce…');
 
 /* 1. Tools */
 if (!existsSync(PHP) || !existsSync(WPCLI)) {
@@ -59,7 +64,7 @@ mkdirSync(WP_DIR, { recursive: true });
 console.log('  extracting WordPress core…');
 execFileSync('tar', ['-xzf', join(CACHE, 'wordpress.tar.gz'), '-C', WP_DIR, '--strip-components=1']);
 
-/* 3. Theme + plugin from the repository */
+/* 3. Theme + adapter from the repository */
 syncContent();
 
 /* 4. SQLite drop-in */
@@ -118,8 +123,10 @@ require_once ABSPATH . 'wp-settings.php';
 console.log('  installing WordPress (locale en_US — see BUILD-DECISIONS.md)…');
 wp(['core', 'install', '--title=Freeplast', '--admin_user=freeplast', `--admin_password=${adminPassword}`, '--admin_email=admin@freeplast.local', '--skip-email']);
 wp(['rewrite', 'structure', '/%postname%/']);
-reactivate();
+wp(['theme', 'activate', 'freeplast']);
 wp(['option', 'update', 'blog_public', '0']);
+installWoo();
+wp(['plugin', 'activate', 'freeplast-woo']);  // after Woo: the adapter declares Requires Plugins
 
 /* 7. Marker */
 const wpVersion = wp(['core', 'version']);
@@ -129,20 +136,68 @@ writeFileSync(
   JSON.stringify({ wpVersion, phpVersion, siteUrl: SITE_URL, provisionedAt: new Date().toISOString(), adminUser: 'freeplast', adminPassword }, null, 2)
 );
 mkdirSync(join(WP_DIR, 'wp-content', 'database'), { recursive: true });
-console.log(`  disposable WordPress ${wpVersion} ready at ${SITE_URL} (admin credentials in .build/.provisioned.json)`);
-console.log('  theme+plugin: freeplast / freeplast-catalog-quotes (active, noindex on)');
+console.log(`  disposable WordPress ${wpVersion} + WooCommerce ready at ${SITE_URL} (admin credentials in .build/.provisioned.json)`);
+console.log('  theme+adapter: freeplast / freeplast-woo (active, noindex on)');
 
 function syncContent() {
   const content = join(WP_DIR, 'wp-content');
   mkdirSync(join(content, 'themes'), { recursive: true });
   mkdirSync(join(content, 'plugins'), { recursive: true });
   rmSync(join(content, 'themes', 'freeplast'), { recursive: true, force: true });
-  rmSync(join(content, 'plugins', 'freeplast-catalog-quotes'), { recursive: true, force: true });
+  rmSync(join(content, 'plugins', 'freeplast-woo'), { recursive: true, force: true });
   cpSync(join(WORDPRESS_DIR, 'wp-content', 'themes', 'freeplast'), join(content, 'themes', 'freeplast'), { recursive: true });
-  cpSync(join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-catalog-quotes'), join(content, 'plugins', 'freeplast-catalog-quotes'), { recursive: true });
+  cpSync(join(WORDPRESS_DIR, 'wp-content', 'plugins', 'freeplast-woo'), join(content, 'plugins', 'freeplast-woo'), { recursive: true });
+}
+
+/** The pinned Woo zips, hash-verified against woo-dependencies.json (downloaded once into .tools/cache). */
+function pinnedWooZip(slug) {
+  const deps = JSON.parse(readFileSync(join(WORDPRESS_DIR, 'woo-dependencies.json'), 'utf8'));
+  const dep = deps[slug];
+  if (!dep) throw Error(`woo-dependencies.json has no entry for ${slug}`);
+  const dest = join(CACHE, `${slug}-${dep.version}.zip`);
+  if (!existsSync(dest) || createHash('sha256').update(readFileSync(dest)).digest('hex') !== dep.sha256) {
+    console.log(`  downloading ${slug} ${dep.version} (pinned)…`);
+    sh('curl', ['-fsSL', '--retry', '3', '-o', `${dest}.part`, dep.url]);
+    const digest = createHash('sha256').update(readFileSync(`${dest}.part`)).digest('hex');
+    if (digest !== dep.sha256) throw Error(`${slug} zip hash mismatch: ${digest}`);
+    execFileSync('mv', ['-f', `${dest}.part`, dest]);
+  }
+  return dest;
+}
+
+function installWoo() {
+  for (const slug of ['woocommerce', 'quotes-for-woocommerce']) {
+    const zip = pinnedWooZip(slug);
+    if (wp(['plugin', 'list', '--format=csv', '--fields=name']).split('\n').includes(slug)) {
+      wp(['plugin', 'activate', slug]);
+    } else {
+      wp(['plugin', 'install', zip, '--activate']);
+    }
+  }
+  // Cart + checkout pages. install_pages creates the block checkout; staging deliberately
+  // runs the CLASSIC checkout (ADR-0001: the quotes extension's address options are not
+  // equivalent in Checkout Blocks), so the pages get the classic shortcodes.
+  wp(['wc', 'tool', 'run', 'install_pages', '--user=1']);
+  for (const option of ['woocommerce_cart_page_id', 'woocommerce_checkout_page_id']) {
+    const id = wp(['option', 'get', option]);
+    if (id) wp(['post', 'update', id, '--post_content=<!-- wp:shortcode -->[woocommerce_cart]<!-- /wp:shortcode -->']);
+  }
+  const checkoutId = wp(['option', 'get', 'woocommerce_checkout_page_id']);
+  if (checkoutId) wp(['post', 'update', checkoutId, '--post_content=<!-- wp:shortcode -->[woocommerce_checkout]<!-- /wp:shortcode -->']);
+  // Two featured products (price 0 is the documented technical value enabling native purchasability),
+  // each with the quotes extension's per-product flag (qwc_enable_quotes=on) so the checkout takes
+  // the quotes gateway and the request stays pending — as on staging.
+  for (const name of ['Caja Cosechera 3/4 (prueba)', 'Caja Universal (prueba)']) {
+    const out = sh(PHP, [WPCLI, 'wc', 'product', 'create', `--name=${name}`, '--type=simple', '--regular_price=0', '--featured=1', '--user=1', `--url=${SITE_URL}`, '--quiet', '--porcelain'], { cwd: WP_DIR });
+    wp(['post', 'meta', 'update', out.trim(), 'qwc_enable_quotes', 'on']);
+  }
+  wp(['cache', 'flush']);
 }
 
 function reactivate() {
   wp(['theme', 'activate', 'freeplast']);
-  wp(['plugin', 'activate', 'freeplast-catalog-quotes']);
+  const active = wp(['plugin', 'list', '--status=active', '--format=csv', '--fields=name']).split('\n');
+  if (active.includes('woocommerce') && active.includes('quotes-for-woocommerce')) {
+    wp(['plugin', 'activate', 'freeplast-woo']);
+  }
 }

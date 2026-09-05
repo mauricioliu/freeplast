@@ -8,6 +8,24 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-05 — Issue #1 (WA-01 Woo-side): one attempt, one request under concurrent checkout
+
+The #24 fix landed only in the retired implementation under `legacy/` (see the merge record in WOO-MIGRATION.md); the acceptance review still measured two concurrent POSTs creating two orders. Decision (adapter **1.3.0**, pending deploy):
+
+- **Claim, never own (ADR-0001):** the adapter adds an atomic per-attempt claim around Woo's own checkout — a single options row keyed by the attempt's idempotency hash (session + cart hash + normalized posted attempt fields), inserted as a plain INSERT against the unique `option_name` (the option API is bypassed: `add_option()` is an upsert whose per-request cache hides defeats). The winner proceeds through Woo unchanged; the loser never creates a second order.
+- **Recovery through Woo's own short-circuit:** on recovery the adapter returns the winner's order id from `woocommerce_create_order` — Woo itself skips creation, runs its own flow and sends the customer to the winner's confirmation. The fold-in forces `woocommerce_cart_needs_payment` so the flow takes the quotes gateway (Woo's own route that keeps the request pending): without it the emptied cart would take the no-payment path and move the request into a commercial status.
+- **No duplicate notifications, no duplicate records:** the fold removes the quotes extension's `checkout_order_processed` hook for that request only (the winner's notification already covers the record) and leaves one honest private note. The attempt identity is bound durably in a dedicated lookup row (unique `option_name` → order id), so replays fold for the record's lifetime; the order also carries its attempt hash as meta for administration.
+- **Verified pitfall avoided:** Woo's posts order store silently ignores `meta_query` since 9.2 — the first draft looked the attempt up by order meta and every attempt folded into the newest order. The real-stack regression caught it; lookups now go through the direct-SQL lookup row, never through order-meta queries and never through hand-written SQL against Woo's storage (ADR-0001).
+- **Real-stack regression, not a simulation:** new `scripts/woo-stack-harness.mjs` + `scripts/woo-checkout-race.py` boot the disposable WP + SQLite + WooCommerce stack (bootstrap.mjs, repaired for the Woo era), serve it multi-worker on loopback and drive real HTTP: two concurrent checkouts → one pending order with both confirmations; a sequential replay → Woo's own empty-cart rejection and no new order; a different session/data → its own order. Dead-winner takeover and release-on-failure are unit-covered offline. Harness overhead on a warm stack: seconds.
+
+## 2026-09-05 — Issue #1 (WA-04 Woo-side): Home featured grid with self-naming links
+
+The #27 fix also landed only under `legacy/`; the live Home still rendered the featured grid through a `wp:shortcode` block. Verified root cause in WordPress core: `render_block_core_shortcode()` runs `wpautop()` over the shortcode's EXPANDED output, and `get_the_block_template_html()` expands `[products]` before `do_blocks()` — so Woo's native loop markup is paragraph-split at its internal blank lines, landing `</p>`/`<p>` pairs inside the product link (the unnamed-link defect axe measured). Decision (adapter **1.3.0**, theme **1.0.5**, pending deploy):
+
+- **Stable rendering API, not new markup (PRD: "plugin-rendered dynamic blocks"):** the adapter registers `freeplast-woo/featured-products`, whose render callback executes the SAME native `[products]` shortcode inside `do_blocks`, where no wpautop runs; the theme template swaps the `wp:shortcode` block for it. The delivered card markup is byte-for-byte Woo's own loop — title text and alt-bearing image inside the link — and the adapter owns no card markup at all.
+- **With the adapter inactive the grid degrades to nothing** (same class of degradation as the other adapter features); with it active the grid keeps the native `woocommerce columns-4` classes.
+- **The real-stack regression computes the delivered Home**, not a fixture: no shortcode wrapper, no wpautop damage inside the product link, the title inside the link, and a dependency-free axe link-name rule (text, aria-label, title, alt-bearing image) over EVERY delivered anchor with zero unnamed links. `verify-woo-http.py` asserts the same contract on staging.
+
 ## 2026-09-05 — Issue #25: Ventas Freeplast enters the native Woo admin with least privilege (Woo stack)
 
 Finding WA-02 of the post-migration acceptance review: the retained `ventas_freeplast` role had no Woo order capabilities, so the only reviewed flows ran as administrator or `shop_manager` — neither is least-privilege. Decision (adapter **1.2.0**, pending deploy):
