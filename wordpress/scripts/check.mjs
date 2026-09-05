@@ -404,12 +404,24 @@ function tagAttributes(tag) {
 }
 
 /**
+ * The axe-core link-name naming priority as predicates (issue #27): an
+ * <a href> is named by its flattened text content, a non-empty aria-label,
+ * an aria-labelledby whose every id exists in the document, a title
+ * attribute, or (last resort) a descendant image whose alt names the link.
+ */
+function linkHasName(content, attributes, html) {
+  if (servedText(content)) return true;
+  if ((attributes['aria-label'] || '').trim()) return true;
+  const labelledby = (attributes['aria-labelledby'] || '').split(/\s+/).filter(Boolean);
+  if (labelledby.length > 0 && labelledby.every((id) => html.includes(`id="${id}"`))) return true;
+  if ((attributes.title || '').trim()) return true;
+  return [...content.matchAll(/<img\b[^>]*>/g)].some((img) => (tagAttributes(img[0]).alt || '').trim().length > 0);
+}
+
+/**
  * The link-name audit (issue #27): the axe-core `link-name` rule computed
  * over the HTML WordPress actually delivers — plugin blocks, theme parts
- * and editor/content output included, nothing excluded. Per the accessible
- * name algorithm, an <a href> is named when its flattened content has text,
- * or carries a non-empty aria-label, a resolvable aria-labelledby, a title,
- * or (last resort) an image whose alt contributes the name. Anchors without
+ * and editor/content output included, nothing excluded. Anchors without
  * href are not links (axe skips them too); aria-hidden="true" anchors are
  * outside the accessibility tree. Returns the offending anchors so a
  * failure message can show exactly which link stopped the keyboard empty.
@@ -422,17 +434,9 @@ function namelessLinks(html) {
   for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)) {
     const attributes = tagAttributes(match[1]);
     if (!('href' in attributes) || attributes['aria-hidden'] === 'true') continue;
-    const labelledby = (attributes['aria-labelledby'] || '').split(/\s+/).filter(Boolean);
-    const labelledbyResolved =
-      labelledby.length > 0 && labelledby.every((id) => new RegExp(`id="${id}"`).test(html));
-    const name =
-      servedText(match[2]) ||
-      (attributes['aria-label'] || '').trim() ||
-      (labelledbyResolved ? 'named' : '') ||
-      (attributes.title || '').trim() ||
-      [...match[2].matchAll(/<img\b[^>]*>/g)].map((img) => (tagAttributes(img[0]).alt || '').trim()).find(Boolean) ||
-      '';
-    if (!name) anchors.push({ href: attributes.href, tag: match[0].slice(0, 160) });
+    if (!linkHasName(match[2], attributes, html)) {
+      anchors.push({ href: attributes.href, tag: match[0].slice(0, 160) });
+    }
   }
   return anchors;
 }
@@ -5942,15 +5946,13 @@ test('the link-name audit passes over the HTML WordPress delivers and the discov
      render an entirely empty card link — the reported defect class. It
      must still render a NAMED link, falling back to its slug, and Home
      must return to exactly the approved eight after it is removed. */
-  const seededId = wp(
-    [
-      'eval',
-      'add_filter( "wp_insert_post_empty_content", "__return_false" );' +
-        '$id = wp_insert_post( array( "post_type" => "fp_product", "post_status" => "publish", "post_title" => "", "post_content" => "", "post_excerpt" => "", "post_name" => "producto-sin-titulo-control" ), true );' +
-        'if ( is_wp_error( $id ) || ! $id ) { WP_CLI::error( "seed failed" ); }' +
-        'echo $id;',
-    ]
-  ).stdout.trim();
+  const seededId = wp([
+    'eval',
+    `add_filter( "wp_insert_post_empty_content", "__return_false" );
+$id = wp_insert_post( array( "post_type" => "fp_product", "post_status" => "publish", "post_title" => "", "post_content" => "", "post_excerpt" => "", "post_name" => "producto-sin-titulo-control" ), true );
+if ( is_wp_error( $id ) || ! $id ) { WP_CLI::error( "seed failed" ); }
+echo $id;`,
+  ]).stdout.trim();
   assert.match(seededId, /^\d+$/, 'the content-injected record must exist for the audit');
   try {
     wp(['post', 'meta', 'update', seededId, '_fp_featured', '1']);
