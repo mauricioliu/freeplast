@@ -82,6 +82,57 @@ Notes for next iteration: none blocking — the residual takeover window
 after being in flight >30s) recovers the landed record on takeover and
 is documented in claim_attempt(); the acceptance walkthrough of the
 staging site remains the operator/human step.
+## 2026-09-05 — Issue #27: every rendered link names itself
+
+The post-migration review of 2026-09-05 (finding WA-04) reported eight
+tabbable anchors without an accessible name in the Home Featured Product
+cards — each card stopping the keyboard on an empty link, invisible in
+the accessibility tree. The defect class, not a Woo-specific markup
+artifact, is what the repository must make impossible: any product link
+whose visible content collapses to nothing (a titleless content-side
+record, a redundant image-only anchor) renders a nameless keyboard stop.
+Decisions:
+
+1. **Fix the naming contract at the shared renderer, not per surface.**
+   Every product link in the plugin now names itself through one helper,
+   `Freeplast_CQ_Products::accessible_title()`: the product's visible
+   title, falling back to its slug when a record published outside the
+   reviewed source carries none (synchronization can never create one).
+   It is applied by all four renderers that emit product links — the
+   catalog cards (Home Featured, Tienda, search), the related Products
+   list, and both basket line views — so no surface can regress
+   independently.
+2. **The check audits the HTML WordPress actually delivers, nothing
+   excluded.** A dependency-free server-side computation of the axe
+   `link-name` rule (text content, aria-label, resolvable
+   aria-labelledby, title, alt-bearing image as last resort) runs over
+   the served Home, Tienda, search and product-page documents — plugin
+   block output, theme parts and any content-side markup included. The
+   check reproduces the reported pattern (eight image-only card anchors)
+   and requires all eight to be flagged, and shows an aria-label painted
+   onto one empty link silences only that link — the exact band-aid the
+   acceptance criteria forbid, made mechanically rejectable.
+3. **Content-injected records are exercised end-to-end.** The check
+   publishes a real fp_product without title/category/excerpt (bypassing
+   the `wp_insert_post_empty_content` guard at the seam, since the
+   reviewed source can never produce such a record), requires its card
+   link to still be named (slug fallback in the served HTML) and requires
+   Home to return to exactly the approved eight Featured Products after
+   the record is removed.
+
+Behavior-preserving: for every source-synced record (all titled), the
+rendered markup is byte-identical; destinations, images, names and the
+native Cotizar chooser are untouched, and no aria-label was added
+anywhere. Mechanical evidence only — screen-reader and keyboard
+acceptance remain human review (Gate 3).
+
+Files: wordpress/wp-content/plugins/freeplast-catalog-quotes/includes/
+class-products.php (accessible_title + related Products), class-discovery.php
+(catalog cards), class-basket.php (mini + full basket line titles),
+wordpress/scripts/check.mjs (issue #27 section + link-name audit helpers +
+VERIFICATION rows/notes), BUILD-DECISIONS.md. dist/ plugin ZIP +
+CHECKSUMS.sha256 and VERIFICATION.md regenerated deterministically by
+npm test (39/39 pass).
 
 ## 2026-09-04 — Issue #23: strip the PHP origin header at the staging edge
 

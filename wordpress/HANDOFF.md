@@ -109,6 +109,15 @@ not human approval** — no pixel rendering and no human verdict is claimed:
 - **Reduced motion:** `prefers-reduced-motion` collapses all nonessential
   motion; every interactive control declares ≥ 24 px targets (primary
   44 px).
+- **Link names (issue #27):** a mechanical link-name audit (the axe
+  `link-name` rule over the served HTML, nothing excluded) passes over
+  Home, Tienda, search and the product page — every tabbable anchor
+  carries an accessible name, the Featured cards keep exactly one anchor
+  per Product named by its visible reviewed title (never an aria-label
+  painted onto an empty link), and a titleless content-injected record
+  falls back to its slug instead of rendering an empty keyboard stop.
+  The audit demonstrably flags the reported WA-04 pattern (eight
+  image-only featured-card anchors).
 - **Responsive:** one identical mobile-first document serves 375, 412,
   768, 1024 and 1440 px with viewport meta everywhere; adaptation only
   through the declared 768/1024 breakpoints.

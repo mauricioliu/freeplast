@@ -274,6 +274,11 @@ class Freeplast_CQ_Discovery {
 	 * excerpt and a quotation action that opens the shared quantity chooser
 	 * (issue #6) — an unseen quantity is never added. All server-rendered
 	 * from synchronized metadata only.
+	 *
+	 * The single card anchor names itself with the product's own visible
+	 * content (Freeplast_CQ_Products::accessible_title), so a card can never
+	 * render an empty, nameless keyboard stop (issue #27) — the image rides
+	 * inside the named link and no redundant empty anchor is emitted.
 	 */
 	private static function render_cards( array $posts, int $heading_level ): string {
 		$heading = (string) $heading_level;
@@ -290,7 +295,7 @@ class Freeplast_CQ_Discovery {
 				esc_url( get_permalink( $post ) ),
 				$image,
 				esc_html( $category ),
-				esc_html( get_the_title( $post ) ),
+				esc_html( Freeplast_CQ_Products::accessible_title( $post ) ),
 				esc_html( wp_trim_words( get_the_excerpt( $post ), 24, '…' ) ),
 				self::render_card_chooser( $post )
 			);

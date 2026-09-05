@@ -114,6 +114,13 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   Products and standard pages with a clear no-result state, related products
   render the reviewed ids in reviewed order, and an explicitly archived
   Product disappears from every discovery surface (its URL stops resolving);
+- every rendered link names itself (issue #27): a mechanical link-name
+  audit (the axe `link-name` rule over the served HTML — plugin blocks,
+  theme parts and content output included, nothing excluded) passes over
+  Home, Tienda, search and the product page; the Featured cards keep
+  exactly one anchor per Product named by its visible reviewed title,
+  and a titleless content-injected record falls back to its slug instead
+  of rendering an empty keyboard stop;
 - the Quote Basket is a persistent, secure, anonymous session: “Agregar a
   cotización” opens a quantity chooser on cards and on the product page, a
   positive whole-unit quantity adds Caja Cosechera 3/4 through the
