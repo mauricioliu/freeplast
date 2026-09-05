@@ -67,7 +67,7 @@ function fpw_cart_line_count(): int {
 
 /** The header count participates in Woo's native add-to-cart fragment refresh. */
 add_filter( 'woocommerce_add_to_cart_fragments', static function ( $fragments ) {
-	$fragments['span.fpw-basket-count'] = '<span class="fpw-basket-count">' . (int) fpw_cart_line_count() . '</span>';
+	$fragments['span.fpw-basket-count'] = '<span class="fpw-basket-count">' . fpw_cart_line_count() . '</span>';
 	return $fragments;
 } );
 

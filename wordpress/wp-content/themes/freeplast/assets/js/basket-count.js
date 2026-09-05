@@ -9,10 +9,12 @@
 (function () {
   'use strict';
   var SELECTOR = '.fpw-basket-count';
+  var CART_STORE = 'wc/store/cart';
 
   function render(count) {
+    var text = String(count);
     document.querySelectorAll(SELECTOR).forEach(function (el) {
-      if (el.textContent !== String(count)) { el.textContent = String(count); }
+      if (el.textContent !== text) { el.textContent = text; }
     });
   }
 
@@ -21,9 +23,9 @@
      value never flashes over the server-rendered number. */
   function lineCount() {
     try {
-      if (typeof window.wp.data.getStoreNames === 'function' &&
-          window.wp.data.getStoreNames().indexOf('wc/store/cart') === -1) { return null; }
-      var store = window.wp.data.select('wc/store/cart');
+      var data = window.wp.data;
+      if (typeof data.getStoreNames === 'function' && data.getStoreNames().indexOf(CART_STORE) === -1) { return null; }
+      var store = data.select(CART_STORE);
       if (!store || typeof store.getCartData !== 'function') { return null; }
       if (!store.hasFinishedResolution('getCartData')) { return null; }
       var cart = store.getCartData();

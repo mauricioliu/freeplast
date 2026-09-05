@@ -48,7 +48,10 @@ check($fragments['span.fpw-basket-count']==='<span class="fpw-basket-count">4</s
 $header=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/parts/header.html');
 check(substr_count($header,'fpw-basket-count')===2,'Both header surfaces (desktop link + mobile menu) carry the count span');
 check(substr_count($header,'{{FREEPLAST_BASKET_COUNT}}')===2,'Both header surfaces server-render the count token');
-$resolvers=array_values(array_filter($registered_filters['render_block'],static function($cb){ $out=$cb('{{FREEPLAST_BASKET_COUNT}}'); return is_string($out) && !str_contains($out,'{{FREEPLAST_BASKET_COUNT}}'); }));
+$resolvers=array_values(array_filter($registered_filters['render_block'],static function($resolver){
+    $rendered=$resolver('{{FREEPLAST_BASKET_COUNT}}');
+    return is_string($rendered) && !str_contains($rendered,'{{FREEPLAST_BASKET_COUNT}}');
+}));
 check(count($resolvers)===1,'Exactly one theme resolver replaces the count token');
 $link='<a class="fp-woo-selection" href="/cotizacion/">Productos a Cotizar (<span class="fpw-basket-count">{{FREEPLAST_BASKET_COUNT}}</span>)</a>';
 check(str_contains($resolvers[0]($link),'(<span class="fpw-basket-count">4</span>)'),'First paint renders the live distinct line count');
