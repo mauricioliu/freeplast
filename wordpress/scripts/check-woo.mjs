@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Offline checks only. Never starts a server or sends a quote request.
+// Offline unit checks + the disposable local stack (loopback only). Never touches staging or external hosts.
 import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';

@@ -368,8 +368,7 @@ function fpw_claim_row(): array {
 /** The atomic test-and-set: a plain INSERT fails on the unique option_name when the attempt is claimed. The expected duplicate-key error is suppressed — the defeat is information, not a fault. */
 function fpw_insert_claim_row( string $hash ): bool {
 	global $wpdb;
-	$suppress = $wpdb->suppress_errors();
-	$wpdb->suppress_errors( true );
+	$was_suppressed = $wpdb->suppress_errors(); // the no-arg call enables suppression and returns the prior state
 	$result = $wpdb->query(
 		$wpdb->prepare(
 			"INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )",
@@ -377,7 +376,7 @@ function fpw_insert_claim_row( string $hash ): bool {
 			wp_json_encode( fpw_claim_row() )
 		)
 	);
-	$wpdb->suppress_errors( $suppress );
+	$wpdb->suppress_errors( $was_suppressed );
 	return false !== $result && null !== $result;
 }
 
@@ -527,7 +526,8 @@ function fpw_checkout_claim( $order_id, $checkout ) {
 	if ( 'recovered' === $claim['state'] ) {
 		fpw_dedupe_request_notifications();
 		fpw_note_folded_attempt( (int) $claim['order_id'] );
-		fpw_is_folding_attempt( true );		return (int) $claim['order_id'];
+		fpw_is_folding_attempt( true );
+		return (int) $claim['order_id'];
 	}
 	throw new Exception( 'Tu solicitud se está procesando. Espera unos segundos e inténtalo de nuevo: no se creará una solicitud duplicada.' );
 }

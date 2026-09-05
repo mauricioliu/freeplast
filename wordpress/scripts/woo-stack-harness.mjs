@@ -95,17 +95,19 @@ export async function runStackHarness() {
     const scenario = spawnSync(py, [join(HERE, 'woo-checkout-race.py'), '--base', SITE_URL], { encoding: 'utf8', timeout: 300_000 });
     check(scenario.status === 0, `checkout scenarios failed:\n${scenario.stdout || ''}\n${scenario.stderr || ''}`);
     const outcomes = JSON.parse(scenario.stdout.trim().split('\n').pop());
+    const raceOrder = Number(outcomes.race_order);
+    const isolateOrder = Number(outcomes.isolate_order);
     check(outcomes.home.total_links > 0 && outcomes.home.unnamed === 0, `Home delivered ${outcomes.home.unnamed} unnamed links of ${outcomes.home.total_links}`);
     check(outcomes.home.no_shortcode_wrapper, 'Home still routes the grid through the wp:shortcode wpautop renderer');
     check(outcomes.race_results.every((result) => result === 'success'), 'not every concurrent checkout succeeded');
-    check(Number.isInteger(outcomes.race_order), 'the race did not produce an order id');
-    check(Number.isInteger(outcomes.isolate_order) && outcomes.isolate_order !== outcomes.race_order, 'a different attempt must never fold into the race order');
+    check(Number.isInteger(raceOrder), 'the race did not produce an order id');
+    check(Number.isInteger(isolateOrder) && isolateOrder !== raceOrder, 'a different attempt must never fold into the race order');
 
     /* 4. WordPress state behind the responses (WP-CLI, read-only). */
     const phpCode = `
       global $wpdb;
       $out = array();
-      $ids = array(${Number(outcomes.race_order)}, ${Number(outcomes.isolate_order)});
+      $ids = array(${raceOrder}, ${isolateOrder});
       foreach ($ids as $id) {
         $order = wc_get_order($id);
         $out[$id] = array(
@@ -115,8 +117,8 @@ export async function runStackHarness() {
           'billing_email' => $order->get_billing_email(),
         );
       }
-      $lookup = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_attempt_' . $out[${Number(outcomes.race_order)}]['attempt']));
-      $out['lookup_row'] = array('id' => (int) (string) $lookup, 'for_order' => ${Number(outcomes.race_order)});
+      $lookup = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_attempt_' . $out[${raceOrder}]['attempt']));
+      $out['lookup_row'] = array('id' => (int) (string) $lookup, 'for_order' => ${raceOrder});
       echo wp_json_encode($out);
     `;
     const state = sh(PHP, [WPCLI, 'eval', phpCode, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
@@ -128,7 +130,7 @@ export async function runStackHarness() {
       check(entry.attempt.length === 64, `order ${id} does not carry a bound attempt hash`);
     }
     check(parsed.lookup_row.id === parsed.lookup_row.for_order, `the durable lookup row does not resolve to the race order (${JSON.stringify(parsed.lookup_row)})`);
-    check(parsed[outcomes.isolate_order].billing_email !== parsed[outcomes.race_order].billing_email, 'the isolated attempt must keep its own submitted details');
+    check(parsed[isolateOrder].billing_email !== parsed[raceOrder].billing_email, 'the isolated attempt must keep its own submitted details');
   } finally {
     server.kill('SIGTERM');
     sleep(300);

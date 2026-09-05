@@ -75,53 +75,48 @@ class HiddenInputs(HTMLParser):
         if tag == 'input' and a.get('type') == 'hidden' and a.get('name'):
             self.values[a['name']] = a.get('value', '')
 
-# ---------------------------------------------------------------- home (WA-04)
-home_session = Session()
-code, html = home_session.request('/')
+class Links(HTMLParser):
+    """Dependency-free axe link-name rule over every rendered anchor: named by
+    non-empty text, aria-label/title attribute, or an img descendant with a
+    non-empty alt (aria-labelledby does not occur in this markup family)."""
+    def __init__(self):
+        super().__init__()
+        self.frames = []   # open <a> frames: [named_by_attrs, has_text, has_alt_img]
+        self.verdicts = []
+    def _innermost(self):
+        return self.frames[-1] if self.frames else None
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == 'a':
+            self.frames.append([bool((a.get('aria-label') or '').strip() or (a.get('title') or '').strip()), False, False])
+        elif tag == 'img' and (a.get('alt') or '').strip():
+            frame = self._innermost()
+            if frame is not None:
+                frame[2] = True
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in ('img', 'input', 'br', 'hr', 'meta', 'link'):
+            self.handle_endtag(tag)
+    def handle_data(self, data):
+        frame = self._innermost()
+        if frame is not None and data.strip():
+            frame[1] = True
+    def handle_endtag(self, tag):
+        if tag == 'a' and self.frames:
+            frame = self.frames.pop()
+            self.verdicts.append(frame[0] or frame[1] or frame[2])
 
-# The race flow mirrors verify-woo-http.py exactly: the first Store API call is
-# the cart GET, whose Nonce header seeds every later authenticated call.
-session = Session()
-session.request('/wp-json/wc/store/v1/cart', api=True)
-def check_home():
+def check_home(html):
     # (i) the grid must not run through the wp:shortcode wpautop renderer anymore
     ok('home_no_shortcode_block', 'wp-block-shortcode' not in html)
     # (ii) the native product link carries its title and no paragraph-split damage
-    for m in re.finditer(r'<a href="[^"]*" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">(.*?)</a>', html, re.S):
-        anchor = m.group(0)
+    # (one card proves the loop pipeline; the name rule below covers all links)
+    card = re.search(r'<a href="[^"]*" class="woocommerce-LoopProduct-link woocommerce-loop-product__link">(.*?)</a>', html, re.S)
+    if card is not None:
+        anchor = card.group(0)
         ok('home_link_no_wpautop_damage', '</p>' not in anchor and '<p></a>' not in anchor)
         ok('home_link_has_title', re.search(r'<h2[^>]*>[^<]+</h2>', anchor) is not None)
-        break  # one card proves the loop pipeline; the name rule below covers all links
-    # (iii) every rendered anchor names itself (axe link-name, dependency-free:
-    # non-empty text, aria-label, title attribute, or an img descendant with a
-    # non-empty alt). aria-labelledby does not occur in this markup family.
-    class Links(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.frames = []   # open <a> frames: [named_by_attrs, has_text, has_alt_img]
-            self.verdicts = []
-        def _innermost(self):
-            return self.frames[-1] if self.frames else None
-        def handle_starttag(self, tag, attrs):
-            a = dict(attrs)
-            if tag == 'a':
-                self.frames.append([bool((a.get('aria-label') or '').strip() or (a.get('title') or '').strip()), False, False])
-            elif tag == 'img' and (a.get('alt') or '').strip():
-                frame = self._innermost()
-                if frame is not None:
-                    frame[2] = True
-        def handle_startendtag(self, tag, attrs):
-            self.handle_starttag(tag, attrs)
-            if tag not in ('img', 'input', 'br', 'hr', 'meta', 'link'):
-                self.handle_endtag(tag)
-        def handle_data(self, data):
-            frame = self._innermost()
-            if frame is not None and data.strip():
-                frame[1] = True
-        def handle_endtag(self, tag):
-            if tag == 'a' and self.frames:
-                frame = self.frames.pop()
-                self.verdicts.append(frame[0] or frame[1] or frame[2])
+    # (iii) every rendered anchor names itself
     parser = Links()
     parser.feed(html)
     total = len(parser.verdicts)
@@ -129,9 +124,16 @@ def check_home():
     ok('home_all_links_named', total > 0 and unnamed == 0, f'{unnamed}/{total} unnamed')
     return {'total_links': total, 'unnamed': unnamed, 'no_shortcode_wrapper': 'wp-block-shortcode' not in html}
 
-home = check_home()
+# ---------------------------------------------------------------- home (WA-04)
+home_session = Session()
+code, html = home_session.request('/')
+home = check_home(html)
 
 # --------------------------------------------------------------- race (WA-01)
+# The race flow mirrors verify-woo-http.py exactly: the first Store API call is
+# the cart GET, whose Nonce header seeds every later authenticated call.
+session = Session()
+session.request('/wp-json/wc/store/v1/cart', api=True)
 code, products = session.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
 ok('product_exists', code == 200 and isinstance(products, list) and products, f'HTTP {code}')
 pid = products[0]['id']

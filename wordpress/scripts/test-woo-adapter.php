@@ -133,7 +133,6 @@ if (!function_exists('wc_attribute_label')) { function wc_attribute_label($name,
 if (!function_exists('wc_wp_theme_get_element_class_name')) { function wc_wp_theme_get_element_class_name($type) { return 'wp-element-button'; } }
 if (!function_exists('woocommerce_quantity_input')) { function woocommerce_quantity_input($args,$product=null) { echo '<input type="number" class="qty" />'; } }
 if (!function_exists('wc_stock_amount')) { function wc_stock_amount($value) { return $value; } }
-if (!function_exists('absint')) { function absint($value) { return abs((int)$value); } }
 class FPW_Fake_Variable_Product {
     public function is_type(string $type): bool { return 'variable'===$type; }
     public function get_id(): int { return 25; }

@@ -178,12 +178,14 @@ function installWoo() {
   // runs the CLASSIC checkout (ADR-0001: the quotes extension's address options are not
   // equivalent in Checkout Blocks), so the pages get the classic shortcodes.
   wp(['wc', 'tool', 'run', 'install_pages', '--user=1']);
-  for (const option of ['woocommerce_cart_page_id', 'woocommerce_checkout_page_id']) {
+  const classicShortcodes = {
+    woocommerce_cart_page_id: '[woocommerce_cart]',
+    woocommerce_checkout_page_id: '[woocommerce_checkout]',
+  };
+  for (const [option, shortcode] of Object.entries(classicShortcodes)) {
     const id = wp(['option', 'get', option]);
-    if (id) wp(['post', 'update', id, '--post_content=<!-- wp:shortcode -->[woocommerce_cart]<!-- /wp:shortcode -->']);
+    if (id) wp(['post', 'update', id, `--post_content=<!-- wp:shortcode -->${shortcode}<!-- /wp:shortcode -->`]);
   }
-  const checkoutId = wp(['option', 'get', 'woocommerce_checkout_page_id']);
-  if (checkoutId) wp(['post', 'update', checkoutId, '--post_content=<!-- wp:shortcode -->[woocommerce_checkout]<!-- /wp:shortcode -->']);
   // Two featured products (price 0 is the documented technical value enabling native purchasability),
   // each with the quotes extension's per-product flag (qwc_enable_quotes=on) so the checkout takes
   // the quotes gateway and the request stays pending — as on staging.
