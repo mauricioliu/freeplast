@@ -64,10 +64,10 @@ $review_template=__DIR__.'/../wp-content/themes/freeplast/woocommerce/checkout/r
 check(is_file($review_template),'The theme owns a checkout review-order override (render-origin fix)');
 $review_source=file_get_contents($review_template);
 foreach(array('wc_price','get_product_subtotal','get_price_html','wc_cart_totals_subtotal_html','wc_cart_totals_order_total_html','wc_cart_totals_coupon_html','wc_cart_totals_fee_html','wc_cart_totals_shipping_html') as $amount_path) {
-	check(!str_contains($review_source,$amount_path),'Review table never reaches a price renderer: '.$amount_path);
+    check(!str_contains($review_source,$amount_path),'Review table never reaches a price renderer: '.$amount_path);
 }
 foreach(array('woocommerce_cart_item_name','woocommerce_checkout_cart_item_visible','woocommerce_review_order_before_cart_contents','woocommerce_review_order_before_order_total') as $native_hook) {
-	check(str_contains($review_source,$native_hook),'Review table keeps the native compatibility surface '.$native_hook);
+    check(str_contains($review_source,$native_hook),'Review table keeps the native compatibility surface '.$native_hook);
 }
 $woo_css=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/assets/css/woo.css');
 check(!str_contains($woo_css,'woocommerce-checkout-review-order-table'),'No CSS hiding of the review table: the DOM itself must carry no amounts');
@@ -80,14 +80,14 @@ if (!function_exists('do_action')) { function do_action(...$args) {} }
 if (!function_exists('apply_filters')) { function apply_filters($tag,$value,...$args) { global $registered_filters; foreach($registered_filters[$tag]??array() as $callback) { $value=$callback($value,...$args); } return $value; } }
 if (!function_exists('wc_get_formatted_cart_item_data')) { function wc_get_formatted_cart_item_data($item) { $out=''; foreach($item['variation']??array() as $attribute=>$value) { $out.='<p class="variation">'.esc_html($attribute).': '.esc_html($value).'</p>'; } return $out; } }
 class WC_Product {
-	public function __construct(private string $name) {}
-	public function exists(): bool { return true; }
-	public function get_name(): string { return $this->name; }
+    public function __construct(private string $name) {}
+    public function exists(): bool { return true; }
+    public function get_name(): string { return $this->name; }
 }
 $GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart();
 $GLOBALS['fpw_woo']->cart->lines=array(
-	'simple'=>array('data'=>new WC_Product('Caja Cosechera 3/4'),'quantity'=>140),
-	'variante'=>array('data'=>new WC_Product('Caja Universal Cerrada Color'),'quantity'=>5,'variation'=>array('Color'=>'Rojo')),
+    'simple'=>array('data'=>new WC_Product('Caja Cosechera 3/4'),'quantity'=>140),
+    'variante'=>array('data'=>new WC_Product('Caja Universal Cerrada Color'),'quantity'=>5,'variation'=>array('Color'=>'Rojo')),
 );
 ob_start(); require $review_template; $review_html=ob_get_clean();
 check(str_contains($review_html,'Caja Cosechera 3/4'),'Simple product name renders in the review table');
@@ -96,6 +96,6 @@ check(str_contains($review_html,'140'),'Quantities render in the review table');
 check(str_contains($review_html,'Color: Rojo'),'Chosen options render in the review table');
 check(str_contains($review_html,'Por cotizar'),'Totals zone states the intention without amounts');
 foreach(array('$0','woocommerce-Price-amount','product-total','Subtotal') as $leak) {
-	check(!str_contains($review_html,$leak),'Review table HTML carries no '.$leak);
+    check(!str_contains($review_html,$leak),'Review table HTML carries no '.$leak);
 }
 echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table)\n";
