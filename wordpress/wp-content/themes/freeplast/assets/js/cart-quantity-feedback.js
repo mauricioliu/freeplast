@@ -47,228 +47,238 @@
    store the script exits; without JavaScript there are no quantity updates to
    report. */
 (function () {
-	'use strict';
-	var CART_STORE = 'wc/store/cart';
-	var INTENT_EVENT = 'experimental__woocommerce_blocks-cart-set-item-quantity';
-	var EVENT_NAMESPACE = 'freeplast/cart-quantity-feedback';
-	var SUBMIT_SELECTOR = 'a.wc-block-cart__submit-button';
-	var DOCK_SELECTOR = '.wc-block-cart__main, .wp-block-woocommerce-cart';
-	var UPDATE_ITEM_URL = '/wc/store/v1/cart/update-item';
-	var VERDICT_DELAY_MS = 50;
+  'use strict';
+  var CART_STORE = 'wc/store/cart';
+  var INTENT_EVENT = 'experimental__woocommerce_blocks-cart-set-item-quantity';
+  var EVENT_NAMESPACE = 'freeplast/cart-quantity-feedback';
+  var SUBMIT_SELECTOR = 'a.wc-block-cart__submit-button';
+  var DOCK_SELECTOR = '.wc-block-cart__main, .wp-block-woocommerce-cart';
+  var UPDATE_ITEM_URL = '/wc/store/v1/cart/update-item';
+  var VERDICT_DELAY_MS = 50;
 
-	function failMessage(name, persisted) {
-		var units = persisted === 1 ? 'unidad' : 'unidades';
-		return 'No se guardó el cambio de cantidad de «' + name + '»: Productos a Cotizar sigue con ' + persisted + ' ' + units + '. Revisa tu conexión e inténtalo de nuevo.';
-	}
+  function unitsWord(quantity) {
+    return quantity === 1 ? 'unidad' : 'unidades';
+  }
 
-	function savedMessage(name, persisted) {
-		var units = persisted === 1 ? 'unidad' : 'unidades';
-		return 'Cantidad guardada: ' + persisted + ' ' + units + ' de «' + name + '».';
-	}
+  function failMessage(name, persisted) {
+    return 'No se guardó el cambio de cantidad de «' + name + '»: Productos a Cotizar sigue con ' + persisted + ' ' + unitsWord(persisted) + '. Revisa tu conexión e inténtalo de nuevo.';
+  }
 
-	/* Verdict once an update has settled: compare what the customer stated
-	   with what WooCommerce reports as persisted. */
-	function evaluate(persisted, stated) {
-		return persisted === stated ? 'saved' : 'failed';
-	}
+  function savedMessage(name, persisted) {
+    return 'Cantidad guardada: ' + persisted + ' ' + unitsWord(persisted) + ' de «' + name + '».';
+  }
 
-	/* Write the verdict into the notice slots. Error announcements are
-	   assertive (role="alert"); confirmations are polite (role="status"). */
-	function applyNotice(slots, verdict, name, persisted) {
-		if (verdict === 'failed') {
-			slots.error.textContent = failMessage(name, persisted);
-			slots.error.hidden = false;
-			slots.status.hidden = true;
-			return;
-		}
-		slots.status.textContent = savedMessage(name, persisted);
-		slots.status.hidden = false;
-		slots.error.hidden = true;
-	}
+  /* Verdict once an update has settled: compare what the customer stated
+     with what WooCommerce reports as persisted. */
+  function evaluate(persisted, stated) {
+    return persisted === stated ? 'saved' : 'failed';
+  }
 
-	function createWatcher(windowObj) {
-		var doc = windowObj.document;
-		var wpdata = windowObj.wp && windowObj.wp.data;
-		var store = wpdata && wpdata.select(CART_STORE);
-		if (!wpdata || !store || typeof store.getCartData !== 'function' || typeof store.getItemsPendingQuantityUpdate !== 'function') {
-			return null;
-		}
-		var slots = null;
-		var intents = {};
-		var inflight = 0;
-		var verdictTimer = null;
-		var lastFocus = null;
-		var submit = null;
+  /* Write the verdict into the notice slots. Error announcements are
+     assertive (role="alert"); confirmations are polite (role="status"). */
+  function applyNotice(slots, verdict, name, persisted) {
+    if (verdict === 'failed') {
+      slots.error.textContent = failMessage(name, persisted);
+      slots.error.hidden = false;
+      slots.status.hidden = true;
+      return;
+    }
+    slots.status.textContent = savedMessage(name, persisted);
+    slots.status.hidden = false;
+    slots.error.hidden = true;
+  }
 
-		function ensureSlots() {
-			if (slots) { return slots; }
-			var dock = doc.querySelector(DOCK_SELECTOR);
-			if (!dock || typeof dock.insertBefore !== 'function') { return null; }
-			var container = doc.createElement('div');
-			container.className = 'fp-cart-feedback';
-			container.setAttribute('data-fp-cart-feedback', '');
-			var error = doc.createElement('p');
-			error.className = 'fp-cart-feedback__error';
-			error.setAttribute('role', 'alert');
-			error.setAttribute('aria-atomic', 'true');
-			error.hidden = true;
-			var status = doc.createElement('p');
-			status.className = 'fp-cart-feedback__status';
-			status.setAttribute('role', 'status');
-			status.setAttribute('aria-atomic', 'true');
-			status.hidden = true;
-			container.appendChild(error);
-			container.appendChild(status);
-			dock.insertBefore(container, dock.firstChild);
-			slots = { error: error, status: status };
-			return slots;
-		}
+  function createWatcher(windowObj) {
+    var doc = windowObj.document;
+    var wpdata = windowObj.wp && windowObj.wp.data;
+    var store = wpdata && wpdata.select(CART_STORE);
+    if (!wpdata || !store || typeof store.getCartData !== 'function' || typeof store.getItemsPendingQuantityUpdate !== 'function') {
+      return null;
+    }
+    var slots = null;
+    var intents = {};
+    var inflight = 0;
+    var verdictTimer = null;
+    var lastFocus = null;
+    var submit = null;
 
-		function rememberFocus() {
-			var active = doc.activeElement;
-			lastFocus = active && active !== doc.body && typeof active.focus === 'function' ? active : null;
-		}
+    function ensureSlots() {
+      if (slots) { return slots; }
+      var dock = doc.querySelector(DOCK_SELECTOR);
+      if (!dock || typeof dock.insertBefore !== 'function') { return null; }
+      var container = doc.createElement('div');
+      container.className = 'fp-cart-feedback';
+      container.setAttribute('data-fp-cart-feedback', '');
+      var error = doc.createElement('p');
+      error.className = 'fp-cart-feedback__error';
+      error.setAttribute('role', 'alert');
+      error.setAttribute('aria-atomic', 'true');
+      error.hidden = true;
+      var status = doc.createElement('p');
+      status.className = 'fp-cart-feedback__status';
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-atomic', 'true');
+      status.hidden = true;
+      container.appendChild(error);
+      container.appendChild(status);
+      dock.insertBefore(container, dock.firstChild);
+      slots = { error: error, status: status };
+      return slots;
+    }
 
-		/* Return keyboard focus lost to the pending disable cycle; never take
-		   it from wherever the customer deliberately moved it. */
-		function restoreFocus() {
-			var active = doc.activeElement;
-			var lost = !active || (doc.body && active === doc.body);
-			if (!lost || !lastFocus || lastFocus.disabled === true) { return; }
-			if (typeof lastFocus.isConnected !== 'undefined' && !lastFocus.isConnected) { return; }
-			try { lastFocus.focus({ preventScroll: true }); } catch (err) { try { lastFocus.focus(); } catch (inner) { /* unavailable: stay quiet */ } }
-		}
+    function rememberFocus() {
+      var active = doc.activeElement;
+      lastFocus = active && active !== doc.body && typeof active.focus === 'function' ? active : null;
+    }
 
-		/* aria state of the «Datos y envío» CTA follows the store's own
-		   pending operations; clicks are stopped synchronously while pending
-		   so an unconfirmed quantity can never advance. */
-		function syncSubmit() {
-			if (submit && typeof submit.isConnected !== 'undefined' && !submit.isConnected) { submit = null; }
-			if (!submit) { submit = doc.querySelector(SUBMIT_SELECTOR); }
-			if (!submit || typeof submit.setAttribute !== 'function') { return; }
-			var busy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
-			submit.setAttribute('aria-disabled', busy ? 'true' : 'false');
-			if (busy && typeof submit.getAttribute === 'function' && submit.getAttribute('data-fp-submit-guard') !== 'true') {
-				submit.setAttribute('data-fp-submit-guard', 'true');
-				submit.addEventListener('click', function (event) {
-					if (store.hasPendingItemsOperations()) { event.preventDefault(); }
-				}, true);
-			}
-		}
+    /* Return keyboard focus lost to the pending disable cycle; never take
+       it from wherever the customer deliberately moved it. */
+    function restoreFocus() {
+      var active = doc.activeElement;
+      var lost = !active || (doc.body && active === doc.body);
+      if (!lost || !lastFocus || lastFocus.disabled === true) { return; }
+      if (typeof lastFocus.isConnected !== 'undefined' && !lastFocus.isConnected) { return; }
+      try { lastFocus.focus({ preventScroll: true }); } catch (err) { try { lastFocus.focus(); } catch (inner) { /* unavailable: stay quiet */ } }
+    }
 
-		function settle(key) {
-			var stated = intents[key];
-			delete intents[key];
-			var item = store.getCartItem(key);
-			if (!stated || !item) { return; }
-			var verdict = evaluate(item.quantity, stated.quantity);
-			var target = ensureSlots();
-			if (!target) { return; }
-			applyNotice(target, verdict, stated.name, item.quantity);
-			restoreFocus();
-		}
+    /* aria state of the «Datos y envío» CTA follows the store's own
+       pending operations; clicks are stopped synchronously while pending
+       so an unconfirmed quantity can never advance. */
+    function syncSubmit() {
+      if (submit && typeof submit.isConnected !== 'undefined' && !submit.isConnected) { submit = null; }
+      if (!submit) { submit = doc.querySelector(SUBMIT_SELECTOR); }
+      if (!submit || typeof submit.setAttribute !== 'function') { return; }
+      var busy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
+      submit.setAttribute('aria-disabled', busy ? 'true' : 'false');
+      if (busy && typeof submit.getAttribute === 'function' && submit.getAttribute('data-fp-submit-guard') !== 'true') {
+        submit.setAttribute('data-fp-submit-guard', 'true');
+        submit.addEventListener('click', function (event) {
+          if (store.hasPendingItemsOperations()) { event.preventDefault(); }
+        }, true);
+      }
+    }
 
-		function cancelVerdict() {
-			if (verdictTimer !== null) { clearTimeout(verdictTimer); verdictTimer = null; }
-		}
+    /* Turn one settled intent into its visible verdict. The item is passed in
+       by the caller, which has already confirmed it still exists. */
+    function settle(key, item) {
+      var stated = intents[key];
+      delete intents[key];
+      if (!stated || !item) { return; }
+      var verdict = evaluate(item.quantity, stated.quantity);
+      var target = ensureSlots();
+      if (!target) { return; }
+      applyNotice(target, verdict, stated.name, item.quantity);
+      restoreFocus();
+    }
 
-		function scheduleVerdict() {
-			if (verdictTimer === null) {
-				verdictTimer = setTimeout(fireVerdict, VERDICT_DELAY_MS);
-			}
-		}
+    function cancelVerdict() {
+      if (verdictTimer !== null) { clearTimeout(verdictTimer); verdictTimer = null; }
+    }
 
-		function evaluateIntents() {
-			cancelVerdict();
-			var pending = store.getItemsPendingQuantityUpdate();
-			var remaining = false;
-			for (var key in intents) {
-				if (pending.indexOf(key) !== -1 || inflight > 0) { remaining = true; continue; }
-				if (!store.getCartItem(key)) { delete intents[key]; continue; }
-				remaining = true; // settleable — but only once every chain has drained
-			}
-			if (remaining) { scheduleVerdict(); }
-			syncSubmit();
-		}
+    function scheduleVerdict() {
+      if (verdictTimer === null) {
+        verdictTimer = setTimeout(fireVerdict, VERDICT_DELAY_MS);
+      }
+    }
 
-		function fireVerdict() {
-			verdictTimer = null;
-			var pending = store.getItemsPendingQuantityUpdate();
-			for (var key in intents) {
-				if (pending.indexOf(key) !== -1 || inflight > 0) { scheduleVerdict(); return; }
-				var item = store.getCartItem(key);
-				if (!item) { delete intents[key]; continue; }
-				settle(key);
-			}
-			syncSubmit();
-		}
+    /* A verdict must wait while the store still flags the item as pending or
+       an update-item request is still in flight — an aborted request whose
+       replacement is still running counts as active. */
+    function verdictWaiting(key, pending) {
+      return pending.indexOf(key) !== -1 || inflight > 0;
+    }
 
-		/* Read-only observation of the transport: count in-flight update-item
-		   requests so the store's early pending cleanup after an abort cannot
-		   declare a verdict while its replacement is still running. All other
-		   requests pass through untouched. */
-		function watchTransport() {
-			var original = windowObj.fetch;
-			if (typeof original !== 'function') { return; }
-			var wrapped = function (input) {
-				var url = '';
-				try { url = typeof input === 'string' ? input : (input && input.url) || ''; } catch (err) { url = ''; }
-				if (url.indexOf(UPDATE_ITEM_URL) === -1) { return original.apply(this, arguments); }
-				inflight++;
-				var done = function () { inflight = Math.max(0, inflight - 1); evaluateIntents(); };
-				var request = original.apply(this, arguments);
-				request.then(done, done);
-				return request;
-			};
-			try {
-				windowObj.fetch = wrapped;
-			} catch (err) { /* frozen environment: the store's own pending flag still rules */ }
-		}
+    function evaluateIntents() {
+      cancelVerdict();
+      var pending = store.getItemsPendingQuantityUpdate();
+      var remaining = false;
+      for (var key in intents) {
+        if (verdictWaiting(key, pending)) { remaining = true; continue; }
+        if (!store.getCartItem(key)) { delete intents[key]; continue; }
+        remaining = true; // settleable — but only once every chain has drained
+      }
+      if (remaining) { scheduleVerdict(); }
+      syncSubmit();
+    }
 
-		if (windowObj.wp && windowObj.wp.hooks && typeof windowObj.wp.hooks.addAction === 'function') {
-			windowObj.wp.hooks.addAction(INTENT_EVENT, EVENT_NAMESPACE, function (payload) {
-				var item = payload && payload.product;
-				var quantity = payload && payload.quantity;
-				if (!item || typeof item.key !== 'string' || typeof quantity !== 'number' || !isFinite(quantity)) { return; }
-				intents[item.key] = {
-					name: typeof item.name === 'string' ? item.name : '',
-					quantity: quantity
-				};
-				rememberFocus();
-			});
-		}
-		if (typeof wpdata.subscribe === 'function') {
-			wpdata.subscribe(evaluateIntents, CART_STORE);
-		}
-		watchTransport();
-		syncSubmit();
+    function fireVerdict() {
+      verdictTimer = null;
+      var pending = store.getItemsPendingQuantityUpdate();
+      for (var key in intents) {
+        if (verdictWaiting(key, pending)) { scheduleVerdict(); return; }
+        var item = store.getCartItem(key);
+        if (!item) { delete intents[key]; continue; }
+        settle(key, item);
+      }
+      syncSubmit();
+    }
 
-		return {
-			evaluateIntents: evaluateIntents,
-			intents: intents,
-			inflight: function () { return inflight; }
-		};
-	}
+    /* Read-only observation of the transport: count in-flight update-item
+       requests so the store's early pending cleanup after an abort cannot
+       declare a verdict while its replacement is still running. All other
+       requests pass through untouched. */
+    function watchTransport() {
+      var original = windowObj.fetch;
+      if (typeof original !== 'function') { return; }
+      var wrapped = function (input) {
+        var url = '';
+        try { url = typeof input === 'string' ? input : (input && input.url) || ''; } catch (err) { url = ''; }
+        if (url.indexOf(UPDATE_ITEM_URL) === -1) { return original.apply(this, arguments); }
+        inflight++;
+        var done = function () { inflight = Math.max(0, inflight - 1); evaluateIntents(); };
+        var request = original.apply(this, arguments);
+        request.then(done, done);
+        return request;
+      };
+      try {
+        windowObj.fetch = wrapped;
+      } catch (err) { /* frozen environment: the store's own pending flag still rules */ }
+    }
 
-	function init() {
-		if (typeof window === 'undefined' || typeof document === 'undefined') { return; }
-		createWatcher(window);
-	}
+    if (windowObj.wp && windowObj.wp.hooks && typeof windowObj.wp.hooks.addAction === 'function') {
+      windowObj.wp.hooks.addAction(INTENT_EVENT, EVENT_NAMESPACE, function (payload) {
+        var item = payload && payload.product;
+        var quantity = payload && payload.quantity;
+        if (!item || typeof item.key !== 'string' || typeof quantity !== 'number' || !isFinite(quantity)) { return; }
+        intents[item.key] = {
+          name: typeof item.name === 'string' ? item.name : '',
+          quantity: quantity
+        };
+        rememberFocus();
+      });
+    }
+    if (typeof wpdata.subscribe === 'function') {
+      wpdata.subscribe(evaluateIntents, CART_STORE);
+    }
+    watchTransport();
+    syncSubmit();
 
-	if (document.readyState === 'loading') {
-		document.addEventListener('DOMContentLoaded', init);
-	} else {
-		init();
-	}
+    return {
+      evaluateIntents: evaluateIntents,
+      intents: intents,
+      inflight: function () { return inflight; }
+    };
+  }
 
-	/* Offline behavioral coverage drives the pure helpers directly. */
-	if (typeof module === 'object' && module.exports) {
-		module.exports = {
-			evaluate: evaluate,
-			applyNotice: applyNotice,
-			failMessage: failMessage,
-			savedMessage: savedMessage,
-			createWatcher: createWatcher
-		};
-	}
+  function init() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') { return; }
+    createWatcher(window);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  /* Offline behavioral coverage drives the pure helpers directly. */
+  if (typeof module === 'object' && module.exports) {
+    module.exports = {
+      evaluate: evaluate,
+      applyNotice: applyNotice,
+      failMessage: failMessage,
+      savedMessage: savedMessage,
+      createWatcher: createWatcher
+    };
+  }
 })();
