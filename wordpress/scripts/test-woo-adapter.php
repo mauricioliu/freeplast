@@ -4,6 +4,7 @@ define('ABSPATH',__DIR__);
 $registered_filters=array();
 function add_action(...$args) {}
 function add_filter(...$args) { global $registered_filters; $registered_filters[$args[0]][]=$args[1]; }
+function register_activation_hook(...$args) {}
 class WP_Error {
     public array $codes=array();
     public function add($code,$message,$data=null) { $this->codes[]=$code; }
@@ -161,9 +162,112 @@ check(str_contains($feedback_source,'Cantidad guardada: ') && str_contains($feed
 check(str_contains($feedback_source,'preventDefault'),'Advancing is blocked while a quantity is unconfirmed, synchronously');
 check(str_contains($feedback_source,'focus('),'Keyboard focus lost to the pending disable cycle is restored');
 
+// Issue #25 (WA-02): the Ventas Freeplast role is least-privilege over Woo's own native order surfaces.
+// The two granted Woo caps are the verified minimum for login + list/search + author-less order detail
+// + the native private-note AJAX (pinned Woo 11.1.0 + WP map_meta_cap); every other Woo cap stays ungranted.
+if (!function_exists('wp_doing_ajax')) { function wp_doing_ajax(): bool { return true; } }
+class FPW_Fake_Role {
+    public array $capabilities=array();
+    public function __construct(private string $name) {}
+    public function has_cap(string $cap): bool { return !empty($this->capabilities[$cap]); }
+    public function add_cap(string $cap,bool $grant=true): void { if ($grant) { $this->capabilities[$cap]=true; } else { unset($this->capabilities[$cap]); } }
+    public function remove_cap(string $cap): void { unset($this->capabilities[$cap]); }
+}
+$GLOBALS['fpw_roles']=array();
+if (!function_exists('get_role')) { function get_role(string $role): ?FPW_Fake_Role { return $GLOBALS['fpw_roles'][$role] ?? null; } }
+if (!function_exists('add_role')) { function add_role(string $role,string $name,array $caps=array()): FPW_Fake_Role { $new=new FPW_Fake_Role($role); foreach($caps as $cap=>$grant) { $new->add_cap($cap,(bool)$grant); } return $GLOBALS['fpw_roles'][$role]=$new; } }
+$GLOBALS['fpw_user_caps']=array();
+if (!function_exists('current_user_can')) { function current_user_can(string $cap,int $id=0): bool { return !empty($GLOBALS['fpw_user_caps'][$cap]); } }
+class FPW_Guard_Die extends RuntimeException {}
+if (!function_exists('wp_die')) { function wp_die($message='',$title='',$args=array()) { throw new FPW_Guard_Die((string)($args['response'] ?? 0)); } }
+
+check(!isset($GLOBALS['fpw_roles']['ventas_freeplast']),'Sync precondition: the fake site starts without the role');
+check(fpw_sync_sales_role()===true,'Sync reports the creation of the role');
+$ventas=get_role('ventas_freeplast');
+foreach(array('read','manage_freeplast_quotes','edit_shop_orders','edit_others_shop_orders') as $cap) { check($ventas->has_cap($cap),'Sales role grants '.$cap); }
+check(count($ventas->capabilities)===4,'Sales role carries exactly the approved four-cap set');
+check(fpw_sync_sales_role()===false,'Re-running the sync reports no change (idempotent)');
+check(count(get_role('ventas_freeplast')->capabilities)===4,'Idempotent sync keeps the exact set');
+// Drift is repaired, not trusted: extra Woo privileges stripped, missing approved caps restored.
+$ventas->add_cap('delete_shop_orders'); $ventas->add_cap('manage_woocommerce'); $ventas->add_cap('level_0'); $ventas->remove_cap('read');
+check(fpw_sync_sales_role()===true,'Sync reports the drift repair');
+$ventas=get_role('ventas_freeplast');
+check(count($ventas->capabilities)===4,'Self-heal strips every unapproved capability');
+check($ventas->has_cap('read'),'Self-heal restores a missing approved capability');
+foreach(array('delete_shop_orders','delete_others_shop_orders','delete_private_shop_orders','publish_shop_orders','read_private_shop_orders','manage_woocommerce','view_woocommerce_reports','edit_products','edit_shop_coupons','install_plugins') as $forbidden) {
+    check(!$ventas->has_cap($forbidden),'Sales role never carries '.$forbidden);
+}
+// Only the ventas role definition is owned: other roles are never rewritten.
+$admin=new FPW_Fake_Role('administrator');
+$admin->add_cap('manage_woocommerce'); $admin->add_cap('manage_freeplast_quotes'); $admin->add_cap('edit_shop_orders');
+$GLOBALS['fpw_roles']['administrator']=$admin;
+$admin_before=$admin->capabilities;
+fpw_sync_sales_role();
+check($admin->capabilities===$admin_before,'Role sync never changes other roles');
+
+// The order-limited staff predicate: order caps without general Woo administration.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+check(fpw_is_order_limited_staff(),'Ventas (edit_shop_orders, no manage_woocommerce) is order-limited staff');
+$GLOBALS['fpw_user_caps']['manage_woocommerce']=true;
+check(!fpw_is_order_limited_staff(),'Managers are not order-limited: native behavior stays untouched');
+$GLOBALS['fpw_user_caps']=array();
+// Users without order caps are untouched by the ventas guards
+$GLOBALS['fpw_user_caps']=array();
+// Users without order caps are untouched by the ventas guards
+$GLOBALS['fpw_user_caps']=array();
+check(!fpw_is_order_limited_staff(),'Users without order caps are untouched by the ventas guards');
+
+// Woo locks wp-admin to users without the edit_posts primitive by default; ventas enters through the order caps alone.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+check(fpw_allow_sales_admin_access(true)===false,'Woo\'s admin lock-down opens for ventas (no edit_posts primitive needed)');
+check(fpw_allow_sales_admin_access(false)===false,'An unlocked admin stays unlocked');
+$GLOBALS['fpw_user_caps']=array();
+check(fpw_allow_sales_admin_access(true)===true,'The admin lock-down still applies to users without order caps');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+check(fpw_allow_sales_admin_access(true)===true,'The admin lock-down keeps applying to managers');
+$GLOBALS['fpw_user_caps']=array();
+
+// Email resends are out of the approved scope: removed from the select, denied on the server.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+$actions=fpw_sales_order_actions(array('send_order_details'=>'Send order details to customer','send_order_details_admin'=>'Resend new order notification','regenerate_download_permissions'=>'Regenerate download permissions'));
+foreach(array('send_order_details','send_order_details_admin','regenerate_download_permissions') as $removed) { check(!isset($actions[$removed]),'Order-actions select drops '.$removed.' for ventas'); }
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+$manager_actions=fpw_sales_order_actions(array('send_order_details'=>'x'));
+check(isset($manager_actions['send_order_details']),'Managers keep the native order actions');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+try { fpw_deny_sales_email_resend(); check(false,'A crafted resend POST from ventas must be stopped'); } catch (FPW_Guard_Die $e) { check($e->getMessage()==='403','The resend guard denies ventas with 403'); }
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+try { fpw_deny_sales_email_resend(); check(true,'The resend guard leaves managers alone'); } catch (FPW_Guard_Die $e) { check(false,'The resend guard must not stop managers'); }
+
+// Sales notes are private at the origin: the posted visibility is normalized before Woo's own AJAX reads it.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+$_REQUEST=array('action'=>'woocommerce_add_order_note','note_type'=>'customer');
+$_POST=array('note_type'=>'customer');
+fpw_force_private_sales_note();
+check($_REQUEST['note_type']===''&&$_POST['note_type']=='','A crafted customer-note POST from ventas is normalized to private');
+$_REQUEST=array('action'=>'woocommerce_add_order_note','note_type'=>'');
+fpw_force_private_sales_note();
+check($_REQUEST['note_type']==='','Private notes pass through unchanged');
+$_REQUEST=array('action'=>'get_notes'); $_POST=array();
+fpw_force_private_sales_note();
+check(true,'Non-note requests are ignored');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+$_REQUEST=array('action'=>'woocommerce_add_order_note','note_type'=>'customer');
+fpw_force_private_sales_note();
+check(($_REQUEST['note_type'] ?? '')==='customer','Manager notes keep their chosen visibility');
+unset($_REQUEST,$_POST);
+
+// Request-only site: no note-to-customer email, completing the adapter's disabled set.
+$customer_note_filter=null;
+foreach($registered_filters['woocommerce_email_enabled_customer_note'] ?? array() as $callback) { if('__return_false'===$callback) { $customer_note_filter=$callback; } }
+check('__return_false'===$customer_note_filter,'The customer-note email joins the adapter\'s disabled set');
+if (!function_exists('__return_false')) { function __return_false(): bool { return false; } }
+foreach($registered_filters['woocommerce_email_enabled_customer_note'] as $callback) { check(false===call_user_func($callback),'Every customer-note filter disables the email'); }
+$GLOBALS['fpw_user_caps']=array();
+
 // Theme versioning contract: the style.css header and the asset cache-busting constant move together.
 $style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.css');
 check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');
 check($style_version[1]===FREEPLAST_THEME_VERSION,'style.css Version header matches FREEPLAST_THEME_VERSION — a cache-bust bump moves both');
 
-echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback)\n";
+echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role)\n";

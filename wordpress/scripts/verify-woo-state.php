@@ -35,4 +35,31 @@ $check(!$errors->has_errors(),'Address not required without dispatch');
 $check(str_contains(get_post_field('post_content',wc_get_page_id('cart')),'wp:woocommerce/cart'),'Native Cart block');
 $check(str_contains(get_post_field('post_content',wc_get_page_id('checkout')),'[woocommerce_checkout]'),'Native classic Checkout');
 $check((int)get_option('blog_public')===0,'Staging stays noindex');
+// Issue #25 (WA-02): the Ventas Freeplast role stays least-privilege over Woo's own order surfaces.
+$sales=get_role('ventas_freeplast');
+$check(null!==$sales,'Ventas Freeplast role exists');
+foreach(array('read','manage_freeplast_quotes','edit_shop_orders','edit_others_shop_orders') as $cap) {
+    $check(!empty($sales->capabilities[$cap]),'Sales role grants '.$cap);
+}
+$check(count($sales->capabilities)===4,'Sales role carries exactly the approved four-cap set');
+foreach(array('delete_shop_orders','delete_others_shop_orders','delete_private_shop_orders','delete_shop_order','publish_shop_orders','read_private_shop_orders','manage_woocommerce','view_woocommerce_reports','create_customers','edit_products','manage_product_terms','edit_shop_coupons') as $forbidden) {
+    $check(empty($sales->capabilities[$forbidden]),'Sales role lacks '.$forbidden);
+}
+$administrator=get_role('administrator');
+$check(!empty($administrator->capabilities['manage_woocommerce']) && !empty($administrator->capabilities['manage_freeplast_quotes']),'Administrator keeps Woo + sales capabilities (the sales sync never rewrites other roles)');
+$shop_manager=get_role('shop_manager');
+$check(null===$shop_manager || !empty($shop_manager->capabilities['manage_woocommerce']),'shop_manager privileges untouched');
+$sales_users=get_users(array('role'=>'ventas_freeplast','fields'=>'all'));
+foreach($sales_users as $user) {
+    foreach(array('delete_shop_orders','manage_woocommerce','edit_products','manage_options','promote_users') as $forbidden) {
+        $check(!user_can($user,$forbidden),'Sales account '.$user->user_login.' cannot '.$forbidden);
+    }
+    $check(user_can($user,'edit_shop_orders'),'Sales account '.$user->user_login.' can list orders and add notes');
+}
+// The adapter's server-side ventas guards are registered (behavior unit-tested offline in test-woo-adapter.php).
+$check(false!==has_filter('woocommerce_prevent_admin_access','fpw_allow_sales_admin_access'),'Woo\'s default admin lock-down opens for the sales role without granting edit_posts');
+$check(false!==has_action('admin_init','fpw_force_private_sales_note'),'Sales notes normalize to private at the origin');
+$check(false!==has_filter('woocommerce_order_actions','fpw_sales_order_actions'),'Email resends removed from the order-actions select for ventas');
+$check(false!==has_action('woocommerce_before_resend_order_emails','fpw_deny_sales_email_resend'),'Crafted email resends are denied server-side for ventas');
+$check(false!==has_filter('woocommerce_email_enabled_customer_note','__return_false'),'The note-to-customer email is disabled');
 WP_CLI::success($checks.' state checks passed. No production requests or mutations.');
