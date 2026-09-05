@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.3' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.4' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -93,6 +93,9 @@ add_action(
 		wp_enqueue_script( 'freeplast-basket-count', get_template_directory_uri() . '/assets/js/basket-count.js', array(), FREEPLAST_THEME_VERSION, true );
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			wp_enqueue_script( 'freeplast-variation-state', get_template_directory_uri() . '/assets/js/variation-button-state.js', array(), FREEPLAST_THEME_VERSION, true );
+		}
+		if ( function_exists( 'is_cart' ) && is_cart() ) {
+			wp_enqueue_script( 'freeplast-cart-quantity-feedback', get_template_directory_uri() . '/assets/js/cart-quantity-feedback.js', array(), FREEPLAST_THEME_VERSION, true );
 		}
 	}
 );

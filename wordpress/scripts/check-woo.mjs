@@ -75,5 +75,14 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
 run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
+// Issue #26: drive the REAL pinned cart-block store (vendored wc-blocks-data 11.1.0) with the
+// REAL shipped feedback script through success, connection loss, server error and recovery.
+{const {runCartStoreScenarios}=await import('./woo-cart-store-harness.mjs');
+ const bundle=path.join(root,'scripts/vendor/wc-blocks-data-11.1.0.js');
+ const sidecar=JSON.parse(readFileSync(path.join(root,'scripts/vendor/wc-blocks-data-11.1.0.json'),'utf8'));
+ const {createHash}=await import('node:crypto');
+ if(createHash('sha256').update(readFileSync(bundle)).digest('hex')!==sidecar.file_sha256) throw Error('Vendored wc-blocks-data hash mismatch against its sidecar');
+ checks+=2; // bundle integrity + sidecar verification
+ checks+=await runCartStoreScenarios(bundle,path.join(root,'wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js'));}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);
 console.log('scope: offline only; no Woo runtime or visual approval implied');

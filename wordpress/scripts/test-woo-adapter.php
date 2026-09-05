@@ -147,4 +147,18 @@ check(str_contains($button_html,'Agregar a Productos a Cotizar'),'The accessible
 check(str_contains($button_html,'class="qty"'),'Quantity input keeps rendering through the native hook');
 check(str_contains($button_html,'data-fp-variation-hint'),'The instruction carries the state-script marker');
 
-echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state)\n";
+// Issue #26 (WA-03): the Productos a Cotizar page ships the quantity-change feedback bridge.
+$feedback_script=__DIR__.'/../wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js';
+check(is_file($feedback_script),'The theme owns the cart quantity-feedback script');
+$feedback_source=file_get_contents($feedback_script);
+check(str_contains($functions_source,'cart-quantity-feedback.js') && str_contains($functions_source,'is_cart()'),'The quantity-feedback script enqueues on the Productos a Cotizar page only');
+check(str_contains($feedback_source,'experimental__woocommerce_blocks-cart-set-item-quantity'),'The stated quantity is learned from the cart block’s own store event');
+check(str_contains($feedback_source,'/wc/store/v1/cart/update-item'),'The bridge observes the real Store API update-item endpoint');
+check(str_contains($feedback_source,'hasPendingItemsOperations'),'Pending operations gate the Datos y envío CTA through the store’s own selector');
+check(str_contains($feedback_source,'wc-block-cart__submit-button'),'The Datos y envío CTA is the guarded surface');
+check(str_contains($feedback_source,"'alert'") && str_contains($feedback_source,'No se guardó el cambio de cantidad de '),'A visible role=alert notice explains, in Spanish, that the change was not saved');
+check(str_contains($feedback_source,'Cantidad guardada: ') && str_contains($feedback_source,'sigue con '),'Both outcomes state the persisted quantity and the success updates the notice');
+check(str_contains($feedback_source,'preventDefault'),'Advancing is blocked while a quantity is unconfirmed, synchronously');
+check(str_contains($feedback_source,'focus('),'Keyboard focus lost to the pending disable cycle is restored');
+
+echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback)\n";
