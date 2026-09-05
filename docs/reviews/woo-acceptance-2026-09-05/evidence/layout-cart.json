@@ -1,0 +1,42 @@
+[
+  {
+    "success": true,
+    "data": {
+      "path": "/cotizacion/",
+      "width": 320,
+      "documentWidth": 305,
+      "overflow": [],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/cotizacion/",
+      "width": 375,
+      "documentWidth": 360,
+      "overflow": [],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/cotizacion/",
+      "width": 412,
+      "documentWidth": 397,
+      "overflow": [],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/cotizacion/",
+      "width": 1440,
+      "documentWidth": 1425,
+      "overflow": [],
+      "smallControls": []
+    }
+  }
+]

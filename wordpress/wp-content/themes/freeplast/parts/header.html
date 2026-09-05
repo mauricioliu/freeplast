@@ -1,7 +1,7 @@
 <!-- wp:group {"className":"fp-island-wrap"} -->
 <div class="wp-block-group fp-island-wrap">
-	<!-- wp:group {"tagName":"header","className":"fp-island"} -->
-	<header class="wp-block-group fp-island">
+	<!-- wp:group {"className":"fp-island"} -->
+	<div class="wp-block-group fp-island">
 		<!-- wp:html -->
 		<a class="fp-island-logo" href="/" aria-label="Freeplast — Inicio">
 			<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark.svg" alt="" width="40" height="40" />
@@ -13,30 +13,31 @@
 		<nav class="fp-island-links" aria-label="Navegación principal">
 			<a href="/">INICIO</a>
 			<a href="/nosotros/">NOSOTROS</a>
-			<a href="/tienda/">TIENDA</a>
+			<a href="/tienda/">CATÁLOGO</a>
 			<a href="/contacto/">CONTACTO</a>
 		</nav>
 		<!-- /wp:html -->
 
-		<!-- wp:freeplast/basket-button /-->
+		<!-- wp:html --><a class="fp-woo-selection" href="/cotizacion/">Productos a Cotizar</a><!-- /wp:html -->
 
 		<!-- wp:html -->
 		<button class="fp-burger" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="fp-menu" data-fp-burger>
 			<span></span><span></span><span></span>
 		</button>
 		<!-- /wp:html -->
-	</header>
+	</div>
 	<!-- /wp:group -->
 </div>
 <!-- /wp:group -->
 
 <!-- wp:html -->
-<div class="fp-sheet" id="fp-menu" data-fp-sheet hidden>
+<dialog class="fp-sheet" id="fp-menu" data-fp-sheet aria-label="Menú de navegación">
+	<button type="button" class="fp-menu-close" data-fp-close>Cerrar menú</button>
 	<nav aria-label="Navegación móvil">
 		<a href="/"><span>INICIO</span></a>
 		<a href="/nosotros/"><span>NOSOTROS</span></a>
-		<a href="/tienda/"><span>TIENDA</span></a>
-		<a href="/cotizacion/"><span>COTIZA ONLINE</span></a>
+		<a href="/tienda/"><span>CATÁLOGO</span></a>
+		<a href="/cotizacion/"><span>Productos a Cotizar</span></a>
 		<a href="/contacto/"><span>CONTACTO</span></a>
 	</nav>
 	<div class="fp-sheet-foot">
@@ -44,5 +45,5 @@
 		<a href="https://api.whatsapp.com/send?phone=56968444265">WhatsApp + 56 9 6844 4265</a>
 		<a href="mailto:ventas@freeplast.cl">ventas@freeplast.cl</a>
 	</div>
-</div>
+</dialog>
 <!-- /wp:html -->

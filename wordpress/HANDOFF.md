@@ -1,5 +1,7 @@
 # Freeplast — verification and operations handoff (issue #15)
 
+> Historical pre-Woo handoff. Replaced on 2026-09-05 by [WOO-MIGRATION.md](WOO-MIGRATION.md); the verification claims below apply only to the prior implementation.
+
 This document packages the completed staging build (issues #2–#14) for
 independent operation and human review: the verification record, the
 catalog evidence with every provisional client fact, the full Quote

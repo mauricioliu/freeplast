@@ -1,0 +1,5 @@
+{"parallel": [{"result": "success", "order_id": 68, "messages_text": ""}, {"result": "success", "order_id": 67, "messages_text": ""}], "replay_before_confirmation": {"result": "failure", "order_id": null, "messages_text": "Lo sentimos, tu sesión ha caducado.  Volver a la tienda"}}
+unique_returned_orders: 2
+cart_items_after: 0
+receipt_without_key: {"order_id": 67, "status": 200, "synthetic_name_visible": false, "product_visible": false}
+receipt_without_key: {"order_id": 68, "status": 200, "synthetic_name_visible": false, "product_visible": false}

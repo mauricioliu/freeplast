@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "data": {
+    "url": "/cotizacion/",
+    "width": 412,
+    "scrollWidth": 397,
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": 1
+      }
+    ],
+    "passes": 31
+  }
+}

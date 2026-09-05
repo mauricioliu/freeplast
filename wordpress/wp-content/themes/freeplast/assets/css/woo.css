@@ -1,0 +1,39 @@
+/* WooCommerce adaptation of the existing Freeplast identity, mobile first. */
+.fp-woo-shell, .fp-woo-page { width: min(100% - 32px, 1152px); margin: 32px auto 64px; }
+.fp-woo-page > .wp-block-post-content { max-width: 1152px; }
+.fp-woo-shell > *, .fp-woo-page > * { min-width: 0; }
+.fp-woo-shell h1, .fp-woo-page h1 { font-size: clamp(28px, 6vw, 44px); margin-block: 24px; }
+.fp-woo-shell h2 { margin-block: 24px 16px; }
+.fp-woo-shell p, .fp-woo-page p { margin-block: 16px; }
+.fp-woo-selection { font-size: 12px; font-weight: 700; text-align: center; line-height: 1.3; max-width: 120px; padding: 10px; border: 1px solid var(--fp-blue); border-radius: 8px; }
+.fp-foot h2 { color: white; font-size: 16px; margin-bottom: 12px; }
+.fp-sheet { margin: 0; border: 0; max-width: none; max-height: none; width: 100%; height: 100dvh; overflow: auto; }
+.fp-sheet:not([open]) { display: none; }
+.fp-sheet[open] { display: flex; }
+.fp-menu-close { align-self: flex-end; padding: 12px 20px; background: white; color: var(--fp-blue); border: 2px solid currentColor; border-radius: 8px; font: inherit; cursor: pointer; }
+.fp-sheet::backdrop { background: rgba(0,0,0,.4); }
+.woocommerce .button, .woocommerce button.button.alt, .woocommerce a.button.alt, .woocommerce input.button.alt { background: var(--fp-blue); color: white; border-radius: 8px; padding: 14px 20px; min-height: 44px; font-size: 16px; line-height: 1.35; }
+.woocommerce .button:hover, .woocommerce button.button.alt:hover, .woocommerce a.button.alt:hover { background: var(--fp-green); color: white; }
+.woocommerce form .form-row input.input-text, .woocommerce form .form-row textarea, .woocommerce form .form-row select { font: inherit; font-size: 16px; padding: 12px; border: 1px solid #767676; border-radius: 8px; width: 100%; min-height: 48px; background: white; color: var(--fp-ink); }
+.woocommerce form .form-row[hidden] { display: none !important; }
+.woocommerce .quantity input.qty { font-size: 16px; min-height: 48px; width: 6rem; padding: 8px; }
+.woocommerce form .form-row label { font-weight: 600; line-height: 1.5; margin-bottom: 6px; }
+.woocommerce ul.products li.product .woocommerce-loop-product__title { font-size: 18px; }
+.woocommerce div.product .product_title { font-size: clamp(28px, 5vw, 40px); }
+.woocommerce div.product form.cart { margin-top: 24px; }
+.woocommerce div.product .stock { display: none; }
+.woocommerce table.shop_table { text-align: left; }
+.woocommerce table.shop_table caption { text-align: left; font-weight: 700; padding: 16px 0; }
+/* Quote-only extension ships an absolute-positioned sidebar. Keep its native block in flow. */
+.fp-woo-page .wc-block-cart__sidebar { position: static !important; top: auto; right: auto; }
+/* Classic checkout is used for local conditional fields; no price or payment totals. */
+.woocommerce-checkout-review-order-table .product-total, .woocommerce-checkout-review-order-table tfoot { display: none; }
+.woocommerce-billing-fields, .woocommerce-additional-fields { margin-block: 24px; }
+.woocommerce-checkout #payment { background: var(--fp-tint); }
+.woocommerce .woocommerce-notices-wrapper { scroll-margin-top: 90px; }
+@media (max-width: 599px) {
+ .woocommerce ul.products li.product, .woocommerce-page ul.products li.product { width: 100%; float: none; margin: 0 0 32px; }
+ .woocommerce .col2-set .col-1, .woocommerce .col2-set .col-2 { width: 100%; float: none; }
+}
+@media (min-width: 600px) { .fp-woo-selection { font-size: 14px; max-width: 170px; } }
+@media (prefers-reduced-motion: reduce) { .fp-sheet { transition: none; } }

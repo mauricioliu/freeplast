@@ -69,10 +69,11 @@ for _ in $(seq 1 60); do
 done
 rehearsal exec -T wordpress sh -c 'tar -xzf - -C /var/www/html' < "$DEST/files.tgz"
 
-LIVE_COUNT="$(docker compose --env-file .env run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
-RESTORED_COUNT="$(rehearsal run --rm cli wp post list --post_type=fp_product --post_status=any --format=count 2>/dev/null || true)"
-if [[ -n "$LIVE_COUNT" && "$LIVE_COUNT" != "0" && "$RESTORED_COUNT" == "$LIVE_COUNT" ]]; then
-  printf 'restore rehearsal verified: %s fp_product records in both stacks\n' "$LIVE_COUNT"
+COUNT_EXPR='echo count(get_posts(["post_type"=>["fp_product","product"],"post_status"=>"any","numberposts"=>-1,"fields"=>"ids"]))."/".(function_exists("wc_get_orders") ? count(wc_get_orders(["limit"=>-1,"return"=>"ids"])) : 0)."/".count(get_posts(["post_type"=>"fp_quote","post_status"=>"any","numberposts"=>-1,"fields"=>"ids"]));'
+LIVE_COUNT="$(docker compose --env-file .env run --rm -T cli wp eval "$COUNT_EXPR" 2>/dev/null || true)"
+RESTORED_COUNT="$(rehearsal run --rm -T cli wp eval "$COUNT_EXPR" 2>/dev/null || true)"
+if [[ "$LIVE_COUNT" =~ ^[1-9][0-9]*/[0-9]+/[0-9]+$ && "$RESTORED_COUNT" == "$LIVE_COUNT" ]]; then
+  printf 'restore rehearsal verified: catalog/Woo orders/original requests = %s in both stacks\n' "$LIVE_COUNT"
 else
   printf 'restore rehearsal FAILED: live=%s restored=%s\n' "${LIVE_COUNT:-?}" "${RESTORED_COUNT:-?}" >&2
   rehearsal down -v --remove-orphans

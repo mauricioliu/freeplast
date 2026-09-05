@@ -5,10 +5,11 @@
   "type": "module",
   "description": "Freeplast — WordPress catalog and quote-request staging site (see docs/agents/freeplast-wordpress/)",
   "scripts": {
-    "bootstrap": "node wordpress/scripts/bootstrap.mjs",
-    "test": "node wordpress/scripts/check.mjs",
-    "check": "node wordpress/scripts/check.mjs",
-    "typecheck": "node wordpress/scripts/typecheck.mjs"
+    "bootstrap": "python3 wordpress/scripts/package-woo.py",
+    "test": "node wordpress/scripts/check-woo.mjs",
+    "check": "node wordpress/scripts/check-woo.mjs",
+    "typecheck": "node wordpress/scripts/check-woo.mjs",
+    "woo:package": "python3 wordpress/scripts/package-woo.py"
   },
   "engines": {
     "node": ">=20"

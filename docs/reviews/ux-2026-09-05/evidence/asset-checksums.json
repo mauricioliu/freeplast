@@ -1,0 +1,26 @@
+{
+  "checked_at": "2026-09-05T05:43:24.909153+00:00",
+  "assets": [
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/style.css",
+      "local": "wordpress/wp-content/themes/freeplast/style.css",
+      "match": true,
+      "live_sha256": "1a56eb7465754b7fc094da84989ee68a7a125a46f96a772626570d0e87044a92",
+      "local_sha256": "1a56eb7465754b7fc094da84989ee68a7a125a46f96a772626570d0e87044a92"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/nav.js",
+      "local": "wordpress/wp-content/themes/freeplast/assets/js/nav.js",
+      "match": true,
+      "live_sha256": "adeff6a1ad697d089c823e2ab7e4c721a7506b985adc024559bf23862b727301",
+      "local_sha256": "adeff6a1ad697d089c823e2ab7e4c721a7506b985adc024559bf23862b727301"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/plugins/freeplast-catalog-quotes/assets/js/basket.js",
+      "local": "wordpress/wp-content/plugins/freeplast-catalog-quotes/assets/js/basket.js",
+      "match": true,
+      "live_sha256": "7d0bc14276e2a824b8a49be96b0744395dcfbc8c3fe938499f1bb42ade2c4524",
+      "local_sha256": "7d0bc14276e2a824b8a49be96b0744395dcfbc8c3fe938499f1bb42ade2c4524"
+    }
+  ]
+}

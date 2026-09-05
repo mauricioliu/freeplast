@@ -1,10 +1,8 @@
 # Freeplast WordPress
 
-WordPress implementation of the approved Freeplast v6 storefront and the
-catalog/quote-request plugin. Architecture: WordPress + standalone block
-theme `freeplast` + one private plugin `freeplast-catalog-quotes`
-(see `docs/agents/freeplast-wordpress/RUNBOOK.md` and `TARGET.md`).
-WooCommerce is not installed.
+**Current implementation (2026-09-05): WooCommerce + Quotes for WooCommerce + `freeplast-woo`, theme `freeplast`.** Read [WOO-MIGRATION.md](WOO-MIGRATION.md) for deployed versions, checks, data preservation and rollback. `npm test` is now offline only.
+
+The sections below document the retired private catalog/basket implementation, retained under `legacy/`. They are historical evidence, not current installation instructions. Do not run the old synchronizer or bootstrap against Woo.
 
 ## Layout
 

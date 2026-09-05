@@ -1,0 +1,70 @@
+[
+  {
+    "success": true,
+    "data": {
+      "path": "/tienda/",
+      "width": 320,
+      "documentWidth": 305,
+      "overflow": [],
+      "smallControls": [
+        {
+          "id": "",
+          "class": "orderby",
+          "w": 158,
+          "h": 19
+        }
+      ]
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/tienda/",
+      "width": 375,
+      "documentWidth": 360,
+      "overflow": [],
+      "smallControls": [
+        {
+          "id": "",
+          "class": "orderby",
+          "w": 158,
+          "h": 19
+        }
+      ]
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/tienda/",
+      "width": 412,
+      "documentWidth": 397,
+      "overflow": [],
+      "smallControls": [
+        {
+          "id": "",
+          "class": "orderby",
+          "w": 158,
+          "h": 19
+        }
+      ]
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/tienda/",
+      "width": 1440,
+      "documentWidth": 1425,
+      "overflow": [],
+      "smallControls": [
+        {
+          "id": "",
+          "class": "orderby",
+          "w": 158,
+          "h": 19
+        }
+      ]
+    }
+  }
+]

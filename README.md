@@ -46,14 +46,9 @@ and `http://mliu:4173/product-page-prototype/?variant=A` for the product-page pr
 
 ## Agent runbook
 
-**WordPress build:** when provisioning the OpenClaw catalog, implementing the v6 design or
-building the private catalog/quote plugin, start at
-`docs/agents/freeplast-wordpress/RUNBOOK.md`.
+**Current WordPress implementation (2026-09-05):** WooCommerce + free Quotes for WooCommerce + a small Freeplast adapter. Start at `wordpress/WOO-MIGRATION.md` and `docs/adr/0001-woocommerce-quote-only.md`. The custom catalog/basket implementation is retired under `wordpress/legacy/`.
 
-**WordPress shell baseline:** `npm test` boots the disposable WordPress installation under
-`wordpress/` and runs the automated acceptance checks (v6 shell, catalog synchronization,
-product pages and the catalog discovery journey — Home featured, Tienda grid/filters,
-search) — see `wordpress/README.md`.
+**Checks:** `npm test` performs offline PHP/JS and local field checks only; it does not start a server or send requests. `npm run woo:package` creates the checksum-pinned deployment bundle. Explicit staging regression and backup/restore commands are documented in `wordpress/WOO-MIGRATION.md`.
 
 **Live `freeplast.cl` performance:** when diagnosing or fixing slowness on the current
 production WooCommerce site, read `docs/agents/freeplast-wordpress/LIVE-PERFORMANCE.md`.

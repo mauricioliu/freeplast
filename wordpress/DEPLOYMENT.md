@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-09-05 migration:** same staging hostname, stack and volumes now run WooCommerce. Current release/backup/rollback record: [WOO-MIGRATION.md](WOO-MIGRATION.md). Infrastructure identities below remain relevant, but the old plugin activation/synchronization recipe is retired; `infra/deploy.sh` now refuses execution.
+
 The isolated, password-protected staging deployment of the complete build
 (issues #2–#13). Everything an operator needs to deploy, verify, back up
 and roll back lives here and in `infra/`. The repository carries the

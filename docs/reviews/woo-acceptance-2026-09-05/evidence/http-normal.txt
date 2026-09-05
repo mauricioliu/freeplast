@@ -1,0 +1,10 @@
+anonymous: true
+missing_color_rejected: true
+quantity_saved: 140
+red_units: 5
+dispatch_address_required: true
+rut_required: true
+submission: true
+confirmation: true
+cart_cleared: true
+test_order_id: 66

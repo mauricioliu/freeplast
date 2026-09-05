@@ -1,5 +1,7 @@
 # Freeplast WordPress catalog + quote build runbook
 
+> **Retired recipe (2026-09-05).** The owner approved replacing the private catalog/basket with WooCommerce. Current execution guide: [WOO-MIGRATION.md](../../../wordpress/WOO-MIGRATION.md), decision [ADR-0001](../../adr/0001-woocommerce-quote-only.md). Preserve the history below; do not execute it against the migrated staging.
+
 Use this runbook to provision an isolated WordPress site on OpenClaw, implement the published
 **v6 storefront** with the **product-page A structure**, and build a private catalog
 and quote-basket plugin.

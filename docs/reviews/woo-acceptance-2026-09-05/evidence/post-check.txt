@@ -1,0 +1,6 @@
+{"test_orders":[{"id":66,"status":"pending","quote_status":"quote-pending","paid":false,"needs_payment":false,"stock_reduced":false,"dispatch":"no","address_empty":true,"lines":[{"product":22,"variation":0,"qty":140},{"product":25,"variation":54,"qty":5}]},{"id":67,"status":"pending","quote_status":"quote-pending","paid":false,"needs_payment":false,"stock_reduced":false,"dispatch":"no","address_empty":true,"lines":[{"product":22,"variation":0,"qty":140},{"product":25,"variation":54,"qty":5}]},{"id":68,"status":"pending","quote_status":"quote-pending","paid":false,"needs_payment":false,"stock_reduced":false,"dispatch":"no","address_empty":true,"lines":[{"product":22,"variation":0,"qty":140},{"product":25,"variation":54,"qty":5}]}]}
+{"duplicate_details":true,"duplicate_cart_hash":true,"mail_suppressed_count":"9","mu_sha256":"71164446f3f7432311ed917e412c161f8076acda57a4b3eb02b095a63009d5f1"}
+{"private_note_persisted":true}
+{"email":"qwc_req_new_quote","rendered":true,"has_product":true,"has_fiscal":true,"has_currency":false,"template":"emails\/request-new-quote.php"}
+{"email":"qwc_request_sent","rendered":true,"has_product":true,"has_fiscal":true,"has_currency":false,"template":"emails\/new-quote-request-sent-customer.php"}
+Success: 68 state checks passed. No production requests or mutations.

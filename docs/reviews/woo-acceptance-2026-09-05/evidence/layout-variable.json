@@ -1,0 +1,60 @@
+[
+  {
+    "success": true,
+    "data": {
+      "path": "/producto/caja-universal-cerrada-color/",
+      "width": 320,
+      "documentWidth": 305,
+      "overflow": [
+        {
+          "tag": "IMG",
+          "class": "zoomImg",
+          "id": ""
+        }
+      ],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/producto/caja-universal-cerrada-color/",
+      "width": 375,
+      "documentWidth": 360,
+      "overflow": [
+        {
+          "tag": "IMG",
+          "class": "zoomImg",
+          "id": ""
+        }
+      ],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/producto/caja-universal-cerrada-color/",
+      "width": 412,
+      "documentWidth": 397,
+      "overflow": [
+        {
+          "tag": "IMG",
+          "class": "zoomImg",
+          "id": ""
+        }
+      ],
+      "smallControls": []
+    }
+  },
+  {
+    "success": true,
+    "data": {
+      "path": "/producto/caja-universal-cerrada-color/",
+      "width": 1440,
+      "documentWidth": 1425,
+      "overflow": [],
+      "smallControls": []
+    }
+  }
+]

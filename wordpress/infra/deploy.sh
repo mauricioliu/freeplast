@@ -33,6 +33,8 @@
 # kept, ALLOW_EXISTING_STACK=1 downgrades the stack-resource preflight
 # checks to notes, and WordPress install steps become no-ops.
 set -euo pipefail
+printf 'error: legacy deployment retired by ADR-0001\nhelp: use infra/deploy-woo.sh with a verified FREEPLAST_BACKUP and prepared bundle\n'
+exit 2
 umask 077
 
 INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

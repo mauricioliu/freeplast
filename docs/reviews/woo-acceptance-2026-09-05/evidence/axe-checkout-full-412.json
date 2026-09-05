@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "data": {
+    "url": "/datos-y-envio/",
+    "width": 412,
+    "scrollWidth": 397,
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": 2
+      }
+    ],
+    "passes": 32
+  }
+}

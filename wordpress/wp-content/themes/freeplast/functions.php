@@ -4,7 +4,7 @@
  *
  * The theme owns presentation of the approved v6 shell only. It contains no
  * catalog, quote-basket, quote-request, notification or sales logic — those
- * belong to the private freeplast-catalog-quotes plugin.
+ * belong to WooCommerce, Quotes for WooCommerce and the small freeplast-woo adapter.
  *
  * @package Freeplast
  */
@@ -13,7 +13,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '0.8.1' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.0' );
+add_action('after_setup_theme', static function () {
+	add_theme_support('woocommerce');
+	add_theme_support('wc-product-gallery-lightbox');
+});
+add_action('wp', static function () {
+	remove_action('woocommerce_before_main_content', 'woocommerce_output_content_wrapper', 10);
+	remove_action('woocommerce_after_main_content', 'woocommerce_output_content_wrapper_end', 10);
+	remove_action('woocommerce_sidebar', 'woocommerce_get_sidebar', 10);
+});
 
 /**
  * Resolve the position-independent theme-asset token in block markup.
@@ -54,6 +63,7 @@ add_action(
 	'wp_enqueue_scripts',
 	static function () {
 		wp_enqueue_style( 'freeplast-shell', get_stylesheet_uri(), array(), FREEPLAST_THEME_VERSION );
+		wp_enqueue_style( 'freeplast-woo-theme', get_template_directory_uri().'/assets/css/woo.css', array('freeplast-shell'), FREEPLAST_THEME_VERSION );
 		wp_enqueue_script( 'freeplast-nav', get_template_directory_uri() . '/assets/js/nav.js', array(), FREEPLAST_THEME_VERSION, true );
 	}
 );

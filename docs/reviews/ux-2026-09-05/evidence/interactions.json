@@ -1,0 +1,116 @@
+{
+  "date": "2026-09-05",
+  "site": "https://freeplast.mliu.site/",
+  "method": "Manual interaction through the connected browser, accessibility snapshots and DOM reads. Existing WordPress authenticated session; admin toolbar excluded from the audit. Public content cross-checked separately without cookies.",
+  "viewportObserved": {"width": 1440, "height": 1000},
+  "observations": [
+    {
+      "id": "entry-empty",
+      "path": "/",
+      "steps": ["Start with Cotización (0)", "Click hero Cotiza Online"],
+      "resultUrl": "/cotizacion/",
+      "resultText": "Tu cotización está vacía",
+      "recovery": "Explorar la tienda"
+    },
+    {
+      "id": "add-basic",
+      "path": "/producto/caja-cosechera-3-4/",
+      "quantityZeroValid": false,
+      "quantityAdded": 70,
+      "resultCount": "Cotización (1)",
+      "resultText": "«Caja Cosechera 3/4» se agregó a tu cotización.",
+      "noticeRole": "status"
+    },
+    {
+      "id": "dispatch-no",
+      "path": "/cotizacion/",
+      "selected": "no",
+      "addressClass": "fpcq-field fpcq-field-wide fpcq-field-address fpcq-hidden",
+      "addressComputedDisplay": "flex",
+      "addressRequired": false,
+      "textareaRect": {"x": 372.5, "y": 1021, "width": 680, "height": 66}
+    },
+    {
+      "id": "dispatch-yes-from-initial-form",
+      "path": "/cotizacion/",
+      "selected": "si",
+      "addressClass": "fpcq-field fpcq-field-wide fpcq-field-address",
+      "addressComputedDisplay": "flex",
+      "addressRequired": false,
+      "dataFpcqManualRequired": "0",
+      "requestSubmitted": false,
+      "limit": "Server rejection of an empty address was not exercised in this audit. Local server code contains this validation."
+    },
+    {
+      "id": "unsaved-quantity",
+      "path": "/cotizacion/",
+      "steps": ["Basket contains 70 units", "Change input to 140 without clicking Actualizar", "Fetch cotizacion with the same session"],
+      "inputQuantity": 140,
+      "serverQuantity": 70,
+      "requestSubmitButtonDisabled": false,
+      "mainAlertOrStatusCount": 0,
+      "requestSubmitted": false,
+      "limit": "Mismatch and absence of a guard were observed; a request containing the old quantity was not submitted."
+    },
+    {
+      "id": "update-preserves-name-loses-focus",
+      "path": "/cotizacion/",
+      "action": "Actualizar quantity to 140 after filling a synthetic name only",
+      "resultQuantity": 140,
+      "syntheticNamePreserved": true,
+      "activeElementAfterUpdate": "BODY"
+    },
+    {
+      "id": "color-required",
+      "path": "/producto/caja-universal-cerrada-color/",
+      "formValidWithoutSelection": false,
+      "selectedColor": "rojo",
+      "formValidAfterSelection": true,
+      "photoBeforeAndAfter": "https://freeplast.mliu.site/wp-content/uploads/2026/09/fp-universal.webp",
+      "photoAlt": "Caja Universal de plástico negro reciclado"
+    },
+    {
+      "id": "add-feedback-offscreen",
+      "path": "/producto/caja-universal-cerrada-color/",
+      "quantity": 5,
+      "selectedColor": "rojo",
+      "scrollY": 596,
+      "submitRect": {"x": 753.5, "y": 531.34375, "width": 266, "height": 44},
+      "countAfterAdd": "Cotización (2)",
+      "noticeText": "«Caja Universal Cerrada Color» se agregó a tu cotización.",
+      "noticeRect": {"x": 920.890625, "y": -509, "width": 129.921875, "height": 104},
+      "submitTextAfterAdd": "Agregar a cotización",
+      "submitDisabledAfterAdd": false
+    },
+    {
+      "id": "quick-add-focus",
+      "path": "/tienda/categoria/agricola/",
+      "steps": ["Open Cotizar on Cosechera", "Add one unit"],
+      "detailsOpenAfterAdd": false,
+      "activeElementAfterAdd": "BODY",
+      "noticeRect": {"x": 920.890625, "y": -463, "width": 129.921875, "height": 104}
+    },
+    {
+      "id": "selection-persistence",
+      "path": "/cotizacion/",
+      "resultAfterNavigation": [
+        {"product": "Caja Cosechera 3/4", "quantity": 141},
+        {"product": "Caja Universal Cerrada Color", "option": "Rojo", "quantity": 5}
+      ]
+    },
+    {
+      "id": "remove-and-cleanup",
+      "path": "/cotizacion/",
+      "firstRemoval": {"immediate": true, "undoFound": false, "activeElement": "BODY", "remainingCount": 1},
+      "secondRemoval": {"count": "Cotización (0)", "text": "Tu cotización está vacía", "requestHidden": true, "requestComputedDisplay": "none"},
+      "finalHomeCount": "Cotización (0)",
+      "requestsSubmitted": 0
+    }
+  ],
+  "toolLimitations": [
+    "Viewport resizing reported success, but window.innerWidth stayed at 1440 and max-width media queries stayed false. No responsive claim is based on these attempts.",
+    "Screenshot attempts timed out. The CLI fallback produced a 412px crop of a 1440px layout; discarded as invalid visual evidence.",
+    "Keyboard event injection was not reliable. No claim of a broken Enter key is attributed to the site.",
+    "No physical phone, screen reader, actual request submission, mail delivery, Google address confirmation, load test, Core Web Vitals measurement or real-user usability session was performed."
+  ]
+}

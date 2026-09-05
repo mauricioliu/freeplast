@@ -1,0 +1,109 @@
+{
+  "success": true,
+  "data": {
+    "url": "https://freeplast.mliu.site/tienda/categoria/agricola/",
+    "date": "2026-09-05T05:39:53.074Z",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "tool": {
+      "name": "axe-core",
+      "version": "4.10.3"
+    },
+    "violations": [
+      {
+        "id": "heading-order",
+        "impact": "moderate",
+        "help": "Heading levels should only increase by one",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/heading-order?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              "div:nth-child(2) > h4"
+            ],
+            "failureSummary": "Fix any of the following:\n  Heading order invalid"
+          }
+        ]
+      },
+      {
+        "id": "landmark-banner-is-top-level",
+        "impact": "moderate",
+        "help": "Banner landmark should not be contained in another landmark",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/landmark-banner-is-top-level?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              ".fp-island"
+            ],
+            "failureSummary": "Fix any of the following:\n  The banner landmark is contained in another landmark."
+          }
+        ]
+      },
+      {
+        "id": "landmark-contentinfo-is-top-level",
+        "impact": "moderate",
+        "help": "Contentinfo landmark should not be contained in another landmark",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/landmark-contentinfo-is-top-level?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              ".fp-foot"
+            ],
+            "failureSummary": "Fix any of the following:\n  The contentinfo landmark is contained in another landmark."
+          }
+        ]
+      },
+      {
+        "id": "landmark-no-duplicate-banner",
+        "impact": "moderate",
+        "help": "Document should not have more than one banner landmark",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/landmark-no-duplicate-banner?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              ".wp-site-blocks > header"
+            ],
+            "failureSummary": "Fix any of the following:\n  Document has more than one banner landmark"
+          }
+        ]
+      },
+      {
+        "id": "landmark-no-duplicate-contentinfo",
+        "impact": "moderate",
+        "help": "Document should not have more than one contentinfo landmark",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/landmark-no-duplicate-contentinfo?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              ".wp-site-blocks > footer"
+            ],
+            "failureSummary": "Fix any of the following:\n  Document has more than one contentinfo landmark"
+          }
+        ]
+      },
+      {
+        "id": "landmark-unique",
+        "impact": "moderate",
+        "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+        "helpUrl": "https://dequeuniversity.com/rules/axe/4.10/landmark-unique?application=axeAPI",
+        "nodes": [
+          {
+            "target": [
+              ".wp-site-blocks > header"
+            ],
+            "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable"
+          },
+          {
+            "target": [
+              ".wp-site-blocks > footer"
+            ],
+            "failureSummary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable"
+          }
+        ]
+      }
+    ],
+    "passes": 31,
+    "incomplete": []
+  }
+}

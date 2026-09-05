@@ -1,5 +1,7 @@
 # Freeplast WordPress — build decisions
 
+**2026-09-05: superseded architecture.** Owner approved direct replacement of the repository implementation and `freeplast.mliu.site` with WooCommerce + free Quotes for WooCommerce; `freeplast.cl` remains untouched. See [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md) and [WOO-MIGRATION.md](WOO-MIGRATION.md). Entries below are historical, not instructions to restore the private basket or JSON-sync authority.
+
 Owner-approved architecture (2026-09-03, RUNBOOK.md) applies: WordPress +
 standalone block theme (`freeplast`) + one private plugin
 (`freeplast-catalog-quotes`), no WooCommerce, request-only v1.

@@ -1,0 +1,12 @@
+{
+  "woocommerce": {
+    "version": "11.1.0",
+    "url": "https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip",
+    "sha256": "6bae9bf74d722b6deb15f049687c311cfafc26e3a5d8fa55ac6ea4b9a3a8df19"
+  },
+  "quotes-for-woocommerce": {
+    "version": "2.13",
+    "url": "https://downloads.wordpress.org/plugin/quotes-for-woocommerce.2.13.zip",
+    "sha256": "63e7144c022362b87d9fd43e5154bd14795e7bf0e729c268e23f8066f07c4034"
+  }
+}

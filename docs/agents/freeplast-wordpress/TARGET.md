@@ -1,5 +1,7 @@
 # Freeplast catalog + quote implementation contract
 
+> **Historical contract, superseded 2026-09-05.** Current architecture and operation: [ADR-0001](../../adr/0001-woocommerce-quote-only.md) and [WOO-MIGRATION.md](../../../wordpress/WOO-MIGRATION.md). Do not reinstate the no-Woo dependency rule or recurring JSON synchronization described below.
+
 This reference defines the WordPress theme and private plugin. [RUNBOOK.md](RUNBOOK.md) owns
 sequence and gates.
 
