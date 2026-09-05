@@ -8,6 +8,16 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-05 — Issue #25: Ventas Freeplast enters the native Woo admin with least privilege (Woo stack)
+
+Finding WA-02 of the post-migration acceptance review: the retained `ventas_freeplast` role had no Woo order capabilities, so the only reviewed flows ran as administrator or `shop_manager` — neither is least-privilege. Decision (adapter **1.2.0**, pending deploy):
+
+- **Own the role definition, mirror the admin:** the adapter now owns `fpw_sync_sales_role()` — idempotent, self-healing (create when missing, restore approved caps, strip extras, never touch other roles) — and grants exactly `read`, `manage_freeplast_quotes`, `edit_shop_orders`, `edit_others_shop_orders`. The two Woo caps are the verified minimum for the native Pedidos surfaces in the pinned Woo 11.1.0 sources (list/search + note AJAX → `edit_shop_orders`; top-level WooCommerce menu + author-less order detail → `edit_others_shop_orders`). No parallel administration is built (ADR-0001).
+- **Access seam, not a cap grant:** Woo's default admin lock-down redirects users without the `edit_posts` primitive to My Account; the adapter filters `woocommerce_prevent_admin_access` for order-limited staff instead of granting `edit_posts` (which would allow wide post/page editing). Everything behind the door stays WP-capability-checked.
+- **Server-side denials over UI hiding:** deletes, catalog, users, settings and plugins stay ungranted (WP enforces); the quotes extension's priced actions stay behind `manage_woocommerce`; email resends are removed from the order-actions select AND denied 403 at `woocommerce_before_resend_order_emails` (the manual invoice email bypasses Woo's enabled-check, so disabled-email filters are not a guard); the note-to-customer email joins the disabled set; ventas' notes are normalized to private at the AJAX origin (the metabox posts a visibility choice), not merely hidden in the UI.
+- **Honest scope boundary:** Woo's own editor still allows general order saves to cap-holders; restricting that would mean owning Woo's editor (ADR-0001 rejects it). Documented for human acceptance rather than papered over.
+- **Checks:** offline 86 → 130 assertions + 68 syntax/deployment checks; `verify-woo-state.php` asserts role caps/denials/guards read-only; new staging-only `verify-ventas-role.py` runs a real restricted session (temp account, allowed walk, direct-route denials, cleanup) — verified end-to-end on a disposable pinned WP+Woo+Quotes stack. Deploy + operator/human walkthroughs remain the Gate 3 steps (see WOO-MIGRATION.md).
+
 ## 2026-09-05 — Issue #26: feedback and recovery for failed quantity changes in Productos a Cotizar (Woo stack)
 
 Finding WA-03 of the post-migration acceptance review: a quantity change that fails (connection loss) rolls back silently — the block shows the persisted number again with no explanation, and the persisted value itself is never stated. Verified in the pinned Woo 11.1.0 sources: `receiveError(isApiErrorResponse(e) ? e : null)` renders nothing for connection loss, and the store's own pending flag has an abort-cleanup gap. Decision (theme **1.0.4**, pending deploy):

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -137,6 +137,137 @@ add_action( 'wp_enqueue_scripts', static function () {
 		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.2', true);
 	}
 } );
+
+/**
+ * Ventas Freeplast — least-privilege sales access over Woo's own order
+ * administration (issue #25, finding WA-02). The role carries only `read`,
+ * the retained sales capability, and the two Woo caps the native Pedidos
+ * surfaces verifiably require (pinned Woo 11.1.0 + WP map_meta_cap):
+ *   - edit_shop_orders: the Orders list/search screen (the CPT's edit_posts)
+ *     and the private-note AJAX (WC_AJAX::add_order_note).
+ *   - edit_others_shop_orders: the top-level WooCommerce menu and the order
+ *     detail (orders have no author, so edit_post maps here).
+ * Deletes, catalog, coupons, terms, settings, reports and the quotes
+ * extension's own priced actions (manage_woocommerce) stay ungranted.
+ */
+define( 'FPW_SALES_ROLE', 'ventas_freeplast' );
+
+/** The approved capability set — nothing else is granted or kept. */
+function fpw_sales_role_caps(): array {
+	return array(
+		'read'                    => true,
+		'manage_freeplast_quotes' => true,
+		'edit_shop_orders'        => true,
+		'edit_others_shop_orders' => true,
+	);
+}
+
+/**
+ * Idempotent, self-healing definition of the sales role: create when
+ * missing, restore any missing approved capability, strip anything else
+ * (least privilege), and never touch other roles. Cheap enough to run on
+ * every request; writes only when the stored definition drifted.
+ *
+ * @return bool Whether the stored role definition changed.
+ */
+function fpw_sync_sales_role(): bool {
+	$caps = fpw_sales_role_caps();
+	$role = get_role( FPW_SALES_ROLE );
+	if ( null === $role ) {
+		add_role( FPW_SALES_ROLE, 'Ventas Freeplast', $caps );
+		return true;
+	}
+	$changed = false;
+	foreach ( array_keys( $caps ) as $cap ) {
+		if ( ! $role->has_cap( $cap ) ) {
+			$role->add_cap( $cap );
+			$changed = true;
+		}
+	}
+	foreach ( array_keys( $role->capabilities ) as $cap ) {
+		if ( ! isset( $caps[ $cap ] ) ) {
+			$role->remove_cap( $cap );
+			$changed = true;
+		}
+	}
+	return $changed;
+}
+add_action( 'init', 'fpw_sync_sales_role', 20 );
+register_activation_hook( __FILE__, 'fpw_sync_sales_role' );
+
+/**
+ * Order-limited staff: holds the order caps without general Woo
+ * administration. Every ventas guard below keys off this predicate, so
+ * administrators/shop_managers (manage_woocommerce) keep Woo's full
+ * native behavior everywhere.
+ */
+function fpw_is_order_limited_staff(): bool {
+	return current_user_can( 'edit_shop_orders' ) && ! current_user_can( 'manage_woocommerce' );
+}
+
+/**
+ * Ventas may enter wp-admin: by default Woo redirects users without the
+ * WordPress primitive edit_posts (or manage_woocommerce) to My Account
+ * (WC_Admin::prevent_admin_access), and the sales role deliberately does
+ * not carry edit_posts — it would grant wide post/page editing. The two
+ * order caps are the narrower key to the same door; every screen beyond
+ * it stays capability-checked by WordPress itself.
+ */
+function fpw_allow_sales_admin_access( $prevent ): bool {
+	return $prevent && ! fpw_is_order_limited_staff();
+}
+add_filter( 'woocommerce_prevent_admin_access', 'fpw_allow_sales_admin_access' );
+
+/**
+ * Sales notes written by ventas are private at the origin: the native
+ * note metabox posts a visibility choice, and for order-limited staff it
+ * is normalized to private before Woo's own AJAX handler reads it
+ * (WC_AJAX::add_order_note → add_order_note with is_customer_note = 0).
+ * Server-side enforcement — the matching UI is reduced below, but this
+ * normalization does not depend on it.
+ */
+function fpw_force_private_sales_note(): void {
+	if ( ! wp_doing_ajax() || 'woocommerce_add_order_note' !== ( $_REQUEST['action'] ?? '' ) || ! fpw_is_order_limited_staff() ) {
+		return;
+	}
+	$_REQUEST['note_type'] = '';
+	$_POST['note_type']    = '';
+}
+add_action( 'admin_init', 'fpw_force_private_sales_note', 0 );
+
+/** Email resends are outside the approved scope: removed from the order-actions select for ventas. */
+function fpw_sales_order_actions( array $actions ): array {
+	if ( fpw_is_order_limited_staff() ) {
+		unset( $actions['send_order_details'], $actions['send_order_details_admin'], $actions['regenerate_download_permissions'] );
+	}
+	return $actions;
+}
+add_filter( 'woocommerce_order_actions', 'fpw_sales_order_actions' );
+
+/**
+ * …and denied on the server even for a crafted post: both email resends
+ * fire this hook before sending, and the manual invoice email bypasses
+ * Woo's enabled-check (WC_Email::send_if_recipient), so the disabled-email
+ * filters alone cannot be the guard.
+ */
+function fpw_deny_sales_email_resend(): void {
+	if ( fpw_is_order_limited_staff() ) {
+		wp_die( 'No tienes permisos para reenviar correos de esta solicitud.', '', array( 'response' => 403 ) );
+	}
+}
+add_action( 'woocommerce_before_resend_order_emails', 'fpw_deny_sales_email_resend', 0 );
+
+/** The note-visibility select is inert for ventas (normalized above): keep the UI honest by not offering it. */
+function fpw_sales_note_visibility_style(): void {
+	if ( ! fpw_is_order_limited_staff() ) {
+		return;
+	}
+	echo '<style>.order_note_visibility{display:none}</style>';
+}
+add_action( 'admin_head', 'fpw_sales_note_visibility_style' );
+
+// Request-only site: no note-to-customer email — completes the disabled set below.
+add_filter( 'woocommerce_email_enabled_customer_note', '__return_false', 999 );
 
 /** Contact fields displayed in Woo administration and native email metadata hooks. */
 function fpw_details( $order ) {
