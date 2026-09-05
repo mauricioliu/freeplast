@@ -161,4 +161,9 @@ check(str_contains($feedback_source,'Cantidad guardada: ') && str_contains($feed
 check(str_contains($feedback_source,'preventDefault'),'Advancing is blocked while a quantity is unconfirmed, synchronously');
 check(str_contains($feedback_source,'focus('),'Keyboard focus lost to the pending disable cycle is restored');
 
+// Theme versioning contract: the style.css header and the asset cache-busting constant move together.
+$style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.css');
+check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');
+check($style_version[1]===FREEPLAST_THEME_VERSION,'style.css Version header matches FREEPLAST_THEME_VERSION — a cache-bust bump moves both');
+
 echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback)\n";

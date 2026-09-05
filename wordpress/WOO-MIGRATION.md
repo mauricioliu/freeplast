@@ -120,7 +120,7 @@ npm test                         # offline only; no server or submissions
 npm run woo:package              # wordpress/.build/woo-release/
 ```
 
-If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **86 local assertions (checkout fields + header line count + unpriced review table + variation button state + quantity-feedback contract, issues #30/#29/#28/#26) + 68 syntax/dependency/deployment checks**, the latter including the real pinned cart-block store scenarios for #26.
+If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **88 local assertions (checkout fields + header line count + unpriced review table + variation button state + quantity-feedback contract, issues #30/#29/#28/#26) + 68 syntax/dependency/deployment checks**, the latter including the real pinned cart-block store scenarios for #26.
 
 Read-only runtime checks after the bundle is copied to staging:
 
