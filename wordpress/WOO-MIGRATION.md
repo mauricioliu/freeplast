@@ -12,6 +12,19 @@ Offline checks remain 29; read-only runtime checks passed 68 after three new tec
 
 The `ralph/issue-24` (one attempt, one request under concurrent submission) and `ralph/issue-27` (named links on the featured cards) branches were developed against pre-migration `main` and merged **into the retired implementation preserved under `legacy/`** (rename-detected; the retired suite `scripts/check.mjs`, its VERIFICATION/HANDOFF/BUILD-DECISIONS records and the deterministic `dist/` plugin ZIP — rebuilt from the merged legacy source via `scripts/rebuild-legacy-plugin-zip.mjs` — carry both fixes). The deployed Woo stack was **not** modified: the live duplicate-order (WA-01) and unnamed-link (WA-04) defects still need bounded Woo-side fixes — a checkout idempotency/claim integration in `freeplast-woo` for #24 and accessible card link naming in the Woo-rendered Home for #27 — each with its own Woo-native regression before either finding can be considered closed on staging. Issues #24/#27 were closed by the merge pipeline; reopen or file follow-ups if the Woo-side port is required (it is, per the acceptance criteria).
 
+## Header Productos a Cotizar line count — issue #30 — 2026-09-05
+
+Finding 2 of the [2026-09-05 afternoon site validation](../docs/reviews/site-validation-2026-09-05/README.md): the migrated Woo header renders a static `wp:html` Productos a Cotizar link with no count logic in the theme, `nav.js` or the adapter — the v6 contract and the retired implementation showed the distinct-line count on every page.
+
+Repo fix (adapter **1.1.0**, theme **1.0.1**; **pending deploy** — the live stack still runs 1.0.2/1.0.0 with the static link):
+
+- `freeplast-woo` owns the Woo-boundary value: `fpw_cart_line_count()` returns `count( WC()->cart->get_cart() )` — Woo keys every cart entry by product + variation + attributes, so counting entries is exactly the contract-v6 definition (variants/colours are separate lines; quantities never add lines). Zero when Woo or the cart is unavailable. No new session, table or service — the count reads the cart (ADR-0001).
+- The adapter registers `span.fpw-basket-count` under `woocommerce_add_to_cart_fragments`, so classic AJAX adds from catalog cards update the header through Woo's own add-to-cart response (verified against the pinned WooCommerce 11.1.0 `WC_AJAX::add_to_cart`/`add-to-cart.js` fragment application).
+- The theme part stays static `wp:html`; the count token `{{FREEPLAST_BASKET_COUNT}}` is resolved at render time by a second `render_block` filter (the established `{{FREEPLAST_THEME_URL}}` mechanism), so **every public route server-renders the current number on first paint, including without JavaScript**. Both header surfaces carry it: desktop island link and mobile menu sheet. Documented empty state: the link always shows the number — `(0)` when empty — so there is no stale-value flash; with the adapter inactive the link degrades to no number.
+- New theme `assets/js/basket-count.js` bridges the one surface fragments cannot see: the native cart block mutates quantities/removals/empty through its own Store API data store, so the script subscribes to `wc/store/cart` and re-renders the header count from `getCartData().items.length` — the same distinct-lines definition. It renders nothing until the store has resolved its cart (no flash over the server value) and polls/fetches nothing.
+- Offline regression grew from 16 to **30 local assertions**: line-count semantics (absent Woo, empty cart, quantities-not-lines, variants-as-lines), the fragment contract (selector + live value), the header-markup contract (both surfaces carry span + token) and the `render_block` resolution (live count, `(0)` empty state, byte-identical pass-through). Syntax/dependency/deployment checks grew 13 → 14 (the new JS file).
+- **Remaining:** package + deploy to staging, then a browser regression on staging — add from card and ficha, quantity change, remove and empty, header matches Cotización after each mutation and after reload, no console errors — with a test cart emptied afterwards; visual review (narrow width) remains the pending human Gate 3 step.
+
 ## Current implementation
 
 - Existing WordPress 7.1 / PHP 8.3 / MariaDB stack, `/opt/freeplast-wordpress` on SSH alias `openclaw`; Nginx/hostname unchanged.
@@ -66,7 +79,7 @@ npm test                         # offline only; no server or submissions
 npm run woo:package              # wordpress/.build/woo-release/
 ```
 
-If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **16 local field assertions + 13 syntax/dependency/deployment checks**. These are not simulated Woo integration coverage.
+If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **30 local assertions (checkout fields + header line count, issue #30) + 14 syntax/dependency/deployment checks**. These are not simulated Woo integration coverage.
 
 Read-only runtime checks after the bundle is copied to staging:
 

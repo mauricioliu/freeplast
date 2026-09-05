@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.0' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.1' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -54,6 +54,31 @@ add_filter(
 );
 
 /**
+ * Resolve the Productos a Cotizar line-count token in block markup.
+ *
+ * The header part is static wp:html, so the basket count is written as
+ * "{{FREEPLAST_BASKET_COUNT}}" and replaced at render time with the distinct
+ * line count of the WooCommerce cart supplied by the freeplast-woo adapter
+ * (fpw_cart_line_count()). Every public route therefore server-renders the
+ * current number on first paint — including without JavaScript — and the
+ * documented empty state is (0): coherent and never a stale flash. With
+ * JavaScript, classic AJAX adds refresh the span through Woo's native
+ * add-to-cart fragments and assets/js/basket-count.js bridges the cart
+ * block's own Store API mutations.
+ */
+add_filter(
+	'render_block',
+	static function ( $block_content ) {
+		if ( ! str_contains( $block_content, '{{FREEPLAST_BASKET_COUNT}}' ) ) {
+			return $block_content;
+		}
+
+		$count = function_exists( 'fpw_cart_line_count' ) ? fpw_cart_line_count() : 0;
+		return str_replace( '{{FREEPLAST_BASKET_COUNT}}', (string) $count, $block_content );
+	}
+);
+
+/**
  * Enqueue the v6 shell stylesheet and the progressive navigation script.
  *
  * The stylesheet is mobile-first: adaptation happens only through
@@ -65,5 +90,6 @@ add_action(
 		wp_enqueue_style( 'freeplast-shell', get_stylesheet_uri(), array(), FREEPLAST_THEME_VERSION );
 		wp_enqueue_style( 'freeplast-woo-theme', get_template_directory_uri().'/assets/css/woo.css', array('freeplast-shell'), FREEPLAST_THEME_VERSION );
 		wp_enqueue_script( 'freeplast-nav', get_template_directory_uri() . '/assets/js/nav.js', array(), FREEPLAST_THEME_VERSION, true );
+		wp_enqueue_script( 'freeplast-basket-count', get_template_directory_uri() . '/assets/js/basket-count.js', array(), FREEPLAST_THEME_VERSION, true );
 	}
 );
