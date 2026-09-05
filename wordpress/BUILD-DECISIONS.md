@@ -360,6 +360,12 @@ Decisions:
    the loopback proxy with Host/Forwarded headers. The prior
    configuration is backed up before the vhost exists and nginx -t
    validates before every reload.
+   *Superseded 2026-09-04 (owner instruction):* the edge Basic Auth gate
+   was removed — the staging surface is public HTTPS (anonymous visitors
+   served); `/wp-admin/` stays gated by the WordPress login; the
+   generated htpasswd and its owner/client pairs are retained on the
+   server but unused. Noindex, TLS, upload limits, denies and the
+   proxy chain are unchanged.
 4. **Secrets never touch the repository or command output.** deploy.sh
    (umask 077) generates every secret on the server with openssl rand
    into /opt/freeplast-wordpress/.env (0600) and .secrets/credentials

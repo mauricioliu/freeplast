@@ -166,7 +166,7 @@ chmod 0711 "$STACK_DIR"
 # server's approved TLS convention — the rendered file is byte-for-byte
 # the deployed configuration (issue #16).
 sed -e "s|__TLS_CERT__|${TLS_CERT_PATH}|g" -e "s|__TLS_KEY__|${TLS_KEY_PATH}|g" \
-  -e "s|__SITE_HOSTNAME__|${SITE_HOSTNAME}|g" -e "s|__STACK_DIR__|${STACK_DIR}|g" \
+  -e "s|__SITE_HOSTNAME__|${SITE_HOSTNAME}|g" \
   -e "s|__LOOPBACK_PORT__|${LOOPBACK_PORT}|g" \
   "$INFRA_DIR/nginx/staging.conf.tmpl" > "$STACK_DIR/nginx/${SITE_HOSTNAME}.conf"
 install -m 0644 "$STACK_DIR/nginx/${SITE_HOSTNAME}.conf" "/etc/nginx/sites-available/${SITE_HOSTNAME}"

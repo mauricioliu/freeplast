@@ -22,10 +22,6 @@ server {
     ssl_certificate __TLS_CERT__;
     ssl_certificate_key __TLS_KEY__;
 
-    # Password-protected review surface: owner/client credentials only.
-    auth_basic "Freeplast staging";
-    auth_basic_user_file __STACK_DIR__/nginx/.htpasswd;
-
     # Staging stays non-indexed even if WordPress is ever misconfigured.
     add_header X-Robots-Tag "noindex, nofollow" always;
 

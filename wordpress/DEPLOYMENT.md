@@ -61,10 +61,13 @@ stay fatal.
 - **Isolation:** dedicated Compose project, private named volumes,
   project-scoped network, loopback-only origin. The database publishes
   no port; the WP-CLI sidecar starts only on demand (profile `tools`).
-- **HTTPS + Basic Auth + noindex:** host Nginx terminates TLS for the
-  approved hostname only, requires owner/client Basic Auth, and sends
-  `X-Robots-Tag: noindex, nofollow` on every response; WordPress itself
-  installs with `blog_public 0`. `nginx -t` validates before every
+- **HTTPS + noindex, public review surface:** host Nginx terminates TLS
+  for the approved hostname only and sends `X-Robots-Tag: noindex,
+  nofollow` on every response; WordPress itself installs with
+  `blog_public 0`. The edge Basic Auth gate was removed by owner
+  instruction (2026-09-04 posture change — the staging site serves
+  anonymous visitors; `/wp-admin/` and `/wp-login.php` stay gated by the
+  WordPress login). `nginx -t` validates before every
   reload, and the prior configuration is backed up first.
 - **Origin opacity:** the edge hides the origin runtime header
   (`X-Powered-By`) from every proxied response (issue #23) — the staging
@@ -73,11 +76,13 @@ stay fatal.
 - **WordPress identity:** locale `es_CL`, timezone `America/Santiago`,
   home/site URLs `https://freeplast.mliu.site`, permalinks
   `/%postname%/`, `DISALLOW_FILE_EDIT`, `--skip-email` installs.
-- **Secrets:** MariaDB root/application, WordPress administrator and the
-  two Basic Auth credentials are generated on the server, live only in
+- **Secrets:** MariaDB root/application and the WordPress administrator
+  are generated on the server, live only in
   mode-0600/0400 files, travel through the environment (never argv,
   never output), and reach the owner only through the approved secret
-  channel.
+  channel. The two Basic Auth pairs are still generated and stored the
+  same way but are unused at the public edge since the 2026-09-04
+  posture change (retained for a possible return to a gated surface).
 - **Safe test mail:** the plugin fails closed (issue #10) and the stack
   sets `FREEPLAST_CQ_MAIL_MODE=suppress` — non-delivery until the owner
   approves test recipients; switching to `redirect` additionally needs
@@ -180,6 +185,11 @@ the persistent volume; catalog synchronization reported zero changes.
 - [x] Re-run verify.sh output: all checks `ok`, including the new
       `authenticated response carries no X-Powered-By` row; baseline
       Compose projects unchanged (cutulab, frappe-lms, open-wearables)
+- [x] Public review surface (owner instruction, executed same day): edge
+      Basic Auth removed from the vhost template, vhost re-rendered and
+      reinstalled; anonymous `/` → 200, `/wp-admin/` → 302 (WordPress
+      login gate), noindex and the X-Powered-By strip unchanged; verify.sh
+      now walks the matrix anonymously
 
 - [x] Preflight output: all checks `ok`, baseline recorded —
       `/root/freeplast-wordpress-backups/preflight-20260904T102325Z.txt`

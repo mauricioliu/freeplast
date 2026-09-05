@@ -122,8 +122,10 @@
  *      reviewable, collision-checked and secret-safe before any server
  *      mutation: a dedicated WordPress + MariaDB Compose project with
  *      private persistent volumes and a loopback-only origin, an
- *      approved-hostname-only Nginx vhost with owner/client Basic Auth,
- *      noindex, TLS through the server convention and nginx -t before
+ *      approved-hostname-only public HTTPS Nginx vhost (the edge Basic
+ *      Auth gate removed by owner instruction 2026-09-04; wp-admin
+ *      stays gated by the WordPress login), noindex, TLS through the
+ *      server convention and nginx -t before
  *      reload, a read-only preflight that fails on every resource
  *      collision, a deploy script that generates secrets on the server
  *      (never in the repository or command output) and gates the catalog
@@ -4883,8 +4885,7 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   assert.ok(/listen 80;/.test(vhost) && /return 301 https:\/\/\$host\$request_uri;/.test(vhost), 'plain HTTP redirects to HTTPS');
   assert.ok(/listen 443 ssl;/.test(vhost), 'the review surface is TLS');
   assert.ok(/ssl_certificate __TLS_CERT__;/.test(vhost) && /ssl_certificate_key __TLS_KEY__;/.test(vhost), 'TLS paths render from the server convention at deploy time');
-  assert.ok(/auth_basic "Freeplast staging";/.test(vhost), 'owner/client Basic Auth protects the review surface');
-  assert.ok(/auth_basic_user_file __STACK_DIR__\/nginx\/.htpasswd;/.test(vhost), 'the htpasswd lives inside the stack directory');
+  assert.ok(!/auth_basic/.test(vhost), 'the review surface is public — no edge Basic Auth gate (owner-approved posture)');
   assert.ok(/add_header X-Robots-Tag "noindex, nofollow" always;/.test(vhost), 'Nginx-level noindex backs up the WordPress setting');
   assert.ok(/client_max_body_size 64m;/.test(vhost), 'an explicit upload limit for WordPress media');
   assert.ok(/proxy_pass http:\/\/127\.0\.0\.1:__LOOPBACK_PORT__;/.test(vhost), 'the proxy targets the loopback-only origin');
@@ -4965,7 +4966,7 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   /* 6. verify.sh checks the acceptance matrix through HTTPS + WP-CLI. */
   const verify = read('verify.sh');
   for (const needle of [
-    '301', '401', '200',
+    '301', '200', '302', '404',
     '/nosotros/', '/tienda/', '/contacto/', '/cotizacion/', '/politica-de-privacidad/', '/producto/caja-cosechera-3-4/',
     'x-robots-tag', 'blog_public', 'get_locale', 'es_CL', 'America/Santiago',
     'option get home', 'wp-login.php', '/wp-admin/',
@@ -4973,7 +4974,8 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
   ]) {
     assert.ok(verify.includes(needle), `verify.sh must assert ${needle}`);
   }
-  assert.ok(verify.includes('BASIC_AUTH_OWNER_PASSWORD') && verify.includes('BASIC_AUTH_CLIENT_PASSWORD'), 'both owner and client credentials are exercised');
+  assert.ok(verify.includes('anonymous request is served (200)'), 'verify.sh must assert the public surface serves anonymous requests');
+  assert.ok(!verify.includes('"$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD"'), 'verification walks the public surface without credentials');
   const verifyLines = verify.split('\n');
   assert.ok(
     verifyLines.some((line) => line.includes('mode') && line.includes('live')),
@@ -5014,13 +5016,13 @@ test('the isolated staging deployment is collision-checked, secret-safe and boun
      below) and DEPLOYMENT.md records the deployed values (§9). */
   assert.equal((vhost.match(/proxy_pass http:\/\/127\.0\.0\.1:__LOOPBACK_PORT__;/g) || []).length, 1, 'exactly one proxy target');
   assert.ok(
-    deploy.includes('"$STACK_DIR/nginx/.htpasswd"') && vhost.includes('__STACK_DIR__/nginx/.htpasswd;'),
-    'deploy.sh writes the exact htpasswd path the vhost reads'
+    deploy.includes('"$STACK_DIR/nginx/.htpasswd"') && !vhost.includes('.htpasswd'),
+    'deploy.sh still stages the stack htpasswd (credentials retained, unused at the public edge)'
   );
 
   section('Isolated staging deployment artifacts (issue #14)', [
     'Compose stack: dedicated freeplast-wordpress project, MariaDB healthcheck, private named volumes (db_data, wp_data), loopback-only origin 127.0.0.1:8092, profile-gated WP-CLI sidecar, no literal secrets (all .env references)',
-    'Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, owner/client Basic Auth, X-Robots-Tag noindex always, 64m uploads, dotfile/sensitive denies, proxy to the loopback origin with Host/Forwarded headers',
+    'Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, public review surface (no edge Basic Auth; wp-admin gated by the WordPress login), X-Robots-Tag noindex always, 64m uploads, dotfile/sensitive denies, proxy to the loopback origin with Host/Forwarded headers',
     'preflight.sh is read-only and collision-checks hostname, port, stack directory, Compose project, volumes, network, disk, DNS, certificate SAN/expiry and existing-container health before any mutation',
     'deploy.sh: umask 077, server-generated secrets (openssl rand) into mode-0600 .env, Compose validation before up, es_CL + America/Santiago + HTTPS URLs + blog_public 0 + permalinks, plugin/theme activation, catalog sync with a zero-change dry-run gate, Nginx backup before vhost, nginx -t before reload, credentials only in mode-0400 files — never repo files or command output',
     'verify.sh: HTTP→HTTPS 301, 401 without credentials, owner+client 200s, every required route, X-Robots-Tag + blog_public, locale/timezone/home URL, catalog dry-run zero changes, restricted (non-live) mail mode through HTTPS and WP-CLI',
@@ -5258,7 +5260,7 @@ test('the verification and operations handoff packages the build for independent
   }
 
   /* 9. The exact pending human actions are stated as pending. */
-  for (const needle of ['pending', 'Gate 3', 'DECISIONS.md', 'visual review', 'complete quote journey', 'Basic Auth']) {
+  for (const needle of ['pending', 'Gate 3', 'DECISIONS.md', 'visual review', 'complete quote journey']) {
     assert.ok(covers(needle), `HANDOFF.md §8 must state the pending human action: ${needle}`);
   }
 
@@ -5313,10 +5315,6 @@ server {
     ssl_certificate /etc/nginx/ssl/mliu.site/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/mliu.site/key.pem;
 
-    # Password-protected review surface: owner/client credentials only.
-    auth_basic "Freeplast staging";
-    auth_basic_user_file /opt/freeplast-wordpress/nginx/.htpasswd;
-
     # Staging stays non-indexed even if WordPress is ever misconfigured.
     add_header X-Robots-Tag "noindex, nofollow" always;
 
@@ -5354,9 +5352,11 @@ test('the staging hostname, install root and loopback port are single-sourced in
     ['LOOPBACK_PORT', '8092'],
   ];
   /* Everything deploy.sh substitutes into the vhost template: the shared
-     constants plus the server's TLS convention as deployed. */
+     hostname/port constants plus the server's TLS convention as deployed
+     (the stack root has no placeholder since the auth gate it served was
+     removed — the public surface carries no stack paths). */
   const SUBSTITUTIONS = [
-    ...CONSTANTS.map(([name, value]) => [`__${name}__`, value]),
+    ...CONSTANTS.filter(([name]) => name !== 'STACK_DIR').map(([name, value]) => [`__${name}__`, value]),
     ['__TLS_CERT__', '/etc/nginx/ssl/mliu.site/fullchain.pem'],
     ['__TLS_KEY__', '/etc/nginx/ssl/mliu.site/key.pem'],
   ];
@@ -5408,7 +5408,7 @@ test('the staging hostname, install root and loopback port are single-sourced in
   }
 
   /* 4. The vhost template carries only placeholders (comments included) and
-     deploy.sh renders all five of them. */
+     deploy.sh renders all of them. */
   for (const [placeholder] of SUBSTITUTIONS) {
     assert.ok(vhost.includes(placeholder), `the vhost template carries ${placeholder}`);
     assert.ok(deploy.includes(`s|${placeholder}|`), `deploy.sh renders ${placeholder}`);
@@ -5633,7 +5633,7 @@ test('the staging edge strips the PHP origin header from proxied responses (issu
   /* The check block spans its grep line through the next blank line. */
   const blockEnd = verifyLines.findIndex((line, index) => index > grepLine && line.trim() === '');
   const poweredCheck = verifyLines.slice(grepLine, blockEnd === -1 ? undefined : blockEnd).join('\n');
-  assert.ok(poweredCheck.includes('BASIC_AUTH_OWNER_USER'), 'the X-Powered-By check must run authenticated (owner credentials)');
+  assert.ok(!poweredCheck.includes('-u'), 'the X-Powered-By check walks the public surface anonymously');
   assert.match(poweredCheck, /\bmiss\b/, 'a disclosed origin runtime must fail verification');
   assert.match(verify, /no X-Powered-By \(origin runtime hidden\)/, 'verify.sh must report the origin-runtime check as part of the walk');
 
@@ -5913,10 +5913,10 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Lifecycle preservation: theme switching, plugin deactivation/reactivation and the explicit uninstall.php preserve Products, Quote Requests with histories, basket sessions and configuration — only ephemeral transients and scheduled events are cleared',
     'Coding standards: php -l on every shipped PHP file; scans reject eval/extract/base64_decode/shell_exec/passthru/proc_open/popen, TODO/FIXME markers and missing ABSPATH/WP_UNINSTALL_PLUGIN guards',
     'Staging deployment artifacts (issue #14): dedicated freeplast-wordpress Compose project with private named volumes, loopback-only origin 127.0.0.1:8092, MariaDB healthcheck and a profile-gated WP-CLI sidecar; no literal secrets (all .env references)',
-    'Staging Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, owner/client Basic Auth, X-Robots-Tag noindex always, upload limit, dotfile/sensitive denies and the loopback proxy with Host/Forwarded headers',
+    'Staging Nginx vhost: approved-hostname-only server names, HTTP→HTTPS redirect, TLS rendered from the server convention, public review surface (no edge Basic Auth; wp-admin gated by the WordPress login), X-Robots-Tag noindex always, upload limit, dotfile/sensitive denies and the loopback proxy with Host/Forwarded headers',
     'preflight.sh is read-only and collision-checks hostname, port, stack directory, Compose project, volumes, network, disk, DNS, certificate SAN/expiry and existing-container health — a collision aborts planning, never adoption',
     'deploy.sh: umask 077, server-generated secrets into mode-0600/0400 files (never the repository or command output), Compose validation before up, es_CL + America/Santiago + approved HTTPS URLs + blog_public 0, catalog sync gated on a zero-change dry run, Nginx backed up before the vhost and nginx -t before reload',
-    'verify.sh walks the acceptance matrix through HTTPS (301/401/owner+client 200s, every route, noindex at both layers, WordPress identity, catalog idempotence, non-live mail mode); backup.sh dumps + hashes + rehearses the restore into temporary project names; rollback.sh is bounded to the new resources with volumes retained unless the owner explicitly purges',
+    'verify.sh walks the acceptance matrix through HTTPS (301/anonymous 200s, every route, noindex at both layers, WordPress identity, catalog idempotence, non-live mail mode); backup.sh dumps + hashes + rehearses the restore into temporary project names; rollback.sh is bounded to the new resources with volumes retained unless the owner explicitly purges',
     'DEPLOYMENT.md records every resource name, path, port, volume, backup and rollback scope — the on-server execution on OpenClaw is the documented operator step',
     `Shipped artifacts (issue #15): theme ${checksumLines[0].replace(/^Theme:\s*/, '')} and plugin ${checksumLines[1].replace(/^Plugin:\s*/, '')} recorded as deterministic ZIPs with SHA-256 checksums in dist/ (unzip -t clean; per-file manifest in dist/CHECKSUMS.sha256)`,
     'HANDOFF.md packages the verification record (infrastructure health, Nginx validation, syntax/coding standards, automated tests, migration version, active components, route statuses, browser console), the 17→17 catalog reconciliation with every provisional client fact, the full Quote Request acceptance matrix, mechanical-only accessibility observations, reproducible operator procedures, Gate 3 review URLs beside the frozen v6/v7-A references, pending owner/client actions and the separately-scoped release work',

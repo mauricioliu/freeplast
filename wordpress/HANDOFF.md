@@ -29,7 +29,7 @@ Reading order: `BUILD-DECISIONS.md` (decisions per slice) →
 | Coding standards | Scans reject dangerous constructs (`eval`/`extract`/`base64_decode`/`shell_exec`/`passthru`/`proc_open`/`popen`), unfinished-work markers and missing `ABSPATH`/`WP_UNINSTALL_PLUGIN` guards; `node --check` on every shipped JS file | `npm run typecheck`, `VERIFICATION.md` |
 | Migration version | `fp_db_version=7` (plugin 0.8.0); activation re-verifies the schema and fails safely into the maintenance state | `VERIFICATION.md` “Versions reported by the check” · `wp option get fp_db_version` |
 | Active components | Theme `freeplast` 0.8.1 and plugin `freeplast-catalog-quotes` 0.8.0 active without warnings; WooCommerce absent (plugin list, wp-content, runtime) | `VERIFICATION.md` Activation/WooCommerce rows · `wp theme list --status=active`, `wp plugin list --status=active` |
-| Route statuses | `/`, `/nosotros/`, `/tienda/`, `/contacto/`, `/cotizacion/`, `/politica-de-privacidad/`, every `/producto/<slug>/` return HTTP 200 mechanically; the HTTPS walk (301 redirect, 401 anonymous, owner+client 200s, 404 unknown route, 302 `/wp-admin/`, no `X-Powered-By` through the edge — the issue #23 origin-runtime strip) runs through `verify.sh` on the server | `VERIFICATION.md` route rows · `infra/verify.sh` |
+| Route statuses | `/`, `/nosotros/`, `/tienda/`, `/contacto/`, `/cotizacion/`, `/politica-de-privacidad/`, every `/producto/<slug>/` return HTTP 200 mechanically; the HTTPS walk (301 redirect, anonymous 200s — public review surface since the 2026-09-04 posture change, 404 unknown route, 302 `/wp-admin/` (WordPress login gate), no `X-Powered-By` through the edge — the issue #23 origin-runtime strip) runs through `verify.sh` on the server | `VERIFICATION.md` route rows · `infra/verify.sh` |
 | Browser console | No browser engine exists in the authoring environment, so no console result is claimed here. The mechanical layer covers the served documents and shipped-JS syntax; the browser-console observation (expected: no errors on Home, Tienda, product, Cotización, Nosotros, Contacto and during the complete journey) is an explicit reviewer step in §8, recorded beside the Gate 3 verdicts | §8 pending human work · `design/DECISIONS.md` (verdict page) |
 
 ## 2. Catalog evidence
@@ -256,7 +256,7 @@ deterministic stored archives (fixed timestamp, sorted entries), so
 archive. Install through wp-admin Appearance → Themes / Plugins → Add New
 → Upload, or by unpacking into `wp-content/` on the server.
 
-## 7. Review URLs (Gate 3 — HTTPS, Basic Auth owner/client credentials)
+## 7. Review URLs (Gate 3 — public HTTPS, no credentials needed)
 
 | Page | Staging review URL | Frozen reference |
 | --- | --- | --- |

@@ -3,7 +3,7 @@
 #
 # Walks the acceptance matrix through the public HTTPS surface (owner and
 # client Basic Auth credentials from the stack .env) and through the
-# Compose WP-CLI sidecar: redirect, authentication, every required route,
+# Compose WP-CLI sidecar: redirect, public surface, every required route,
 # noindex at both layers, the WordPress identity (es_CL,
 # America/Santiago, approved HTTPS URLs), catalog idempotence and the
 # staging notification restriction. One bounded result per check; exits
@@ -41,37 +41,35 @@ if [[ "$code" != "000" ]]; then ok "origin answers on $ORIGIN (status $code)"; e
 code="$(status "http://${SITE_HOSTNAME}/")"
 if [[ "$code" == "301" ]]; then ok 'plain HTTP redirects to HTTPS (301)'; else miss "plain HTTP returned $code (expected 301)"; fi
 
-# Basic Auth: anonymous is challenged; owner and client credentials pass
+# Public review surface (owner-approved posture 2026-09-04): anonymous
+# requests are served — no edge Basic Auth; /wp-admin/ stays gated by the
+# WordPress login
 code="$(status "$BASE/")"
-if [[ "$code" == "401" ]]; then ok 'anonymous request is challenged (401)'; else miss "anonymous returned $code (expected 401)"; fi
-code="$(status -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/")"
-if [[ "$code" == "200" ]]; then ok 'owner credentials accepted (200)'; else miss "owner credentials returned $code (expected 200)"; fi
-code="$(status -u "$BASIC_AUTH_CLIENT_USER:$BASIC_AUTH_CLIENT_PASSWORD" "$BASE/")"
-if [[ "$code" == "200" ]]; then ok 'client credentials accepted (200)'; else miss "client credentials returned $code (expected 200)"; fi
+if [[ "$code" == "200" ]]; then ok 'anonymous request is served (200)'; else miss "anonymous returned $code (expected 200)"; fi
 
 # Every required route through HTTPS
 for path in / /nosotros/ /tienda/ /contacto/ /cotizacion/ /politica-de-privacidad/ /producto/caja-cosechera-3-4/; do
-  code="$(status -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE$path")"
+  code="$(status "$BASE$path")"
   if [[ "$code" == "200" ]]; then ok "$path → 200"; else miss "$path returned $code (expected 200)"; fi
 done
-code="$(status -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/wp-admin/")"
-if [[ "$code" == "302" ]]; then ok '/wp-admin/ → 302 (login redirect)'; else miss "/wp-admin/ returned $code (expected 302)"; fi
-code="$(status -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/wp-login.php")"
+code="$(status "$BASE/wp-admin/")"
+if [[ "$code" == "302" ]]; then ok '/wp-admin/ → 302 (login redirect — WordPress gates the admin)'; else miss "/wp-admin/ returned $code (expected 302)"; fi
+code="$(status "$BASE/wp-login.php")"
 if [[ "$code" == "200" ]]; then ok '/wp-login.php → 200'; else miss "/wp-login.php returned $code (expected 200)"; fi
-code="$(status -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/esta-pagina-no-existe/")"
+code="$(status "$BASE/esta-pagina-no-existe/")"
 if [[ "$code" == "404" ]]; then ok 'unknown route → 404'; else miss "unknown route returned $code (expected 404)"; fi
 
 # Noindex at both layers
-if curl -s --max-time 20 -I -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/" | grep -qi 'x-robots-tag:.*noindex'; then
+if curl -s --max-time 20 -I "$BASE/" | grep -qi 'x-robots-tag:.*noindex'; then
   ok 'Nginx sends X-Robots-Tag noindex'
 else
   miss 'X-Robots-Tag noindex header missing'
 fi
 
 # The edge never advertises the origin runtime (issue #23)
-POWERED="$(curl -s --max-time 20 -D - -o /dev/null -u "$BASIC_AUTH_OWNER_USER:$BASIC_AUTH_OWNER_PASSWORD" "$BASE/" | grep -i '^x-powered-by:' || true)"
+POWERED="$(curl -s --max-time 20 -D - -o /dev/null "$BASE/" | grep -i '^x-powered-by:' || true)"
 if [[ -z "$POWERED" ]]; then
-  ok 'authenticated response carries no X-Powered-By (origin runtime hidden)'
+  ok 'public response carries no X-Powered-By (origin runtime hidden)'
 else
   miss "the edge discloses the origin runtime: $(printf '%s' "$POWERED" | head -n1 | tr -d '\r')"
 fi
