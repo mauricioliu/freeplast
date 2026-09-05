@@ -16,7 +16,10 @@
  *     the records and can be resent after a reinstall), and
  *   - the expiring submission transients (idempotency tokens with their
  *     render times, retained invalid-attempt values, rate counters,
- *     confirmation markers and address-confirmation state).
+ *     confirmation markers and address-confirmation state), and
+ *   - the per-attempt claim rows (fpcq_claim_ options — the short
+ *     concurrent-submission window of issue #24; the durable idempotency
+ *     binding lives on the records' meta and survives).
  *
  * @package Freeplast_Catalog_Quotes
  */
@@ -46,12 +49,14 @@ if ( is_array( $cron ) ) {
 	}
 }
 
-/* 2. Delete the expiring fpcq- transients (never records or options). */
+/* 2. Delete the expiring fpcq- transients and the attempt claims
+   (never records or configuration options). */
 global $wpdb;
 $wpdb->query(
 	"DELETE FROM {$wpdb->options}
 	 WHERE option_name LIKE '\\_transient\\_fpcq\\_%'
-	    OR option_name LIKE '\\_transient\\_timeout\\_fpcq\\_%'"
+	    OR option_name LIKE '\\_transient\\_timeout\\_fpcq\\_%'
+	    OR option_name LIKE 'fpcq\\_claim\\_%'"
 );
 
 /* 3. Drop the rewrite-flush request flag (meaningless without the plugin). */

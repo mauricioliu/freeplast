@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Freeplast WordPress shell — automated acceptance checks (issues #2–#23).
+ * Freeplast WordPress shell — automated acceptance checks (issues #2–#24).
  *
  * This is the single documented command that runs the project's automated
  * checks against a disposable WordPress installation:
@@ -202,6 +202,20 @@
  *      so the outcomes and messages for the same inputs are identical
  *      by construction; the text-field contract (TEXT_FIELDS) remains
  *      the single field list both surfaces iterate.
+ *  26. One submission attempt yields exactly one Quote Request even when
+ *      two POSTs of the same attempt race (issue #24): a deterministic
+ *      coordinator parks the first submission inside the persistence seam
+ *      while a second POST of the same form (same session, token and
+ *      lines) runs against the native admin-post endpoint, and the suite
+ *      fails explicitly if the attempt ever produces more than one
+ *      record. The bounded race repeats three times with the surviving
+ *      reference recorded; the client that never received the first
+ *      response recovers the original confirmation by resubmitting the
+ *      same attempt; a different session holding a copied token recovers
+ *      nothing; a new legitimate request with identical products and data
+ *      after completion still creates its own record; and the surviving
+ *      request carries one copy of the lines, one reference and exactly
+ *      one scheduled receipt-notification event.
  *
  * Results are printed to stdout and recorded in wordpress/VERIFICATION.md.
  */
@@ -401,7 +415,8 @@ function humanPaced(sessionToken, idemToken, seconds = 60) {
 
 /**
  * A complete valid set of request-form fields (Con Despacho: No) shared
- * by every issue #13 section that drives a submission. The older sections
+ * by every section that drives a plain submission (the issue #13 abuse
+ * checks and the issue #24 concurrent attempts). The older sections
  * keep their own dispatch-oriented copies.
  */
 const VALID_REQUEST_FIELDS = {
@@ -658,6 +673,10 @@ test('serve the disposable installation over HTTP', { timeout: 30_000 }, async (
     cwd: WP_DIR,
     stdio: 'ignore',
     detached: true,
+    // Issue #24: the concurrent-submission regression needs two requests
+    // genuinely in flight — the single-worker default would serialize the
+    // two POSTs behind each other and the race could never interleave.
+    env: { ...process.env, PHP_CLI_SERVER_WORKERS: '8' },
   });
   server.unref();
   let ok = false;
@@ -4272,6 +4291,244 @@ test('the honeypot, minimum completion time and bounded throttling reject abuse 
   ]);
 });
 
+/* ─── 23h. One attempt, one Quote Request under concurrent submission (issue #24) ── */
+
+/** The issue #24 race outcome references, recorded in VERIFICATION.md. */
+const issue24Attempts = [];
+
+test('two concurrent POSTs of one attempt persist exactly one Quote Request and a retry recovers the confirmation (issue #24)', { timeout: 300_000 }, async () => {
+  const cookieHeader = (token) => ({ cookie: `fpcq_basket=${token}` });
+  const noticeOf = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_notice');
+  const submittedRef = (res) => new URL(res.headers.location || '', SITE_URL).searchParams.get('fpcq_submitted');
+  const COLOR_ID = 'fp-caja-universal-cerrada-color';
+  const COLOR_URL = '/producto/caja-universal-cerrada-color/';
+
+  const quoteCount = () => Number(wp(['post', 'list', '--post_type=fp_quote', '--post_status=private', '--format=count']).stdout || '0');
+  const quoteRecord = (reference) =>
+    JSON.parse(
+      wp([
+        'eval',
+        `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${reference}" ) );` +
+          'if ( empty( $posts ) ) { echo "null"; } else { $p = $posts[0]; echo wp_json_encode( array( ' +
+          '"id" => $p->ID, ' +
+          '"items" => json_decode( (string) get_post_meta( $p->ID, "_fpq_items", true ), true ) ) ); }',
+      ]).stdout || 'null'
+    );
+  const recordsForAttempt = (idempotency) =>
+    Number(
+      wp([
+        'eval',
+        `echo (string) count( get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => -1, "fields" => "ids", "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_idempotency", "meta_value" => "${idempotency}" ) ) );`,
+      ]).stdout || '0'
+    );
+  const scheduledFor = (reference) =>
+    Number(
+      wp([
+        'eval',
+        `$n = 0; $cron = get_option( "cron", array() ); foreach ( $cron as $bins ) { if ( ! is_array( $bins ) ) { continue; } foreach ( $bins as $hook => $instances ) { if ( "freeplast_cq_notify" !== $hook || ! is_array( $instances ) ) { continue; } foreach ( $instances as $instance ) { if ( isset( $instance["args"][0] ) && $instance["args"][0] === "${reference}" ) { $n++; } } } } echo (string) $n;`,
+      ]).stdout || '0'
+    );
+  const notifyChannels = (reference) =>
+    JSON.parse(
+      wp([
+        'eval',
+        `$posts = get_posts( array( "post_type" => "fp_quote", "post_status" => "private", "posts_per_page" => 1, "no_found_rows" => true, "suppress_filters" => true, "meta_key" => "_fpq_reference", "meta_value" => "${reference}" ) );` +
+          'echo empty( $posts ) ? "[]" : wp_json_encode( array_keys( json_decode( (string) get_post_meta( $posts[0]->ID, "_fpq_notifications", true ), true ) ) );',
+      ]).stdout || '[]'
+    );
+
+  /* The deterministic race coordinator: a mu-plugin parks the first
+     submission that reaches the persistence seam while the hold marker
+     exists — the request is past every guard with the response held back
+     (the confirmation "does not reach the client") — so the second POST
+     of the same attempt runs against the native endpoint while the first
+     is still in flight, exactly the double-click/two-tab interleaving. */
+  const muDir = join(WP_DIR, 'wp-content', 'mu-plugins');
+  const raceDir = join(WP_DIR, 'wp-content', 'uploads', 'fpcq-race');
+  rmSync(raceDir, { recursive: true, force: true });
+  mkdirSync(raceDir, { recursive: true });
+  mkdirSync(muDir, { recursive: true });
+  const hold = () => writeFileSync(join(raceDir, 'hold'), 'hold');
+  const release = () => rmSync(join(raceDir, 'hold'), { force: true });
+  const entered = () => existsSync(join(raceDir, 'entered'));
+  const resetEntered = () => rmSync(join(raceDir, 'entered'), { force: true });
+  writeFileSync(
+    join(muDir, 'fp-test-issue24-race.php'),
+    `<?php
+/* Issue #24 race coordinator: parks the first submission reaching the
+   persistence seam while the hold marker exists; a second request passes
+   straight through (the entered marker is set by the parked one). */
+add_filter( 'freeplast_cq_request_persist', static function ( $ok ) {
+    $dir = '${raceDir}';
+    if ( ! is_file( "$dir/hold" ) || is_file( "$dir/entered" ) ) {
+        return $ok;
+    }
+    touch( "$dir/entered" );
+    $deadline = microtime( true ) + 20;
+    while ( is_file( "$dir/hold" ) && microtime( true ) < $deadline ) {
+        clearstatcache();
+        usleep( 50000 );
+    }
+    return $ok;
+} );
+`
+  );
+
+  /** A guest session holding the two-line race basket, with form credentials. */
+  const prepareAttempt = async () => {
+    const productPage = await get(PRODUCT_URL, MOBILE_UA);
+    const addNonce = productPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+    assert.ok(addNonce, 'the race flow needs a chooser nonce');
+    const seeded = await postForm({ action: 'fp_basket_add', fp_product: 'fp-caja-cosechera-3-4', fp_quantity: '5', fp_basket_nonce: addNonce, _wp_http_referer: PRODUCT_URL });
+    const session = seeded.setCookies[0].match(/fpcq_basket=([0-9a-f]{64})/)?.[1];
+    assert.ok(session, 'the race flow needs its own guest session');
+    const colorPage = await get(COLOR_URL, MOBILE_UA);
+    const colorNonce = colorPage.body.match(/name="fp_basket_nonce" value="([a-f0-9]{10})"/)?.[1];
+    const colorAdd = await postForm(
+      { action: 'fp_basket_add', fp_product: COLOR_ID, fp_option: 'blanco', fp_quantity: '12', fp_basket_nonce: colorNonce, _wp_http_referer: COLOR_URL },
+      cookieHeader(session)
+    );
+    assert.equal(noticeOf(colorAdd), 'added', 'the Color line must join the race basket');
+    const cot = await get('/cotizacion/', MOBILE_UA, cookieHeader(session));
+    assertContains(cot.body, 'Cotización (2)', 'the race basket must carry both lines');
+    const creds = requestCredentials(cot.body);
+    assert.ok(creds.nonce && creds.token, 'the race form carries its nonce and idempotency token');
+    assert.equal(humanPaced(session, creds.token), 'ok', 'the race submission must be paced like a human fill');
+    return { session, nonce: creds.nonce, token: creds.token };
+  };
+
+  const submitWith = (attempt, over = {}) =>
+    postForm(
+      { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: attempt.nonce, fp_request_token: attempt.token, _wp_http_referer: '/cotizacion/', ...over },
+      cookieHeader(attempt.session)
+    );
+
+  try {
+    /* AC: the concurrent test repeats in a bounded way (three iterations)
+       and every iteration records its outcome and surviving reference. */
+    for (let i = 0; i < 3; i++) {
+      const attempt = await prepareAttempt();
+      const idempotency = createHash('sha256').update(attempt.token).digest('hex');
+      resetEntered();
+      const baseline = quoteCount(); /* this iteration's own baseline */
+
+      hold();
+      const first = submitWith(attempt);
+      for (let w = 0; w < 100 && !entered(); w++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      assert.ok(entered(), `race ${i + 1}: the first submission must reach the persistence seam`);
+
+      /* The second POST of the same attempt (second tab / impatient
+         retry). Whatever it answers, it must not persist a second copy:
+         the explicit failure of this regression is more than one record
+         for one attempt — a successful exit code alone proves nothing. */
+      const second = await submitWith(attempt);
+      const during = quoteCount();
+      assert.ok(
+        during === baseline || during === baseline + 1,
+        `race ${i + 1}: one attempt must never persist a second Quote Request while the first submission is in flight (found ${during - baseline})`
+      );
+
+      release();
+      const firstRes = await first;
+      assert.equal(quoteCount(), baseline + 1, `race ${i + 1}: the attempt must produce exactly one Quote Request — a second record fails this regression explicitly`);
+      assert.equal(recordsForAttempt(idempotency), 1, `race ${i + 1}: exactly one record may carry the attempt's idempotency hash`);
+
+      /* Both POSTs agree on the single reference: whichever persisted
+         owns it, and the other either recovers it or failed recoverably
+         (the retry below is that client's recovery). */
+      const references = [submittedRef(firstRes), submittedRef(second)].filter(Boolean);
+      assert.ok(references.length >= 1, `race ${i + 1}: at least one POST must confirm the request`);
+      assert.equal(new Set(references).size, 1, `race ${i + 1}: both POSTs must agree on the same Request Reference`);
+      const reference = references[0];
+      for (const [label, res] of [['first', firstRes], ['second', second]]) {
+        assert.ok(
+          submittedRef(res) === reference || noticeOf(res) === 'request_failed',
+          `race ${i + 1}: the ${label} POST must confirm the attempt or fail recoverably`
+        );
+      }
+
+      /* The client that never received the first response (here: the
+         parked winner) recovers the original confirmation by resubmitting
+         the same attempt — no second record, no error-only dead end. */
+      const retry = await submitWith(attempt);
+      assert.equal(submittedRef(retry), reference, `race ${i + 1}: the retry of the same attempt must recover the original confirmation`);
+      assert.equal(quoteCount(), baseline + 1, `race ${i + 1}: the recovery retry must not create a record`);
+      const confirmed = await get(`/cotizacion/?fpcq_submitted=${reference}`, MOBILE_UA, cookieHeader(attempt.session));
+      assertContains(confirmed.body, reference, `race ${i + 1}: the recovered confirmation displays the reference`);
+      assertContains(confirmed.body, 'Solicitud recibida', `race ${i + 1}: the recovered confirmation states the outcome`);
+      assertContains(confirmed.body, 'Cotización (0)', `race ${i + 1}: the basket stays cleared after the attempt`);
+
+      /* One copy of the lines, one reference, no duplicated receipt
+         notification events. */
+      const record = quoteRecord(reference);
+      assert.equal(record.items.length, 2, `race ${i + 1}: the surviving request carries the two basket lines once`);
+      const bySource = Object.fromEntries(record.items.map((item) => [item.source_id, item]));
+      assert.equal(bySource['fp-caja-cosechera-3-4'].quantity, 5, `race ${i + 1}: quantities stay the reviewed ones`);
+      assert.equal(bySource[COLOR_ID].option_id, 'blanco', `race ${i + 1}: the variant submits with its line`);
+      assert.deepEqual(notifyChannels(reference).sort(), ['customer', 'sales'], `race ${i + 1}: exactly the two receipt jobs exist for the request`);
+      assert.equal(scheduledFor(reference), 1, `race ${i + 1}: exactly one scheduled receipt-notification event may exist for the reference`);
+
+      issue24Attempts.push(reference);
+      section(`Race ${i + 1} (issue #24): one attempt, one request`, [
+        `attempt idempotency …${idempotency.slice(-8)} survived as exactly one record (${reference}); concurrent POST and recovery retry agree on it`,
+      ]);
+    }
+
+    /* AC: another session cannot recover data or references that are not
+       its own — a copied token recovers nothing and no key is exposed. */
+    const owner = await prepareAttempt();
+    const ownerReference = submittedRef(await submitWith(owner));
+    assert.match(ownerReference, /^FP-\d{4}-\d{6}$/, 'the owner attempt must persist for the isolation check');
+    {
+      const count = quoteCount(); /* isolation baseline */
+
+      /* The stranger submits with its own valid nonce but the owner's
+         copied idempotency token — recovery must stay session-bound. */
+      const stranger = await prepareAttempt();
+      const stolen = await postForm(
+        { action: 'fp_request_submit', ...VALID_REQUEST_FIELDS, fp_request_nonce: stranger.nonce, fp_request_token: owner.token, _wp_http_referer: '/cotizacion/' },
+        cookieHeader(stranger.session)
+      );
+      assert.equal(noticeOf(stolen), 'token', 'a copied token in another session must be rejected recoverably');
+      assert.ok(!submittedRef(stolen), 'a copied token may not hand the foreign reference to another session');
+      assert.equal(quoteCount(), count, 'the copied-token attempt must persist nothing');
+      const strangerView = await get(`/cotizacion/?fpcq_submitted=${ownerReference}`, MOBILE_UA, cookieHeader(stranger.session));
+      assertAbsent(strangerView.body, 'Solicitud recibida', 'another session must not see the foreign confirmation');
+      assertAbsent(strangerView.body, ownerReference, 'the foreign reference must not render in another session');
+    }
+
+    /* AC: a new legitimate request after completion stays possible even
+       with identical products and data — dedup never keys on content. */
+    {
+      const baseline = quoteCount(); /* the same-content block's own baseline */
+      const again = await prepareAttempt();
+      const okAgain = await submitWith(again);
+      const newReference = submittedRef(okAgain);
+      assert.match(newReference, /^FP-\d{4}-\d{6}$/, 'the new legitimate request persists');
+      assert.notEqual(newReference, ownerReference, 'identical content still receives its own unique reference');
+      assert.equal(quoteCount(), baseline + 1, 'the new legitimate request adds exactly one record');
+      const newIdem = createHash('sha256').update(again.token).digest('hex');
+      assert.equal(recordsForAttempt(newIdem), 1, 'the new attempt owns exactly its own record');
+      section('Same-content resubmission (issue #24)', [
+        `a fresh attempt with identical products, quantities and customer data created ${newReference}, distinct from ${ownerReference}`,
+      ]);
+    }
+
+    section('One attempt, one Quote Request (issue #24)', [
+      'Through the native admin-post submission endpoint, two concurrent POSTs of one attempt (same session, form token and lines) produced exactly one fp_quote record — the regression fails explicitly when an attempt yields more than one',
+      'The bounded race ran 3 times; both racing POSTs agree on the single reference and the concurrent client recovers the original confirmation by resubmitting the attempt (recorded references: ' + issue24Attempts.join(', ') + ')',
+      'A different session holding a copied idempotency token recovers nothing: the attempt stays bound to the session that submitted it and no reference is exposed',
+      'A new legitimate request with identical products, quantities and customer data after completion still creates its own record — dedup keys on the attempt, never on content',
+      'The surviving request carries one copy of the lines with quantities and variants, a cleared basket and exactly one sales + one customer receipt job with one scheduled delivery event',
+    ]);
+  } finally {
+    rmSync(join(muDir, 'fp-test-issue24-race.php'), { force: true });
+    rmSync(raceDir, { recursive: true, force: true });
+  }
+});
+
 /* ─── 22-23. Guard matrix, dependency failures, maintenance, lifecycle, standards (issue #13) ── */
 
 test('every guard rejects invalid input without partial mutation, and dependency failures never produce false success', { timeout: 120_000 }, async () => {
@@ -5815,7 +6072,7 @@ test('email, telephone and RUT validation is defined once and shared by both sur
 
 test('record mechanical proof in wordpress/VERIFICATION.md', () => {
   const lines = [
-    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + shared contact-field validators + posted-place-validated address confirm + synchronization rollback discipline + edge-stripped origin header (issues #2–#23)`,
+    `# Mechanical verification — Freeplast WordPress shell + catalog + discovery + quote basket + quote request + sales workflow + durable notifications + delivery addresses + v6 content + hardened journey + staging deployment artifacts + operations handoff + single-sourced staging constants + one stored-meta JSON codec + scheme-following basket cookie Secure flag + position-independent theme markup + shared contact-field validators + posted-place-validated address confirm + synchronization rollback discipline + edge-stripped origin header + one-request-per-attempt concurrency (issues #2–#24)`,
     `Generated by \`npm test\` (wordpress/scripts/check.mjs) at ${new Date().toISOString()}.`,
     `Disposable installation: WordPress ${versions?.wpVersion} · PHP ${versions?.phpVersion} · SQLite ${versions?.sqliteVersion} (sqlite-database-integration drop-in ${versions?.dropin}).`,
     ``,
@@ -5928,6 +6185,9 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     'Both surfaces validate the contact fields identically for the same inputs (issue #18): per-field agreement across valid, invalid-format, empty, boundary and overlong cases, with the exact shared messages and the sanitized email stored',
     'The text-field contract (TEXT_FIELDS) remains the single field list both surfaces iterate (issue #18)',
     'The staging edge strips the origin runtime header (issue #23): the proxied location of the vhost template hides exactly one origin header — X-Powered-By — via proxy_hide_header, and verify.sh asserts an authenticated response through the HTTPS edge carries none',
+    'One attempt yields exactly one Quote Request under concurrency (issue #24): through the native admin-post endpoint, two racing POSTs of the same attempt (same session, token and lines) persist exactly one private record with one reference — a deterministic coordinator parks the first submission inside the persistence seam so the race genuinely interleaves (php -S multi-worker), and the regression fails explicitly when an attempt yields more than one',
+    'The client that never received the first response recovers the original confirmation by resubmitting the same attempt; a different session holding a copied idempotency token recovers nothing (recovery is session-bound, no reference is exposed); a fresh attempt with identical products and data after completion still creates its own record — dedup keys on the attempt, never on content (issue #24)',
+    'The bounded concurrent test repeated 3 times with the surviving request identifiers recorded below; every surviving request carries one copy of the lines (quantities and variant), a cleared basket and exactly one sales + one customer receipt job with one scheduled delivery event (issue #24)',
   ];
   for (const name of passed) lines.push(`| ${name} | pass |`);
   lines.push(``, `## Versions reported by the check`, ``);
@@ -5957,6 +6217,7 @@ test('record mechanical proof in wordpress/VERIFICATION.md', () => {
     `- The theme markup hygiene (issue #20) is verified as source + rendered behavior: templates/parts carry no absolute wp-content theme path — theme-owned images reference the {{FREEPLAST_THEME_URL}} token resolved by functions.php through get_theme_file_uri()/wp_make_link_relative() at render time — and a throwaway boot of the same disposable installation under a /subdir site URL proves the identical sources render subdirectory-correct URLs. The header part now carries its wrap/island containers as group block boundaries so every free-form (wp:html) block (logo, navigation, burger, mobile sheet) is balanced on its own; the extra flow-layout classes the group blocks receive are neutralized by the island margin reset in the theme stylesheet. Pixel fidelity of the restructured header at ~412 px and desktop remains Gate 3 human review.`,
     `- The contact-field validation (issue #18) is one shared definition: Freeplast_CQ_Request::validated_contact_formats owns the Email/Teléfono/Rut Empresa acceptance patterns and user-facing messages, and both the Quote Request intake (validated_fields) and the sales contact correction (Freeplast_CQ_Admin::validated_contact) delegate to it, so identical inputs cannot produce different outcomes. The check scans the plugin for the cloned patterns/messages (exactly one definition site) and drives both surfaces' full validation paths with the same posted inputs across valid, invalid-format, empty, boundary and overlong cases, requiring identical per-field results. Behavior-preserving: the text-field contract (TEXT_FIELDS) stays the single field list both surfaces iterate, the required/length messages are untouched, and the email keeps being stored in its WordPress-sanitized form.`,
     `- The Delivery Address confirm posted-place validation (issue #21) rides the existing nonce+session guard: the confirm action compares the posted fp_place with the session transient's place_id — a matching post confirms exactly as before, and a tampered, stale or absent post takes the recoverable address-error redirect without touching the stored state, so a forged or outdated form can no longer confirm a destination the customer never reviewed.`,
+    `- The concurrent-submission discipline (issue #24) is verified at the real admin-post seam with a deterministic coordinator (a mu-plugin parks the first submission inside the freeplast_cq_request_persist seam while the second POST of the same attempt runs; php -S serves with multiple workers so the two POSTs genuinely interleave). Each race ran with its own guest session and two-line basket; both racing POSTs agreed on a single reference (recorded identifiers: ${issue24Attempts.join(', ') || 'none'}), the recovery retry reproduced the confirmation after the first response was held back, a copied token in another session recovered nothing, and a fresh identical attempt after completion created its own record.`,
     ``
   );
   writeFileSync(join(WORDPRESS_DIR, 'VERIFICATION.md'), lines.join('\n'));

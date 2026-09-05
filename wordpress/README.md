@@ -48,13 +48,14 @@ network access to download the pinned toolchain; later runs are offline.
 ```bash
 npm test              # THE check command: bootstrap a clean disposable
                       # WordPress + SQLite, activate theme and plugin, and
-                      # verify the issue-#2 through issue-#21 acceptance
+                      # verify the issue-#2 through issue-#24 acceptance
                       # criteria (including the issue-#8 submission, the
                       # issue-#9 sales workflow, the issue-#10 durable
                       # notifications, the issue-#11 address/distance
                       # slice, the issue-#14 staging artifacts, the
-                      # issue-#15 handoff + shipped-artifact checksums and
-                      # the issue-#23 staging edge strip).
+                      # issue-#15 handoff + shipped-artifact checksums,
+                      # the issue-#23 staging edge strip and the issue-#24
+                      # concurrent-submission discipline).
 npm run typecheck     # php -l, node --check, theme.json/products.json validation
 npm run bootstrap     # provision/refresh the disposable site without checks
 ```
@@ -150,7 +151,17 @@ What `npm test` proves (see `VERIFICATION.md` after a run):
   canonical URL), a permanent `FP-YYYY-NNNNNN` Request Reference shown on
   the session-owned confirmation, a cleared basket only after durable
   persistence (a forced persistence failure shows no success and retains
-  it), idempotent refresh/back/retry through a session-scoped token, and a
+  it), idempotent refresh/back/retry through a session-scoped token —
+  bound to the submitting session, so a copied token in another session
+  recovers nothing — and, since issue #24, an atomic per-attempt claim
+  that makes two truly concurrent POSTs of the same attempt (two tabs, a
+  retry fired while the first is in flight) produce exactly one record,
+  one reference and one set of receipt-notification jobs: the racing POST
+  recovers the winner's confirmation, and a later resubmission of the
+  same attempt always recovers the original confirmation instead of
+  creating a second request or a dead end; a new legitimate request with
+  identical products and data after completion stays possible (dedup
+  keys on the attempt, never on content), and a
   minimal capability-protected Cotizaciones admin detail
   (`manage_freeplast_quotes`); no price, Quotation, Order, checkout or
   customer account is ever created;
