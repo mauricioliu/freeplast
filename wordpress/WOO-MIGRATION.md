@@ -25,6 +25,19 @@ Repo fix (adapter **1.1.0**, theme **1.0.1**; **pending deploy** — the live st
 - Offline regression grew from 16 to **30 local assertions**: line-count semantics (absent Woo, empty cart, quantities-not-lines, variants-as-lines), the fragment contract (selector + live value), the header-markup contract (both surfaces carry span + token) and the `render_block` resolution (live count, `(0)` empty state, byte-identical pass-through). Syntax/dependency/deployment checks grew 13 → 14 (the new JS file).
 - **Remaining:** package + deploy to staging, then a browser regression on staging — add from card and ficha, quantity change, remove and empty, header matches Cotización after each mutation and after reload, no console errors — with a test cart emptied afterwards; visual review (narrow width) remains the pending human Gate 3 step.
 
+## Checkout review table without amounts — issue #29 — 2026-09-05
+
+Finding 1 of the [2026-09-05 afternoon site validation](../docs/reviews/site-validation-2026-09-05/README.md): the classic checkout's order-review table rendered the technical zero on `/datos-y-envio/` — line subtotal, Subtotal and Total appeared as `woocommerce-Price-amount` «$0» in clean anonymous HTML. The adapter's `woocommerce_get_price_html`, `woocommerce_order_get_formatted_order_total` and `woocommerce_get_order_item_totals` filters never reach this table: Woo's `checkout/review-order.php` template prints cart totals directly, and the theme's `display:none` rule only hid them visually while leaving the amounts in the DOM — the approach the finding rejects.
+
+Repo fix (theme **1.0.2**, pending deploy — the live stack still hides the amounts with the old CSS rule):
+
+- Render-origin fix by template override `woocommerce/checkout/review-order.php` (Woo's sanctioned override path, same as the existing `thankyou.php`): the table renders products, chosen options and quantities — name through the native `woocommerce_cart_item_name` filter, options through `wc_get_formatted_cart_item_data`, quantities as ×N — and calls **no price renderer at all**, so no `$0` or `woocommerce-Price-amount` can exist in the delivered HTML. The classic checkout re-renders this same template on every `update_order_review` AJAX pass, so first paint and refreshes are covered by the one origin. Verified against the pinned WooCommerce 11.1.0 template (version 11.0.0) — its Subtotal row uses `wc_cart_totals_subtotal_html()`, which has no filter, so the template is the only origin-level handle.
+- Totals zone, documented decision: a single «Total → Por cotizar» row — the same wording the adapter returns for formatted order totals, coherent with the no-purchase/no-stock disclaimer; the misleading «Subtotal» column header is gone (columns are now Producto/Cantidad). Adapter filters were deliberately not extended: they cannot reach the subtotal row, and layering them beside the template would suggest suppression coverage the template alone already provides.
+- The `display:none` hiding of `.product-total`/`tfoot` was removed from `assets/css/woo.css` — nothing is hidden because the DOM itself carries no amounts. Theme bumped to **1.0.2** for the stylesheet cache-bust.
+- The technical zero stays in Woo's administration and APIs per the documented limit; this fix claims the public checkout page only. Checkout form flow untouched: the native product/class/visibility filters and review-table actions are kept, so conditional-fields behavior and the `update_order_review` draft flow are unaffected.
+- Offline regression 30 → **53 local assertions** (override exists and calls no price renderer; offline render with a controlled fake cart — one simple product + one colour variant — yields names, options, quantities, «Por cotizar» and zero `$0`/`woocommerce-Price-amount`/`product-total`/«Subtotal»; no CSS hiding remains). Syntax/dependency/deployment checks 14 → **15** (the new PHP template). The staging HTTP regression (`verify-woo-http.py`, not part of `npm test`) now asserts the delivered `/datos-y-envio/` HTML contains no `$0` and no `woocommerce-Price-amount` while its cart holds a simple product and a colour variant.
+- **Remaining:** package + deploy to staging; anonymous HTML re-check (no `$0`/`woocommerce-Price-amount` on `/datos-y-envio/`) plus the existing checkout regression with a test cart emptied afterwards and no real requests submitted; visual review of the reworded totals zone stays with the pending human Gate 3 step.
+
 ## Current implementation
 
 - Existing WordPress 7.1 / PHP 8.3 / MariaDB stack, `/opt/freeplast-wordpress` on SSH alias `openclaw`; Nginx/hostname unchanged.
@@ -79,7 +92,7 @@ npm test                         # offline only; no server or submissions
 npm run woo:package              # wordpress/.build/woo-release/
 ```
 
-If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **30 local assertions (checkout fields + header line count, issue #30) + 14 syntax/dependency/deployment checks**. These are not simulated Woo integration coverage.
+If the project PHP tool is unavailable, set `PHP_BINARY` to an absolute PHP executable. Current offline result: **53 local assertions (checkout fields + header line count + unpriced review table, issues #30/#29) + 15 syntax/dependency/deployment checks**. These are not simulated Woo integration coverage.
 
 Read-only runtime checks after the bundle is copied to staging:
 

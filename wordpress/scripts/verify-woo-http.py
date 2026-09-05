@@ -43,6 +43,8 @@ assert cart['items'][0]['quantity']==140
 status,cart=request('/wp-json/wc/store/v1/cart/add-item',{'id':parent,'quantity':5,'variation':[{'attribute':'Color','value':'Rojo'}]},True);assert status in (200,201),(status,cart)
 assert len(cart['items'])==2
 status,html=request('/datos-y-envio/');assert status==200
+# Issue #29: the review table carries no amounts; the technical zero must not reach the delivered HTML.
+assert '$0' not in html and 'woocommerce-Price-amount' not in html,'Datos y envío HTML leaks price amounts'
 parser=Inputs();parser.feed(html)
 values=parser.values
 values.update({'billing_first_name':'PRUEBA TÉCNICA MIGRACIÓN','billing_phone':'+56 9 1234 5678','billing_email':'quote-probe@example.invalid','billing_company':'PRUEBA NO COMERCIAL','billing_fp_rut':'76.123.456-7','billing_fp_giro':'Prueba técnica','billing_fp_dispatch':'si','billing_fp_address':'','payment_method':'quotes-gateway','order_comments':'Prueba automatizada de migración. No atender ni enviar correos reales.'})
@@ -59,5 +61,5 @@ assert status==200 and 'Solicitud recibida' in confirmation
 assert 'Caja Cosechera' in confirmation and '140' in confirmation and 'Rojo' in confirmation
 status,cart=request('/wp-json/wc/store/v1/cart',api=True);assert not cart['items']
 order_id=int(re.search(r'/order-received/(\d+)',url.path).group(1))
-for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'cart_cleared':True,'test_order_id':order_id}.items():
+for name, value in {'anonymous':True,'missing_color_rejected':True,'quantity_saved':140,'red_units':5,'dispatch_address_required':True,'rut_required':True,'submission':True,'confirmation':True,'review_table_unpriced':True,'cart_cleared':True,'test_order_id':order_id}.items():
     print(f'{name}: {json.dumps(value)}')

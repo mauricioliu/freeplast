@@ -17,6 +17,15 @@ Finding 2 of the 2026-09-05 afternoon site validation: the Woo migration dropped
 - **Empty state documented:** the link always carries the number, `(0)` when empty — coherent on first paint, no flicker; adapter-absent degrades to no number rather than a wrong one.
 - Offline assertions grew 16 → 30 (line semantics, fragment contract, header-markup contract, token resolution). Staging deploy, browser add/change/remove/empty walkthrough and narrow-width visual review remain the operator/human steps.
 
+## 2026-09-05 — Issue #29: no $0 amounts in the Datos y envío review table (Woo stack)
+
+Finding 1 of the 2026-09-05 afternoon site validation: the classic checkout's order-review table printed the cart's technical zero as «Subtotal $0» / «Total $0» (line subtotal + Subtotal + Total, three `woocommerce-Price-amount` elements in clean anonymous HTML). The adapter's price-suppression filters never reach this table, and the theme's `display:none` rule only hid the amounts while leaving them in the DOM. Decision (theme **1.0.2**, pending deploy):
+
+- **Fix at the render origin, by template override** `woocommerce/checkout/review-order.php` (Woo's sanctioned override path, same as `thankyou.php`): products, chosen options and quantities only — no price renderer is called anywhere in the template, so no amount markup can exist in the delivered HTML. The classic checkout re-renders this template on every `update_order_review` AJAX pass, so first paint and refreshes are one origin. Native product/class/visibility filters and the review-table actions are kept, so extension compatibility and the conditional-fields/draft flow are untouched.
+- **Totals zone reworded, not hidden:** a single «Total → Por cotizar» row — the adapter's own order-total wording, coherent with the no-purchase/no-stock disclaimer. The «Subtotal» column header is gone (columns: Producto/Cantidad). Adapter filters deliberately not extended: Woo 11.1.0's subtotal row (`wc_cart_totals_subtotal_html()`) has no filter, so the template is the only origin-level handle; layering filters would suggest coverage the template alone provides.
+- **No CSS hiding remains:** the `.product-total`/`tfoot` `display:none` rule was removed from `assets/css/woo.css` (theme bumped to 1.0.2 for the cache-bust). The technical zero stays visible in Woo admin/API per the documented limit — this claims the public checkout page only.
+- Offline assertions 30 → 53 (override calls no price renderer; offline render of a simple product + colour variant yields names/options/quantities/«Por cotizar» and zero `$0`/`woocommerce-Price-amount`/«Subtotal»; no CSS hiding). Syntax/deployment checks 14 → 15. `verify-woo-http.py` (staging, not part of `npm test`) now asserts the delivered `/datos-y-envio/` HTML is amount-free. Staging deploy + anonymous re-check + visual review of the reworded totals zone remain the operator/human steps.
+
 ## 2026-09-05 — Issue #24: one attempt, one Quote Request under concurrent submission
 
 Two POSTs of the same submission attempt (same anonymous session, same

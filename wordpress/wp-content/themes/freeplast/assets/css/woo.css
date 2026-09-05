@@ -26,8 +26,7 @@
 .woocommerce table.shop_table caption { text-align: left; font-weight: 700; padding: 16px 0; }
 /* Quote-only extension ships an absolute-positioned sidebar. Keep its native block in flow. */
 .fp-woo-page .wc-block-cart__sidebar { position: static !important; top: auto; right: auto; }
-/* Classic checkout is used for local conditional fields; no price or payment totals. */
-.woocommerce-checkout-review-order-table .product-total, .woocommerce-checkout-review-order-table tfoot { display: none; }
+/* Classic checkout is used for local conditional fields; the review table itself carries no amounts (issue #29 override). */
 .woocommerce-billing-fields, .woocommerce-additional-fields { margin-block: 24px; }
 .woocommerce-checkout #payment { background: var(--fp-tint); }
 .woocommerce .woocommerce-notices-wrapper { scroll-margin-top: 90px; }
