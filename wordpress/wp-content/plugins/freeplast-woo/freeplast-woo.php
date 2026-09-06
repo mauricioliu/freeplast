@@ -453,10 +453,12 @@ function fpw_sales_read_only_style(): void {
 }
 add_action( 'admin_head', 'fpw_sales_read_only_style' );
 
-add_action( 'admin_notices', static function () {
+/** The consulta notice on the order screens: states what the role keeps, so the restricted editor reads as the scope it is. */
+function fpw_sales_read_only_notice(): void {
 	if ( ! fpw_is_order_limited_staff() || ! fpw_is_sales_order_admin_screen() ) { return; }
 	echo '<div class="notice notice-info"><p><strong>Solicitudes de cotización: solo consulta.</strong> Puedes buscar y leer las solicitudes y agregar notas de ventas privadas. Guardar cambios de datos o de estado, borrar solicitudes, cotizar con precios y reenviar correos queda fuera del alcance del rol Ventas.</p></div>';
-} );
+}
+add_action( 'admin_notices', 'fpw_sales_read_only_notice' );
 
 /** The note-visibility select is inert for ventas (normalized above): keep the UI honest by not offering it. */
 function fpw_sales_note_visibility_style(): void {

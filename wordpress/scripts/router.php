@@ -7,7 +7,6 @@
  * WordPress so pretty permalinks resolve without a web server.
  */
 $wp_root = dirname( __DIR__ ) . '/.build/wp';
-file_put_contents( dirname( __DIR__ ) . '/.build/request.log', date( 'H:i:s' ) . ' ' . $_SERVER['REQUEST_METHOD'] . ' ' . $_SERVER['REQUEST_URI'] . PHP_EOL, FILE_APPEND ); // TEMP diagnosis
 $uri     = urldecode( parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) );
 
 if ( '/' !== $uri ) {

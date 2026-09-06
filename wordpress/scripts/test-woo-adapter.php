@@ -311,7 +311,7 @@ check(fpw_guard_denies()==='pass','The approved private-note flow passes the mut
 // hooks fire, so the denial must happen at admin_init, not inside the metabox pipeline.
 $_REQUEST=array('action'=>'editpost'); $_POST=array('action'=>'editpost','post_ID'=>10,'order_status'=>'wc-processing'); $_GET=array();
 check(fpw_guard_denies()==='403','A valid posts-store editor save (contact + status) from ventas is denied before any write');
-$_REQUEST=array('action'=>'editpost'); $_POST=array('action'=>'editpost','post_ID'=>11); 
+$_REQUEST=array('action'=>'editpost'); $_POST=array('action'=>'editpost','post_ID'=>11);
 check(fpw_guard_denies()==='pass','Non-order records are left to WordPress itself');
 $_REQUEST=array('action'=>'edit_order'); $_POST=array('action'=>'edit_order'); $_GET=array('page'=>'wc-orders');
 check(fpw_guard_denies()==='403','A valid HPOS editor save from ventas is denied');
