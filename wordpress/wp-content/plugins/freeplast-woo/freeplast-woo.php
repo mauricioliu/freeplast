@@ -436,7 +436,12 @@ function fpw_attempt_identity( $checkout ): array {
 	$token  = (string) ( $posted['fpw_attempt'] ?? '' );
 	if ( ! fpw_is_attempt_token( $token ) ) { $token = fpw_open_attempt_token(); }
 	if ( ! fpw_is_attempt_token( $token ) ) { return array( 'token' => '', 'hash' => '' ); }
-	return array( 'token' => $token, 'hash' => hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), $token ) ) ) );
+	return array( 'token' => $token, 'hash' => fpw_attempt_identity_hash( $token ) );
+}
+
+/** The claim key of one attempt: the session fingerprint bound to the token. Cart contents and posted fields never take part (issue #31). */
+function fpw_attempt_identity_hash( string $token ): string {
+	return hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), $token ) ) );
 }
 
 /** The attempt identity hash (session + attempt token), the claim's key. */
@@ -450,9 +455,10 @@ function fpw_checkout_attempt_hash( $checkout ): string {
  * recovery data the follow-up confirmation-recovery ticket reads when a
  * response never arrived — independent of the cart still holding the
  * selection, scoped to this session so no other session can ever read it.
+ * Writes nothing unless the binding would be complete (token + hash + order).
  */
 function fpw_mark_attempt_landed( string $token, string $hash, int $order_id ): void {
-	if ( ! function_exists( 'WC' ) || ! WC()->session || '' === $hash || $order_id <= 0 ) { return; }
+	if ( ! function_exists( 'WC' ) || ! WC()->session || '' === $token || '' === $hash || $order_id <= 0 ) { return; }
 	WC()->session->set( 'fpw_attempt_landed', array( 'token' => $token, 'hash' => $hash, 'order_id' => $order_id, 'at' => time() ) );
 }
 
@@ -672,10 +678,11 @@ function fpw_recover_landed_attempt(): void {
 	if ( ! wp_verify_nonce( wp_unslash( $_POST['woocommerce-process-checkout-nonce'] ), 'woocommerce-process_checkout' ) ) { return; }
 	$token = (string) ( $_POST['fpw_attempt'] ?? '' );
 	if ( ! fpw_is_attempt_token( $token ) ) { return; }
-	$hash     = hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), $token ) ) );
+	$hash     = fpw_attempt_identity_hash( $token );
 	$order_id = fpw_attempt_order_id( $hash );
-	$landed   = WC()->session->get( 'fpw_attempt_landed' );
-	if ( ! $order_id || ! is_array( $landed ) || ( $landed['token'] ?? '' ) !== $token || ( $landed['hash'] ?? '' ) !== $hash || (int) ( $landed['order_id'] ?? 0 ) !== $order_id ) { return; }
+	if ( ! $order_id ) { return; }
+	$landed = WC()->session->get( 'fpw_attempt_landed' );
+	if ( ! is_array( $landed ) || ( $landed['token'] ?? '' ) !== $token || ( $landed['hash'] ?? '' ) !== $hash || (int) ( $landed['order_id'] ?? 0 ) !== $order_id ) { return; }
 	$order = wc_get_order( $order_id );
 	if ( ! $order ) { return; }
 	wp_send_json( array( 'result' => 'success', 'redirect' => $order->get_checkout_order_received_url() ) );

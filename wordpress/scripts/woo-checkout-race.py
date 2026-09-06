@@ -155,6 +155,11 @@ def post_checkout(session, values):
     except (TypeError, ValueError):
         return {'result': 'error', 'message': str(body)[:160]}
 
+def add_to_cart(session, name, quantity):
+    """Add the featured product to a session's cart; every scenario starts here."""
+    code, _ = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': quantity}, api=True)
+    ok(name, code in (200, 201), f'HTTP {code}')
+
 RACE_FIELDS = {
     'billing_first_name': 'PRUEBA LOCAL CARRERA', 'billing_phone': '+56 9 1234 5678',
     'billing_email': 'race-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
@@ -179,8 +184,7 @@ pid = products[0]['id']
 
 rounds = []
 for round_index in range(RACE_ROUNDS):
-    code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
-    ok(f'cart_add_{round_index}', code in (200, 201), f'HTTP {code}')
+    add_to_cart(session, f'cart_add_{round_index}', 70)
     values = checkout_form(session)
     ok(f'checkout_form_present_{round_index}', 'woocommerce-process-checkout-nonce' in values)
     values.update(RACE_FIELDS)
@@ -233,14 +237,16 @@ ok('replay_recovers_same_request', replay.get('result') == 'success' and order_o
 # A pre-save validation error (despacho required, address missing) must leave
 # the selection and data intact: the corrected re-submission succeeds on the
 # SAME rebuilt cart — the cart only empties on persisted success.
-code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
-ok('cart_add_correct', code in (200, 201), f'HTTP {code}')
+add_to_cart(session, 'cart_add_correct', 70)
 correct_values = checkout_form(session)
 correct_values.update(RACE_FIELDS)
 correct_values.update({'billing_fp_dispatch': 'si', 'billing_fp_address': ''})
 first_try = post_checkout(session, correct_values)
 ok('correct_first_rejected', first_try.get('result') == 'failure', str(first_try.get('result'))[:80])
-ok('correct_error_names_address', any('dirección' in str(message).lower() for message in first_try.get('messages', {}).get('error', [])) if isinstance(first_try.get('messages'), dict) else True, str(first_try.get('messages'))[:120])
+messages = first_try.get('messages')
+ok('correct_error_names_address',
+   not isinstance(messages, dict) or any('dirección' in str(message).lower() for message in messages.get('error', [])),
+   str(messages)[:120])
 correct_values.update({'billing_fp_address': 'Camino de prueba 1, Mostazal, VI Región'})
 corrected = post_checkout(session, correct_values)
 ok('correct_second_success', corrected.get('result') == 'success', str(corrected)[:120])
@@ -252,11 +258,11 @@ ok('correct_distinct_order', correct_order is not None and correct_order != race
 # request after the previous one was completed. The fresh checkout page must
 # carry a ROTATED attempt token, and the submission must produce a NEW request
 # with its own reference, never fold into the previous order.
-code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
-ok('cart_add_renew', code in (200, 201), f'HTTP {code}')
+add_to_cart(session, 'cart_add_renew', 70)
 renew_values = checkout_form(session)
 renew_token = renew_values.get('fpw_attempt', '')
-ok('attempt_token_rotated', '' != renew_token and renew_token != rounds[-1]['token'], 'the completed attempt token must not be reused by a fresh checkout page')
+token_rotated = bool(renew_token) and renew_token != rounds[-1]['token']
+ok('attempt_token_rotated', token_rotated, 'the completed attempt token must not be reused by a fresh checkout page')
 renew_values.update(RACE_FIELDS)   # byte-identical posted content to the race
 renewed = post_checkout(session, renew_values)
 ok('renew_success', renewed.get('result') == 'success', str(renewed)[:160])
@@ -268,8 +274,7 @@ ok('renew_new_reference', renew_order is not None and renew_order != race_order 
 other = Session()
 other.request('/wp-json/wc/store/v1/cart', api=True)  # seed the Store API nonce
 code, products = other.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
-code, cart = other.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 3}, api=True)
-ok('cart_add_other', code in (200, 201), f'HTTP {code}')
+add_to_cart(other, 'cart_add_other', 3)
 other_values = checkout_form(other)
 other_values.update({
     'billing_first_name': 'PRUEBA LOCAL OTRA SESION', 'billing_phone': '+56 9 8765 4321',
@@ -285,7 +290,7 @@ ok('isolate_distinct_order', other_order is not None and other_order != race_ord
 print(json.dumps({'home': home, 'race_orders': [r['order'] for r in rounds],
                   'replay_recovered_order': order_of(replay) if replay.get('result') == 'success' else None,
                   'correct_order': correct_order, 'renew_order': renew_order,
-                  'attempt_token_rotated': '' != renew_token and renew_token != rounds[-1]['token'],
+                  'attempt_token_rotated': token_rotated,
                   'isolate_order': other_order,
                   'failures': failures}, ensure_ascii=False))
 raise SystemExit(1 if failures else 0)

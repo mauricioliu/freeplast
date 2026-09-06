@@ -166,6 +166,7 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
     `;
     const state = sh(PHP, [WPCLI, 'eval', phpCode, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
     const parsed = JSON.parse(state.split('\n').pop());
+    const totalUnits = (entry) => entry.quantities.reduce((a, b) => a + b, 0);
     for (const [key, entry] of Object.entries(parsed)) {
       if (key === 'lookup_row') continue;
       check(entry.status === 'pending', `request ${entry.id} left the pending quote state (status ${entry.status})`);
@@ -174,7 +175,7 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
       check(entry.has_details, `request ${entry.id} lost its submitted details`);
       check(entry.quantities.length > 0, `request ${entry.id} has no lines`);
     }
-    check(parsed.race.quantities.reduce((a, b) => a + b, 0) === 70 && parsed.renew.quantities.reduce((a, b) => a + b, 0) === 70, 'the rebuild must reproduce the identical selection (70 units)');
+    check(totalUnits(parsed.race) === 70 && totalUnits(parsed.renew) === 70, 'the rebuild must reproduce the identical selection (70 units)');
     check(parsed.race.billing_email === parsed.renew.billing_email, 'the identical rebuild must carry the same submitted details (content repeats; requests must not)');
     check(parsed.race.attempt !== parsed.renew.attempt, 'the identical rebuild must carry a DIFFERENT attempt identity');
     check(parsed.correct.billing_email === parsed.renew.billing_email, 'the corrected retry keeps the same customer details');

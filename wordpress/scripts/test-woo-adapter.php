@@ -440,7 +440,7 @@ $GLOBALS['fpw_options_table']['fpw_claim_'.$attempt_hash]=json_encode(array('ses
 check(fpw_checkout_claim(null,$checkout)===68,'A finalized claim recovers the winner\'s own order through Woo\'s short-circuit');
 $landed=$GLOBALS['fpw_woo']->session->get('fpw_attempt_landed');
 check(is_array($landed) && $landed['token']===$open_token && $landed['hash']===$attempt_hash && $landed['order_id']===68 && $landed['at']>0,'A recovery completes the attempt: the session keeps the authorized landing binding (token + hash + order)');
-check(is_array($GLOBALS['fpw_woo']->session->get('fpw_attempt_landed')),'The landing binding is the recovery data of this session only');
+check(($GLOBALS['fpw_woo']->session->data['fpw_attempt_landed'] ?? null)===$landed,'The landing binding lives in the customer\'s own session store, not a parallel one');
 $GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array());
 check(count($GLOBALS['wp_filter']['woocommerce_checkout_order_processed']->callbacks[10]??array())===0,'A folded attempt no longer re-fires the quotes extension\'s request notifications');
 check($GLOBALS['fpw_order_notes']===array(array(68,'Solicitud duplicada (reintento concurrente) fusionada en este pedido por el control de intentos de Freeplast.',false)),'The folded attempt leaves one honest private trace on the record it joins');
@@ -509,11 +509,9 @@ $GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array());
 $render_callback=null;
 foreach($registered_actions['woocommerce_after_order_notes']??array() as $callback) { if(is_object($callback)) { $render_callback=$callback; break; } }
 check(is_object($render_callback),'The checkout form renders the attempt identity field');
-if (!function_exists('esc_attr')) { function esc_attr($text) { return htmlspecialchars((string)$text,ENT_QUOTES); } }
 ob_start(); $render_callback(); $field_html=ob_get_clean();
 check((bool)preg_match('/^<input type="hidden" name="fpw_attempt" value="'.$rotated_token.'" \/>$/',$field_html),'The form carries exactly one hidden attempt-identity field with the open token');
-$GLOBALS['fpw_woo']->session=new FPW_Fake_Session();  // no session available
-$GLOBALS['fpw_woo']->session=null;
+$GLOBALS['fpw_woo']->session=null;  // no session available
 ob_start(); $render_callback(); check(ob_get_clean()==='','Without a session no identity field is rendered and the claim stays out of the way');
 $GLOBALS['fpw_woo']->session=new FPW_Fake_Session();
 fpw_open_attempt_token();  // reopen an attempt for the landing tests
@@ -526,28 +524,33 @@ if (!function_exists('wp_unslash')) { function wp_unslash($value) { return $valu
 // The landing binding written by the order creation.
 $GLOBALS['fpw_woo']->session->set('fpw_attempt_open','');
 fpw_pending_attempt(''); fpw_pending_attempt_token('');
+check(fpw_pending_attempt('')==='' && fpw_pending_attempt_token('')==='' ,'Pending attempt and token start empty');
 $identity_hash=fpw_checkout_attempt_hash(new FPW_Fake_Checkout(fpw_attempt_posted()));
 $identity_token=$GLOBALS['fpw_woo']->session->get('fpw_attempt_open');
 $creation_callbacks=$registered_actions['woocommerce_checkout_order_created']??array();
 $order=new FPW_Fake_Order(77);
-check(fpw_pending_attempt('')==='' ,'Pending attempt starts empty');
 fpw_pending_attempt($identity_hash); fpw_pending_attempt_token($identity_token);
 foreach($creation_callbacks as $callback) { if(is_object($callback)) { $callback($order); } }
 $landed=$GLOBALS['fpw_woo']->session->get('fpw_attempt_landed');
 check(is_array($landed) && $landed['token']===$identity_token && $landed['hash']===$identity_hash && $landed['order_id']===77,'A persisted order marks the attempt landed with its authorized binding');
-check(fpw_mark_attempt_landed($identity_token,'',77)===null && fpw_mark_attempt_landed('', $identity_hash, 77)===null && fpw_mark_attempt_landed($identity_token,$identity_hash,0)===null,'Landing guards: no hash, no token or no order writes nothing');
-check(fpw_mark_attempt_landed($identity_token,$identity_hash,99)===null || $GLOBALS['fpw_woo']->session->get('fpw_attempt_landed')['order_id']===99,'A later landing supersedes the previous binding (the last request owns the record)');
+fpw_mark_attempt_landed($identity_token,'',77); fpw_mark_attempt_landed('',$identity_hash,77); fpw_mark_attempt_landed($identity_token,$identity_hash,0);
+check($GLOBALS['fpw_woo']->session->get('fpw_attempt_landed')===$landed,'Landing guards: no hash, no token or no order writes nothing');
+fpw_mark_attempt_landed($identity_token,$identity_hash,99);
+check(($GLOBALS['fpw_woo']->session->get('fpw_attempt_landed')['order_id'] ?? 0)===99,'A later landing supersedes the previous binding (the last request owns the record)');
 // restore the earlier attempt as pending, as the seam checks below expect it
 fpw_pending_attempt($attempt_hash); fpw_pending_attempt_token($open_token);
 
 // Retry recovery of the SAME landed attempt (issue #31): Woo emptied the cart,
 // the same form is resubmitted — the confirmation of the EXISTING request is
 // re-shown; every authorization must agree, and nothing new is created.
-function fpw_recovery_context(array $posted=array(),bool $empty_cart=true,bool $checkout_ajax=true): void {
+function fpw_recovery_attempt(array $posted=array(),bool $empty_cart=true,bool $checkout_ajax=true,bool $nonce_valid=true): ?array {
 	$_GET=$checkout_ajax?array('wc-ajax'=>'checkout'):array();
 	$_POST=array_merge(array('woocommerce-process-checkout-nonce'=>'nonce-value','fpw_attempt'=>''),$posted);
 	$GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart_Hash('');
 	$GLOBALS['fpw_cart_empty']=$empty_cart;
+	$GLOBALS['fpw_nonce_valid']=$nonce_valid; $GLOBALS['fpw_json_sent']=null;
+	fpw_recover_landed_attempt();
+	return $GLOBALS['fpw_json_sent'];
 }
 $GLOBALS['fpw_woo']->cart=new FPW_Fake_Cart_Hash('');
 $GLOBALS['fpw_cart_empty']=true;
@@ -561,50 +564,27 @@ $recovery_hash=hash('sha256',(string)wp_json_encode(array(fpw_session_fingerprin
 $GLOBALS['fpw_options_table']['fpw_attempt_'.$recovery_hash]='77';
 $GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>$recovery_token,'hash'=>$recovery_hash,'order_id'=>77,'at'=>time()));
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token));
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check(is_array($GLOBALS['fpw_json_sent']) && $GLOBALS['fpw_json_sent']['result']==='success' && str_contains($GLOBALS['fpw_json_sent']['redirect'],'/order-received/77'),'An authorized retry of a landed attempt recovers the SAME request\'s confirmation');
+$json=fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token));
+check(is_array($json) && $json['result']==='success' && str_contains($json['redirect'],'/order-received/77'),'An authorized retry of a landed attempt recovers the SAME request\'s confirmation');
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token));
-$GLOBALS['fpw_nonce_valid']=false; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'Recovery never bypasses Woo\'s own process-checkout nonce');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),nonce_valid:false)===null,'Recovery never bypasses Woo\'s own process-checkout nonce');
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token),$empty_cart=false);
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'A full cart never takes the recovery path: Woo\'s native flow and the claim own it');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),empty_cart:false)===null,'A full cart never takes the recovery path: Woo\'s native flow and the claim own it');
 
-fpw_recovery_context(array('fpw_attempt'=>str_repeat('cd',20)));
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'A different attempt token never recovers another request');
+check(fpw_recovery_attempt(array('fpw_attempt'=>str_repeat('cd',20)))===null,'A different attempt token never recovers another request');
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token));
 $GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>'other','hash'=>'other','order_id'=>1,'at'=>time()));
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'Recovery demands the session landing record to agree with the durable binding');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))===null,'Recovery demands the session landing record to agree with the durable binding');
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token));
 $GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>$recovery_token,'hash'=>$recovery_hash,'order_id'=>77,'at'=>time()));
 $GLOBALS['fpw_options_table']=array(); // lookup swept
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'Recovery demands BOTH bindings: the session record alone is not authorized');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))===null,'Recovery demands BOTH bindings: the session record alone is not authorized');
 
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token),$checkout_ajax=false);
 $GLOBALS['fpw_options_table']['fpw_attempt_'.$recovery_hash]='77';
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'Only the native checkout submission endpoint takes the recovery path');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),checkout_ajax:false)===null,'Only the native checkout submission endpoint takes the recovery path');
 
 $GLOBALS['fpw_session_customer_id']='other-session';
-fpw_recovery_context(array('fpw_attempt'=>$recovery_token));
-$GLOBALS['fpw_nonce_valid']=true; $GLOBALS['fpw_json_sent']=null;
-fpw_recover_landed_attempt();
-check($GLOBALS['fpw_json_sent']===null,'Another session can never recover a request of this session');
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))===null,'Another session can never recover a request of this session');
 $GLOBALS['fpw_session_customer_id']='abc123';
 unset($_GET,$_POST);
 
