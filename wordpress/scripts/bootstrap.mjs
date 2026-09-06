@@ -178,6 +178,12 @@ function installWoo() {
   // runs the CLASSIC checkout (ADR-0001: the quotes extension's address options are not
   // equivalent in Checkout Blocks), so the pages get the classic shortcodes.
   wp(['wc', 'tool', 'run', 'install_pages', '--user=1']);
+  // Woo 11.x "coming soon" mode replaces store-page content for logged-out visitors and
+  // its onboarding flows can enable it on a living stack (observed mid-run): pinned off
+  // so the public pages under regression are always the real cart/checkout surfaces.
+  wp(['option', 'update', 'woocommerce_coming_soon', 'no']);
+  wp(['option', 'update', 'woocommerce_store_pages_only', 'no']);
+  wp(['option', 'update', 'woocommerce_private_link', 'no']);
   const classicShortcodes = {
     woocommerce_cart_page_id: '[woocommerce_cart]',
     woocommerce_checkout_page_id: '[woocommerce_checkout]',

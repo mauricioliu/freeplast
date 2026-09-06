@@ -269,6 +269,135 @@ if (!function_exists('__return_false')) { function __return_false(): bool { retu
 foreach($registered_filters['woocommerce_email_enabled_customer_note'] as $callback) { check(false===call_user_func($callback),'Every customer-note filter disables the email'); }
 $GLOBALS['fpw_user_caps']=array();
 
+// Issue #33 (SP-03 + ST-01, follow-up of #25/WA-02): the restricted session reads and
+// annotates — it never writes the record. The two order caps that open the native editor
+// and its note AJAX also pass Woo's own nonce + capability checks on EVERY record-mutation
+// surface: the editor save (contact data, status, order actions — posts store and HPOS),
+// the orders-list bulk actions, the quick-status AJAX whose nonce Woo itself renders for
+// this role, the items/fees/taxes/refunds/downloads AJAX family, the REST orders API (its
+// permission map keys 'edit'/'batch' on the same edit_others cap) and the note-deletion
+// AJAX. The guards key on the capability boundary alone — they verify no nonce — so a
+// request with valid session and valid nonces is still denied, and every denial is
+// attributable to permissions, never to the CSRF check.
+$GLOBALS['fpw_posts']=array();
+if (!function_exists('get_post')) { function get_post($id) { return isset($GLOBALS['fpw_posts'][(int)$id]) ? $GLOBALS['fpw_posts'][(int)$id] : null; } }
+$GLOBALS['fpw_posts'][10]=(object)array('post_type'=>'shop_order');
+$GLOBALS['fpw_posts'][11]=(object)array('post_type'=>'page');
+function fpw_guard_denies(): string {
+	try { fpw_deny_sales_record_mutation(); return 'pass'; } catch (FPW_Guard_Die $e) { return $e->getMessage(); }
+}
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+
+// The front door (admin_init runs before any save machinery) denies the mutation AJAX family.
+$_REQUEST=array('action'=>'woocommerce_mark_order_status'); $_GET=array('status'=>'processing','order_id'=>10); $_POST=array();
+check(fpw_guard_denies()==='403','The quick-status AJAX is denied for ventas — Woo itself renders its nonce for the role, so this is permissions, not CSRF');
+$_REQUEST=array('action'=>'woocommerce_delete_order_note'); $_POST=array('note_id'=>5); $_GET=array();
+check(fpw_guard_denies()==='403','A valid delete-order-note request from ventas is denied: the record history stays intact');
+foreach (array('woocommerce_save_order_items','woocommerce_add_order_item','woocommerce_add_order_fee','woocommerce_add_order_shipping','woocommerce_add_order_tax','woocommerce_remove_order_item','woocommerce_remove_order_coupon','woocommerce_remove_order_tax','woocommerce_refund_line_items','woocommerce_delete_refund','woocommerce_grant_access_to_download','woocommerce_revoke_access_to_download') as $items_action) {
+	$_REQUEST=array('action'=>$items_action); $_POST=array('order_id'=>10); $_GET=array();
+	check(fpw_guard_denies()==='403','The record-mutating items AJAX '.$items_action.' is denied for ventas');
+}
+
+// The kept surfaces pass the front door untouched.
+$_REQUEST=array('action'=>'woocommerce_get_order_details'); $_GET=array('order_id'=>10); $_POST=array();
+check(fpw_guard_denies()==='pass','The items-editor read endpoints stay reachable for ventas');
+$_REQUEST=array('action'=>'woocommerce_load_order_items'); $_POST=array('order_id'=>10);
+check(fpw_guard_denies()==='pass','load_order_items stays reachable for ventas');
+$_REQUEST=array('action'=>'woocommerce_add_order_note'); $_POST=array('post_id'=>10,'note'=>'x','note_type'=>'');
+check(fpw_guard_denies()==='pass','The approved private-note flow passes the mutation front door');
+
+// Editor saves in both storage modes: denied BEFORE anything is written. In the posts
+// store WP core itself would rewrite the record row (including status) before Woo's save
+// hooks fire, so the denial must happen at admin_init, not inside the metabox pipeline.
+$_REQUEST=array('action'=>'editpost'); $_POST=array('action'=>'editpost','post_ID'=>10,'order_status'=>'wc-processing'); $_GET=array();
+check(fpw_guard_denies()==='403','A valid posts-store editor save (contact + status) from ventas is denied before any write');
+$_REQUEST=array('action'=>'editpost'); $_POST=array('action'=>'editpost','post_ID'=>11); 
+check(fpw_guard_denies()==='pass','Non-order records are left to WordPress itself');
+$_REQUEST=array('action'=>'edit_order'); $_POST=array('action'=>'edit_order'); $_GET=array('page'=>'wc-orders');
+check(fpw_guard_denies()==='403','A valid HPOS editor save from ventas is denied');
+
+// Reading surfaces stay open.
+$_GET=array('page'=>'wc-orders','action'=>'edit','id'=>10); $_POST=array(); $_REQUEST=array();
+check(fpw_guard_denies()==='pass','Opening the editor to read stays allowed');
+$_GET=array('page'=>'wc-orders'); $_POST=array(); $_REQUEST=array('post_type'=>'shop_order');
+check(fpw_guard_denies()==='pass','List and search requests pass the front door');
+
+// The guard keys on the capability boundary: anonymous requests pass through to Woo's own
+// checks; managers (manage_woocommerce) keep the native behavior everywhere.
+$GLOBALS['fpw_user_caps']=array();
+$_REQUEST=array('action'=>'woocommerce_mark_order_status');
+check(fpw_guard_denies()==='pass','Anonymous requests pass the ventas guard (native auth owns them)');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+check(fpw_guard_denies()==='pass','Managers keep the native quick-status AJAX');
+
+// Bulk mutations (status changes, trash/delete/untrash, personal-data removal) pass Woo's
+// own handler in both storage modes through one chokepoint, after its nonce + cap checks.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+try { fpw_deny_sales_bulk_actions(array(10)); check(false,'A ventas bulk action must be denied'); } catch (FPW_Guard_Die $e) { check($e->getMessage()==='403','Orders-list bulk mutations are denied for ventas (valid bulk nonce included)'); }
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+check(fpw_deny_sales_bulk_actions(array(10,12))===array(10,12),'A manager\'s bulk actions pass the chokepoint unchanged');
+
+// The REST orders API maps 'edit'/'batch' onto the same cap the admin screens use — without
+// the boundary a cookie-authed PUT /wc/v3/orders/{id} would rewrite the record.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+foreach (array('create','edit','delete','batch') as $rest_context) {
+	check(fpw_deny_sales_rest_mutation(true,$rest_context)===false,'REST '.$rest_context.' on records is denied for ventas');
+}
+check(fpw_deny_sales_rest_mutation(true,'read')===true && fpw_deny_sales_rest_mutation(false,'read')===false,'REST reads pass through untouched for everyone');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+check(fpw_deny_sales_rest_mutation(true,'edit')===true,'A manager\'s REST order update keeps Woo\'s own verdict');
+
+// The deep backstop: registered on Woo's own save pipeline (both storage modes run it after
+// their nonce + capability checks and before any metabox save at priority 10+).
+check(in_array('fpw_deny_sales_order_save',$registered_filters['woocommerce_process_shop_order_meta']??array(),true),'The save-pipeline backstop is registered on woocommerce_process_shop_order_meta');
+check(in_array('fpw_deny_sales_record_mutation',$registered_actions['admin_init']??array(),true),'The mutation front door rides admin_init (before any save machinery)');
+check(in_array('fpw_deny_sales_bulk_actions',$registered_filters['woocommerce_bulk_action_ids']??array(),true),'Bulk mutations pass the adapter chokepoint');
+check(in_array('fpw_deny_sales_rest_mutation',$registered_filters['woocommerce_rest_check_permissions']??array(),true),'The REST permission boundary is registered');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+try { fpw_deny_sales_order_save(); check(false,'A ventas editor save must hit the backstop'); } catch (FPW_Guard_Die $e) { check($e->getMessage()==='403','The backstop denies the ventas save with 403'); }
+
+// «Deja el registro sin cambios»: walk a fake save pipeline in registration order — the
+// backstop (registered at priority 0 during plugin load) dies before any later write runs.
+$wrote=false;
+add_filter('woocommerce_process_shop_order_meta', static function($value) use (&$wrote) { $wrote=true; return $value; }, 40, 1);
+try { apply_filters('woocommerce_process_shop_order_meta','',10); } catch (FPW_Guard_Die $e) {}
+check($wrote===false,'Nothing is written: the backstop answers before any save callback (record unchanged)');
+
+// Authorization-regression probes (issue #33 criterion): the suite must FAIL the world where
+// the guard is removed or the improper cap is granted — never pass vacuously.
+$registered_filters['woocommerce_process_shop_order_meta']=array_values(array_filter($registered_filters['woocommerce_process_shop_order_meta'],static function($cb){return 'fpw_deny_sales_order_save'!==$cb;}));
+$wrote=false;
+try { apply_filters('woocommerce_process_shop_order_meta','',10); } catch (FPW_Guard_Die $e) {}
+check($wrote===true,'Regression probe: removing the guard lets the write through');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+array_unshift($registered_filters['woocommerce_process_shop_order_meta'],'fpw_deny_sales_order_save');  // priority 0 sorts first
+$wrote=false;
+try { apply_filters('woocommerce_process_shop_order_meta','',10); } catch (FPW_Guard_Die $e) {}
+check($wrote===true,'Regression probe: granting manage_woocommerce reopens the save (the cap boundary IS the guard)');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+$wrote=false;
+try { apply_filters('woocommerce_process_shop_order_meta','',10); } catch (FPW_Guard_Die $e) {}
+check($wrote===false,'Restored: the backstop denies again and the record stays unchanged');
+$registered_filters['woocommerce_process_shop_order_meta']=array('fpw_deny_sales_order_save');
+
+// UI honesty: the interface never offers what the server denies.
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true);
+$preview=fpw_sales_preview_status_actions(array('status'=>array('group'=>'Change status: ','actions'=>array('processing'=>array())),'edit'=>array()));
+check(!isset($preview['status']) && isset($preview['edit']),'The order-preview quick-status buttons (which carry Woo\'s own nonce for the role) are removed for ventas');
+$rows=fpw_sales_row_status_actions(array('processing'=>array(),'complete'=>array()));
+check($rows===array(),'The list row status buttons are removed for ventas');
+$bulk=fpw_sales_list_bulk_actions(array('edit'=>'x','mark_processing'=>'x','mark_completed'=>'x','trash'=>'x','untrash'=>'x','delete'=>'x','remove_personal_data'=>'x'));
+check($bulk===array(),'The orders-list bulk select offers ventas no mutating action');
+$GLOBALS['fpw_user_caps']=array('edit_shop_orders'=>true,'manage_woocommerce'=>true);
+$bulk=fpw_sales_list_bulk_actions(array('mark_processing'=>'x','trash'=>'x'));
+check(count($bulk)===2,'Managers keep the native bulk actions');
+$preview=fpw_sales_preview_status_actions(array('status'=>array()));
+check(isset($preview['status']),'Managers keep the preview quick-status buttons');
+check(in_array('fpw_sales_preview_status_actions',$registered_filters['woocommerce_admin_order_preview_actions']??array(),true),'The preview actions filter is registered');
+check(in_array('fpw_sales_row_status_actions',$registered_filters['woocommerce_admin_order_actions']??array(),true),'The row actions filter is registered');
+check(in_array('fpw_sales_list_bulk_actions',$registered_filters['bulk_actions-edit-shop_order']??array(),true),'The list bulk filter is registered');
+$GLOBALS['fpw_user_caps']=array();
+
 // Theme versioning contract: the style.css header and the asset cache-busting constant move together.
 $style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.css');
 check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');

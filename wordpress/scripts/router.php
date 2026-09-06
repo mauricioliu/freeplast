@@ -7,6 +7,7 @@
  * WordPress so pretty permalinks resolve without a web server.
  */
 $wp_root = dirname( __DIR__ ) . '/.build/wp';
+file_put_contents( dirname( __DIR__ ) . '/.build/request.log', date( 'H:i:s' ) . ' ' . $_SERVER['REQUEST_METHOD'] . ' ' . $_SERVER['REQUEST_URI'] . PHP_EOL, FILE_APPEND ); // TEMP diagnosis
 $uri     = urldecode( parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) );
 
 if ( '/' !== $uri ) {
@@ -16,10 +17,16 @@ if ( '/' !== $uri ) {
 			return false; // Let the built-in server stream the static file.
 		}
 		if ( '/index.php' !== $uri ) {
-			// Real PHP endpoints (wp-admin/*.php, wp-login.php) execute directly,
-			// exactly as under a configured web server.
+			// Real PHP endpoints (wp-admin/*.php, wp-login.php, admin-ajax.php)
+			// execute directly, exactly as under a configured web server. The
+			// built-in server resolves `return false` against its docroot (the
+			// repository root, not the disposable install), so the file is
+			// required from here; its own requires are __DIR__-based and the
+			// working directory matches the file's, as under a real docroot.
 			$_SERVER['PHP_SELF'] = $uri;
-			return false;
+			chdir( dirname( $file ) );
+			require $file;
+			exit;
 		}
 	}
 }

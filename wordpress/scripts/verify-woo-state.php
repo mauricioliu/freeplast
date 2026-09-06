@@ -61,5 +61,13 @@ $check(false!==has_filter('woocommerce_prevent_admin_access','fpw_allow_sales_ad
 $check(false!==has_action('admin_init','fpw_force_private_sales_note'),'Sales notes normalize to private at the origin');
 $check(false!==has_filter('woocommerce_order_actions','fpw_sales_order_actions'),'Email resends removed from the order-actions select for ventas');
 $check(false!==has_action('woocommerce_before_resend_order_emails','fpw_deny_sales_email_resend'),'Crafted email resends are denied server-side for ventas');
+// Issue #33: the restricted session reads and annotates, it never writes the record.
+$check(false!==has_action('admin_init','fpw_deny_sales_record_mutation'),'The ventas mutation front door rides admin_init before any save machinery');
+$check(false!==has_filter('woocommerce_process_shop_order_meta','fpw_deny_sales_order_save'),'The editor-save backstop refuses order writes for ventas in both storage modes');
+$check(false!==has_filter('woocommerce_bulk_action_ids','fpw_deny_sales_bulk_actions'),'Orders-list bulk mutations are denied for ventas');
+$check(false!==has_filter('woocommerce_rest_check_permissions','fpw_deny_sales_rest_mutation'),'The REST orders API denies mutating contexts for ventas');
+$check(false!==has_filter('woocommerce_admin_order_preview_actions','fpw_sales_preview_status_actions'),'Quick-status buttons are not offered to ventas in the order preview');
+$check(false!==has_filter('woocommerce_admin_order_actions','fpw_sales_row_status_actions'),'List row status buttons are not offered to ventas');
+$check(false!==has_filter('bulk_actions-edit-shop_order','fpw_sales_list_bulk_actions'),'The bulk select offers ventas no mutating action');
 $check(false!==has_filter('woocommerce_email_enabled_customer_note','__return_false'),'The note-to-customer email is disabled');
 WP_CLI::success($checks.' state checks passed. No production requests or mutations.');

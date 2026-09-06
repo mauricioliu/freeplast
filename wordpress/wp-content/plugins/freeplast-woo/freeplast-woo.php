@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -287,6 +287,176 @@ function fpw_deny_sales_email_resend(): void {
 	}
 }
 add_action( 'woocommerce_before_resend_order_emails', 'fpw_deny_sales_email_resend', 0 );
+
+/**
+ * Read and annotate, never write (issue #33, findings SP-03 + ST-01; follow-up
+ * of #25/WA-02): the same two order caps that open the native editor and its
+ * note AJAX also pass Woo's own nonce + capability checks on every
+ * record-mutation surface — verified in the pinned Woo 11.1.0 sources:
+ *   - the editor save (contact data, status, order actions) — both storage
+ *     modes run their save pipelines through woocommerce_process_shop_order_meta
+ *     after Woo's own checks; in the posts store WP core rewrites the record
+ *     row (including status) even earlier, at edit_post();
+ *   - the orders-list bulk actions (status changes, trash/delete/untrash,
+ *     personal-data removal) — gated only by edit_others_shop_orders;
+ *   - the quick-status AJAX (woocommerce_mark_order_status) — gated by
+ *     edit_shop_orders, and Woo itself renders its nonce for this role in the
+ *     order-preview modal;
+ *   - the items/fees/shipping/taxes/coupons/downloads/refunds AJAX family —
+ *     every member gated by edit_shop_orders only;
+ *   - the REST orders API — wc_rest_check_post_permissions() maps 'edit' and
+ *     'batch' onto the same edit_others cap the admin screens use;
+ *   - the note-deletion AJAX (woocommerce_delete_order_note).
+ * The guards below key on the capability boundary alone — they verify no nonce —
+ * so a request with a valid session and valid nonces is still denied, and every
+ * denial is attributable to permissions, never to the CSRF check. The kept
+ * surfaces (login, list, search, editor reads, the private-note AJAX) pass
+ * untouched; administrators and shop managers (manage_woocommerce) keep Woo's
+ * native behavior everywhere. Ampliar el alcance de Ventas es una decisión
+ * humana aparte: que el editor lo permita no constituye autorización.
+ */
+const FPW_SALES_DENIED_AJAX = array(
+	'woocommerce_mark_order_status',           // quick status change
+	'woocommerce_delete_order_note',           // note deletion alters the history
+	'woocommerce_save_order_items',            // items/fees/shipping/taxes/coupons:
+	'woocommerce_add_order_item',              // every member rewrites the record
+	'woocommerce_add_order_fee',
+	'woocommerce_add_order_shipping',
+	'woocommerce_add_order_tax',
+	'woocommerce_remove_order_item',
+	'woocommerce_remove_order_coupon',
+	'woocommerce_remove_order_tax',
+	'woocommerce_refund_line_items',
+	'woocommerce_delete_refund',
+	'woocommerce_grant_access_to_download',
+	'woocommerce_revoke_access_to_download',
+);
+
+/** The uniform denial: consulta-only, stated in Spanish, 403. */
+function fpw_die_sales_read_only(): void {
+	wp_die( 'Las solicitudes de cotización son de solo consulta para tu rol: puedes buscarlas, leerlas y agregar notas de ventas privadas, pero no modificar sus datos ni su estado.', '', array( 'response' => 403 ) );
+}
+
+/** True when the id belongs to a shop_order record (the posts-store surface). */
+function fpw_is_shop_order_post( int $post_id ): bool {
+	$post = $post_id ? get_post( $post_id ) : null;
+	return (bool) $post && 'shop_order' === $post->post_type;
+}
+
+/**
+ * Front door (admin_init runs before any save machinery): the mutating admin
+ * AJAX family and the editor saves of both storage modes never reach their
+ * handlers for order-limited staff. The posts-store denial must sit here — WP
+ * core writes the record row itself before Woo's save hooks fire.
+ */
+function fpw_deny_sales_record_mutation(): void {
+	if ( ! fpw_is_order_limited_staff() ) { return; }
+	$ajax_action = wp_doing_ajax() ? (string) ( $_REQUEST['action'] ?? '' ) : '';
+	if ( in_array( $ajax_action, FPW_SALES_DENIED_AJAX, true ) ) {
+		fpw_die_sales_read_only();
+	}
+	if ( 'editpost' === ( $_POST['action'] ?? '' ) && fpw_is_shop_order_post( absint( $_POST['post_ID'] ?? 0 ) ) ) {
+		fpw_die_sales_read_only();
+	}
+	if ( 'edit_order' === ( $_POST['action'] ?? '' ) && str_starts_with( (string) ( $_GET['page'] ?? '' ), 'wc-orders' ) ) {
+		fpw_die_sales_read_only();
+	}
+}
+add_action( 'admin_init', 'fpw_deny_sales_record_mutation', 0 );
+
+/**
+ * Deep backstop inside Woo's own save pipeline (both storage modes run it after
+ * their nonce + capability checks and before any metabox save at priority 10+):
+ * an order-limited editor save dies before anything is written, covering every
+ * route into the metabox pipeline and the order actions it dispatches. add_filter
+ * and add_action share one registry — this tag is do_action'd by Woo; the filter
+ * form lets the offline suite walk the pipeline with apply_filters.
+ */
+function fpw_deny_sales_order_save(): void {
+	if ( fpw_is_order_limited_staff() ) { fpw_die_sales_read_only(); }
+}
+add_filter( 'woocommerce_process_shop_order_meta', 'fpw_deny_sales_order_save', 0 );
+
+/**
+ * Bulk mutations on the orders list pass Woo's own handler in both storage
+ * modes through this filter, after its nonce + capability checks: denied for
+ * order-limited staff before any order is touched.
+ */
+function fpw_deny_sales_bulk_actions( $ids ) {
+	if ( fpw_is_order_limited_staff() ) { fpw_die_sales_read_only(); }
+	return $ids;
+}
+add_filter( 'woocommerce_bulk_action_ids', 'fpw_deny_sales_bulk_actions', 0 );
+
+/**
+ * The REST orders API maps 'edit' and 'batch' onto the same edit_others cap
+ * this role holds for the admin screens — without this boundary a cookie-auth
+ * PUT /wc/v3/orders/{id} (or a batch update) would rewrite the record. All
+ * mutating REST contexts sit outside the consulta scope; read contexts pass
+ * through unchanged for everyone.
+ */
+function fpw_deny_sales_rest_mutation( $permission, $context ) {
+	if ( fpw_is_order_limited_staff() && in_array( $context, array( 'create', 'edit', 'delete', 'batch' ), true ) ) {
+		return false;
+	}
+	return $permission;
+}
+add_filter( 'woocommerce_rest_check_permissions', 'fpw_deny_sales_rest_mutation', 10, 2 );
+
+/** The order-preview quick-status buttons carry Woo's own nonce for this role: removed, since the server denies them. */
+function fpw_sales_preview_status_actions( array $actions ): array {
+	if ( fpw_is_order_limited_staff() ) { unset( $actions['status'] ); }
+	return $actions;
+}
+add_filter( 'woocommerce_admin_order_preview_actions', 'fpw_sales_preview_status_actions', 10 );
+
+/** The list-table row status buttons: same treatment. */
+function fpw_sales_row_status_actions( array $actions ): array {
+	if ( fpw_is_order_limited_staff() ) { unset( $actions['processing'], $actions['complete'] ); }
+	return $actions;
+}
+add_filter( 'woocommerce_admin_order_actions', 'fpw_sales_row_status_actions', 10 );
+
+/** The bulk select never lists an action the server denies for ventas — Woo's own (mark_*, personal data), WP's delete-cap-gated ones or the bulk inline-edit. */
+function fpw_sales_list_bulk_actions( array $actions ): array {
+	if ( ! fpw_is_order_limited_staff() ) { return $actions; }
+	foreach ( array( 'edit', 'trash', 'untrash', 'delete', 'delete_all', 'remove_personal_data' ) as $denied ) { unset( $actions[ $denied ] ); }
+	foreach ( array_keys( $actions ) as $key ) {
+		if ( str_starts_with( (string) $key, 'mark_' ) ) { unset( $actions[ $key ] ); }
+	}
+	return $actions;
+}
+add_filter( 'bulk_actions-edit-shop_order', 'fpw_sales_list_bulk_actions', 10 );
+
+/** True on the native order administration screens (list + editor, both stores). */
+function fpw_is_sales_order_admin_screen(): bool {
+	if ( ! is_admin() ) { return false; }
+	if ( str_starts_with( (string) ( $_GET['page'] ?? '' ), 'wc-orders' ) ) { return true; }
+	global $pagenow, $typenow;
+	if ( in_array( (string) $pagenow, array( 'post.php', 'post-new.php' ), true ) ) {
+		return 'shop_order' === (string) $typenow || fpw_is_shop_order_post( absint( $_GET['post'] ?? 0 ) );
+	}
+	return 'edit.php' === (string) $pagenow && 'shop_order' === (string) ( $_GET['post_type'] ?? '' );
+}
+
+/**
+ * The interface never offers what the server denies: on the order screens the
+ * editor's save controls and status select, the order-actions select, the
+ * quotes extension's priced-quote buttons, the per-note delete links and the
+ * bulk-actions UI are hidden for order-limited staff. Presentation layer only —
+ * every one of these is denied server-side above; the notice states what
+ * remains so the restricted editor reads as the consulta scope it is.
+ */
+function fpw_sales_read_only_style(): void {
+	if ( ! fpw_is_order_limited_staff() || ! fpw_is_sales_order_admin_screen() ) { return; }
+	echo '<style>#submitpost,#major-publishing-actions,button.save_order,#order_status,select[name="wc_order_action"],#qwc_quote_complete,#qwc_send_quote,.order_note_visibility,.delete_note,.bulkactions{display:none!important}</style>';
+}
+add_action( 'admin_head', 'fpw_sales_read_only_style' );
+
+add_action( 'admin_notices', static function () {
+	if ( ! fpw_is_order_limited_staff() || ! fpw_is_sales_order_admin_screen() ) { return; }
+	echo '<div class="notice notice-info"><p><strong>Solicitudes de cotización: solo consulta.</strong> Puedes buscar y leer las solicitudes y agregar notas de ventas privadas. Guardar cambios de datos o de estado, borrar solicitudes, cotizar con precios y reenviar correos queda fuera del alcance del rol Ventas.</p></div>';
+} );
 
 /** The note-visibility select is inert for ventas (normalized above): keep the UI honest by not offering it. */
 function fpw_sales_note_visibility_style(): void {

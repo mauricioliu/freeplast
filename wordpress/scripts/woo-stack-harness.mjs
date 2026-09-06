@@ -14,8 +14,9 @@
  * (documented escape hatch).
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -94,16 +95,53 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
 }, PHP_INT_MAX, 2 );
 `,
   );
+  writeFileSync(
+    join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-nonces.php'),
+    `<?php
+/** Disposable-stack only (written by woo-stack-harness.mjs, issue #33): mints the
+ * CURRENT user's nonce for a requested admin action — the exact string the native
+ * UI would carry for that actor. It lets the restricted-session regression prove
+ * denials are PERMISSIONS (valid session + valid nonce) rather than CSRF, even
+ * where the interface rightly no longer offers the denied control. The mint only
+ * produces a nonce string; it grants nothing. Never shipped in the repository's
+ * wp-content. */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+add_action( 'wp_ajax_fpw_test_nonce', static function () {
+	if ( ! is_user_logged_in() ) { wp_send_json_error( array( 'reason' => 'not-logged-in' ), 403 ); }
+	$for = (string) ( $_REQUEST['for'] ?? '' );
+	if ( '' === $for || strlen( $for ) > 100 ) { wp_send_json_error( array( 'reason' => 'bad-action' ), 400 ); }
+	wp_send_json_success( array( 'nonce' => wp_create_nonce( $for ) ) );
+} );
+`,
+  );
 
-  /* 2. Serve (multi-worker so two checkout POSTs can genuinely overlap). */
-  const server = spawn(PHP, ['-S', `127.0.0.1:${PORT}`, join(HERE, 'router.php')], {
+  /* 2. Serve (multi-worker so two checkout POSTs can genuinely overlap). The
+     spawn is detached so the whole process GROUP (master + every worker) can
+     be signalled: a plain master SIGTERM has been observed to leave workers
+     holding the listening socket, poisoning every later run on the port. */
+  const traceFile = join(WORDPRESS_DIR, '.build', 'fatal-trace.log');
+  rmSync(traceFile, { force: true });
+  writeFileSync(join(WORDPRESS_DIR, '.build', 'fpw-trace-prepend.php'), `<?php
+register_shutdown_function( static function () {
+	$e = error_get_last();
+	if ( $e && E_ERROR === $e['type'] ) {
+		file_put_contents( dirname( ABSPATH ) . '/fatal-trace.log', $e['message'] . ' in ' . $e['file'] . ':' . $e['line'] . "\n" . ( new Exception() )->getTraceAsString() . "\n====\n", FILE_APPEND );
+	}
+} );
+`);
+  const serverLogFile = join(WORDPRESS_DIR, '.build', 'server.log');
+  rmSync(serverLogFile, { force: true });
+  /* The server output MUST go to a file, not to pipes: node blocks its event
+     loop inside spawnSync while the race/matrix subprocesses run, and nobody
+     drains a pipe then — once the 64KB pipe buffer filled, every worker
+     blocked on its access-log write and the whole stack stalled mid-suite. */
+  const serverLogFd = openSync(serverLogFile, 'a');
+  const server = spawn(PHP, ['-d', 'max_execution_time=10', '-d', `auto_prepend_file=${join(WORDPRESS_DIR, '.build', 'fpw-trace-prepend.php')}`, '-S', `127.0.0.1:${PORT}`, join(HERE, 'router.php')], {
     cwd: WORDPRESS_DIR,
     env: { ...process.env, PHP_CLI_SERVER_WORKERS: '8' },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', serverLogFd, serverLogFd],
+    detached: true,
   });
-  let serverLog = '';
-  server.stdout.on('data', (chunk) => { serverLog += chunk; });
-  server.stderr.on('data', (chunk) => { serverLog += chunk; });
 
   try {
     let home = 0;
@@ -111,7 +149,7 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
       home = await fetchCode('/');
       if (home !== 200) sleep(500);
     }
-    check(home === 200, `the disposable stack never answered 200 (last ${home})\n${serverLog.slice(-800)}`);
+    check(home === 200, `the disposable stack never answered 200 (last ${home})\n${readFileSync(serverLogFile, 'utf8').slice(-800)}`);
 
     /* 3. Home + race(repeated) + replay + correct + renew + isolation over real HTTP. */
     const py = process.env.PYTHON || 'python3';
@@ -188,12 +226,73 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
     check(mails.length === 12, `expected exactly 12 notification events (2 per new request × 6), got ${mails.length}:\n${mails.join('\n')}`);
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
+
+    /* 6. Issue #33: the restricted ventas session over real HTTP. Every protected
+       operation is attempted with a VALID session and a VALID nonce (minted for
+       the restricted user by the disposable mu-plugin above) and each denial
+       must be a server 403 that leaves the synthetic record unchanged. Positive
+       controls with the guards lifted prove the probes detect a removed guard —
+       the authorization-regression criterion — and a final recheck proves the
+       denial returns when the guards are restored. The temporary ventas account
+       lives only inside this run. */
+    const ventasUser = 'fp-ventas-check';
+    const ventasPass = `vcheck-${randomUUID().replace(/-/g, '').slice(0, 18)}`;
+    const wpArgs = [`--path=${WP_DIR}`, `--url=${SITE_URL}`];
+    try {
+      sh(PHP, [WPCLI, 'user', 'create', ventasUser, `${ventasUser}@example.invalid`, '--role=ventas_freeplast', `--user_pass=${ventasPass}`, ...wpArgs, '--quiet']);
+    } catch {
+      sh(PHP, [WPCLI, 'user', 'update', ventasUser, '--role=ventas_freeplast', `--user_pass=${ventasPass}`, ...wpArgs, '--quiet']);
+    }
+    const ventasEnv = { ...process.env, FREEPLAST_VENTAS_USER: ventasUser, FREEPLAST_VENTAS_PASS: ventasPass };
+    const ventasArgs = [join(HERE, 'woo-ventas-guard.py'), '--base', SITE_URL];
+    const guardOffMu = join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-guard-off.php');
+    try {
+      const guarded = spawnSync(py, [...ventasArgs, '--mode', 'guarded'], { encoding: 'utf8', timeout: 300_000, env: ventasEnv });
+      check(guarded.status === 0, `ventas guarded matrix failed:\n${guarded.stdout || ''}\n${guarded.stderr || ''}\n--- server log tail ---\n${readFileSync(serverLogFile, 'utf8').slice(-2000)}`);
+      const { order } = JSON.parse(guarded.stdout.trim().split('\n').pop());
+      writeFileSync(
+        guardOffMu,
+        `<?php
+/** Disposable-stack only (written by woo-stack-harness.mjs, issue #33): lifts the
+ * adapter's ventas record guards for the positive-controls run — the removed-guard
+ * world the regression must detect. Deleted right after the run; never shipped. */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+add_action( 'init', static function () {
+	remove_action( 'admin_init', 'fpw_deny_sales_record_mutation', 0 );
+	remove_filter( 'woocommerce_process_shop_order_meta', 'fpw_deny_sales_order_save', 0 );
+	remove_filter( 'woocommerce_bulk_action_ids', 'fpw_deny_sales_bulk_actions', 0 );
+	remove_filter( 'woocommerce_rest_check_permissions', 'fpw_deny_sales_rest_mutation', 10 );
+}, 0 );
+`,
+      );
+      const off = spawnSync(py, [...ventasArgs, '--mode', 'guard-off'], { encoding: 'utf8', timeout: 300_000, env: { ...ventasEnv, FREEPLAST_VENTAS_ORDER: String(order) } });
+      check(off.status === 0, `ventas guard-off positive controls failed:\n${off.stdout || ''}\n${off.stderr || ''}`);
+      rmSync(guardOffMu, { force: true });
+      const recheck = spawnSync(py, [...ventasArgs, '--mode', 'recheck'], { encoding: 'utf8', timeout: 120_000, env: { ...ventasEnv, FREEPLAST_VENTAS_ORDER: String(order) } });
+      check(recheck.status === 0, `ventas recheck failed:\n${recheck.stdout || ''}\n${recheck.stderr || ''}`);
+    } finally {
+      rmSync(guardOffMu, { force: true });
+      spawnSync(PHP, [WPCLI, 'user', 'delete', ventasUser, '--yes', ...wpArgs], { stdio: 'ignore' });
+    }
+    checks += 3;
   } finally {
-    server.kill('SIGTERM');
-    sleep(300);
-    if (!server.killed) server.kill('SIGKILL');
+    closeSync(serverLogFd);
+    /* Kill the whole server process group, then verify the port is actually
+       freed — a surviving worker would silently serve stale state to the next
+       run and make every scenario on it nondeterministic. */
+    try { process.kill(-server.pid, 'SIGTERM'); } catch { server.kill('SIGTERM'); }
+    sleep(500);
+    try { process.kill(-server.pid, 'SIGKILL'); } catch { /* already gone */ }
+    let lingering = 0;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      lingering = await fetchCode('/');
+      if (lingering === 0) break;
+      try { process.kill(-server.pid, 'SIGKILL'); } catch { /* already gone */ }
+      sleep(250);
+    }
+    check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + identical-rebuild-new-reference + per-request records + notification-event count) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + identical-rebuild-new-reference + per-request records + notification-event count + restricted-ventas record boundary) on ${SITE_URL}`);
   return checks;
 }
