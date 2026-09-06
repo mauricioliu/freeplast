@@ -142,11 +142,15 @@ function makeFakeWindow(bundleSource) {
   // deliberately slow one — is observable while it is in flight.
   windowObj.fetch = windowObj.transport.fetch;
   // The bundle captures window.wp.apiFetch at load time, so the transport
-  // must be installed before it evaluates.
+  // must be installed before it evaluates. The real api-fetch ships monkey
+  // patched with setNonce/setCartHash, and the bundle calls them — so the
+  // stand-in keeps that surface too.
   windowObj.wp.apiFetch = (options) => {
     const url = new URL(options.path, 'https://freeplast.mliu.site/wp-json').href;
     return windowObj.fetch({...options, url});
   };
+  windowObj.wp.apiFetch.setNonce = () => {};
+  windowObj.wp.apiFetch.setCartHash = () => {};
   windowObj.wp.data = makeWpData();
   windowObj.wp.hooks = makeHooks();
   windowObj.wp.i18n = {__: (s) => s, _x: (s) => s, _n: (s, p) => p, sprintf: (format, ...args) => { let i = 0; return String(format).replace(/%(\d+\$)?[sd]/g, (m, pos) => args[pos ? Number(pos) - 1 : i++]); }};
@@ -234,8 +238,6 @@ function makeTransport() {
     if (job.kind === 'server-error') { return Promise.reject(new Response(JSON.stringify(job.payload), {status: 400, statusText: 'Bad Request'})); }
     return Promise.resolve(new Response(JSON.stringify(job.payload), {status: 200, statusText: 'OK'}));
   };
-  transport.fetch.setNonce = () => {};
-  transport.fetch.setCartHash = () => {};
   return transport;
 }
 
