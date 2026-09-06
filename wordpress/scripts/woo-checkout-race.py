@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-stack offline regression (issue #1 — Woo-side ports of #24 and #27).
+"""Real-stack offline regression (issue #1 — Woo-side ports of #24/#27; issue #31 — new request vs retry).
 
 Runs against a DISPOSABLE local WordPress + SQLite + WooCommerce stack
 (bootstrap.mjs, php -S): no staging, no external host, mail is not configured.
@@ -8,11 +8,22 @@ Scenarios
   home     — the delivered Home featured grid: every link names itself (the axe
              link-name rule, dependency-free), the product link carries its
              title and no wpautop `</p>`/`<p>` damage inside the anchor (WA-04).
-  race     — two CONCURRENT checkout POSTs of one session: exactly ONE order,
+  race     — TWO CONCURRENT checkout POSTs of one attempt, repeated a bounded
+             three rounds with fresh sessions: exactly ONE order per round,
              both responses carry the winner's confirmation, the order stays
-             pending with the quote meta (WA-01).
-  replay   — a sequential re-POST of the same attempt: Woo's own empty-cart
-             guard rejects it and no additional order appears.
+             pending with the quote meta (WA-01, #31 criterion 3).
+  replay   — a sequential re-POST of the same attempt after it landed: the
+             landed-attempt recovery returns the SAME request's confirmation
+             and no additional order appears (no «sesión caducada» for an
+             authorized retry of the same attempt).
+  correct  — a pre-save validation error leaves the selection intact: the
+             corrected re-submission succeeds on the same rebuilt cart (#31
+             criterion 6); the cart only empties on persisted success.
+  renew    — THE #31 DEFECT: the same session completes a request, rebuilds
+             the IDENTICAL selection (same product, quantity and details) and
+             submits again from a fresh checkout page: this must produce a NEW
+             reference — never fold into the previous request (criterion 1/2),
+             and the attempt token must have rotated.
   isolate  — a different session with different data gets its own order, never
              folded into the first (regression guard for the lookup binding).
 
@@ -25,8 +36,9 @@ if sys.argv[1:] in ([], ['--help']) or '--base' not in sys.argv:
     raise SystemExit(0)
 BASE = sys.argv[sys.argv.index('--base') + 1].rstrip('/')
 SLUG = sys.argv[sys.argv.index('--slug') + 1] if '--slug' in sys.argv else 'caja-cosechera-3-4-prueba'
+RACE_ROUNDS = 3  # the bounded repetition of the concurrent test (#31 criterion 3)
 
-import json, re, threading, copy
+import json, re, threading, time, copy
 import urllib.request, urllib.parse, urllib.error, http.cookiejar
 from html.parser import HTMLParser
 from concurrent.futures import ThreadPoolExecutor
@@ -124,59 +136,133 @@ def check_home(html):
     ok('home_all_links_named', total > 0 and unnamed == 0, f'{unnamed}/{total} unnamed')
     return {'total_links': total, 'unnamed': unnamed, 'no_shortcode_wrapper': 'wp-block-shortcode' not in html}
 
+def order_of(result):
+    m = re.search(r'/order-received/(\d+)', result.get('redirect', ''))
+    return int(m.group(1)) if m else None
+
+def checkout_form(session):
+    """GET the checkout page and return its hidden inputs (nonce + attempt token)."""
+    code, html = session.request('/checkout/')
+    inputs = HiddenInputs()
+    inputs.feed(html)
+    return inputs.values
+
+def post_checkout(session, values):
+    """POST the native Woo checkout AJAX endpoint and decode its JSON answer."""
+    code, body = session.request('/?wc-ajax=checkout', values)
+    try:
+        return json.loads(body)
+    except (TypeError, ValueError):
+        return {'result': 'error', 'message': str(body)[:160]}
+
+RACE_FIELDS = {
+    'billing_first_name': 'PRUEBA LOCAL CARRERA', 'billing_phone': '+56 9 1234 5678',
+    'billing_email': 'race-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
+    'billing_fp_rut': '76.123.456-7', 'billing_fp_giro': 'Prueba local',
+    'billing_fp_dispatch': 'no', 'billing_fp_address': '',
+    'payment_method': 'quotes-gateway', 'order_comments': 'Carrera local automatizada (no atender)'}
+
 # ---------------------------------------------------------------- home (WA-04)
 home_session = Session()
 code, html = home_session.request('/')
 home = check_home(html)
 
-# --------------------------------------------------------------- race (WA-01)
-# The race flow mirrors verify-woo-http.py exactly: the first Store API call is
-# the cart GET, whose Nonce header seeds every later authenticated call.
-session = Session()
+# ------------------------------------------------- race × RACE_ROUNDS (WA-01)
+# Each round mirrors verify-woo-http.py: the first Store API call is the cart
+# GET, whose Nonce header seeds every later authenticated call. Fresh session
+# per round, identical selection — the rounds must never interfere.
+session = Session()   # the last round's session is reused by replay/correct/renew
 session.request('/wp-json/wc/store/v1/cart', api=True)
 code, products = session.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
 ok('product_exists', code == 200 and isinstance(products, list) and products, f'HTTP {code}')
 pid = products[0]['id']
-code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
-ok('cart_add', code in (200, 201), f'HTTP {code}')
-code, html = session.request('/checkout/')
-inputs = HiddenInputs()
-inputs.feed(html)
-values = inputs.values
-ok('checkout_form_present', 'woocommerce-process-checkout-nonce' in values)
-values.update({
-    'billing_first_name': 'PRUEBA LOCAL CARRERA', 'billing_phone': '+56 9 1234 5678',
-    'billing_email': 'race-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
-    'billing_fp_rut': '76.123.456-7', 'billing_fp_giro': 'Prueba local',
-    'billing_fp_dispatch': 'no', 'billing_fp_address': '',
-    'payment_method': 'quotes-gateway', 'order_comments': 'Carrera local automatizada (no atender)'})
 
-def post_checkout(sess, vals):
-    code, body = sess.request('/?wc-ajax=checkout', vals)
-    return json.loads(body)
+rounds = []
+for round_index in range(RACE_ROUNDS):
+    code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
+    ok(f'cart_add_{round_index}', code in (200, 201), f'HTTP {code}')
+    values = checkout_form(session)
+    ok(f'checkout_form_present_{round_index}', 'woocommerce-process-checkout-nonce' in values)
+    values.update(RACE_FIELDS)
+    round_token = values.get('fpw_attempt', '')
 
-barrier = threading.Barrier(2)
-def submit(_):
-    opener = session.clone_client()
-    req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(values).encode())
-    barrier.wait(timeout=15)
-    with opener.open(req, timeout=180) as response:
-        return json.loads(response.read())
-with ThreadPoolExecutor(max_workers=2) as pool:
-    results = list(pool.map(submit, range(2)))
+    barrier = threading.Barrier(2)
+    def submit(_):
+        opener = session.clone_client()
+        req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(values).encode())
+        barrier.wait(timeout=15)
+        started = time.monotonic()
+        with opener.open(req, timeout=180) as response:
+            body = json.loads(response.read())
+        body['_elapsed'] = round(time.monotonic() - started, 2)
+        return body
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(submit, range(2)))
 
-def order_of(result):
-    m = re.search(r'/order-received/(\d+)', result.get('redirect', ''))
-    return int(m.group(1)) if m else None
-orders = {order_of(result) for result in results}
-ok('race_all_success', all(result.get('result') == 'success' for result in results), str([r.get('result') for r in results]))
-ok('race_single_order', len(orders) == 1 and None not in orders, str(sorted(orders)))
-race_order = orders.pop() if orders else None
-ok('race_same_confirmation', len({result.get('redirect', '') for result in results}) == 1, 'redirects differ')
+    def brief(result):
+        message = result.get('messages') or result.get('message') or result.get('error') or ''
+        text = re.sub(r'<[^>]+>', ' ', str(message))
+        return f"{result.get('result')}: {' '.join(text.split())[:200]}"
+
+    orders = {order_of(result) for result in results}
+    ok(f'race_all_success_{round_index}', all(result.get('result') == 'success' for result in results),
+       str([brief(r) for r in results]))
+    ok(f'race_single_order_{round_index}', len(orders) == 1 and None not in orders,
+       str(sorted((str(o) for o in orders))))
+    ok(f'race_same_confirmation_{round_index}', len({result.get('redirect', '') for result in results}) == 1, 'redirects differ')
+    print(f'race round {round_index} timings: {[r.get("_elapsed") for r in results]}', file=sys.stderr)
+    round_order = next(iter(orders)) if len(orders) == 1 and None not in orders else None
+    rounds.append({'order': round_order, 'token': round_token, 'values': values})
+    if round_index < RACE_ROUNDS - 1:
+        session = Session()   # fresh session for the next bounded round
+        session.request('/wp-json/wc/store/v1/cart', api=True)
+        session.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
+
+race_order = rounds[-1]['order']
+ok('race_distinct_orders', len({r['order'] for r in rounds}) == RACE_ROUNDS, str([r['order'] for r in rounds]))
 
 # ------------------------------------------------------------------- replay
-replay = post_checkout(session, values)
-ok('replay_rejected', replay.get('result') == 'failure', str(replay.get('result'))[:80])
+# The same form resubmitted after the attempt landed: the cart is empty, so
+# Woo's own flow would answer «sesión caducada» — the landed-attempt recovery
+# must instead return the SAME request's confirmation, creating no new order.
+replay = post_checkout(session, rounds[-1]['values'])
+ok('replay_recovers_same_request', replay.get('result') == 'success' and order_of(replay) == race_order,
+   f"{replay.get('result')} redirect={str(replay.get('redirect'))[:60]}")
+
+# ------------------------------------------------------- correct (#31 crit. 6)
+# A pre-save validation error (despacho required, address missing) must leave
+# the selection and data intact: the corrected re-submission succeeds on the
+# SAME rebuilt cart — the cart only empties on persisted success.
+code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
+ok('cart_add_correct', code in (200, 201), f'HTTP {code}')
+correct_values = checkout_form(session)
+correct_values.update(RACE_FIELDS)
+correct_values.update({'billing_fp_dispatch': 'si', 'billing_fp_address': ''})
+first_try = post_checkout(session, correct_values)
+ok('correct_first_rejected', first_try.get('result') == 'failure', str(first_try.get('result'))[:80])
+ok('correct_error_names_address', any('dirección' in str(message).lower() for message in first_try.get('messages', {}).get('error', [])) if isinstance(first_try.get('messages'), dict) else True, str(first_try.get('messages'))[:120])
+correct_values.update({'billing_fp_address': 'Camino de prueba 1, Mostazal, VI Región'})
+corrected = post_checkout(session, correct_values)
+ok('correct_second_success', corrected.get('result') == 'success', str(corrected)[:120])
+correct_order = order_of(corrected) if corrected.get('result') == 'success' else None
+ok('correct_distinct_order', correct_order is not None and correct_order != race_order, f'{correct_order} vs {race_order}')
+
+# ---------------------------------------------------------- renew (#31 crit. 1/2)
+# THE DEFECT: same session, same product, SAME quantity, SAME details — a new
+# request after the previous one was completed. The fresh checkout page must
+# carry a ROTATED attempt token, and the submission must produce a NEW request
+# with its own reference, never fold into the previous order.
+code, cart = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 70}, api=True)
+ok('cart_add_renew', code in (200, 201), f'HTTP {code}')
+renew_values = checkout_form(session)
+renew_token = renew_values.get('fpw_attempt', '')
+ok('attempt_token_rotated', '' != renew_token and renew_token != rounds[-1]['token'], 'the completed attempt token must not be reused by a fresh checkout page')
+renew_values.update(RACE_FIELDS)   # byte-identical posted content to the race
+renewed = post_checkout(session, renew_values)
+ok('renew_success', renewed.get('result') == 'success', str(renewed)[:160])
+renew_order = order_of(renewed) if renewed.get('result') == 'success' else None
+ok('renew_new_reference', renew_order is not None and renew_order != race_order and renew_order != correct_order,
+   f'renew {renew_order} must not return the previous requests (race {race_order}, correct {correct_order})')
 
 # ---------------------------------------------------------------- isolation
 other = Session()
@@ -184,10 +270,7 @@ other.request('/wp-json/wc/store/v1/cart', api=True)  # seed the Store API nonce
 code, products = other.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
 code, cart = other.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': 3}, api=True)
 ok('cart_add_other', code in (200, 201), f'HTTP {code}')
-code, html = other.request('/checkout/')
-inputs = HiddenInputs()
-inputs.feed(html)
-other_values = inputs.values
+other_values = checkout_form(other)
 other_values.update({
     'billing_first_name': 'PRUEBA LOCAL OTRA SESION', 'billing_phone': '+56 9 8765 4321',
     'billing_email': 'otra-local@example.invalid', 'billing_company': 'OTRA PRUEBA NO COMERCIAL',
@@ -199,7 +282,10 @@ ok('isolate_success', submitted.get('result') == 'success', str(submitted)[:120]
 other_order = order_of(submitted) if submitted.get('result') == 'success' else None
 ok('isolate_distinct_order', other_order is not None and other_order != race_order, f'{other_order} vs {race_order}')
 
-print(json.dumps({'home': home, 'race_order': race_order, 'isolate_order': other_order,
-                  'race_results': [result.get('result') for result in results],
-                  'replay_result': replay.get('result'), 'failures': failures}, ensure_ascii=False))
+print(json.dumps({'home': home, 'race_orders': [r['order'] for r in rounds],
+                  'replay_recovered_order': order_of(replay) if replay.get('result') == 'success' else None,
+                  'correct_order': correct_order, 'renew_order': renew_order,
+                  'attempt_token_rotated': '' != renew_token and renew_token != rounds[-1]['token'],
+                  'isolate_order': other_order,
+                  'failures': failures}, ensure_ascii=False))
 raise SystemExit(1 if failures else 0)

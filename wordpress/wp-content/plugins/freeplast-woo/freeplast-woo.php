@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -301,31 +301,56 @@ add_action( 'admin_head', 'fpw_sales_note_visibility_style' );
 add_filter( 'woocommerce_email_enabled_customer_note', '__return_false', 999 );
 
 /**
- * One attempt, one Quote Request (issue #24, finding WA-01): two concurrent
- * POSTs of the same checkout (same session, form token and lines) both passed
- * every native check and created two orders — the browser's disabled button is
- * not server idempotency. Woo keeps owning cart, session and orders
- * (ADR-0001); the adapter adds only an atomic per-attempt claim and recovery
- * of the winner's own confirmation, so a repeated probe returns ONE order.
+ * One attempt, one Quote Request (issue #24, finding WA-01; identity split —
+ * issue #31, finding SP-01): two concurrent POSTs of the same checkout (same
+ * session and form) both passed every native check and created two orders —
+ * the browser's disabled button is not server idempotency. Woo keeps owning
+ * cart, session and orders (ADR-0001); the adapter adds only an atomic
+ * per-attempt claim and recovery of the winner's own confirmation, so a
+ * repeated probe returns ONE order.
+ *
+ * Attempt identity is NOT content identity (issue #31): the attempt is keyed
+ * by the session plus a per-attempt token the checkout form itself carries —
+ * never by the cart contents or the posted fields. The first draft keyed the
+ * claim on session + cart hash + fields, and content repeats: a customer who
+ * completed a request and rebuilt the identical selection was folded into the
+ * PREVIOUS order and could never obtain a new reference.
+ *
+ * Attempt token lifecycle:
+ *   - Creation — the session's first checkout-form render generates a random
+ *     40-hex token (Woo owns the session; the token is opaque, has no tick or
+ *     expiry semantics and is never compared against any WordPress nonce) and
+ *     ships it in one hidden form field.
+ *   - Validity — the open token spans one whole attempt: re-renders, AJAX
+ *     refreshes, pre-save error corrections and resubmissions of the same
+ *     form stay the SAME attempt.
+ *   - Completion — a persisted order (own creation or a recovery) marks the
+ *     attempt landed in the session together with its durable binding.
+ *   - Rotation — the first form render after a landing generates a fresh
+ *     token, so the completed attempt can never capture a later submission;
+ *     a new, identical request gets its own reference.
  *
  * Discipline ported from the reviewed legacy implementation: the claim is a
- * single options row keyed by the attempt's idempotency hash, inserted as a
+ * single options row keyed by the attempt's identity hash, inserted as a
  * plain INSERT — the unique option_name rejects the second insert, so exactly
  * one concurrent request owns the attempt. The option API is bypassed on
  * purpose (add_option() is an upsert that answers later reads from the
  * per-request cache, hiding defeats). The loser waits a bounded moment and
  * recovers the winner's order through Woo's own woocommerce_create_order
- * short-circuit: Woo itself loads that order, runs its own gateway step and
+ * short-circuit: Woo itself loads that order, runs its own flow and
  * returns the winner's confirmation URL — no parallel submission system. The
  * landed order is also bound durably in a dedicated lookup row (unique
- * option_name → order id), so replays fold into the original request even
- * after the claim row is swept. The order also carries its attempt hash as
- * meta for administration; meta is never used for lookups (Woo's posts store
- * silently ignores meta_query since 9.2).
+ * option_name → order id), so replays of the SAME attempt fold into the
+ * original request even after the claim row is swept. The order also carries
+ * its attempt hash as meta for administration; meta is never used for
+ * lookups (Woo's posts store silently ignores meta_query since 9.2). The
+ * session keeps the landing binding (token + hash + order) as the authorized
+ * recovery data for the follow-up confirmation-recovery ticket — scoped to
+ * the customer's own session, independent of the cart staying full.
  */
 define( 'FPW_CLAIM_PREFIX', 'fpw_claim_' );
 define( 'FPW_ATTEMPT_PREFIX', 'fpw_attempt_' );
-define( 'FPW_CLAIM_WAIT_SECONDS', 3 );
+define( 'FPW_CLAIM_WAIT_SECONDS', 10 );
 define( 'FPW_CLAIM_POLL_MICROSECONDS', 100000 );
 define( 'FPW_CLAIM_TAKEOVER_SECONDS', 30 );
 define( 'FPW_CLAIM_MAX_AGE', 7 * DAY_IN_SECONDS );
@@ -336,6 +361,12 @@ function fpw_pending_attempt( ?string $hash = null ): string {
 	return null === $hash ? $pending : ( $pending = $hash );
 }
 
+/** The attempt token under way in this request ('' when this request owns no claim). */
+function fpw_pending_attempt_token( ?string $token = null ): string {
+	static $pending = '';
+	return null === $token ? $pending : ( $pending = $token );
+}
+
 /** Opaque session fingerprint: the attempt hash already binds the session; the row stores its own copy for the takeover check. */
 function fpw_session_fingerprint(): string {
 	$customer_id = ( function_exists( 'WC' ) && WC()->session ) ? (string) WC()->session->get_customer_id() : '';
@@ -343,21 +374,86 @@ function fpw_session_fingerprint(): string {
 }
 
 /**
- * The idempotency hash of one checkout attempt: session + cart hash + the
- * normalized posted attempt fields. Two concurrent POSTs of the same attempt
- * produce the same hash; any different session, cart or field produces a
- * different one. Empty when the session/cart Woo would key the attempt on is
- * unavailable — the claim then stays out of the way (Woo proceeds natively).
+ * The session's open attempt token — the identity of the attempt this session
+ * is building or submitting. Created on first need, reused for the whole
+ * attempt, rotated only after a landing. It is NOT a WordPress nonce: a
+ * random per-attempt identity with no tick/expiry semantics, verified by
+ * nothing and comparable to no nonce; Woo's own checkout nonce checks stay
+ * exactly as Woo ships them.
  */
-function fpw_checkout_attempt_hash( $checkout ): string {
-	if ( ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart || ! is_object( $checkout ) || ! method_exists( $checkout, 'get_posted_data' ) ) { return ''; }
-	$fields = array();
-	$posted = $checkout->get_posted_data();
-	foreach ( array_merge( fpw_draft_keys(), array( 'payment_method' ) ) as $key ) {
-		$fields[ $key ] = (string) ( $posted[ $key ] ?? '' );
+function fpw_open_attempt_token(): string {
+	if ( ! function_exists( 'WC' ) || ! WC()->session ) { return ''; }
+	$token = (string) WC()->session->get( 'fpw_attempt_open' );
+	if ( ! fpw_is_attempt_token( $token ) ) {
+		$token = bin2hex( random_bytes( 20 ) );
+		WC()->session->set( 'fpw_attempt_open', $token );
 	}
-	ksort( $fields );
-	return hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), (string) WC()->cart->get_cart_hash(), $fields ) ) );
+	return $token;
+}
+
+/** The attempt token's one format: 40 lowercase hex characters. Nothing nonce-shaped ever passes. */
+function fpw_is_attempt_token( string $token ): bool {
+	return (bool) preg_match( '/^[0-9a-f]{40}$/', $token );
+}
+
+/**
+ * Rotation: the first checkout-form render after a landing closes the
+ * completed attempt, so the fresh form opens a NEW one (issue #31). Re-renders
+ * inside a live attempt never rotate — retries keep their identity.
+ */
+add_action( 'woocommerce_before_checkout_form', static function () {
+	if ( ! function_exists( 'WC' ) || ! WC()->session ) { return; }
+	$open   = (string) WC()->session->get( 'fpw_attempt_open' );
+	$landed = WC()->session->get( 'fpw_attempt_landed' );
+	if ( '' !== $open && is_array( $landed ) && ( $landed['token'] ?? '' ) === $open ) {
+		WC()->session->set( 'fpw_attempt_open', '' );
+	}
+	fpw_open_attempt_token();
+} );
+
+/** The form carries the attempt identity: one hidden field with the open token. */
+add_action( 'woocommerce_after_order_notes', static function () {
+	$token = fpw_open_attempt_token();
+	if ( '' === $token ) { return; }
+	echo '<input type="hidden" name="fpw_attempt" value="' . esc_attr( $token ) . '" />';
+} );
+
+/**
+ * The identity of one checkout attempt: the session fingerprint plus the
+ * attempt token the form posted — the session's open token is the fallback
+ * for a POST whose form predates the field or carries junk, because the
+ * attempt the session has open is the one being retried. Deliberately NOT
+ * derived from the cart contents or the posted fields (issue #31): two
+ * concurrent submissions of one attempt share it; a NEW attempt after a
+ * completion never does. Empty when no valid identity exists — the claim then
+ * stays out of the way and Woo proceeds natively.
+ *
+ * @return array{token:string, hash:string}
+ */
+function fpw_attempt_identity( $checkout ): array {
+	if ( ! function_exists( 'WC' ) || ! WC()->session || ! is_object( $checkout ) || ! method_exists( $checkout, 'get_posted_data' ) ) { return array( 'token' => '', 'hash' => '' ); }
+	$posted = $checkout->get_posted_data();
+	$token  = (string) ( $posted['fpw_attempt'] ?? '' );
+	if ( ! fpw_is_attempt_token( $token ) ) { $token = fpw_open_attempt_token(); }
+	if ( ! fpw_is_attempt_token( $token ) ) { return array( 'token' => '', 'hash' => '' ); }
+	return array( 'token' => $token, 'hash' => hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), $token ) ) ) );
+}
+
+/** The attempt identity hash (session + attempt token), the claim's key. */
+function fpw_checkout_attempt_hash( $checkout ): string {
+	return fpw_attempt_identity( $checkout )['hash'];
+}
+
+/**
+ * The authorized landing binding, kept in the customer's own session: attempt
+ * token + durable hash + the order that satisfies the attempt. It is the
+ * recovery data the follow-up confirmation-recovery ticket reads when a
+ * response never arrived — independent of the cart still holding the
+ * selection, scoped to this session so no other session can ever read it.
+ */
+function fpw_mark_attempt_landed( string $token, string $hash, int $order_id ): void {
+	if ( ! function_exists( 'WC' ) || ! WC()->session || '' === $hash || $order_id <= 0 ) { return; }
+	WC()->session->set( 'fpw_attempt_landed', array( 'token' => $token, 'hash' => $hash, 'order_id' => $order_id, 'at' => time() ) );
 }
 
 /** The fresh claim row of one attempt, written/read straight from the database. */
@@ -516,33 +612,38 @@ add_filter( 'woocommerce_cart_needs_payment', static function ( $needs_payment )
  * customer to the winner's confirmation. Owned attempts proceed natively.
  */
 function fpw_checkout_claim( $order_id, $checkout ) {
-	$hash = fpw_checkout_attempt_hash( $checkout );
-	if ( '' === $hash ) { return $order_id; }
-	$claim = fpw_checkout_attempt_claim( $hash );
+	$identity = fpw_attempt_identity( $checkout );
+	if ( '' === $identity['hash'] ) { return $order_id; }
+	$claim = fpw_checkout_attempt_claim( $identity['hash'] );
 	if ( 'owned' === $claim['state'] ) {
-		fpw_pending_attempt( $hash );
+		fpw_pending_attempt( $identity['hash'] );
+		fpw_pending_attempt_token( $identity['token'] );
 		return $order_id;
 	}
 	if ( 'recovered' === $claim['state'] ) {
 		fpw_dedupe_request_notifications();
 		fpw_note_folded_attempt( (int) $claim['order_id'] );
 		fpw_is_folding_attempt( true );
+		// A recovery completes the attempt too: the customer gets the winner's
+		// confirmation, and a later fresh form must rotate away from this token.
+		fpw_mark_attempt_landed( $identity['token'], $identity['hash'], (int) $claim['order_id'] );
 		return (int) $claim['order_id'];
 	}
 	throw new Exception( 'Tu solicitud se está procesando. Espera unos segundos e inténtalo de nuevo: no se creará una solicitud duplicada.' );
 }
 add_filter( 'woocommerce_create_order', 'fpw_checkout_claim', 10, 2 );
 
-/** The attempt identity is bound durably on the order, so replays fold into the original request even after the claim row is swept. */
+/** The attempt identity is bound durably on the order, so replays of the same attempt fold into the original request even after the claim row is swept. */
 add_action( 'woocommerce_checkout_create_order', static function ( $order, $data ) {
 	$hash = fpw_pending_attempt();
 	if ( '' !== $hash ) { $order->update_meta_data( '_fpw_attempt', $hash ); }
 }, 15, 2 );
 
-/** The claim records the created order — the recovery data a concurrent retry reads. */
+/** The claim records the created order and the session keeps the landing binding — the recovery data a concurrent retry and the follow-up confirmation-recovery ticket read. */
 add_action( 'woocommerce_checkout_order_created', static function ( $order ) {
 	$hash = fpw_pending_attempt();
 	if ( '' !== $hash ) { fpw_finalize_attempt_claim( $hash, (int) $order->get_id() ); }
+	fpw_mark_attempt_landed( fpw_pending_attempt_token(), $hash, (int) $order->get_id() );
 } );
 
 /** Woo failed to create the order: the attempt is released so a retry starts clean. */
@@ -550,6 +651,36 @@ add_action( 'woocommerce_checkout_order_exception', static function ( $order ) {
 	$hash = fpw_pending_attempt();
 	if ( '' !== $hash ) { fpw_release_attempt_claim( $hash ); }
 } );
+
+/**
+ * Retry recovery for the SAME attempt (issue #31 — "dos envíos o reintentos
+ * del mismo intento siguen representando una sola Solicitud"): a checkout
+ * submission whose cart Woo already emptied — the request landed but the
+ * response never arrived, or the same form was resubmitted — must return the
+ * landed attempt's own confirmation instead of «sesión caducada». It fires
+ * only when every authorization agrees: Woo's own process-checkout nonce
+ * verifies (never bypassed), the posted attempt token is well-formed, and
+ * BOTH bindings — the durable lookup row and the session's landing record —
+ * resolve to the same order of THIS session. Anything else falls through to
+ * Woo's own guards. Nothing is created, changed or re-notified: the existing
+ * request's confirmation is re-shown. The confirmation-recovery follow-up
+ * builds on this same authorized binding.
+ */
+function fpw_recover_landed_attempt(): void {
+	if ( ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart || ! WC()->cart->is_empty() ) { return; }
+	if ( empty( $_GET['wc-ajax'] ) || 'checkout' !== $_GET['wc-ajax'] || empty( $_POST['woocommerce-process-checkout-nonce'] ) ) { return; }
+	if ( ! wp_verify_nonce( wp_unslash( $_POST['woocommerce-process-checkout-nonce'] ), 'woocommerce-process_checkout' ) ) { return; }
+	$token = (string) ( $_POST['fpw_attempt'] ?? '' );
+	if ( ! fpw_is_attempt_token( $token ) ) { return; }
+	$hash     = hash( 'sha256', (string) wp_json_encode( array( fpw_session_fingerprint(), $token ) ) );
+	$order_id = fpw_attempt_order_id( $hash );
+	$landed   = WC()->session->get( 'fpw_attempt_landed' );
+	if ( ! $order_id || ! is_array( $landed ) || ( $landed['token'] ?? '' ) !== $token || ( $landed['hash'] ?? '' ) !== $hash || (int) ( $landed['order_id'] ?? 0 ) !== $order_id ) { return; }
+	$order = wc_get_order( $order_id );
+	if ( ! $order ) { return; }
+	wp_send_json( array( 'result' => 'success', 'redirect' => $order->get_checkout_order_received_url() ) );
+}
+add_action( 'wp_loaded', 'fpw_recover_landed_attempt', 0 );
 
 /** Contact fields displayed in Woo administration and native email metadata hooks. */
 function fpw_details( $order ) {
