@@ -8,6 +8,15 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-06 — Issue #34: advance blocked while a replaced quantity update is still in flight (Woo stack)
+
+Follow-up to #26 (finding SP-04): after Woo aborted a first quantity update to replace it, the store's pending list was already empty while the replacement request was still in flight — the «Datos y envío» CTA exposed `aria-disabled="false"` and clicks passed. Root cause verified in the pinned Woo 11.1.0 sources: `changeCartItemQuantity()`'s `finally` clears the item's pending flag for the ABORTED request. Decision (theme **1.0.6**, pending deploy):
+
+- **One coherent predicate, two consumers:** pending now means "store flag set OR update-item request in flight" (`operationsPending()`), used by both the verdict deferral and the CTA — the same two signals the #26 script already observed, combined so the early store-flag cleanup can never declare the cart settled while a mutation runs. The CTA keeps `aria-disabled` and stops clicks synchronously at click time (pointer and keyboard alike) until the transport drains; a request start locks the CTA at the transport boundary itself.
+- **Outcomes unchanged:** success announces the persisted quantity in Spanish and re-enables advancing; failure explains the quantity that remained saved and allows retrying or continuing explicitly with it; recovery never duplicates increments, loses lines or steals focus (ADR-0001 — Woo keeps owning cart, session and persistence).
+- **The harness now exercises the transport observation for real:** its api-fetch stand-in routes every store request through `window.fetch` (as the real middleware does), so the shipped in-flight counter is live; new scenarios drive abort + deliberately slow replacement into the exact defective window (flag empty, request in flight, CTA locked), with success and failure endings and a slow retry. Still a logic/store regression — rendered-block walkthrough, narrow/desktop review, physical mobile acceptance remain operator/human steps.
+- Offline assertions 169 → 173; syntax/dependency/deployment checks 84 → 102. Theme 1.0.5 → 1.0.6 (constant + style.css header together, per the #28 convention).
+
 ## 2026-09-05 — Issue #1 (WA-01 Woo-side): one attempt, one request under concurrent checkout
 
 The #24 fix landed only in the retired implementation under `legacy/` (see the merge record in WOO-MIGRATION.md); the acceptance review still measured two concurrent POSTs creating two orders. Decision (adapter **1.3.0**, pending deploy):

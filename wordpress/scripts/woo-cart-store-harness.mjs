@@ -134,9 +134,19 @@ function makeFakeWindow(bundleSource) {
   const windowObj = {};
   windowObj.transport = makeTransport();
   windowObj.wp = {};
+  // The real api-fetch middleware resolves the store's `path` against the REST
+  // root and hands the request to window.fetch — where the shipped script's
+  // read-only transport observation lives. The stand-in does the same: the
+  // absolute endpoint goes through windowObj.fetch (raw at first, wrapped once
+  // the theme script attaches), so every update-item round trip — including a
+  // deliberately slow one — is observable while it is in flight.
+  windowObj.fetch = windowObj.transport.fetch;
   // The bundle captures window.wp.apiFetch at load time, so the transport
   // must be installed before it evaluates.
-  windowObj.wp.apiFetch = windowObj.transport.apiFetch;
+  windowObj.wp.apiFetch = (options) => {
+    const url = new URL(options.path, 'https://freeplast.mliu.site/wp-json').href;
+    return windowObj.fetch({...options, url});
+  };
   windowObj.wp.data = makeWpData();
   windowObj.wp.hooks = makeHooks();
   windowObj.wp.i18n = {__: (s) => s, _x: (s) => s, _n: (s, p) => p, sprintf: (format, ...args) => { let i = 0; return String(format).replace(/%(\d+\$)?[sd]/g, (m, pos) => args[pos ? Number(pos) - 1 : i++]); }};
@@ -201,7 +211,10 @@ function makeFakeWindow(bundleSource) {
 /* Controllable transport mimicking the real @wordpress/api-fetch contract:
    2xx resolves a Response; a !ok status throws the Response (which Woo's
    request wrapper unwraps via .json()); an offline failure rejects with the
-   {code:'fetch_error'} object api-fetch itself produces. */
+   {code:'fetch_error'} object api-fetch itself produces. The requests flow
+   through window.fetch (transport.fetch), exactly as api-fetch hands them
+   over in a browser — so the shipped script's read-only transport
+   observation sees every round trip, including slow in-flight ones. */
 function makeTransport() {
   const transport = {calls: [], queue: [], deferred: null};
   transport.push = (kind, payload) => transport.queue.push({kind, payload});
@@ -211,7 +224,7 @@ function makeTransport() {
     transport.deferred = {resolve, reject};
     transport.queue.push({kind: 'deferred', promise});
   };
-  transport.apiFetch = (options) => {
+  transport.fetch = (options) => {
     transport.calls.push(options);
     const job = transport.queue.shift();
     if (!job) { return Promise.reject({code: 'unexpected_transport_call', message: options.path || '(no path)'}); }
@@ -221,8 +234,8 @@ function makeTransport() {
     if (job.kind === 'server-error') { return Promise.reject(new Response(JSON.stringify(job.payload), {status: 400, statusText: 'Bad Request'})); }
     return Promise.resolve(new Response(JSON.stringify(job.payload), {status: 200, statusText: 'OK'}));
   };
-  transport.apiFetch.setNonce = () => {};
-  transport.apiFetch.setCartHash = () => {};
+  transport.fetch.setNonce = () => {};
+  transport.fetch.setCartHash = () => {};
   return transport;
 }
 
@@ -266,6 +279,9 @@ function slotsOf(windowObj) {
 
 const failureVisible = (win) => { const slots = slotsOf(win); return Boolean(slots) && slots.error.hidden === false; };
 const savedVisible = (win) => { const slots = slotsOf(win); return Boolean(slots) && slots.status.hidden === false; };
+/* Same contract the 'ok' queue job fulfils: a resolved fetch hands the store
+   wrapper a Response, which it unwraps via .json() into {response}. */
+const okResponse = (cart) => new Response(JSON.stringify(cart), {status: 200, statusText: 'OK'});
 
 async function settled(condition, description) {
   // Real timers, so the shipped script's deferred verdict (a setTimeout of its
@@ -442,6 +458,7 @@ export async function runCartStoreScenarios(bundlePath, scriptPath) {
     win.watcher = attachScript(win, scriptSource).watcher;
     receiveCartOf(win, storeCart(140, 5));
     userChangesQuantity(win, 'variant-line', 6); // in flight, unconfirmed
+    assert(submitOf(win).getAttribute('aria-disabled') === 'true', 'the CTA is locked while a line removal is underway with its change unsettled');
     const emptied = storeCart(140, 5);
     emptied.items = emptied.items.filter((entry) => entry.key !== 'variant-line');
     emptied.itemsCount = 140;
@@ -452,6 +469,77 @@ export async function runCartStoreScenarios(bundlePath, scriptPath) {
     const slots = slotsOf(win);
     assert(!slots || slots.error.hidden === true, 'no false failure notice for a line Woo removed');
     assert(quiet(win), 'everything is settled after the removal');
+  }
+
+  // 9 · Issue #34 (SP-04): abort + deliberately SLOW replacement. Woo's abort
+  // of the first update runs its cleanup while the replacement is still in
+  // flight: the store's pending list is empty and a request remains unconfirmed.
+  // The CTA must stay semantically unavailable and stop pointer AND keyboard
+  // activation until the transport drains; no transient verdict is announced
+  // for the aborted request; the confirmed quantity is announced at the end.
+  {
+    const win = makeFakeWindow(bundleSource);
+    win.transport.push('abort');
+    win.transport.pushDeferred();
+    win.watcher = attachScript(win, scriptSource).watcher;
+    receiveCartOf(win, storeCart(140, 5));
+    userChangesQuantity(win, 'variant-line', 6);
+    userChangesQuantity(win, 'variant-line', 7); // aborts the first, starts the slow replacement
+    // The exact defective window: store flag cleared, replacement in flight.
+    await settled(() => pendingOf(win).length === 0 && win.watcher.inflight() === 1, 'the abort cleanup should clear the store flag while the replacement stays in flight');
+    const submit = submitOf(win);
+    assert(submit.getAttribute('aria-disabled') === 'true', 'with the store flag already cleared the CTA stays aria-disabled while the replacement is in flight');
+    const pointer = {type: 'click', detail: 1, preventDefault() { this.defaultPrevented = true; }};
+    submit.dispatch(pointer);
+    assert(pointer.defaultPrevented === true, 'pointer activation is stopped synchronously while the replacement is in flight');
+    const keyboard = {type: 'click', detail: 0, preventDefault() { this.defaultPrevented = true; }};
+    submit.dispatch(keyboard);
+    assert(keyboard.defaultPrevented === true, 'keyboard activation (Enter fires click, detail 0) is stopped too');
+    const slots = slotsOf(win);
+    assert(!slots || (slots.error.hidden === true && slots.status.hidden === true), 'the aborted request announces no transient success/failure of its own');
+    win.transport.deferred.resolve(okResponse(storeCart(140, 7)));
+    await settled(() => quantity(win, 'variant-line') === 7 && savedVisible(win), 'the slow replacement settles into the Spanish confirmation');
+    assert(slotsOf(win).status.textContent.indexOf('Cantidad guardada: 7 unidades') === 0, 'the confirmation names the exact persisted quantity');
+    assert(submit.getAttribute('aria-disabled') === 'false', 'once the replacement settles the CTA is operable again');
+    const go = {type: 'click', preventDefault() { this.defaultPrevented = true; }};
+    submit.dispatch(go);
+    assert(!go.defaultPrevented, 'continuing with the confirmed quantity is never blocked');
+    assert(quiet(win), 'no transport work remains after the slow replacement');
+  }
+
+  // 10 · Issue #34: the same abort + slow replacement FAILS (network loss) —
+  // the persisted quantity is explained, advancing and retrying stay explicit,
+  // and the retry (itself slow) locks the CTA until it confirms without any
+  // duplicated increment.
+  {
+    const win = makeFakeWindow(bundleSource);
+    win.transport.push('abort');
+    win.transport.pushDeferred();
+    win.watcher = attachScript(win, scriptSource).watcher;
+    receiveCartOf(win, storeCart(140, 5));
+    userChangesQuantity(win, 'variant-line', 6);
+    userChangesQuantity(win, 'variant-line', 7);
+    await settled(() => pendingOf(win).length === 0 && win.watcher.inflight() === 1, 'the replacement is in flight with the store flag cleared');
+    const submit = submitOf(win);
+    assert(submit.getAttribute('aria-disabled') === 'true', 'the CTA is locked during the failing replacement too');
+    win.transport.deferred.reject({...NETWORK_ERROR});
+    await settled(() => failureVisible(win), 'the failed replacement settles into the failure notice');
+    assert(quantity(win, 'variant-line') === 5 && quantity(win, 'simple-line') === 140, 'the persisted truth survives: 5 on the variant, 140 on the untouched line');
+    assert(slotsOf(win).error.textContent.indexOf('sigue con 5 unidades') !== -1, 'the failure explains the quantity that actually remained saved');
+    assert(submit.getAttribute('aria-disabled') === 'false', 'after the failure the CTA is operable again (retry or continue with 5)');
+    const go = {type: 'click', preventDefault() { this.defaultPrevented = true; }};
+    submit.dispatch(go);
+    assert(!go.defaultPrevented, 'continuing explicitly with the persisted quantity is allowed');
+    win.transport.pushDeferred();
+    userChangesQuantity(win, 'variant-line', 7); // recovery retry, itself slow
+    await settled(() => win.watcher.inflight() === 1, 'the retry request is in flight');
+    assert(submit.getAttribute('aria-disabled') === 'true', 'the retry locks the CTA while unconfirmed');
+    win.transport.deferred.resolve(okResponse(storeCart(140, 7)));
+    await settled(() => quantity(win, 'variant-line') === 7 && savedVisible(win), 'the retry persists the desired quantity');
+    assert(submit.getAttribute('aria-disabled') === 'false', 'after the retry settles the CTA is operable');
+    const updates = win.transport.calls.filter((call) => call.path === '/wc/store/v1/cart/update-item');
+    assert(updates.length === 3 && updates.map((call) => call.data.quantity).join(',') === '6,7,7', 'three update-item requests (6, 7, 7) — recovery never duplicates increments');
+    assert(quiet(win), 'transport is quiet after recovery');
   }
 
   return checks;

@@ -160,6 +160,10 @@ check(str_contains($functions_source,'cart-quantity-feedback.js') && str_contain
 check(str_contains($feedback_source,'experimental__woocommerce_blocks-cart-set-item-quantity'),'The stated quantity is learned from the cart block’s own store event');
 check(str_contains($feedback_source,'/wc/store/v1/cart/update-item'),'The bridge observes the real Store API update-item endpoint');
 check(str_contains($feedback_source,'hasPendingItemsOperations'),'Pending operations gate the Datos y envío CTA through the store’s own selector');
+check(str_contains($feedback_source,'operationsPending'),'The CTA and the verdicts share one pending-operation predicate (issue #34: the store flag alone clears early when Woo aborts a replaced request)');
+check(str_contains($feedback_source,'storeBusy || inflight > 0'),'Pending = the store’s own flags OR an update-item request still in flight');
+check(str_contains($feedback_source,'if (operationsPending()) { event.preventDefault(); }'),'The synchronous click guard consults the shared predicate at click time, not a captured state');
+check(str_contains($feedback_source,"inflight++;\n        syncSubmit();"),'A request start locks the CTA at the transport boundary itself, before any store flag could clear');
 check(str_contains($feedback_source,'wc-block-cart__submit-button'),'The Datos y envío CTA is the guarded surface');
 check(str_contains($feedback_source,"'alert'") && str_contains($feedback_source,'No se guardó el cambio de cantidad de '),'A visible role=alert notice explains, in Spanish, that the change was not saved');
 check(str_contains($feedback_source,'Cantidad guardada: ') && str_contains($feedback_source,'sigue con '),'Both outcomes state the persisted quantity and the success updates the notice');
