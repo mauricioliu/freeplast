@@ -32,12 +32,18 @@
      notice is replaced by a polite confirmation with the exact persisted
      quantity — retries cannot accumulate increments because the intent always
      comes from the block's own input and the persisted value is always stated.
-   - While any cart operation is pending, the «Datos y envío» CTA carries
-     aria-disabled="true" and cannot navigate: its native visual disabled state
-     is an attribute that does not block anchors, and Woo's own preventDefault
-     runs asynchronously, after navigation has already begun. Once the
-     operation settles — success or failure — the CTA is operable again, so
-     continuing explicitly with the persisted quantity never blocks.
+   - While any quantity mutation is unconfirmed, the «Datos y envío» CTA
+     carries aria-disabled="true" and cannot navigate: its native visual
+     disabled state is an attribute that does not block anchors, and Woo's own
+     preventDefault runs asynchronously, after navigation has already begun.
+     "Unconfirmed" has one coherent definition shared with the verdicts: an
+     operation is pending while its store flag is set OR its update-item
+     request is still in flight — Woo's abort of a replaced request clears the
+     store flag while the replacement still runs, so the transport count is
+     what keeps the CTA locked in that window. The CTA gates on any pending
+     operation (pointer and keyboard activation alike); once every operation
+     settles — success or failure — the CTA is operable again, so continuing
+     explicitly with the persisted quantity never blocks.
    - If the pending disable cycle dropped keyboard focus (a native row
      behaviour), focus is returned to the control the customer was using,
      never stolen from a deliberate later focus.
@@ -141,19 +147,32 @@
       try { lastFocus.focus({ preventScroll: true }); } catch (err) { try { lastFocus.focus(); } catch (inner) { /* unavailable: stay quiet */ } }
     }
 
-    /* aria state of the «Datos y envío» CTA follows the store's own
-       pending operations; clicks are stopped synchronously while pending
-       so an unconfirmed quantity can never advance. */
+    /* One coherent definition of an unconfirmed quantity operation, shared by
+       the two decisions that must wait for it: the store's own pending flags
+       AND the read-only transport count. The store flag alone clears early —
+       Woo's abort of a replaced request runs its cleanup while the replacement
+       is still in flight — so an in-flight update-item request always counts
+       as pending too. The CTA gates on any pending operation; a verdict
+       additionally waits on its own item's flag (verdictWaiting). */
+    function operationsPending() {
+      var storeBusy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
+      return storeBusy || inflight > 0;
+    }
+
+    /* aria state of the «Datos y envío» CTA follows pending quantity
+       operations; clicks are stopped synchronously while pending so an
+       unconfirmed quantity can never advance — pointer and keyboard
+       activation alike (Enter on an anchor fires a click event). */
     function syncSubmit() {
       if (submit && typeof submit.isConnected !== 'undefined' && !submit.isConnected) { submit = null; }
       if (!submit) { submit = doc.querySelector(SUBMIT_SELECTOR); }
       if (!submit || typeof submit.setAttribute !== 'function') { return; }
-      var busy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
+      var busy = operationsPending();
       submit.setAttribute('aria-disabled', busy ? 'true' : 'false');
       if (busy && typeof submit.getAttribute === 'function' && submit.getAttribute('data-fp-submit-guard') !== 'true') {
         submit.setAttribute('data-fp-submit-guard', 'true');
         submit.addEventListener('click', function (event) {
-          if (store.hasPendingItemsOperations()) { event.preventDefault(); }
+          if (operationsPending()) { event.preventDefault(); }
         }, true);
       }
     }
@@ -225,6 +244,7 @@
         try { url = typeof input === 'string' ? input : (input && input.url) || ''; } catch (err) { url = ''; }
         if (url.indexOf(UPDATE_ITEM_URL) === -1) { return original.apply(this, arguments); }
         inflight++;
+        syncSubmit(); // the transport observation itself locks the CTA at request start
         var done = function () { inflight = Math.max(0, inflight - 1); evaluateIntents(); };
         var request = original.apply(this, arguments);
         request.then(done, done);
