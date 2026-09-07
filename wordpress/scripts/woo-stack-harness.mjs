@@ -151,7 +151,8 @@ register_shutdown_function( static function () {
     }
     check(home === 200, `the disposable stack never answered 200 (last ${home})\n${readFileSync(serverLogFile, 'utf8').slice(-800)}`);
 
-    /* 3. Home + race(repeated) + replay + correct + renew + isolation over real HTTP. */
+    /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight
+       + preserve + stranger + isolation over real HTTP. */
     const py = process.env.PYTHON || 'python3';
     const scenario = spawnSync(py, [join(HERE, 'woo-checkout-race.py'), '--base', SITE_URL], { encoding: 'utf8', timeout: 300_000 });
     check(scenario.status === 0, `checkout scenarios failed:\n${scenario.stdout || ''}\n${scenario.stderr || ''}`);
@@ -171,6 +172,18 @@ register_shutdown_function( static function () {
     check(Number.isInteger(renewOrder) && renewOrder > 0, 'the identical rebuild produced no new request');
     check(renewOrder !== raceOrder && renewOrder !== correctOrder, `a new submission after a completion must NOT return the previous request (renew ${renewOrder} vs race ${raceOrder}/correct ${correctOrder})`);
     check(Number.isInteger(isolateOrder) && isolateOrder !== raceOrder, 'a different attempt must never fold into the race order');
+    const lostOrder = Number(outcomes.lost_order);
+    const inflightOrder = Number(outcomes.inflight_order);
+    check(Number.isInteger(lostOrder) && lostOrder > 0, 'the lost-response scenario produced no order');
+    check(lostOrder !== raceOrder && lostOrder !== correctOrder && lostOrder !== renewOrder && lostOrder !== isolateOrder,
+          `the lost-response retry must return its own original request, never another one (lost ${lostOrder})`);
+    check(Number.isInteger(inflightOrder) && inflightOrder > 0 && inflightOrder !== lostOrder,
+          `the in-flight scenario produced no distinct order (inflight ${outcomes.inflight_order})`);
+    check(outcomes.inflight_retry_recoverable === true, 'the in-flight retry answered unrecoverably');
+    check(outcomes.preserve_recovers_original === true, 'the old form retry with a new selection must recover the original confirmation');
+    check(outcomes.preserve_cart_lines === 1, `the recovery must not vacate a new unrelated selection (${outcomes.preserve_cart_lines} lines left)`);
+    check(outcomes.unknown_token_safe === true && outcomes.foreign_session_safe === true,
+          'unknown or foreign-session attempts must receive the safe native rejection, never the recovered reference');
 
     /* 4. WordPress state behind the responses (WP-CLI, read-only): each new
        request keeps its own record — pending status, quote meta, its own
@@ -182,7 +195,7 @@ register_shutdown_function( static function () {
     const phpCode = `
       global $wpdb;
       $out = array();
-      $ids = array('race' => ${raceOrder}, 'renew' => ${renewOrder}, 'correct' => ${correctOrder}, 'isolate' => ${isolateOrder});
+      $ids = array('race' => ${raceOrder}, 'renew' => ${renewOrder}, 'correct' => ${correctOrder}, 'isolate' => ${isolateOrder}, 'lost' => ${lostOrder}, 'inflight' => ${inflightOrder});
       foreach ($ids as $key => $id) {
         $order = wc_get_order($id);
         $quantities = array();
@@ -220,10 +233,10 @@ register_shutdown_function( static function () {
     check(parsed.lookup_row.id === parsed.lookup_row.for_order, `the durable lookup row does not resolve to the race order (${JSON.stringify(parsed.lookup_row)})`);
 
     /* 5. Notification events: exactly one sales + one customer notification
-       per NEW request (3 race rounds + correct + renew + isolate = 6), never
-       duplicated for folds, replays or recoveries. */
+       per NEW request (3 race rounds + correct + renew + lost + inflight
+       + isolate = 8), never duplicated for folds, replays or recoveries. */
     const mails = existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean) : [];
-    check(mails.length === 12, `expected exactly 12 notification events (2 per new request × 6), got ${mails.length}:\n${mails.join('\n')}`);
+    check(mails.length === 16, `expected exactly 16 notification events (2 per new request × 8), got ${mails.length}:\n${mails.join('\n')}`);
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
 
@@ -293,6 +306,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + identical-rebuild-new-reference + per-request records + notification-event count + restricted-ventas record boundary) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + restricted-ventas record boundary) on ${SITE_URL}`);
   return checks;
 }

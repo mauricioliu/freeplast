@@ -24,6 +24,24 @@ Scenarios
              submits again from a fresh checkout page: this must produce a NEW
              reference — never fold into the previous request (criterion 1/2),
              and the attempt token must have rotated.
+  lost     — THE #32 DEFECT (criterion 1/3): the first submission's response is
+             deliberately lost before it reaches the client; the request
+             persists server-side and the SAME form is retried without visiting
+             the confirmation. The retry must recover the ORIGINAL reference —
+             never the native empty-cart «sesión caducada», never a second
+             request, never duplicated receipt notifications.
+  inflight — a retry while the first submission of the same attempt is still in
+             flight answers recoverably (#32 criterion 5); once it completes,
+             the original reference is obtained without creating another
+             request.
+  preserve — recovering the previous request must not vacate or alter a NEW
+             selection unrelated to that attempt (#32 criterion 6): the old
+             form's retry returns the original confirmation and the new
+             selection survives in Productos a Cotizar untouched.
+  stranger — knowing an identifier authorizes nothing (#32 criterion 4): a
+             well-formed but unknown attempt token and a stolen form replayed
+             from another session both receive Woo's own safe rejection —
+             never the recovered reference, never a new request.
   isolate  — a different session with different data gets its own order, never
              folded into the first (regression guard for the lookup binding).
 
@@ -270,6 +288,110 @@ renew_order = order_of(renewed) if renewed.get('result') == 'success' else None
 ok('renew_new_reference', renew_order is not None and renew_order != race_order and renew_order != correct_order,
    f'renew {renew_order} must not return the previous requests (race {race_order}, correct {correct_order})')
 
+# ------------------------------------------------- lost (#32 criteria 1/2/3/7)
+# The first submission's response is deliberately lost before it reaches the
+# client (the client abandons the connection while the server processes): the
+# request persists and the basket empties, all unseen. The SAME form is then
+# retried, without visiting the confirmation: it must recover the ORIGINAL
+# reference — not the native empty-cart rejection — creating no second request.
+add_to_cart(session, 'cart_add_lost', 70)
+lost_values = checkout_form(session)
+ok('lost_form_present', 'woocommerce-process-checkout-nonce' in lost_values and bool(lost_values.get('fpw_attempt')))
+lost_values.update(RACE_FIELDS)
+lost_result = {}
+def fire_and_lose():
+    opener = session.clone_client()
+    req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(lost_values).encode())
+    try:
+        opener.open(req, timeout=0.05)
+        lost_result['abandoned'] = False   # the answer arrived: the loss was not simulated
+    except Exception:
+        lost_result['abandoned'] = True    # the response never reached the client
+threading.Thread(target=fire_and_lose).start()
+# Persistence proof that never reads the lost response: Woo empties the basket
+# on persisted success — poll until the basket is empty (bounded).
+cart_empty = False
+for _ in range(150):
+    code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+    if code == 200 and isinstance(cart, dict) and not cart.get('items'):
+        cart_empty = True
+        break
+    time.sleep(0.2)
+ok('lost_persisted_without_response', cart_empty and lost_result.get('abandoned') is True,
+   f"cart_empty={cart_empty} abandoned={lost_result.get('abandoned')}")
+retried = post_checkout(session, lost_values)
+ok('lost_retry_recovers_confirmation', retried.get('result') == 'success', str(retried)[:160])
+lost_order = order_of(retried) if retried.get('result') == 'success' else None
+ok('lost_retry_original_reference', lost_order is not None and lost_order not in {r['order'] for r in rounds} | {correct_order, renew_order},
+   f'lost {lost_order} must be the original request, never another one')
+
+# --------------------------------------------------- inflight (#32 criterion 5)
+# A retry while the first submission of the SAME attempt is still in flight
+# answers recoverably (it folds into the winner inside the claim budget, or
+# receives the recoverable «se está procesando» message); once the attempt
+# completes, the original reference is obtained without a second request.
+add_to_cart(session, 'cart_add_inflight', 70)
+inflight_values = checkout_form(session)
+inflight_values.update(RACE_FIELDS)
+original_answer = {}
+def submit_original():
+    opener = session.clone_client()
+    req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(inflight_values).encode())
+    with opener.open(req, timeout=180) as response:
+        original_answer['body'] = json.loads(response.read())
+orig_thread = threading.Thread(target=submit_original)
+orig_thread.start()
+time.sleep(0.2)   # the original is now in flight
+inflight_retry = post_checkout(session, inflight_values)
+orig_thread.join(timeout=180)
+inflight_messages = ' '.join(str(inflight_retry.get('messages', '')).split())
+recoverable = inflight_retry.get('result') == 'success' or 'procesando' in inflight_messages
+ok('inflight_retry_recoverable', recoverable, str(inflight_retry)[:140])
+ok('inflight_original_success', original_answer.get('body', {}).get('result') == 'success', str(original_answer)[:140])
+inflight_order = order_of(original_answer.get('body', {}))
+if inflight_retry.get('result') == 'success':
+    ok('inflight_retry_same_request', order_of(inflight_retry) == inflight_order,
+       f'{order_of(inflight_retry)} vs {inflight_order}')
+inflight_replay = post_checkout(session, inflight_values)
+ok('inflight_replay_recovers_original', inflight_replay.get('result') == 'success' and order_of(inflight_replay) == inflight_order,
+   str(inflight_replay)[:140])
+ok('inflight_distinct_request', inflight_order is not None and inflight_order != lost_order, f'{inflight_order} vs {lost_order}')
+
+# --------------------------------------------------- preserve (#32 criterion 6)
+# Recovering the previous request must not vacate or alter a NEW selection
+# unrelated to that attempt: with the new selection already in Productos a
+# Cotizar, the landed form's retry still returns the original confirmation and
+# the new selection survives untouched (Woo's own fold-in would empty it).
+add_to_cart(session, 'cart_add_preserve', 3)
+preserve = post_checkout(session, inflight_values)
+ok('preserve_recovers_same_request', preserve.get('result') == 'success' and order_of(preserve) == inflight_order,
+   f"{preserve.get('result')} {str(order_of(preserve))}")
+code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+preserve_lines = cart.get('items', []) if isinstance(cart, dict) else []
+ok('preserve_new_selection_intact', code == 200 and len(preserve_lines) == 1 and int(preserve_lines[0].get('quantity', 0)) == 3,
+   f"items={[(i.get('id'), i.get('quantity')) for i in preserve_lines]}")
+# Empty the unrelated selection again (Store API) so the stranger probes run on
+# the native empty-cart path without creating anything.
+for item in list(preserve_lines):
+    session.request('/wp-json/wc/store/v1/cart/remove-item', {'key': item.get('key', '')}, api=True)
+code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+ok('probe_cart_cleared', code == 200 and isinstance(cart, dict) and not cart.get('items'))
+
+# --------------------------------------------------- stranger (#32 criterion 4)
+# Knowing an identifier authorizes nothing: a well-formed but UNKNOWN attempt
+# token and a STOLEN form replayed from ANOTHER session both receive Woo's own
+# safe rejection — never the recovered reference, never a new request.
+stranger_values = dict(inflight_values)
+stranger_values['fpw_attempt'] = 'cd' * 20
+unknown = post_checkout(session, stranger_values)
+ok('unknown_token_safe_answer', unknown.get('result') == 'failure', str(unknown)[:140])
+ok('unknown_token_no_reference', order_of(unknown) is None, str(unknown.get('redirect', ''))[:80])
+thief = Session()
+thief.request('/wp-json/wc/store/v1/cart', api=True)  # seed its own Store API nonce
+stolen = post_checkout(thief, inflight_values)        # the stolen form: same nonce + token
+ok('foreign_session_safe_answer', stolen.get('result') == 'failure', str(stolen)[:140])
+ok('foreign_session_no_reference', order_of(stolen) is None, str(stolen.get('redirect', ''))[:80])
+
 # ---------------------------------------------------------------- isolation
 other = Session()
 other.request('/wp-json/wc/store/v1/cart', api=True)  # seed the Store API nonce
@@ -291,6 +413,12 @@ print(json.dumps({'home': home, 'race_orders': [r['order'] for r in rounds],
                   'replay_recovered_order': order_of(replay) if replay.get('result') == 'success' else None,
                   'correct_order': correct_order, 'renew_order': renew_order,
                   'attempt_token_rotated': token_rotated,
+                  'lost_order': lost_order,
+                  'inflight_order': inflight_order, 'inflight_retry_recoverable': bool(recoverable),
+                  'preserve_recovers_original': order_of(preserve) == inflight_order and preserve.get('result') == 'success',
+                  'preserve_cart_lines': len(preserve_lines),
+                  'unknown_token_safe': unknown.get('result') == 'failure' and order_of(unknown) is None,
+                  'foreign_session_safe': stolen.get('result') == 'failure' and order_of(stolen) is None,
                   'isolate_order': other_order,
                   'failures': failures}, ensure_ascii=False))
 raise SystemExit(1 if failures else 0)

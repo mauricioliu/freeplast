@@ -702,7 +702,15 @@ check(is_array($json) && $json['result']==='success' && str_contains($json['redi
 
 check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),nonce_valid:false)===null,'Recovery never bypasses Woo\'s own process-checkout nonce');
 
-check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),empty_cart:false)===null,'A full cart never takes the recovery path: Woo\'s native flow and the claim own it');
+// Issue #32: the recovery answers an authorized retry of the landed attempt even
+// when a NEW selection unrelated to that attempt already sits in Productos a
+// Cotizar — and the recovery path never mutates the cart, so that selection
+// survives (the real-stack preserve probe drives the same contract over native
+// HTTP; Woo's fold-in path would empty it through the quotes gateway).
+$GLOBALS['fpw_cart_empty']=false;
+check(is_array(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),empty_cart:false)),'An authorized retry recovers the original confirmation even with a new selection already in the basket (issue #32)');
+check($GLOBALS['fpw_cart_empty']===false,'The recovery path never mutates the cart: the unrelated selection survives');
+$GLOBALS['fpw_cart_empty']=true;
 
 check(fpw_recovery_attempt(array('fpw_attempt'=>str_repeat('cd',20)))===null,'A different attempt token never recovers another request');
 
@@ -719,6 +727,16 @@ check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),checkout_ajax:f
 $GLOBALS['fpw_session_customer_id']='other-session';
 check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))===null,'Another session can never recover a request of this session');
 $GLOBALS['fpw_session_customer_id']='abc123';
+
+// Issue #32: the recovery has a defined lifetime. A landing older than
+// FPW_RECOVERY_MAX_AGE is no longer recoverable — the resubmission falls
+// through to Woo's own guards, whose safe answer reveals no reference, key or
+// foreign data. Within the lifetime the original confirmation stays recoverable.
+$GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>$recovery_token,'hash'=>$recovery_hash,'order_id'=>77,'at'=>time()-FPW_RECOVERY_MAX_AGE-1));
+check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))===null,'A landing past the recovery lifetime is not recoverable: Woo\'s own safe answer governs, revealing nothing');
+$GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>$recovery_token,'hash'=>$recovery_hash,'order_id'=>77,'at'=>time()-FPW_RECOVERY_MAX_AGE+60));
+check(is_array(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token))),'Inside the recovery lifetime the original confirmation is still recoverable');
+$GLOBALS['fpw_woo']->session->set('fpw_attempt_landed',array('token'=>$recovery_token,'hash'=>$recovery_hash,'order_id'=>77,'at'=>time()));
 unset($_GET,$_POST);
 
 // Woo seam registration: the claim rides Woo's own order-creation short-circuit and its create/exception lifecycle.
@@ -728,6 +746,7 @@ check(count($create_callbacks)>=2,'The order-creation hook carries both the atte
 check(count($registered_actions['woocommerce_checkout_order_created']??array())>=1,'The claim finalizes on woocommerce_checkout_order_created');
 check(count($registered_actions['woocommerce_checkout_order_exception']??array())>=1,'The claim releases on woocommerce_checkout_order_exception');
 check(in_array('fpw_recover_landed_attempt',$registered_actions['wp_loaded']??array(),true),'The landed-attempt retry recovery rides wp_loaded ahead of Woo\'s own checkout AJAX');
+check(defined('FPW_RECOVERY_MAX_AGE') && FPW_RECOVERY_MAX_AGE===DAY_IN_SECONDS,'The recovery lifetime is a defined, deliberate constant: one day (issue #32)');
 $plugin_source=file_get_contents(__DIR__.'/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
 check((bool)preg_match('/fpw_attempt_open|fpw_attempt_landed/',$plugin_source),'The attempt identity lives in the customer\'s own session, not in a parallel store');
 // The attempt meta is bound on the created order.
@@ -737,4 +756,4 @@ foreach($create_callbacks as $callback) { if (is_object($callback)) { $callback(
 check(($order->meta['_fpw_attempt']??'')===$attempt_hash,'An owned attempt binds its identity durably on the created order');
 unset($GLOBALS['fpw_options_table'],$GLOBALS['wpdb'],$GLOBALS['fpw_order_notes'],$GLOBALS['fpw_session_customer_id'],$GLOBALS['wp_filter']);
 
-echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + attempt identity vs content + landed-attempt retry recovery)\n";
+echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + attempt identity vs content + landed-attempt retry recovery with lifetime and cart preservation)\n";

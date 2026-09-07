@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -517,7 +517,7 @@ add_filter( 'woocommerce_email_enabled_customer_note', '__return_false', 999 );
  * its attempt hash as meta for administration; meta is never used for
  * lookups (Woo's posts store silently ignores meta_query since 9.2). The
  * session keeps the landing binding (token + hash + order) as the authorized
- * recovery data for the follow-up confirmation-recovery ticket — scoped to
+ * recovery data the confirmation recovery (#32) reads — scoped to
  * the customer's own session, independent of the cart staying full.
  */
 define( 'FPW_CLAIM_PREFIX', 'fpw_claim_' );
@@ -526,6 +526,17 @@ define( 'FPW_CLAIM_WAIT_SECONDS', 10 );
 define( 'FPW_CLAIM_POLL_MICROSECONDS', 100000 );
 define( 'FPW_CLAIM_TAKEOVER_SECONDS', 30 );
 define( 'FPW_CLAIM_MAX_AGE', 7 * DAY_IN_SECONDS );
+/**
+ * Confirmation-recovery lifetime (issue #32): how long a landed attempt's own
+ * confirmation may be re-shown to the retry of its own submission. One day —
+ * deliberately inside WordPress' own nonce window (12–24 h), so within the
+ * vigencia a valid process-checkout nonce is still possible and beyond it Woo's
+ * own guards answer anyway: an expired attempt receives the native safe
+ * rejection, which reveals no reference, key or foreign data. The durable
+ * attempt binding itself stays permanent — replays never become duplicates;
+ * the vigencia bounds only the confirmation re-show.
+ */
+define( 'FPW_RECOVERY_MAX_AGE', DAY_IN_SECONDS );
 
 /** The attempt under way in this request ('' when this request owns no claim). */
 function fpw_pending_attempt( ?string $hash = null ): string {
@@ -624,7 +635,7 @@ function fpw_checkout_attempt_hash( $checkout ): string {
 /**
  * The authorized landing binding, kept in the customer's own session: attempt
  * token + durable hash + the order that satisfies the attempt. It is the
- * recovery data the follow-up confirmation-recovery ticket reads when a
+ * recovery data the confirmation recovery (#32) reads when a
  * response never arrived — independent of the cart still holding the
  * selection, scoped to this session so no other session can ever read it.
  * Writes nothing unless the binding would be complete (token + hash + order).
@@ -817,7 +828,7 @@ add_action( 'woocommerce_checkout_create_order', static function ( $order, $data
 	if ( '' !== $hash ) { $order->update_meta_data( '_fpw_attempt', $hash ); }
 }, 15, 2 );
 
-/** The claim records the created order and the session keeps the landing binding — the recovery data a concurrent retry and the follow-up confirmation-recovery ticket read. */
+/** The claim records the created order and the session keeps the landing binding — the recovery data a concurrent retry and the confirmation recovery (#32) read. */
 add_action( 'woocommerce_checkout_order_created', static function ( $order ) {
 	$hash = fpw_pending_attempt();
 	if ( '' !== $hash ) { fpw_finalize_attempt_claim( $hash, (int) $order->get_id() ); }
@@ -831,21 +842,29 @@ add_action( 'woocommerce_checkout_order_exception', static function ( $order ) {
 } );
 
 /**
- * Retry recovery for the SAME attempt (issue #31 — "dos envíos o reintentos
- * del mismo intento siguen representando una sola Solicitud"): a checkout
+ * Confirmation recovery for the SAME attempt (issues #31/#32): a checkout
  * submission whose cart Woo already emptied — the request landed but the
- * response never arrived, or the same form was resubmitted — must return the
- * landed attempt's own confirmation instead of «sesión caducada». It fires
+ * response never arrived —, or whose form is resubmitted later, must return
+ * the landed attempt's own confirmation instead of «sesión caducada». It fires
  * only when every authorization agrees: Woo's own process-checkout nonce
  * verifies (never bypassed), the posted attempt token is well-formed, and
  * BOTH bindings — the durable lookup row and the session's landing record —
- * resolve to the same order of THIS session. Anything else falls through to
- * Woo's own guards. Nothing is created, changed or re-notified: the existing
- * request's confirmation is re-shown. The confirmation-recovery follow-up
- * builds on this same authorized binding.
+ * resolve to the same order of THIS session, inside the recovery lifetime
+ * (FPW_RECOVERY_MAX_AGE, measured from the landing). Knowing an identifier is
+ * never enough: an unknown token, an expired landing or another session's
+ * replay falls through to Woo's own guards, whose safe answer reveals no
+ * reference, key or foreign data.
+ *
+ * The cart state is deliberately NOT a condition (issue #32): the retry may
+ * arrive while a NEW selection unrelated to this attempt already sits in
+ * Productos a Cotizar. The answer is read-only — nothing is created, changed
+ * or re-notified, and the cart is not touched — so Woo's own flow (whose
+ * fold-in empties the basket through the quotes gateway) stays out of the way
+ * and the new selection survives. Runs at wp_loaded priority 0, ahead of
+ * Woo's own checkout AJAX on template_redirect.
  */
 function fpw_recover_landed_attempt(): void {
-	if ( ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart || ! WC()->cart->is_empty() ) { return; }
+	if ( ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart ) { return; }
 	if ( empty( $_GET['wc-ajax'] ) || 'checkout' !== $_GET['wc-ajax'] || empty( $_POST['woocommerce-process-checkout-nonce'] ) ) { return; }
 	if ( ! wp_verify_nonce( wp_unslash( $_POST['woocommerce-process-checkout-nonce'] ), 'woocommerce-process_checkout' ) ) { return; }
 	$token = (string) ( $_POST['fpw_attempt'] ?? '' );
@@ -855,6 +874,7 @@ function fpw_recover_landed_attempt(): void {
 	if ( ! $order_id ) { return; }
 	$landed = WC()->session->get( 'fpw_attempt_landed' );
 	if ( ! is_array( $landed ) || ( $landed['token'] ?? '' ) !== $token || ( $landed['hash'] ?? '' ) !== $hash || (int) ( $landed['order_id'] ?? 0 ) !== $order_id ) { return; }
+	if ( (int) ( $landed['at'] ?? 0 ) < time() - FPW_RECOVERY_MAX_AGE ) { return; }
 	$order = wc_get_order( $order_id );
 	if ( ! $order ) { return; }
 	wp_send_json( array( 'result' => 'success', 'redirect' => $order->get_checkout_order_received_url() ) );
