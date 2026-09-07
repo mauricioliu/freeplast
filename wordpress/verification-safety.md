@@ -10,9 +10,16 @@ adapter1.6.4/theme1.0.8 (catalog search fix + owner card UI) from the committed
 tree after a fresh paired backup/restore rehearsal, 30 installed-source hashes,
 100 state checks and an identical pre/post record fingerprint; public GET checks
 now also cover the search contract (`/?s=caja`, `/?s=cajas`, native empty
-message). No native mutation scenario or visual/device review was
-run; none of the safety prerequisites below are waived. Full record:
-[WOO-MIGRATION.md](WOO-MIGRATION.md). There is currently no Ventas-role account
+message). A third same-day release (20260907T225331Z) shipped adapter1.6.5
+theme unchanged (search body scope classes — the styling contract behind the
+same search probes, now also asserted on the found and no-match body tags) with
+the same safety chain (paired backup + rehearsal 17/7/2, 30 installed-source
+hashes, 100 state checks, pre/post fingerprint `88abfd95…` identical across all
+three releases); one deploy.sh precondition failed safe on the host-side bundle
+path before maintenance mode and was corrected to the relative host path
+(2026-09-07 lesson, no public impact). No native mutation scenario or
+device review was run; none of the safety prerequisites below are waived. Full
+record: [WOO-MIGRATION.md](WOO-MIGRATION.md). There is currently no Ventas-role account
 on staging; the deployment did not create one.
 
 ## Implementation-phase evidence (offline closeout before deployment)

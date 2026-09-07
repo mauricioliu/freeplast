@@ -2,28 +2,51 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
-## Search results styling — missing Woo body scope classes (adapter 1.6.4 → 1.6.5) — 2026-09-07
+## Owner-authorized staging release — 20260907T225331Z (search styling fix)
 
-**Symptom (owner screenshot of live `https://freeplast.mliu.site/?s=caja`):** products
-rendered as an unstyled bullet list — one column, browser-default blue links, native
-«Relevancia» select, charcoal default buttons — although every stylesheet loaded.
-**Root cause:** all catalog CSS is scoped to the `woocommerce` / `woocommerce-page`
-body classes (`woocommerce-layout.css` grid floats, the `.woocommerce` button skin,
-the theme's `assets/css/woo.css`), and `wc_body_class()` only adds that pair when its
-page conditionals match (shop / product taxonomy / single product / cart / checkout /
-account). A plain `/?s=…` search matches none — but since 1.6.4 the adapter turns it
-into a product loop anyway, so Woo's markup rendered without Woo's scope. The native
-route `/?s=caja&post_type=product` always satisfied `is_woocommerce()`, which is why
-only plain searches looked broken (and why the HTML-level release checks — which
-assert products rendered, not how — stayed green).
-**Fix:** the adapter adds a `body_class` filter emitting the same `woocommerce` +
-`woocommerce-page` pair `wc_body_class()` emits for `is_woocommerce()`, on front-end
-searches only — the same seam that forces `post_type=product` + `wc_query`. Locked by
-two new stack-harness probes (found + no-match search must ship both classes; stack
-suite 94 → 96 checks). Visual A/B on the disposable real stack (headless Chrome,
-desktop 1440 + mobile 412): the search page now renders the same grid, toolbar and
-card CTAs as `/tienda/` at both widths. Full gate green: 447 offline assertions +
-96 real-stack checks + 260 syntax/dependency/deployment checks.
+Owner screenshot of live `/?s=caja`: products rendered as an unstyled bullet list
+(one column, default links and form controls) although every stylesheet loaded.
+Root cause: all catalog CSS is scoped to the `woocommerce` / `woocommerce-page`
+body classes, and `wc_body_class()` only emits that pair when its page
+conditionals match — a plain search matches none, but since 1.6.4 the adapter
+turns it into a product loop anyway. The native `/?s=caja&post_type=product`
+route always satisfied `is_woocommerce()`, which is why only plain searches
+looked broken and the HTML-level release checks stayed green. Fix (adapter
+**1.6.5**): a `body_class` filter in the same seam as the search hook, emitting
+the same pair `wc_body_class()` emits for `is_woocommerce()`, front-end searches
+only; locked by two new stack-harness probes (found + no-match searches must
+ship both classes; stack suite 94 → 96) and headless-Chrome A/B on the
+disposable stack at 1440/412 against `/tienda/`.
+
+Owner requested "commit, push y deploy" for the search-results fix. Commit
+`df6178f` (pushed to `mauricioliu/freeplast` main) shipped **freeplast-woo
+1.6.4 → 1.6.5**, theme unchanged at 1.0.8 (one installed file differs from the
+live tree: `wp-content/plugins/freeplast-woo/freeplast-woo.php`). Full gate
+before commit: 447 offline assertions + 96 real-stack checks + 260
+syntax/dependency/deployment checks. Release chain, all green:
+
+- Paired backup `/root/freeplast-wordpress-backups/20260907T225331Z` with
+  isolated DB+CLI-only restore rehearsal (catalog/orders/originals **17/7/2**,
+  identical to live; rehearsal containers/volumes removed).
+- Immutable bundle `/opt/freeplast-wordpress/bundle/releases/20260907T225331Z/`
+  (transfer SHA256-verified); maintenance-window install; **30 installed source
+  files** match their packaged hashes; native WP-CLI verifier **100 state
+  checks passed**; pre/post record fingerprint identical (`88abfd95…` — the
+  same value as after both releases of 2026-09-07 morning/evening). Mail MU
+  byte-identical. Cache flushed, maintenance deactivated.
+- One precondition failed safe BEFORE maintenance mode: the bundle
+  `sha256sum -c` line used the container path (`cd $RELEASE`) on the host —
+  the 2026-09-07 lesson again; corrected to the host-relative
+  `bundle/releases/<stamp>`. No public impact, no state touched.
+- Public read-only HTTP checks: `/?s=caja` 200 renders **10 products** with
+  body classes `woocommerce woocommerce-page` present (the fix), plural
+  `cajas` identical, no-match search ships the classes plus WooCommerce's
+  native empty-results message, noindex retained, `X-Powered-By` absent,
+  `/cotizacion/` 200, wp-admin → login, home assets at `?ver=1.0.8`.
+  Headless-Chrome renders at 1440/412 match the `/tienda/` grid. **Zero
+  native template overrides; zero Ventas-role accounts.**
+- Local release scripts: `/tmp/freeplast-publish-20260907T225331Z/`;
+  private remote operator scripts: `/root/freeplast-release-20260907T225331Z/`.
 
 ## Button label «Agregar a Cotización» and card quantity selector — 2026-09-07 (deployed in 20260907T215925Z)
 
