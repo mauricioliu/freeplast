@@ -5,7 +5,12 @@
 The owner subsequently requested publication to `freeplast.mliu.site` on
 2026-09-07. Adapter1.6.3/theme1.0.7 are deployed after paired backup + isolated
 restore, 29 installed-source hashes, 100 native read-only state checks and public
-GET route/asset checks. No native mutation scenario or visual/device review was
+GET route/asset checks. A second same-day release (20260907T215925Z) then shipped
+adapter1.6.4/theme1.0.8 (catalog search fix + owner card UI) from the committed
+tree after a fresh paired backup/restore rehearsal, 30 installed-source hashes,
+100 state checks and an identical pre/post record fingerprint; public GET checks
+now also cover the search contract (`/?s=caja`, `/?s=cajas`, native empty
+message). No native mutation scenario or visual/device review was
 run; none of the safety prerequisites below are waived. Full record:
 [WOO-MIGRATION.md](WOO-MIGRATION.md). There is currently no Ventas-role account
 on staging; the deployment did not create one.

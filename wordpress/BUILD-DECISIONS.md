@@ -8,6 +8,26 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-07 — Staging release 20260907T215925Z (search fix + owner card UI, committed)
+
+Owner requested commit, push and publication to `freeplast.mliu.site`. The tree
+was first committed (f29422f) and pushed to GitHub, then packaged and deployed:
+**freeplast-woo 1.6.3 → 1.6.4** and **freeplast theme 1.0.7 → 1.0.8**. The fix:
+the search `pre_get_posts` hook additionally sets `wc_query=product_query` —
+without it `wc_setup_loop()` reads total=0 on plain searches and
+`archive-product.php` renders an empty `<ul>` even though the main query found
+the products (`/?s=caja&post_type=product` always worked because the URL makes
+Woo run `product_query` natively). Locked by three new stack-harness probes
+(94 real-stack checks). Fresh paired backup + isolated DB/CLI-only restore
+rehearsal (`/root/freeplast-wordpress-backups/20260907T215925Z`, 17/7/2),
+maintenance window install, 30 installed-file hashes, 100 native state checks,
+pre/post record fingerprint identical (88abfd95…), mail containment untouched,
+cache flushed, maintenance off. Public read-only checks: home 200 with assets
+at `?ver=1.0.8`, `/?s=caja` → 10 products (11 with pagination), `/?s=cajas` →
+10, no-match renders the native empty message, routes/role gates unchanged,
+«Agregar a Cotización» live, new quantity JS byte-identical to the repo.
+No native mutation scenario, browser/device review or role-account creation.
+
 ## 2026-09-07 — Subsequent owner-authorized staging deployment
 
 Published adapter1.6.3/theme1.0.7 to `freeplast.mliu.site` only after a fresh

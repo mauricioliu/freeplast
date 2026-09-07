@@ -2,11 +2,62 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
-## Button label «Agregar a Cotización» and card quantity selector — 2026-09-07 (repo only, not deployed)
+## Button label «Agregar a Cotización» and card quantity selector — 2026-09-07 (deployed in 20260907T215925Z)
 
 Owner request (screenshot of Home cards): the add-to-cart button now reads **«Agregar a Cotización»** (was «Agregar a Productos a Cotizar») and every simple-product card offers a **quantity selector**. Covered surfaces: loop cards (`woocommerce_product_add_to_cart_text`), the anchors' aria descriptions (`woocommerce_product_add_to_cart_description`) and both product-sheet buttons (`woocommerce_product_single_add_to_cart_text`, which Woo's templates call directly, bypassing `add_to_cart_text`). The basket itself keeps its approved name «Productos a Cotizar» everywhere else (header, cart page title, add-to-cart notice, «Ver Productos a Cotizar» link).
 
-The selector is presentation only (ADR-0001): `woocommerce_loop_add_to_cart_link` wraps — never rewrites — Woo's own anchor with Woo's own quantity input (`woocommerce_quantity_input`, so min/max/step and the sold-individually behavior stay Woo's), and the AJAX quantity remains the anchor's own `data-quantity` attribute, which pinned Woo 11.1.0 `add-to-cart.js` reads from the DOM dataset at click time. Theme script `loop-add-to-cart-quantity.js` (enqueued on every route, inert without the wrapper) mirrors the input into that attribute; without JavaScript the anchor adds one unit, exactly as before. Variable, grouped, unpurchasable and out-of-stock cards keep the native link to their product sheet. Theme **1.0.7 → 1.0.8** (style.css header and cache-bust constant moved together); no plugin version bump (adapter change is behavior-compatible).
+The selector is presentation only (ADR-0001): `woocommerce_loop_add_to_cart_link` wraps — never rewrites — Woo's own anchor with Woo's own quantity input (`woocommerce_quantity_input`, so min/max/step and the sold-individually behavior stay Woo's), and the AJAX quantity remains the anchor's own `data-quantity` attribute, which pinned Woo 11.1.0 `add-to-cart.js` reads from the DOM dataset at click time. Theme script `loop-add-to-cart-quantity.js` (enqueued on every route, inert without the wrapper) mirrors the input into that attribute; without JavaScript the anchor adds one unit, exactly as before. Variable, grouped, unpurchasable and out-of-stock cards keep the native link to their product sheet. Theme **1.0.7 → 1.0.8** (style.css header and cache-bust constant moved together); no plugin version bump for the UI itself (behavior-compatible; the same release's search fix bumped the adapter to 1.6.4).
+
+## Owner-authorized staging release — 2026-09-07T21:59:25Z (search fix + owner card UI)
+
+Owner requested commit, push and publication. Commit `f29422f` (pushed to
+`mauricioliu/freeplast` main) first captured the whole working tree — including
+the 1.6.1–1.6.3 review fixes that had been live-but-uncommitted since the
+19:38Z release — then the release shipped **freeplast-woo 1.6.3 → 1.6.4** and
+**freeplast theme 1.0.7 → 1.0.8**. No vendor update, migration/bootstrap,
+catalog synchronization, Nginx change or production operation was run.
+
+- Catalog search root cause and fix: the search hook already forced
+  `post_type=product` and the main query found the products, but
+  `wc_setup_loop()` only reads real totals from the global query when the
+  `wc_query` var is present (Woo sets it via `product_query()`, product
+  archives only), so `archive-product.php` skipped its loop and rendered an
+  empty `<ul>` for plain `/?s=…` searches. The hook now also sets
+  `wc_query=product_query`. Diagnosed by staging instrumentation
+  (parse_query/pre_get_posts/posts_request logs + direct SQL) and proven by a
+  local real-stack A/B; locked by three new stack-harness probes
+  (stack suite 91 → 94 checks).
+- Full gate before commit: **447 offline assertions + 94 real-stack checks +
+  258 syntax/dependency/deployment checks**.
+- Fresh paired backup: `/root/freeplast-wordpress-backups/20260907T215925Z`.
+  SHA256 verified; isolated DB + CLI-only restore recovered **17 products /
+  7 Woo requests / 2 original requests**; the unique rehearsal project's
+  containers/volumes were removed; no rehearsal web listener.
+- Immutable server bundle: `/opt/freeplast-wordpress/bundle/releases/20260907T215925Z/`.
+  Maintenance-window install; **30 installed source files** match their
+  packaged hashes. Native WP-CLI verifier: **100 state checks passed**.
+- Pre/post SHA256 of complete posts, postmeta (excluding editor-presence keys),
+  comments, commentmeta, Woo order items and itemmeta identical
+  (`88abfd95…`, same as after the 19:38Z release). No fixture, note, account
+  or request created. Mail-containment MU plugin kept byte-identical
+  (`71164446…`). Cache flushed, maintenance deactivated.
+- Public read-only HTTP checks: home 200 with theme assets at `?ver=1.0.8`;
+  `/?s=caja` renders **10 products** (11 matches, page 2 renders the last)
+  with `search-results` body class; `/?s=cajas` renders the same (plural
+  normalization); a no-match search renders WooCommerce's native empty-results
+  message; noindex retained; `X-Powered-By` absent; `/cotizacion/` 200;
+  `/datos-y-envio/` still redirects to `/cotizacion/`; orders admin still
+  requires WordPress login; «Agregar a Cotización» labels live;
+  `loop-add-to-cart-quantity.js` served byte-identical to the repo.
+  **Zero native template overrides; zero Ventas-role accounts.**
+- Local release logs/scripts: `/tmp/freeplast-publish-20260907T215925Z/`;
+  private remote operator scripts: `/root/freeplast-release-20260907T215925Z/`.
+
+This deploy is not native HTTP mutation regression or visual acceptance. No
+browser/device review, checkout submission, authorization mutation probe,
+fixture provisioning, mail delivery or role-account creation was performed.
+Native #37–#39 scenario HTTP execution and the human visual decision remain
+pending.
 
 ## Owner-authorized staging release — 2026-09-07T19:38:40Z
 
