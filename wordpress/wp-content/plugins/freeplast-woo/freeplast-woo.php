@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.6.4
+ * Version: 1.6.5
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1326,4 +1326,21 @@ add_action('pre_get_posts', static function($query) {
 	$query->set('wc_query', 'product_query');
 	$term = $query->get('s');
 	$query->set('s', preg_replace('/\bcajas\b/iu', 'caja', $term));
+});
+
+// The plain searches the hook above turns into product loops satisfy none of
+// Woo's page conditionals, so wc_body_class() never adds the `woocommerce` /
+// `woocommerce-page` scope classes — and every catalog rule in Woo's own
+// stylesheets (woocommerce-layout.css grid floats, .woocommerce button skin)
+// plus the theme's assets/css/woo.css selectors is keyed on exactly those
+// classes. Products rendered, but as an unstyled bullet list. Add the same
+// pair wc_body_class() emits for is_woocommerce(); /?s=&post_type=product
+// (the native route) already got them, which is why only plain searches
+// looked broken.
+add_filter('body_class', static function($classes) {
+	if (is_search()) {
+		$classes[] = 'woocommerce';
+		$classes[] = 'woocommerce-page';
+	}
+	return $classes;
 });

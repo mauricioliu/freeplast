@@ -2,6 +2,29 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
+## Search results styling — missing Woo body scope classes (adapter 1.6.4 → 1.6.5) — 2026-09-07
+
+**Symptom (owner screenshot of live `https://freeplast.mliu.site/?s=caja`):** products
+rendered as an unstyled bullet list — one column, browser-default blue links, native
+«Relevancia» select, charcoal default buttons — although every stylesheet loaded.
+**Root cause:** all catalog CSS is scoped to the `woocommerce` / `woocommerce-page`
+body classes (`woocommerce-layout.css` grid floats, the `.woocommerce` button skin,
+the theme's `assets/css/woo.css`), and `wc_body_class()` only adds that pair when its
+page conditionals match (shop / product taxonomy / single product / cart / checkout /
+account). A plain `/?s=…` search matches none — but since 1.6.4 the adapter turns it
+into a product loop anyway, so Woo's markup rendered without Woo's scope. The native
+route `/?s=caja&post_type=product` always satisfied `is_woocommerce()`, which is why
+only plain searches looked broken (and why the HTML-level release checks — which
+assert products rendered, not how — stayed green).
+**Fix:** the adapter adds a `body_class` filter emitting the same `woocommerce` +
+`woocommerce-page` pair `wc_body_class()` emits for `is_woocommerce()`, on front-end
+searches only — the same seam that forces `post_type=product` + `wc_query`. Locked by
+two new stack-harness probes (found + no-match search must ship both classes; stack
+suite 94 → 96 checks). Visual A/B on the disposable real stack (headless Chrome,
+desktop 1440 + mobile 412): the search page now renders the same grid, toolbar and
+card CTAs as `/tienda/` at both widths. Full gate green: 447 offline assertions +
+96 real-stack checks + 260 syntax/dependency/deployment checks.
+
 ## Button label «Agregar a Cotización» and card quantity selector — 2026-09-07 (deployed in 20260907T215925Z)
 
 Owner request (screenshot of Home cards): the add-to-cart button now reads **«Agregar a Cotización»** (was «Agregar a Productos a Cotizar») and every simple-product card offers a **quantity selector**. Covered surfaces: loop cards (`woocommerce_product_add_to_cart_text`), the anchors' aria descriptions (`woocommerce_product_add_to_cart_description`) and both product-sheet buttons (`woocommerce_product_single_add_to_cart_text`, which Woo's templates call directly, bypassing `add_to_cart_text`). The basket itself keeps its approved name «Productos a Cotizar» everywhere else (header, cart page title, add-to-cart notice, «Ver Productos a Cotizar» link).

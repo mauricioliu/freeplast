@@ -175,6 +175,20 @@ register_shutdown_function( static function () {
     check(searchCount >= 1, `catalog search 'caja' rendered ${searchCount} products — the search loop is collapsing to an empty <ul> (wc_query/search contract regressed)`);
     check(searchPluralCount === searchCount, `plural search 'cajas' rendered ${searchPluralCount} products vs ${searchCount} for 'caja' — the conservative plural normalization regressed`);
     check(/woocommerce-no-products-found/.test(searchNone), "a no-match search must render WooCommerce's native empty-results message");
+    /* 2026-09-07 visual regression (owner screenshot): products rendered but
+       unstyled — Woo's catalog CSS (woocommerce-layout.css grid floats, the
+       .woocommerce button skin) and the theme's woo.css are all scoped to the
+       woocommerce/woocommerce-page body classes, which wc_body_class() only
+       adds when its page conditionals match; a plain search matches none. The
+       adapter's body_class filter must ship the same pair it emits for
+       is_woocommerce(). */
+    const bodyClasses = (html) => ((html.match(/<body[^>]*class="([^"]*)"/) || [])[1] || '').split(/\s+/);
+    const searchBodyClasses = bodyClasses(search);
+    const searchNoneBodyClasses = bodyClasses(searchNone);
+    check(searchBodyClasses.includes('woocommerce') && searchBodyClasses.includes('woocommerce-page'),
+          `a plain search page must ship Woo's body scope classes — got [${searchBodyClasses.join(', ')}]; without them the product grid renders as an unstyled list`);
+    check(searchNoneBodyClasses.includes('woocommerce') && searchNoneBodyClasses.includes('woocommerce-page'),
+          `a no-match search page must ship Woo's body scope classes — got [${searchNoneBodyClasses.join(', ')}]`);
 
     /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight
        + preserve + stranger + isolation over real HTTP. */
