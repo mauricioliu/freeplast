@@ -1,0 +1,4 @@
+{"scenario":"abort first update while replacement still pending","inflight":1,"pending":[],"ariaDisabled":"false","navigationPrevented":false}
+{"scenario":"replacement settled","inflight":0,"quantity":7}
+checks: 169 local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + checkout attempt claim)
+{"scenario":"new identical request in same session","same_hash":true,"result":{"state":"recovered","order_id":12345}}

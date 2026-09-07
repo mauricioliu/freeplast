@@ -1,0 +1,3 @@
+result: "\"{\\\"url\\\":\\\"https://freeplast.cl/producto/totem/\\\",\\\"h1\\\":\\\"Tote\\\",\\\"canonical\\\":\\\"https://freeplast.cl/producto/totem/\\\",\\\"adminBar\\\":false}\""
+help[1]:
+  Run `chrome-devtools-axi snapshot` to see current page state

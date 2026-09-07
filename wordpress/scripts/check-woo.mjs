@@ -75,6 +75,19 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 }
 
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
+// Issue #36 final red-gate: the native plain-route helper's payload self-test
+// (place-order submit trigger, no update_totals shortcut, native dispatch
+// predicate) — offline, mocked Session, no HTTP/server.
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/woo-checkout-race-selftest.py')]));
+// Issue #37: execute the operator control flow with all I/O mocked, and hash
+// complete native record data rather than guessing persistence from admin HTML.
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/woo-ventas-guard-selftest.py')]));
+console.log(run(php,[path.join(root,'scripts/woo-ventas-state-selftest.php')]));
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/verify-ventas-role-selftest.py')]));
+checks+=7+3+10+7;
+for (const file of ['woo-ventas-state.php', 'woo-ventas-state-selftest.php', 'provision-ventas-fixture.php']) {
+  run(php, ['-l', path.join(root, 'scripts', file)]); checks++;
+}
 run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
 // Issue #26: drive the REAL pinned cart-block store (vendored wc-blocks-data 11.1.0) with the
 // REAL shipped feedback script through success, connection loss, server error and recovery.
@@ -90,4 +103,6 @@ run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
 {const {runStackHarness}=await import('./woo-stack-harness.mjs');
  checks+=await runStackHarness();}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);
-console.log('scope: offline unit checks + disposable local stack (loopback only); no staging, no external hosts, no submissions, no Woo runtime or visual approval implied');
+console.log(process.env.FREEPLAST_SKIP_STACK === '1'
+  ? 'scope: offline only; native HTTP stack skipped; no staging, browser, device or visual approval'
+  : 'scope: offline checks + disposable local stack; no staging, external hosts or visual approval');

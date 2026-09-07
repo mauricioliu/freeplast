@@ -1,0 +1,16 @@
+{
+  "file": "woocommerce-11.1.0-class-wc-checkout.php",
+  "source": "https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip",
+  "path_inside_zip": "woocommerce/includes/class-wc-checkout.php",
+  "zip_sha256": "6bae9bf74d722b6deb15f049687c311cfafc26e3a5d8fa55ac6ea4b9a3a8df19",
+  "file_sha256": "a195880bca8a9f07f63b685dc73561946189f90a4b6d79afd950660cbaec667e",
+  "version": "11.1.0",
+  "license": "GPL-2.0-or-later",
+  "reason": "Offline regression for issue #35 drives the REAL pinned WC_Checkout::get_posted_data() normalization over the adapter's registered checkout fields: the submitted attempt token must survive Woo's own normalization boundary (never a stubbed posted-data array). Not loaded by any site surface; only test-woo-adapter.php evaluates it in PHP with stubbed WordPress primitives.",
+  "verify": "unzip woocommerce/includes/class-wc-checkout.php and compare sha256 against woo-dependencies.json's woocommerce zip hash chain",
+  "companion": {
+    "file": "woocommerce-11.1.0-cogs-aware-trait.php",
+    "path_inside_zip": "woocommerce/src/Internal/CostOfGoodsSold/CogsAwareTrait.php",
+    "file_sha256": "02ab77033de8eaa5888095946d0921ddda5f55a3ad0e9d7d161831454fee834c"
+  }
+}

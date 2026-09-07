@@ -1,0 +1,160 @@
+{
+  "captured_at_epoch": 1788628876,
+  "rows": [
+    {
+      "faults": {
+        "cpu": {
+          "lve": 27
+        },
+        "ep": {
+          "lve": 0
+        },
+        "io": {
+          "lve": 1
+        },
+        "iops": {
+          "lve": 0
+        },
+        "nproc": {
+          "lve": 0
+        },
+        "pmem": {
+          "lve": 0
+        },
+        "vmem": {
+          "lve": 0
+        }
+      },
+      "from": 1788480000,
+      "limits": {
+        "cpu": {
+          "lve": 50.0,
+          "mysql": 0
+        },
+        "ep": {
+          "lve": 13.0
+        },
+        "io": {
+          "lve": 5242880.0,
+          "mysql": 0
+        },
+        "iops": {
+          "lve": 1024.0
+        },
+        "nproc": {
+          "lve": 65.0
+        },
+        "pmem": {
+          "lve": 1610612736.0
+        },
+        "vmem": {
+          "lve": 0.0
+        }
+      },
+      "to": 1788566400,
+      "usage": {
+        "cpu": {
+          "lve": 2.914,
+          "mysql": 0.0
+        },
+        "ep": {
+          "lve": 0.0
+        },
+        "io": {
+          "lve": 70380.561,
+          "mysql": 0
+        },
+        "iops": {
+          "lve": 3.359
+        },
+        "nproc": {
+          "lve": 0.154
+        },
+        "pmem": {
+          "lve": 21478109.184
+        },
+        "vmem": {
+          "lve": 0.0
+        }
+      }
+    },
+    {
+      "faults": {
+        "cpu": {
+          "lve": 48
+        },
+        "ep": {
+          "lve": 0
+        },
+        "io": {
+          "lve": 0
+        },
+        "iops": {
+          "lve": 0
+        },
+        "nproc": {
+          "lve": 0
+        },
+        "pmem": {
+          "lve": 0
+        },
+        "vmem": {
+          "lve": 0
+        }
+      },
+      "from": 1788566400,
+      "limits": {
+        "cpu": {
+          "lve": 50.0,
+          "mysql": 0
+        },
+        "ep": {
+          "lve": 13.0
+        },
+        "io": {
+          "lve": 5242880.0,
+          "mysql": 0
+        },
+        "iops": {
+          "lve": 1024.0
+        },
+        "nproc": {
+          "lve": 65.0
+        },
+        "pmem": {
+          "lve": 1610612736.0
+        },
+        "vmem": {
+          "lve": 0.0
+        }
+      },
+      "to": 1788652800,
+      "usage": {
+        "cpu": {
+          "lve": 7.204,
+          "mysql": 0.0
+        },
+        "ep": {
+          "lve": 0.0
+        },
+        "io": {
+          "lve": 24155.726,
+          "mysql": 0
+        },
+        "iops": {
+          "lve": 0.272
+        },
+        "nproc": {
+          "lve": 0.481
+        },
+        "pmem": {
+          "lve": 53676466.176
+        },
+        "vmem": {
+          "lve": 0.0
+        }
+      }
+    }
+  ],
+  "note": "LVE day buckets only; MySQL-only zero LVE rows excluded. API period=1d includes two calendar-day buckets, not a precise rolling-day total."
+}

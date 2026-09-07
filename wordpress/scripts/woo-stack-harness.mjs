@@ -2,11 +2,11 @@
 /**
  * Real-stack offline regression harness (issue #1 — Woo-side ports of #24/#27).
  *
- * Boots the disposable WordPress + SQLite + WooCommerce installation from
- * scripts/bootstrap.mjs, serves it with the PHP built-in server (multi-worker,
- * loopback only) and drives scripts/woo-checkout-race.py through the Home
- * featured-grid contract (WA-04) and the concurrent-checkout attempt claim
- * (WA-01). WordPress order state is re-checked through WP-CLI afterwards.
+ * Boot the disposable WordPress + SQLite + WooCommerce installation from
+ * scripts/bootstrap.mjs, serve it with the PHP built-in server (multi-worker,
+ * loopback only), drive scripts/woo-checkout-race.py through the Home
+ * featured-grid contract (WA-04), the catalog search contract (post_type +
+ * wc_query hook) and the concurrent-checkout attempt claim (WA-01). WordPress order state is re-checked through WP-CLI afterwards.
  *
  * Everything targets http://127.0.0.1:<port> — no staging, no external host,
  * no mail configured. The first run pays the one-off bootstrap cost; later
@@ -43,6 +43,15 @@ async function fetchCode(path) {
     return response.status;
   } catch {
     return 0;
+  }
+}
+
+async function fetchBody(path) {
+  try {
+    const response = await fetch(SITE_URL + path, { signal: AbortSignal.timeout(60_000) });
+    return response.status === 200 ? await response.text() : '';
+  } catch {
+    return '';
   }
 }
 
@@ -151,6 +160,22 @@ register_shutdown_function( static function () {
     }
     check(home === 200, `the disposable stack never answered 200 (last ${home})\n${readFileSync(serverLogFile, 'utf8').slice(-800)}`);
 
+    /* 2b. Catalog search contract (2026-09-07 staging regression): the adapter's
+       search hook forces post_type=product AND wc_query=product_query — without
+       the latter wc_setup_loop() defaults total=0 and archive-product.php skips
+       its while loop, rendering an empty <ul> even though the main query found
+       the products (the ?s=…&post_type=product route always worked because the
+       URL makes Woo run product_query natively). */
+    const liProducts = (html) => (html.match(/<li class="product[ "]/g) || []).length;
+    const search = await fetchBody('/?s=caja');
+    const searchPlural = await fetchBody('/?s=cajas');
+    const searchNone = await fetchBody('/?s=zz-sin-coincidencias');
+    const searchCount = liProducts(search);
+    const searchPluralCount = liProducts(searchPlural);
+    check(searchCount >= 1, `catalog search 'caja' rendered ${searchCount} products — the search loop is collapsing to an empty <ul> (wc_query/search contract regressed)`);
+    check(searchPluralCount === searchCount, `plural search 'cajas' rendered ${searchPluralCount} products vs ${searchCount} for 'caja' — the conservative plural normalization regressed`);
+    check(/woocommerce-no-products-found/.test(searchNone), "a no-match search must render WooCommerce's native empty-results message");
+
     /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight
        + preserve + stranger + isolation over real HTTP. */
     const py = process.env.PYTHON || 'python3';
@@ -181,9 +206,26 @@ register_shutdown_function( static function () {
           `the in-flight scenario produced no distinct order (inflight ${outcomes.inflight_order})`);
     check(outcomes.inflight_retry_recoverable === true, 'the in-flight retry answered unrecoverably');
     check(outcomes.preserve_recovers_original === true, 'the old form retry with a new selection must recover the original confirmation');
-    check(outcomes.preserve_cart_lines === 1, `the recovery must not vacate a new unrelated selection (${outcomes.preserve_cart_lines} lines left)`);
+    check(outcomes.preserve_selection_identical === true && outcomes.preserve_cart_lines === 2,
+          `the recovery must leave the two-line selection (simple + variant) EXACTLY intact (${outcomes.preserve_cart_lines} lines, identical=${outcomes.preserve_selection_identical})`);
+    const staleOrder = Number(outcomes.stale_order);
+    check(outcomes.replayunknown_rejected === true && outcomes.replayunknown_selection_identical === true && outcomes.replayunknown_cart_lines === 2,
+          `an unknown token over a full new selection must be rejected safely with every line, variant and quantity preserved (rejected=${outcomes.replayunknown_rejected}, identical=${outcomes.replayunknown_selection_identical}, lines=${outcomes.replayunknown_cart_lines})`);
+    check(outcomes.stale_older_form_recovers_original === true && outcomes.stale_selection_identical === true
+          && outcomes.stale_b_form_recovers_own === true && outcomes.stale_repeat_recovers_original === true,
+          `an OLDER completed form must recover its OWN attempt after a newer one landed — read-only, selection intact (A=${outcomes.stale_older_form_recovers_original}, identical=${outcomes.stale_selection_identical}, B=${outcomes.stale_b_form_recovers_own}, repeat=${outcomes.stale_repeat_recovers_original})`);
+    check(outcomes.plainreplay_rejected === true && outcomes.plainreplay_selection_identical === true && outcomes.plainreplay_cart_lines === 2,
+          `a completed attempt replayed through the PLAIN form route must get the cart-preserving rejection — never the fold (rejected=${outcomes.plainreplay_rejected}, identical=${outcomes.plainreplay_selection_identical}, lines=${outcomes.plainreplay_cart_lines})`);
+    check(Number.isInteger(staleOrder) && staleOrder > 0 && staleOrder !== raceOrder && staleOrder !== correctOrder && staleOrder !== renewOrder && staleOrder !== lostOrder && staleOrder !== inflightOrder && staleOrder !== isolateOrder,
+          `the fresh form after rotation must produce its own new request (stale ${outcomes.stale_order})`);
+    const lostmultiA = Number(outcomes.lostmulti_a_order);
+    const lostmultiB = Number(outcomes.lostmulti_b_order);
+    check(outcomes.lostmulti_retry_recovers_a === true && outcomes.lostmulti_selection_identical === true && outcomes.lostmulti_cart_lines === 2,
+          `A's lost-response retry after B completed must recover A — not B, not «sesión caducada» — with the third selection intact (recovers=${outcomes.lostmulti_retry_recovers_a}, identical=${outcomes.lostmulti_selection_identical}, lines=${outcomes.lostmulti_cart_lines})`);
+    check(outcomes.scenario_ids_unique === true && outcomes.new_request_count === 11,
+          `the scenario ledger must show 11 pairwise-distinct new-request ids (unique=${outcomes.scenario_ids_unique}, count=${outcomes.new_request_count}, ids=${JSON.stringify(outcomes.scenario_orders)})`);
     check(outcomes.unknown_token_safe === true && outcomes.foreign_session_safe === true,
-          'unknown or foreign-session attempts must receive the safe native rejection, never the recovered reference');
+          'unknown or foreign-session attempts must receive the safe rejection, never the recovered reference');
 
     /* 4. WordPress state behind the responses (WP-CLI, read-only): each new
        request keeps its own record — pending status, quote meta, its own
@@ -195,7 +237,7 @@ register_shutdown_function( static function () {
     const phpCode = `
       global $wpdb;
       $out = array();
-      $ids = array('race' => ${raceOrder}, 'renew' => ${renewOrder}, 'correct' => ${correctOrder}, 'isolate' => ${isolateOrder}, 'lost' => ${lostOrder}, 'inflight' => ${inflightOrder});
+      $ids = array('race' => ${raceOrder}, 'renew' => ${renewOrder}, 'correct' => ${correctOrder}, 'isolate' => ${isolateOrder}, 'lost' => ${lostOrder}, 'inflight' => ${inflightOrder}, 'lostmulti_a' => ${lostmultiA}, 'lostmulti_b' => ${lostmultiB}, 'stale' => ${staleOrder});
       foreach ($ids as $key => $id) {
         $order = wc_get_order($id);
         $quantities = array();
@@ -213,13 +255,15 @@ register_shutdown_function( static function () {
       }
       $lookup = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_attempt_' . $out['race']['attempt']));
       $out['lookup_row'] = array('id' => (int) (string) $lookup, 'for_order' => ${raceOrder});
+      $lookup_a = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_attempt_' . $out['lostmulti_a']['attempt']));
+      $out['lookup_row_a'] = array('id' => (int) (string) $lookup_a, 'for_order' => ${lostmultiA});
       echo wp_json_encode($out);
     `;
     const state = sh(PHP, [WPCLI, 'eval', phpCode, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
     const parsed = JSON.parse(state.split('\n').pop());
     const totalUnits = (entry) => entry.quantities.reduce((a, b) => a + b, 0);
     for (const [key, entry] of Object.entries(parsed)) {
-      if (key === 'lookup_row') continue;
+      if (key === 'lookup_row' || key === 'lookup_row_a') continue;
       check(entry.status === 'pending', `request ${entry.id} left the pending quote state (status ${entry.status})`);
       check(entry.qwc === '1', `request ${entry.id} lost the quote meta`);
       check(entry.attempt.length === 64, `request ${entry.id} does not carry a bound attempt identity`);
@@ -231,12 +275,27 @@ register_shutdown_function( static function () {
     check(parsed.race.attempt !== parsed.renew.attempt, 'the identical rebuild must carry a DIFFERENT attempt identity');
     check(parsed.correct.billing_email === parsed.renew.billing_email, 'the corrected retry keeps the same customer details');
     check(parsed.lookup_row.id === parsed.lookup_row.for_order, `the durable lookup row does not resolve to the race order (${JSON.stringify(parsed.lookup_row)})`);
+    /* #36 rev 2: the lostmulti ORIGINALS — not merely "not-B". A is the record
+       the retry returned: its own distinct attempt identity, its durable
+       lookup resolving to itself (exactly one original A), its own 70-unit
+       selection and submitted details; B carries its own 6-unit identity; the
+       stale request carries the rotated attempt's own 7-unit record. */
+    check(totalUnits(parsed.lostmulti_a) === 70, `the recovered original A must carry A's own 70-unit selection (${parsed.lostmulti_a.quantities})`);
+    check(totalUnits(parsed.lostmulti_b) === 6, `B must carry its own 6-unit selection (${parsed.lostmulti_b.quantities})`);
+    check(totalUnits(parsed.stale) === 7, `the stale scenario's fresh request must carry the rotated attempt's own two-line selection (${parsed.stale.quantities})`);
+    check(parsed.lookup_row_a.id === parsed.lookup_row_a.for_order && parsed.lookup_row_a.id === Number(outcomes.lostmulti_a_order),
+          `A's durable lookup must resolve to the record the retry returned — exactly one original A (${JSON.stringify(parsed.lookup_row_a)} vs retry ${outcomes.lostmulti_a_order})`);
+    check(new Set([parsed.race.attempt, parsed.renew.attempt, parsed.lostmulti_a.attempt, parsed.lostmulti_b.attempt, parsed.stale.attempt]).size === 5,
+          'each scenario record carries its OWN attempt identity');
+    check(parsed.lostmulti_a.has_details && parsed.lostmulti_b.has_details && parsed.stale.has_details, 'the lostmulti/stale records keep their submitted details');
 
     /* 5. Notification events: exactly one sales + one customer notification
-       per NEW request (3 race rounds + correct + renew + lost + inflight
-       + isolate = 8), never duplicated for folds, replays or recoveries. */
+       per NEW request — DERIVED from the scenario ledger (3 race rounds +
+       correct + renew + lost + lostmulti A + lostmulti B + inflight + stale
+       + isolate = 11), never duplicated for folds, replays, recoveries or
+       identity-gate rejections. */
     const mails = existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean) : [];
-    check(mails.length === 16, `expected exactly 16 notification events (2 per new request × 8), got ${mails.length}:\n${mails.join('\n')}`);
+    check(mails.length === 2 * outcomes.new_request_count, `expected exactly ${2 * outcomes.new_request_count} notification events (2 per new request × ${outcomes.new_request_count}), got ${mails.length}:\n${mails.join('\n')}`);
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
 
@@ -257,6 +316,19 @@ register_shutdown_function( static function () {
       sh(PHP, [WPCLI, 'user', 'update', ventasUser, '--role=ventas_freeplast', `--user_pass=${ventasPass}`, ...wpArgs, '--quiet']);
     }
     const ventasEnv = { ...process.env, FREEPLAST_VENTAS_USER: ventasUser, FREEPLAST_VENTAS_PASS: ventasPass };
+    // #37: a fresh per-run provenance token, shared by every mode; the guarded
+    // run binds the new fixture to it and the mutating modes verify that
+    // binding before touching anything.
+    ventasEnv.FREEPLAST_VENTAS_RUN = randomUUID().replace(/-/g, '').slice(0, 12);
+    ventasEnv.FREEPLAST_VENTAS_STATE_COMMAND = JSON.stringify([PHP, WPCLI, ...wpArgs, '--user=1', 'eval-file', join(HERE, 'woo-ventas-state.php')]);
+    // #37: a synthetic coupon on the DISPOSABLE fixture only, so the coupon
+    // positive control exercises the REAL CouponsController against a valid
+    // native coupon instead of a made-up code. Deleted with the stack.
+    const fixtureCoupon = `ventaslocal-${randomUUID().replace(/-/g, '').slice(0, 10)}`;
+    // Woo 11.1.0's CLI runner derives subcommands from the REST schema title:
+    // coupons register as `wp wc shop_coupon`, never `wp wc coupon`.
+    sh(PHP, [WPCLI, 'wc', 'shop_coupon', 'create', `--code=${fixtureCoupon}`, '--discount_type=percent', '--amount=100', '--user=1', ...wpArgs, '--quiet']);
+    ventasEnv.FREEPLAST_VENTAS_COUPON = fixtureCoupon;
     const ventasArgs = [join(HERE, 'woo-ventas-guard.py'), '--base', SITE_URL];
     const guardOffMu = join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-guard-off.php');
     try {
@@ -272,6 +344,7 @@ register_shutdown_function( static function () {
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 add_action( 'init', static function () {
 	remove_action( 'admin_init', 'fpw_deny_sales_record_mutation', 0 );
+	remove_action( 'admin_init', 'fpw_deny_sales_order_note_and_meta_mutation', 0 );
 	remove_filter( 'woocommerce_process_shop_order_meta', 'fpw_deny_sales_order_save', 0 );
 	remove_filter( 'woocommerce_bulk_action_ids', 'fpw_deny_sales_bulk_actions', 0 );
 	remove_filter( 'woocommerce_rest_check_permissions', 'fpw_deny_sales_rest_mutation', 10 );

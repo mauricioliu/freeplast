@@ -30,6 +30,7 @@ import json
 import os
 import re
 import secrets
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -54,6 +55,17 @@ VENTAS_PASS = os.environ.get('FREEPLAST_VENTAS_PASS', '')
 if not VENTAS_USER or not VENTAS_PASS:
     print('error: set FREEPLAST_VENTAS_USER and FREEPLAST_VENTAS_PASS (harness-provisioned ventas account)')
     raise SystemExit(2)
+# Per-run provenance (#37): the harness mints a fresh run token for every
+# execution and passes it to ALL modes; the guarded run binds the newly created
+# fixture to it (billing email), and the mutating modes verify that binding
+# before touching anything. Missing or malformed provenance is rejected.
+RUN = os.environ.get('FREEPLAST_VENTAS_RUN', '')
+if not re.fullmatch(r'[a-f0-9]{12,40}', RUN):
+    print('error: harness-generated FREEPLAST_VENTAS_RUN is required')
+    raise SystemExit(2)
+RUN_EMAIL = 'ventas-%s@example.invalid' % RUN
+# Coupon codes normalize to lower case in Woo; keep one canonical constant.
+COUPON = os.environ.get('FREEPLAST_VENTAS_COUPON', 'ventaslocal10')
 
 failures = []
 results = {}
@@ -61,8 +73,30 @@ def ok(name, condition, detail=''):
     results[name] = bool(condition)
     if not condition:
         failures.append(name)
-        print('FAILED: %s %s' % (name, detail))
+        print('FAILED: %s (response details withheld)' % name)
     return bool(condition)
+
+
+def abort_if_broken(order, name, condition, detail=''):
+    if not ok(name, condition, detail) or failures:
+        print(json.dumps({'order': order, 'checks': results, 'failures': failures}))
+        raise SystemExit(1)
+
+
+def native_state(order):
+    """Complete native data digest via a disposable-only read-only CLI helper.
+    No shell, no endpoint, and no record values/confirmation keys in output.
+    """
+    command = json.loads(os.environ.get('FREEPLAST_VENTAS_STATE_COMMAND', '[]'))
+    if not isinstance(command, list) or not command or not all(isinstance(x, str) for x in command):
+        raise RuntimeError('Missing disposable fixture snapshot command')
+    result = subprocess.run(command + [str(order), RUN], capture_output=True, text=True, timeout=30)
+    if result.returncode:
+        raise RuntimeError('Fixture snapshot failed (output withheld)')
+    state = json.loads(result.stdout)
+    if not re.fullmatch(r'[a-f0-9]{64}', state.get('digest', '')) or not state.get('item_ids'):
+        raise RuntimeError('Incomplete fixture snapshot')
+    return state
 
 
 class Session:
@@ -118,7 +152,7 @@ def wp_login(session, user, password):
                                       'redirect_to': BASE + '/wp-admin/edit.php?post_type=shop_order',
                                       'wp-submit': 'Log In', 'testcookie': '1'})
     code, body = session.request('/wp-admin/profile.php')
-    return code == 200 and '<title>Log In' not in body
+    return code == 200 and 'id="your-profile"' in body and 'name="log"' not in body
 
 
 def mint(session, action):
@@ -143,6 +177,24 @@ def order_row_status(list_html, order_id):
     of one order's row on the native list."""
     row = re.search(r'<tr[^>]*\sid=["\']post-%d["\'][^>]*>(.*?)</tr>' % order_id, list_html, re.S)
     return row.group(0) if row else ''
+
+
+def ensure_fixture_identity(session, order, email, expect_qty='5'):
+    """Identity gate for EVERY mutating phase: the record must be THIS run's
+    fixture — FP-reference built from this id, this run's email binding, and
+    the expected quantity line — verified BEFORE any mutation request. On
+    mismatch the run prints its failures and EXITS; there is no fallback to an
+    arbitrary record."""
+    code, editor = session.request('/wp-admin/post.php?post=%d&action=edit' % order)
+    good = (code == 200
+            and re.search(r'FP-\d{4}-%06d' % order, editor) is not None
+            and email in editor
+            and re.search(r'order_item_qty\[\d+\][^>]*value="%s"' % expect_qty, editor) is not None)
+    if not ok('identity_verified_before_mutating', good, 'order %d does not carry this run\'s binding' % order):
+        print(json.dumps({'order': order, 'run': RUN, 'checks': results, 'failures': failures}, ensure_ascii=False))
+        raise SystemExit(1)
+    native_state(order)  # independent exact stored run binding check
+    return editor
 
 
 ORDER = int(os.environ.get('FREEPLAST_VENTAS_ORDER', '0'))
@@ -170,7 +222,7 @@ if MODE == 'guarded':
     ok('checkout_form_present', 'woocommerce-process-checkout-nonce' in values)
     values.update({
         'billing_first_name': MARKER, 'billing_phone': '+56 9 5555 5555',
-        'billing_email': 'ventas-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
+        'billing_email': RUN_EMAIL, 'billing_company': 'PRUEBA NO COMERCIAL',
         'billing_fp_rut': '76.555.555-5', 'billing_fp_giro': 'Prueba del rol Ventas',
         'billing_fp_dispatch': 'no', 'billing_fp_address': '',
         'payment_method': 'quotes-gateway', 'order_comments': 'Prueba técnica automatizada del rol Ventas (no atender)'})
@@ -187,7 +239,7 @@ if MODE == 'guarded':
         raise SystemExit(1)
 
     # --------------------------------------------------------- restricted session
-    ok('ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS))
+    abort_if_broken(ORDER, 'ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS))
 
     code, dash = ventas.request('/wp-admin/index.php')
     ok('menu_shows_orders', 'edit.php?post_type=shop_order' in dash)
@@ -200,18 +252,14 @@ if MODE == 'guarded':
     ok('orders_search_ok', code == 200 and 'FP-' in found and ('post-%d' % ORDER) in found)
 
     EDITOR = '/wp-admin/post.php?post=%d&action=edit' % ORDER
-    code, editor = ventas.request(EDITOR)
-    # Explicit identity check BEFORE any mutation: the record is the synthetic one
-    # this script created (reference built from THIS id + this session's markers).
-    ok('identity_verified', code == 200
-       and re.search(r'FP-\d{4}-%06d' % ORDER, editor) is not None
-       and 'ventas-local@example.invalid' in editor
-       and MARKER in editor
-       and 'Datos originales recibidos' in editor,
-       'order %d is not the synthetic record or reads broken' % ORDER)
+    # Identity gate BEFORE the note creation and every protected operation:
+    # this run's fixture only (see ensure_fixture_identity) — its failure
+    # EXITS the run before any write request; login failures likewise.
+    editor = ensure_fixture_identity(ventas, ORDER, RUN_EMAIL)
     ok('detail_reads_items', 'Caja Universal' in editor and 'value="5"' in editor)
     ok('detail_reads_dispatch_meta', 'RUT Empresa' in editor and '76.555.555-5' in editor)
 
+    abort_if_broken(ORDER, 'fixture_reads_complete', True)
     # Allowed: a private sales note through the native flow, with a VALID nonce.
     note_nonce = mint(ventas, 'add-order-note')
     code, note_html = ventas.request('/wp-admin/admin-ajax.php', {
@@ -224,19 +272,20 @@ if MODE == 'guarded':
     note_id = int(note_id_m.group(1)) if note_id_m else 0
     code, editor = ventas.request(EDITOR)
     ok('note_persists', NOTE_TEXT in editor)
+    abort_if_broken(ORDER, 'note_id_known_before_mutation', note_id > 0, 'the note prerequisite failed; refusing to continue')
+
+    def record_snapshot():
+        """Hash complete native order/item/meta/note data, independent of HTML.
+        Only core editor lock metadata is excluded. Values are never printed.
+        """
+        return native_state(ORDER)
+
+    BASELINE = record_snapshot()
 
     def unchanged(context='after attempt'):
-        code, editor = ventas.request(EDITOR)
-        code2, listing = ventas.request('/wp-admin/edit.php?post_type=shop_order')
-        row = order_row_status(listing, ORDER)
-        broken = [name for name, cond in (
-            ('editor-200', code == 200), ('name-intact', MARKER in editor),
-            ('email-intact', 'ventas-local@example.invalid' in editor),
-            ('no-save-write', 'VENTAS CAMBIO' not in editor),
-            ('no-rest-write', 'VENTAS REST CAMBIO' not in editor),
-            ('list-200', code2 == 200), ('row-listed', ('post-%d' % ORDER) in row),
-            ('status-pending', 'status-pending' in row), ('note-intact', NOTE_TEXT in editor)) if not cond]
-        ok('record_unchanged_%s' % context, not broken, 'broken: %s' % (broken or 'none'))
+        now = record_snapshot()
+        changed = [key for key in BASELINE if BASELINE[key] != now[key]]
+        ok('record_unchanged_%s' % context, not changed, 'changed keys: %s' % (changed or 'none'))
 
     # Denied: the general editor save (contact data + status), VALID session and
     # VALID editor nonces — the adapter must answer 403 before anything is written.
@@ -245,7 +294,7 @@ if MODE == 'guarded':
     fields.feed(editor)
     save = dict(fields.values)
     save.update({'action': 'editpost', 'post_ID': str(ORDER), 'order_status': 'wc-processing',
-                 'billing_first_name': 'VENTAS CAMBIO', 'content': 'VENTAS CAMBIO',
+                 '_billing_first_name': 'VENTAS CAMBIO', 'content': 'VENTAS CAMBIO',
                  '_payment_method': 'quotes-gateway', '_payment_method_title': 'quotes-gateway',
                  'save': 'Update', 'original_publish': 'Update', 'visibility': 'public'})
     code, body = ventas.request('/wp-admin/post.php?post=%d' % ORDER, save)
@@ -286,6 +335,100 @@ if MODE == 'guarded':
         'note_id': str(note_id)})
     ok('note_delete_denied', code == 403 and READ_ONLY in body, 'HTTP %s' % code)
     unchanged('note_delete')
+
+    # -------------------------------------------------- issue #37 additions ----
+    # Denied: native TAX RECALCULATION with a VALID calc-totals nonce — the
+    # pinned TaxesController saves the submitted items (here quantity 999)
+    # before recalculating; the front door must die before any write.
+    LINE_ID = next((int(m.group(1)) for m in re.finditer(r'order_item_qty\[(\d+)\][^>]*value="(\d+)"', editor)), 0)
+    abort_if_broken(ORDER, 'line_id_resolved', LINE_ID in native_state(ORDER)['item_ids'])
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'woocommerce_calc_line_taxes', 'security': mint(ventas, 'calc-totals'),
+        'order_id': str(ORDER), 'country': 'CL', 'state': '', 'postcode': '', 'city': '',
+        'items': 'order_item_id[]=%d&order_item_qty[%d]=999' % (LINE_ID, LINE_ID)})
+    ok('tax_recalc_denied', code == 403 and READ_ONLY in body, 'HTTP %s %s' % (code, str(body)[:160]))
+    code, editor = ventas.request(EDITOR)
+    ok('tax_recalc_no_quantity_write', 'value="999"' not in editor, 'the submitted quantity 999 must never appear on the record')
+    unchanged('tax_recalc')
+
+    # Denied: the coupon-discount route with a VALID order-item nonce.
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'woocommerce_add_coupon_discount', 'security': mint(ventas, 'order-item'),
+        'order_id': str(ORDER), 'coupon': COUPON})
+    ok('coupon_discount_denied', code == 403 and READ_ONLY in body, 'HTTP %s %s' % (code, str(body)[:160]))
+    unchanged('coupon_discount')
+
+    # Denied: CORE comment routes rewriting the Sales Note (append-only). WP
+    # maps edit_comment onto edit_post of the ORDER, which this role carries —
+    # the adapter's scoped guard must answer 403 before core writes.
+    REWRITTEN = 'NOTA REESCRITA %s' % secrets.token_hex(3)
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'edit-comment', '_ajax_nonce-replyto-comment': mint(ventas, 'replyto-comment'),
+        'comment_ID': str(note_id), 'content': REWRITTEN})
+    ok('core_note_edit_denied', code == 403 and READ_ONLY in body, 'HTTP %s %s' % (code, str(body)[:160]))
+    code, editor = ventas.request(EDITOR)
+    ok('core_note_content_intact', NOTE_TEXT in editor and REWRITTEN not in editor, 'the note keeps author, timestamp and original content')
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'delete-comment', '_ajax_nonce': mint(ventas, 'delete-comment_%d' % note_id),
+        'id': str(note_id), 'trash': '1'})
+    ok('core_note_delete_denied', code == 403 and READ_ONLY in body, 'HTTP %s %s' % (code, str(body)[:160]))
+    unchanged('core_note_delete')
+    code, body = ventas.request('/wp-admin/comment.php?action=editcomment&c=%d&_wpnonce=%s'
+                                % (note_id, mint(ventas, 'edit-comment_%d' % note_id)))
+    ok('comment_php_read_view_allowed', code == 200 and NOTE_TEXT in body,
+       'HTTP %s: the read-only editcomment VIEW stays allowed (only WRITE actions are denied)' % code)
+    unchanged('comment_php_read')
+
+    # #37 native ADVERSARIAL target-resolution controls (matching the offline
+    # red-gates): benign decoy fields beside the canonical one, suffixed ids
+    # that native absint() still resolves to the note, and comment.php's
+    # dt=trash effective-action override.
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'delete-comment', '_ajax_nonce': mint(ventas, 'delete-comment_%d' % note_id),
+        'comment_ID': '999999', 'id': str(note_id), 'trash': '1'})
+    ok('adversarial_delete_comment_decoy_comment_id', code == 403 and READ_ONLY in body,
+       'HTTP %s: delete-comment resolves id only; the benign comment_ID decoy must not mask the note target' % code)
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'edit-comment', '_ajax_nonce-replyto-comment': mint(ventas, 'replyto-comment'),
+        'comment_ID': str(note_id), 'id': '999999', 'content': 'NOTA DECOY'})
+    ok('adversarial_edit_comment_decoy_id', code == 403 and READ_ONLY in body,
+       'HTTP %s: edit-comment resolves comment_ID only; the benign id decoy must not mask the note target' % code)
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'edit-comment', '_ajax_nonce-replyto-comment': mint(ventas, 'replyto-comment'),
+        'comment_ID': '%djunk' % note_id, 'content': 'NOTA SUFIJO'})
+    ok('adversarial_suffixed_comment_id_denied', code == 403 and READ_ONLY in body,
+       'HTTP %s: comment_ID=%djunk resolves like native absint() to the ORDER note' % (code, note_id))
+    code, body = ventas.request('/wp-admin/comment.php?action=editedcomment&c=%d&dt=trash&_wpnonce=%s'
+                                % (note_id, mint(ventas, 'delete-comment_%d' % note_id)))
+    ok('adversarial_dt_override_denied', code == 403 and READ_ONLY in body,
+       'HTTP %s: comment.php derives the EFFECTIVE action (dt=trash -> TRASH of c), never the posted alias' % code)
+    code, body = ventas.request('/wp-admin/comment.php', {
+        'action': 'editedcomment', 'comment_ID': str(note_id), 'comment_post_ID': str(ORDER),
+        'content': 'NOTA EDITADA comment.php', '_wpnonce': mint(ventas, 'update-comment_%d' % note_id)})
+    ok('adversarial_comment_php_editedcomment', code == 403 and READ_ONLY in body,
+       'HTTP %s: comment.php POST editedcomment resolves comment_ID (not c)' % code)
+    code, body = ventas.request('/wp-admin/edit-comments.php', {
+        'action2': 'trash', 'delete_comments[]': str(note_id), '_wpnonce': mint(ventas, 'bulk-comments')})
+    # The ventas role carries no edit_posts primitive, so WordPress core denies
+    # the page itself at the menu stage (wp-admin/includes/menu.php) — BEFORE
+    # do_action('admin_init'), where the adapter's bulk guard sits. Either 403
+    # body is an honest server denial of the same POST: core's capability gate
+    # or the adapter's Spanish read-only die (readable only by an actor that
+    # clears the menu gate). The adapter's own action OR action2 (+ the -1
+    # no-op fallback) target resolution is proven offline in test-woo-adapter.php.
+    ok('adversarial_bulk_action2', code == 403 and (READ_ONLY in body or 'not allowed to access this page' in body),
+       'HTTP %s: the bottom action2 bulk select resolves like action' % code)
+    code, editor = ventas.request(EDITOR)
+    ok('adversarial_note_history_intact', NOTE_TEXT in editor
+       and all(junk not in editor for junk in ('NOTA DECOY', 'NOTA SUFIJO', 'NOTA OVERRIDE', 'NOTA EDITADA comment.php')))
+    unchanged('adversarial')
+
+    # Denied: core custom metadata on the order post (add-meta) with a VALID nonce.
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'add-meta', '_ajax_nonce-add-meta': mint(ventas, 'add-meta'),
+        'post_id': str(ORDER), 'metakeyinput': 'fp_test_meta', 'metavalue': 'VENTAS'})
+    ok('core_add_meta_denied', code == 403 and READ_ONLY in body, 'HTTP %s %s' % (code, str(body)[:160]))
+    unchanged('core_add_meta')
 
     # Denied: REST order update / batch with a VALID wp_rest nonce.
     code, rest_nonce = ventas.request('/wp-admin/admin-ajax.php?action=rest-nonce')
@@ -339,6 +482,12 @@ if MODE == 'guarded':
     ok('read_only_notice_shown', READ_ONLY in editor and 'notas de ventas privadas' in editor)
     ok('no_delete_button', 'submitdelete' not in editor)
     ok('denied_controls_hidden_css', 'button.save_order' in editor and '#qwc_send_quote' in editor and '.delete_note' in editor)
+    # #37: the items editor's denied mutation controls are hidden too, while the
+    # lines, options, values and quantities stay fully readable.
+    ok('items_editor_denied_controls_hidden', 'button.calculate-action' in editor and 'button.add-line-item' in editor and 'a.edit-order-item' in editor,
+       'the style must hide Recalculate/Add-item(s)/per-line edit-delete for ventas')
+    ok('items_editor_still_readable', 'value="5"' in editor and 'Caja Universal' in editor,
+       'the line values and quantities must stay readable behind the hidden controls')
     code, body = ventas.request('/wp-admin/users.php')
     ok('users_denied', code == 403 or 'Sorry, you are not allowed' in body or 'not allowed' in body)
 
@@ -348,8 +497,64 @@ if MODE == 'guarded':
     raise SystemExit(1 if failures else 0)
 
 if MODE == 'guard-off':
-    ok('ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS))
-    # Positive control 1: the minted quick-status nonce MUTATES the record —
+    if not ok('ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS)):
+        print(json.dumps({'order': ORDER, 'run': RUN, 'checks': results, 'failures': failures}, ensure_ascii=False))
+        raise SystemExit(1)
+    # Identity gating FIRST, bound to THIS run's provenance (the harness-minted
+    # run token the guarded run bound the fixture to): reference built from
+    # this id, this run's email, the expected quantity line. On mismatch the
+    # run fails and stops BEFORE any write — no arbitrary-record fallback.
+    EDITOR = '/wp-admin/post.php?post=%d&action=edit' % ORDER
+    editor = ensure_fixture_identity(ventas, ORDER, RUN_EMAIL)
+    LINE_ID = next((int(m.group(1)) for m in re.finditer(r'order_item_qty\[(\d+)\][^>]*value="5"', editor)), 0)
+    abort_if_broken(ORDER, 'guard_off_line_id_resolved', LINE_ID > 0, 'no fixture line resolved; refusing to mutate')
+    def off_snapshot():
+        return native_state(ORDER)
+    BEFORE = off_snapshot()
+    # Positive control 1 (#37): with the guard removed, the minted calc-totals
+    # nonce MUTATES the record through the REAL TaxesController — using the
+    # fixture's real line id and the complete native field set.
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'woocommerce_calc_line_taxes', 'security': mint(ventas, 'calc-totals'),
+        'order_id': str(ORDER), 'country': 'CL', 'state': '', 'postcode': '', 'city': '',
+        'items': 'order_item_id[]=%d&order_item_qty[%d]=999' % (LINE_ID, LINE_ID)})
+    ok('tax_recalc_allowed_when_guard_removed', code == 200, 'HTTP %s %s' % (code, str(body)[:160]))
+    code, editor = ventas.request(EDITOR)
+    ok('tax_recalc_actually_mutated', 'value="999"' in editor, 'the probe must detect the real quantity write on line %d' % LINE_ID)
+    # Positive control 1b (#37): with the guard removed, CORE edit-comment
+    # REWRITES an existing Sales Note (map_meta_cap edit_comment -> edit_post of
+    # the order, which the role carries) — the append-only boundary is detectable.
+    note_nonce_off = re.search(r'"add_order_note_nonce":"([a-f0-9]+)"', editor)
+    ok('guard_off_note_nonce_available', bool(note_nonce_off))
+    if note_nonce_off:
+        code, note_html = ventas.request('/wp-admin/admin-ajax.php', {
+            'action': 'woocommerce_add_order_note', 'security': note_nonce_off.group(1),
+            'post_id': str(ORDER), 'note': 'NOTA CONTROL %s NO ATENDER' % secrets.token_hex(3), 'note_type': ''})
+        note_id_off_m = re.search(r'<li rel="(\d+)"', note_html)
+        ok('guard_off_note_created', note_id_off_m is not None, str(note_html)[:160])
+        if note_id_off_m:
+            note_id_off = int(note_id_off_m.group(1))
+            code, body = ventas.request('/wp-admin/admin-ajax.php', {
+                'action': 'edit-comment', '_ajax_nonce-replyto-comment': mint(ventas, 'replyto-comment'),
+                'comment_ID': str(note_id_off), 'content': 'NOTA REESCRITA CONTROL'})
+            code, editor = ventas.request(EDITOR)
+            ok('core_note_edit_allowed_when_guard_removed', 'NOTA REESCRITA CONTROL' in editor,
+               'the probe must detect the historical note edit the guard prevents')
+    # Positive control 1c (#37): with the guard removed, a VALID native coupon
+    # (created by the harness for this disposable fixture only, LOWERCASE like
+    # Woo normalizes coupon codes) applies through the REAL CouponsController.
+    code, body = ventas.request('/wp-admin/admin-ajax.php', {
+        'action': 'woocommerce_add_coupon_discount', 'security': mint(ventas, 'order-item'),
+        'order_id': str(ORDER), 'country': 'CL', 'state': '', 'postcode': '', 'city': '',
+        'coupon': COUPON})
+    code, editor = ventas.request(EDITOR)
+    ok('coupon_applied_when_guard_removed', COUPON in editor,
+       'the valid fixture coupon must apply through the real controller — the probe detects the rewrite')
+    AFTER = off_snapshot()
+    changed = [k for k in BEFORE if BEFORE[k] != AFTER[k]]
+    ok('guard_off_native_state_changed', 'digest' in changed,
+       'the verified fixture must actually change when guards are removed')
+    # Positive control 2: the minted quick-status nonce MUTATES the record —
     # with the guard lifted the denial disappears entirely.
     code, body = ventas.request('/wp-admin/admin-ajax.php?action=woocommerce_mark_order_status'
                                 '&status=processing&order_id=%d&_wpnonce=%s'
@@ -357,22 +562,44 @@ if MODE == 'guard-off':
     ok('quick_status_allowed_when_guard_removed', code == 200, 'HTTP %s' % code)
     code, listing = ventas.request('/wp-admin/edit.php?post_type=shop_order')
     ok('status_actually_mutated', 'status-processing' in order_row_status(listing, ORDER), 'the probe must detect real mutation')
-    # Positive control 2: a REST order update rewrites the record.
+    # Positive control 3: a REST order update rewrites the record.
     code, rest_nonce = ventas.request('/wp-admin/admin-ajax.php?action=rest-nonce')
     code, body = ventas.request('/wp-json/wc/v3/orders/%d' % ORDER,
                                 {'billing': {'first_name': 'VENTAS REST CAMBIO'}},
                                 api=True, headers={'X-WP-Nonce': (rest_nonce or '').strip()})
     ok('rest_update_allowed_when_guard_removed', code in (200, 201), 'HTTP %s %s' % (code, str(body)[:160]))
-    code, editor = ventas.request('/wp-admin/post.php?post=%d&action=edit' % ORDER)
+    code, editor = ventas.request(EDITOR)
     ok('record_actually_mutated', 'VENTAS REST CAMBIO' in editor, 'the probe must detect real mutation')
-    print(json.dumps({'order': ORDER, 'checks': results, 'failures': failures}, ensure_ascii=False))
+    print(json.dumps({'order': ORDER, 'run': RUN, 'checks': results, 'failures': failures}, ensure_ascii=False))
     raise SystemExit(1 if failures else 0)
 
-# recheck: guards restored, the denial is back.
-ok('ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS))
+# recheck: guards restored, the denial is back — identity-gated like every
+# mutating phase, and the real line id is REQUIRED (no fallback).
+if not ok('ventas_login', wp_login(ventas, VENTAS_USER, VENTAS_PASS)):
+    print(json.dumps({'order': ORDER, 'run': RUN, 'checks': results, 'failures': failures}, ensure_ascii=False))
+    raise SystemExit(1)
+editor = ensure_fixture_identity(ventas, ORDER, RUN_EMAIL, expect_qty='999')
+recheck_line = next((int(m.group(1)) for m in re.finditer(r'order_item_qty\[(\d+)\]', editor)), 0)
+abort_if_broken(ORDER, 'recheck_line_resolved', recheck_line > 0, 'no fixture line resolved; refusing the probe')
 code, body = ventas.request('/wp-admin/admin-ajax.php?action=woocommerce_mark_order_status'
                             '&status=completed&order_id=%d&_wpnonce=%s'
                             % (ORDER, mint(ventas, 'woocommerce-mark-order-status')))
 ok('quick_status_denied_again', code == 403 and READ_ONLY in body, 'HTTP %s' % code)
-print(json.dumps({'order': ORDER, 'checks': results, 'failures': failures}, ensure_ascii=False))
+code, body = ventas.request('/wp-admin/admin-ajax.php', {
+    'action': 'woocommerce_calc_line_taxes', 'security': mint(ventas, 'calc-totals'),
+    'order_id': str(ORDER), 'country': 'CL', 'state': '', 'postcode': '', 'city': '',
+    'items': 'order_item_id[]=%d&order_item_qty[%d]=777' % (recheck_line, recheck_line)})
+ok('tax_recalc_denied_again', code == 403 and READ_ONLY in body, 'HTTP %s' % code)
+# Restored append-only boundary on the note created by the guard-off control.
+code, editor = ventas.request('/wp-admin/post.php?post=%d&action=edit' % ORDER)
+control_notes = [int(m.group(1)) for m in re.finditer(r'<li rel="(\d+)"[^>]*>(.*?)</li>', editor, re.S)
+                 if 'NOTA REESCRITA CONTROL' in m.group(2)]
+abort_if_broken(ORDER, 'recheck_note_resolved', len(control_notes) == 1)
+before_note = native_state(ORDER)
+code, body = ventas.request('/wp-admin/admin-ajax.php', {'action':'edit-comment',
+    '_ajax_nonce-replyto-comment':mint(ventas,'replyto-comment'),
+    'comment_ID':str(control_notes[0]), 'content':'NO DEBE CAMBIAR'})
+ok('core_note_denied_again', code == 403 and READ_ONLY in body)
+ok('core_note_unchanged_again', before_note == native_state(ORDER))
+print(json.dumps({'order': ORDER, 'run': RUN, 'checks': results, 'failures': failures}, ensure_ascii=False))
 raise SystemExit(1 if failures else 0)

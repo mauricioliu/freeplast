@@ -35,9 +35,41 @@ Scenarios
              the original reference is obtained without creating another
              request.
   preserve — recovering the previous request must not vacate or alter a NEW
-             selection unrelated to that attempt (#32 criterion 6): the old
-             form's retry returns the original confirmation and the new
-             selection survives in Productos a Cotizar untouched.
+             selection unrelated to that attempt (#32 criterion 6): with a
+             two-line selection (simple product + Rojo variant) in Productos a
+             Cotizar, the old form's retry returns the original confirmation
+             and the selection survives EXACTLY — full identity/options/
+             quantity snapshot equality, not a line count (#35).
+  replayunknown — THE #35 DEFECT (criteria 2/3/5): after an attempt landed AND
+             a two-line selection (simple product + Rojo variant) sits in the
+             basket, submitting the form with an UNKNOWN well-formed attempt
+             token must be rejected safely by the identity gate — no
+             confirmation, no new request, no fold into the landed attempt,
+             and EVERY line, variant and quantity survives exactly (full
+             identity/options/quantity snapshot equality; the pre-fix code
+             substituted the open token, folded into the landed request and
+             emptied the basket through the quotes gateway).
+  lostmulti — THE #36 DEFECT (criteria 2/3): A saves but its response is lost
+             before the customer receives or visits the confirmation; B then
+             completes in the same session; A is retried inside its lifetime
+             with its ORIGINAL form and a valid nonce. A's OWN reference and
+             confirmation return — not B, not «sesión caducada» — first over
+             an empty basket, then over a THIRD unrelated two-line selection
+             whose every line, variant and quantity survives unchanged
+             (pre-#36: only the latest binding survived, so A was refused).
+  stale     — #36 criterion 2/5 (supersedes the #35-planned expectation): an
+             OLDER completed form recovers ITS OWN attempt throughout its
+             lifetime even after a NEWER attempt completed and rotated the
+             open token — read-only, with the rebuilt two-line selection
+             exactly intact — and the newer form recovers its own request
+             the same way; the fresh submission of the rotated attempt still
+             produced its own NEW reference.
+  plainreplay — the MANDATORY no-JS boundary (#36 lead red-gate): a completed
+             attempt replayed through the PLAIN form route (no wc-ajax, so
+             the read-only recovery never runs) over the two-line selection
+             gets the cart-preserving identity-gate rejection — never the
+             fold, whatever the landing's age; every line/variant/quantity
+             survives.
   stranger — knowing an identifier authorizes nothing (#32 criterion 4): a
              well-formed but unknown attempt token and a stolen form replayed
              from another session both receive Woo's own safe rejection —
@@ -173,6 +205,19 @@ def post_checkout(session, values):
     except (TypeError, ValueError):
         return {'result': 'error', 'message': str(body)[:160]}
 
+def post_checkout_plain(session, values):
+    """POST the native NON-AJAX checkout form route (the page itself, no
+    wc-ajax): Woo's own no-JS fallback — the #36 mandatory cart-preserving
+    rejection seam. The COPIED payload carries the native PLACE-ORDER submit
+    trigger (woocommerce_checkout_place_order): the pinned
+    WC_Form_Handler::checkout_action dispatches process_checkout ONLY on that
+    trigger or on update_totals — which is deliberately NOT used, because it
+    skips order processing entirely and would make the probe vacuous. The
+    caller's values dict is never mutated."""
+    submitted = dict(values)
+    submitted['woocommerce_checkout_place_order'] = 'Solicitar cotización'
+    return session.request('/checkout/', submitted)
+
 def post_checkout_in_background(session, values, timeout):
     """POST the native checkout endpoint in a background thread on an
     independent connection (cookies cloned): the answer lands in
@@ -195,6 +240,50 @@ def add_to_cart(session, name, quantity):
     code, _ = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': quantity}, api=True)
     ok(name, code in (200, 201), f'HTTP {code}')
 
+def add_to_cart_variant(session, name, quantity):
+    """Add the seeded VARIABLE fixture's Rojo variant — a distinct variant line."""
+    code, _ = session.request('/wp-json/wc/store/v1/cart/add-item',
+                              {'id': VARIANT_ID, 'quantity': quantity,
+                               'variation': [{'attribute': 'attribute_color', 'value': 'Rojo'}]}, api=True)
+    ok(name, code in (200, 201), f'HTTP {code}')
+
+def normalized_variation(item):
+    """The pinned Woo 11.1.0 Store API answers `variation` as a list of
+    {raw_attribute, attribute, value} objects (dict-shaped in other eras):
+    normalize both into one stable option set."""
+    raw = item.get('variation') or []
+    if isinstance(raw, dict):
+        return sorted((str(key), str(value)) for key, value in raw.items())
+    return sorted((str(entry.get('raw_attribute') or entry.get('attribute') or ''), str(entry.get('value') or ''))
+                  for entry in raw if isinstance(entry, dict))
+
+def cart_snapshot(session):
+    """Stable identity of EVERY selection line — product/variant identity,
+    chosen options and quantity — compared exactly across operations (issue
+    #35: preservation of every line, variant and quantity, never a mere
+    line/quantity count). Returns None when the cart cannot be read."""
+    code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+    items = cart.get('items') if isinstance(cart, dict) else None
+    if code != 200 or items is None:
+        return None
+    lines = [{'type': item.get('type'), 'id': item.get('id'), 'name': item.get('name'),
+              'quantity': int(item.get('quantity', 0)),
+              'variation': normalized_variation(item)}
+             for item in items]
+    return sorted(lines, key=lambda line: json.dumps(line, sort_keys=True))
+
+def seed_selection(session, tag, simple_quantity, variant_quantity):
+    """Build the two-line synthetic selection (distinct simple product + the
+    Rojo variant) and return its full snapshot — the #35 preservation unit."""
+    add_to_cart(session, f'cart_add_simple_{tag}', simple_quantity)
+    add_to_cart_variant(session, f'cart_add_variant_{tag}', variant_quantity)
+    snapshot = cart_snapshot(session)
+    ok(f'selection_seeded_{tag}', snapshot is not None and len(snapshot) == 2
+       and any(line['type'] == 'variation' and line['variation'] for line in snapshot)
+       and any(line['type'] == 'simple' for line in snapshot),
+       f'snapshot={json.dumps(snapshot)}')
+    return snapshot
+
 RACE_FIELDS = {
     'billing_first_name': 'PRUEBA LOCAL CARRERA', 'billing_phone': '+56 9 1234 5678',
     'billing_email': 'race-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
@@ -216,6 +305,12 @@ session.request('/wp-json/wc/store/v1/cart', api=True)
 code, products = session.request(f'/wp-json/wc/store/v1/products?slug={SLUG}', api=True)
 ok('product_exists', code == 200 and isinstance(products, list) and products, f'HTTP {code}')
 pid = products[0]['id']
+# The #35 variant fixture (seeded idempotently by bootstrap on every run):
+# a variable product whose Rojo variant gives the preservation snapshots a
+# distinct variant line next to the simple featured product.
+code, variant_products = session.request('/wp-json/wc/store/v1/products?slug=caja-variable-color-prueba', api=True)
+ok('variant_fixture_present', code == 200 and isinstance(variant_products, list) and variant_products, f'HTTP {code}')
+VARIANT_ID = variant_products[0]['id'] if isinstance(variant_products, list) and variant_products else 0
 
 rounds = []
 for round_index in range(RACE_ROUNDS):
@@ -334,6 +429,55 @@ lost_order = order_of(retried) if retried.get('result') == 'success' else None
 ok('lost_retry_original_reference', lost_order is not None and lost_order not in {r['order'] for r in rounds} | {correct_order, renew_order},
    f'lost {lost_order} must be the original request, never another one')
 
+# ------------------------------------------------ lostmulti (#36 crit. 2/3)
+# THE DEFECT: A saves but its response is lost before the customer receives
+# or visits the confirmation; B then completes in the same session; A is
+# retried inside its lifetime with its ORIGINAL form and a valid nonce. A's
+# own reference must return — not B's, not «sesión caducada» — first over
+# the emptied basket, then over a THIRD unrelated selection (two lines:
+# simple + variant) that survives exactly.
+add_to_cart(session, 'cart_add_lostmulti_a', 70)
+lostmulti_a_values = checkout_form(session)
+ok('lostmulti_form_present', 'woocommerce-process-checkout-nonce' in lostmulti_a_values and bool(lostmulti_a_values.get('fpw_attempt')))
+lostmulti_a_values.update(RACE_FIELDS)
+lostmulti_thread, lostmulti_result = post_checkout_in_background(session, lostmulti_a_values, timeout=0.05)   # A's response is lost
+lostmulti_persisted = False
+for _ in range(150):
+    code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+    if code == 200 and isinstance(cart, dict) and not cart.get('items'):
+        lostmulti_persisted = True
+        break
+    time.sleep(0.2)
+lostmulti_thread.join()   # A's answer stays unread: the customer never received it
+ok('lostmulti_a_persisted_unseen', lostmulti_persisted and 'error' in lostmulti_result,
+   f"persisted={lostmulti_persisted} answer_read={'body' in lostmulti_result}")
+add_to_cart(session, 'cart_add_lostmulti_b', 6)   # B: a second request completes in the same session
+lostmulti_b_values = checkout_form(session)   # rotation: A closed
+ok('lostmulti_token_rotated', bool(lostmulti_b_values.get('fpw_attempt', '')) and lostmulti_b_values.get('fpw_attempt', '') != lostmulti_a_values.get('fpw_attempt', ''),
+   'B opens on a rotated token after A landed unseen')
+lostmulti_b_values.update(RACE_FIELDS)
+lostmulti_b = post_checkout(session, lostmulti_b_values)
+ok('lostmulti_b_success', lostmulti_b.get('result') == 'success', str(lostmulti_b)[:140])
+lostmulti_b_order = order_of(lostmulti_b) if lostmulti_b.get('result') == 'success' else None
+lostmulti_a_retry = post_checkout(session, lostmulti_a_values)   # retry A, ORIGINAL form, valid nonce, empty basket
+ok('lostmulti_retry_recovers_a', lostmulti_a_retry.get('result') == 'success' and order_of(lostmulti_a_retry) is not None and order_of(lostmulti_a_retry) != lostmulti_b_order,
+   f"{lostmulti_a_retry.get('result')} {str(order_of(lostmulti_a_retry))} vs B {lostmulti_b_order}")
+lostmulti_a_order = order_of(lostmulti_a_retry)
+lostmulti_before = seed_selection(session, 'lostmulti_third', 7, 2)   # a THIRD, unrelated selection
+lostmulti_a_retry2 = post_checkout(session, lostmulti_a_values)
+ok('lostmulti_retry_recovers_a_with_selection', lostmulti_a_retry2.get('result') == 'success' and order_of(lostmulti_a_retry2) == lostmulti_a_order,
+   str(lostmulti_a_retry2)[:140])
+lostmulti_after = cart_snapshot(session)
+ok('lostmulti_selection_preserved', lostmulti_after == lostmulti_before and len(lostmulti_after or []) == 2
+   and any(line['type'] == 'variation' and line['variation'] for line in lostmulti_after or []),
+   f'before={json.dumps(lostmulti_before)} after={json.dumps(lostmulti_after)}')
+# Empty the third selection again so the inflight scenario starts from a clean basket.
+code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+for item in list(cart.get('items', [])):
+    session.request('/wp-json/wc/store/v1/cart/remove-item', {'key': item.get('key', '')}, api=True)
+code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+ok('lostmulti_cart_cleared', code == 200 and isinstance(cart, dict) and not cart.get('items'))
+
 # --------------------------------------------------- inflight (#32 criterion 5)
 # A retry while the first submission of the SAME attempt is still in flight
 # answers recoverably (it folds into the winner inside the claim budget, or
@@ -359,30 +503,111 @@ ok('inflight_replay_recovers_original', inflight_replay.get('result') == 'succes
    str(inflight_replay)[:140])
 ok('inflight_distinct_request', inflight_order is not None and inflight_order != lost_order, f'{inflight_order} vs {lost_order}')
 
-# --------------------------------------------------- preserve (#32 criterion 6)
+# --------------------------------------------------- preserve (#32 crit. 6, #35)
 # Recovering the previous request must not vacate or alter a NEW selection
-# unrelated to that attempt: with the new selection already in Productos a
-# Cotizar, the landed form's retry still returns the original confirmation and
-# the new selection survives untouched (Woo's own fold-in would empty it).
-add_to_cart(session, 'cart_add_preserve', 3)
+# unrelated to that attempt: with a TWO-LINE selection (distinct simple
+# product + Rojo variant) already in Productos a Cotizar, the landed form's
+# retry still returns the original confirmation and the selection survives
+# untouched — proven by full identity/options/quantity snapshot equality
+# (Woo's own fold-in would empty it).
+preserve_before = seed_selection(session, 'preserve', 3, 4)
 preserve = post_checkout(session, inflight_values)
 ok('preserve_recovers_same_request', preserve.get('result') == 'success' and order_of(preserve) == inflight_order,
    f"{preserve.get('result')} {str(order_of(preserve))}")
-code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
-preserve_lines = cart.get('items', []) if isinstance(cart, dict) else []
-ok('preserve_new_selection_intact', code == 200 and len(preserve_lines) == 1 and int(preserve_lines[0].get('quantity', 0)) == 3,
-   f"items={[(i.get('id'), i.get('quantity')) for i in preserve_lines]}")
+preserve_after = cart_snapshot(session)
+ok('preserve_selection_identical', preserve_after == preserve_before and len(preserve_after or []) == 2,
+   f'before={json.dumps(preserve_before)} after={json.dumps(preserve_after)}')
+preserve_cart_lines = len(preserve_after or [])
+
+# ------------------------------------------- replayunknown (#35 crit. 2/3/5)
+# THE DEFECT: the attempt landed, a NEW selection already sits in Productos a
+# Cotizar, and the submitted form carries an UNKNOWN well-formed token. The
+# identity gate must reject the submission safely: no confirmation in the
+# answer, no new request, no fold — and every line, variant and quantity
+# survives exactly (full snapshot equality; the pre-fix fold emptied the
+# basket through the quotes gateway).
+replay_before = cart_snapshot(session)
+replay_unknown = dict(inflight_values)
+replay_unknown['fpw_attempt'] = 'ef' * 20
+rejected = post_checkout(session, replay_unknown)
+ok('replayunknown_rejected_safely', rejected.get('result') == 'failure', str(rejected)[:140])
+ok('replayunknown_no_confirmation', order_of(rejected) is None, str(rejected.get('redirect', ''))[:80])
+replay_after = cart_snapshot(session)
+ok('replayunknown_selection_preserved', replay_after == replay_before and len(replay_after or []) == 2
+   and any(line['type'] == 'variation' and line['variation'] for line in replay_after or []),
+   f'before={json.dumps(replay_before)} after={json.dumps(replay_after)}')
+
+# ----------------------------------------------------------------- stale (#36)
+# Supersedes the #35-planned expectation (the old code lost A, so rejection
+# was the safe answer): a NEWER attempt completed and rotated the open token
+# away from A's. A's form now recovers A's OWN confirmation — read-only,
+# first over the emptied basket, then over a rebuilt two-line selection with
+# full snapshot equality — and the newer form recovers its own request the
+# same way. The fresh submission of the rotated attempt still had its own
+# NEW reference.
+stale_values = checkout_form(session)   # the render ROTATES: landed attempt closed
+stale_token = stale_values.get('fpw_attempt', '')
+ok('stale_token_rotated', bool(stale_token) and stale_token != inflight_values.get('fpw_attempt', ''),
+   'the render after a landing must rotate the open token away from the landed one')
+stale_values.update(RACE_FIELDS)
+stale_fresh = post_checkout(session, stale_values)
+ok('stale_fresh_form_success', stale_fresh.get('result') == 'success', str(stale_fresh)[:140])
+stale_order = order_of(stale_fresh) if stale_fresh.get('result') == 'success' else None
+ok('stale_new_reference', stale_order is not None and stale_order not in {r['order'] for r in rounds} | {correct_order, renew_order, lost_order, inflight_order},
+   f'stale {stale_order} must be its own new request')
+stale_empty_replay = post_checkout(session, inflight_values)   # A's form, basket emptied by B's success
+ok('stale_older_form_recovers_original', stale_empty_replay.get('result') == 'success' and order_of(stale_empty_replay) == inflight_order,
+   f"{stale_empty_replay.get('result')} {str(order_of(stale_empty_replay))} vs A {inflight_order}")
+stale_before = seed_selection(session, 'stale_replay', 2, 5)
+stale_replay = post_checkout(session, inflight_values)   # the OLDER form over a rebuilt selection
+ok('stale_older_form_recovers_again', stale_replay.get('result') == 'success' and order_of(stale_replay) == inflight_order,
+   str(stale_replay)[:140])
+stale_after = cart_snapshot(session)
+ok('stale_selection_preserved', stale_after == stale_before and len(stale_after or []) == 2
+   and any(line['type'] == 'variation' and line['variation'] for line in stale_after or []),
+   f'before={json.dumps(stale_before)} after={json.dumps(stale_after)}')
+stale_b_replay = post_checkout(session, stale_values)   # the NEWER form recovers its own request the same way
+ok('stale_b_form_recovers_own', stale_b_replay.get('result') == 'success' and order_of(stale_b_replay) == stale_order,
+   f"{stale_b_replay.get('result')} {str(order_of(stale_b_replay))} vs B {stale_order}")
+check_snapshot_after_b = cart_snapshot(session)
+ok('stale_b_selection_preserved', check_snapshot_after_b == stale_before,
+   f'before={json.dumps(stale_before)} after={json.dumps(check_snapshot_after_b)}')
+stale_repeat = post_checkout(session, inflight_values)   # repeated recovery creates nothing (#36 crit. 4)
+ok('stale_repeat_recovers_original', stale_repeat.get('result') == 'success' and order_of(stale_repeat) == inflight_order,
+   str(stale_repeat)[:140])
+
+# ------------------------------------------------------------ plainreplay (#36)
+# The MANDATORY no-JS boundary (lead red-gate): a completed attempt replayed
+# through the PLAIN form route (the page itself — no wc-ajax, so the read-only
+# recovery never runs) over the two-line selection. The identity gate must
+# answer with the cart-preserving rejection — never the fold, whatever the
+# landing's age: the page carries the Spanish reload guidance and every line,
+# variant and quantity survives.
+plain_snapshot_before = cart_snapshot(session)   # read BEFORE the POST: the pre-state the replay must preserve
+ok('plainreplay_baseline_known', plain_snapshot_before == stale_before and len(plain_snapshot_before or []) == 2,
+   f'baseline={json.dumps(plain_snapshot_before)} (must equal the known two-line selection)')
+plain_code, plain_body = post_checkout_plain(session, stale_values)   # B's completed form, posted == open
+ok('plainreplay_rejected_safely', plain_code == 200 and 'ya fue recibida' in plain_body,
+   f'HTTP {plain_code}, guidance-present={"ya fue recibida" in plain_body}')
+ok('plainreplay_no_confirmation', 'order-received' not in plain_body and 'pedido recibido' not in plain_body,
+   'the plain-route replay must not render a confirmation')
+plain_snapshot_after = cart_snapshot(session)
+ok('plainreplay_selection_preserved', plain_snapshot_after == plain_snapshot_before and len(plain_snapshot_after or []) == 2
+   and any(line['type'] == 'variation' and line['variation'] for line in plain_snapshot_after or []),
+   f'before={json.dumps(plain_snapshot_before)} after={json.dumps(plain_snapshot_after)}')
+
 # Empty the unrelated selection again (Store API) so the stranger probes run on
 # the native empty-cart path without creating anything.
-for item in list(preserve_lines):
+code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
+for item in list(cart.get('items', [])):
     session.request('/wp-json/wc/store/v1/cart/remove-item', {'key': item.get('key', '')}, api=True)
 code, cart = session.request('/wp-json/wc/store/v1/cart', api=True)
 ok('probe_cart_cleared', code == 200 and isinstance(cart, dict) and not cart.get('items'))
 
 # --------------------------------------------------- stranger (#32 criterion 4)
 # Knowing an identifier authorizes nothing: a well-formed but UNKNOWN attempt
-# token and a STOLEN form replayed from ANOTHER session both receive Woo's own
-# safe rejection — never the recovered reference, never a new request.
+# token and a STOLEN form replayed from ANOTHER session both receive the safe
+# rejection — never the recovered reference, never a new request.
 stranger_values = dict(inflight_values)
 stranger_values['fpw_attempt'] = 'cd' * 20
 unknown = post_checkout(session, stranger_values)
@@ -411,6 +636,23 @@ ok('isolate_success', submitted.get('result') == 'success', str(submitted)[:120]
 other_order = order_of(submitted) if submitted.get('result') == 'success' else None
 ok('isolate_distinct_order', other_order is not None and other_order != race_order, f'{other_order} vs {race_order}')
 
+# ------------------------------------------------------- scenario ledger (#36 rev 2)
+# Every new request of the whole run, by scenario id: the mail-event
+# expectation and the originality proofs are DERIVED from this ledger, never
+# hand-typed (3 race rounds + correct + renew + lost + lostmulti A + lostmulti B
+# + inflight + stale + isolate = 11 new requests).
+scenario_orders = {'race_0': rounds[0]['order'], 'race_1': rounds[1]['order'], 'race_2': rounds[2]['order'],
+                   'correct': correct_order, 'renew': renew_order, 'lost': lost_order,
+                   'lostmulti_a': lostmulti_a_order, 'lostmulti_b': lostmulti_b_order,
+                   'inflight': inflight_order, 'stale': stale_order, 'isolate': other_order}
+scenario_ids = list(scenario_orders.values())
+ok('scenario_ids_unique', all(isinstance(i, int) and i > 0 for i in scenario_ids) and len(set(scenario_ids)) == len(scenario_ids),
+   f'duplicated or missing scenario ids: {scenario_orders}')
+NEW_REQUEST_COUNT = 11
+new_request_count = len(set(scenario_ids))
+ok('new_request_count', new_request_count == NEW_REQUEST_COUNT,
+   f'{new_request_count} new requests across the run, expected {NEW_REQUEST_COUNT}')
+
 print(json.dumps({'home': home, 'race_orders': [r['order'] for r in rounds],
                   'replay_recovered_order': order_of(replay) if replay.get('result') == 'success' else None,
                   'correct_order': correct_order, 'renew_order': renew_order,
@@ -418,9 +660,29 @@ print(json.dumps({'home': home, 'race_orders': [r['order'] for r in rounds],
                   'lost_order': lost_order,
                   'inflight_order': inflight_order, 'inflight_retry_recoverable': bool(recoverable),
                   'preserve_recovers_original': order_of(preserve) == inflight_order and preserve.get('result') == 'success',
-                  'preserve_cart_lines': len(preserve_lines),
+                  'preserve_selection_identical': preserve_after == preserve_before,
+                  'preserve_cart_lines': preserve_cart_lines,
+                  'replayunknown_rejected': rejected.get('result') == 'failure' and order_of(rejected) is None,
+                  'replayunknown_selection_identical': replay_after == replay_before,
+                  'replayunknown_cart_lines': len(replay_after or []),
+                  'stale_order': stale_order,
+                  'stale_older_form_recovers_original': stale_empty_replay.get('result') == 'success' and order_of(stale_empty_replay) == inflight_order,
+                  'stale_selection_identical': stale_after == stale_before,
+                  'stale_b_form_recovers_own': stale_b_replay.get('result') == 'success' and order_of(stale_b_replay) == stale_order,
+                  'stale_repeat_recovers_original': stale_repeat.get('result') == 'success' and order_of(stale_repeat) == inflight_order,
+                  'plainreplay_rejected': plain_code == 200 and 'ya fue recibida' in plain_body and 'order-received' not in plain_body,
+                  'plainreplay_selection_identical': plain_snapshot_after == plain_snapshot_before,
+                  'plainreplay_cart_lines': len(plain_snapshot_after or []),
+                  'lostmulti_a_order': lostmulti_a_order,
+                  'lostmulti_b_order': lostmulti_b_order,
+                  'lostmulti_retry_recovers_a': lostmulti_a_retry.get('result') == 'success' and lostmulti_a_order is not None and lostmulti_a_order != lostmulti_b_order,
+                  'lostmulti_selection_identical': lostmulti_after == lostmulti_before,
+                  'lostmulti_cart_lines': len(lostmulti_after or []),
                   'unknown_token_safe': unknown.get('result') == 'failure' and order_of(unknown) is None,
                   'foreign_session_safe': stolen.get('result') == 'failure' and order_of(stolen) is None,
                   'isolate_order': other_order,
+                  'scenario_ids_unique': len(set(scenario_ids)) == len(scenario_ids) and all(isinstance(i, int) and i > 0 for i in scenario_ids),
+                  'new_request_count': new_request_count,
+                  'scenario_orders': scenario_orders,
                   'failures': failures}, ensure_ascii=False))
 raise SystemExit(1 if failures else 0)

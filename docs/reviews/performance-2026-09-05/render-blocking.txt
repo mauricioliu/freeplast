@@ -1,0 +1,12 @@
+insight:
+## Insight Title: Render-blocking requests
+
+## Insight Summary:
+This insight identifies network requests that were render-blocking. Render-blocking requests are impactful because they are deemed critical to the page and therefore the browser stops rendering the page until it has dealt with these resources. For this insight make sure you fully inspect the details of each render-blocking network request and prioritize your suggestions to the user based on the impact of each render-blocking request.
+
+## Detailed analysis:
+Here is a list of the network requests that were render-blocking on this page and their duration:
+
+
+Network requests data:
+    ... (truncated, 15213 chars total)

@@ -1,0 +1,1147 @@
+[
+  {
+    "label": "store-api",
+    "at": "2026-09-05T16:14:09.495095+00:00",
+    "url": "https://freeplast.cl/wp-json/wc/store/products?per_page=100",
+    "final_url": "https://freeplast.cl/wp-json/wc/store/products?per_page=100",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Origin,Accept-Encoding,User-Agent"
+    ],
+    "h1": [],
+    "canonical": [],
+    "cache_comments": [],
+    "sha256": "07933daeae61ab1a3d4175a8140a615f4d08e2093441bbf6b15fff418b6769ae"
+  },
+  {
+    "label": "r1-agricola",
+    "at": "2026-09-05T16:14:13.317950+00:00",
+    "url": "https://freeplast.cl/categoria-producto/agricola/",
+    "final_url": "https://freeplast.cl/categoria-producto/agricola/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Agricola"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/agricola/"
+    ],
+    "cache_comments": [],
+    "sha256": "b335892dd4465e870ff89ab9d98a2867de55d101fa82bf8fa3018a4e23f6632b",
+    "card_count": 8,
+    "expected_count": 8,
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p0",
+    "at": "2026-09-05T16:14:16.535934+00:00",
+    "url": "https://freeplast.cl/producto/totem/",
+    "final_url": "https://freeplast.cl/producto/totem/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "243c06fced2b9c8d8e75f7ee516abc5eb2ba3cc473ccad2492b7bb18255ef97a",
+    "card_name": "Tote",
+    "api_name": "Tote",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p1",
+    "at": "2026-09-05T16:14:19.739727+00:00",
+    "url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
+    "final_url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Cosechera 3/4"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-cosechera-3-4/"
+    ],
+    "cache_comments": [],
+    "sha256": "d92396e309cf76b7ceec990d2c10002eb3d46ad2a377959ab8585eb666dad5c2",
+    "card_name": "Caja Cosechera 3/4",
+    "api_name": "Caja Cosechera 3/4",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p2",
+    "at": "2026-09-05T16:14:22.843887+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "3b5cb55e6fff36467e57644ac47b922350094c76cfc8a5294e2d6aa10611e13f",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p3",
+    "at": "2026-09-05T16:14:25.839026+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bines/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bines/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo UPC"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bines/"
+    ],
+    "cache_comments": [],
+    "sha256": "5f2f82b50bbd241c3498958eb7a05312bbd5e1df1f94e884fc956518cb5f0c34",
+    "card_name": "Traversas para Bins Tipo UPC",
+    "api_name": "Traversas para Bins Tipo UPC",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p4",
+    "at": "2026-09-05T16:14:28.814365+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "f3c65f9cbc7235c476c1587f00e9b2861cdb61660c8dba6d4e48706d1e999faf",
+    "card_name": "Traversas para Bins Tipo G1",
+    "api_name": "Traversas para Bins Tipo G1",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p5",
+    "at": "2026-09-05T16:14:31.825854+00:00",
+    "url": "https://freeplast.cl/producto/caja-tomatera/",
+    "final_url": "https://freeplast.cl/producto/caja-tomatera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Tomatera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-tomatera/"
+    ],
+    "cache_comments": [],
+    "sha256": "d54c7e41f7c1956d813a0962c26d480d33b77e127772b5f991e2553d15471240",
+    "card_name": "Caja Tomatera",
+    "api_name": "Caja Tomatera",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p6",
+    "at": "2026-09-05T16:14:35.088621+00:00",
+    "url": "https://freeplast.cl/producto/caja-frutillera-2/",
+    "final_url": "https://freeplast.cl/producto/caja-frutillera-2/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Frutillera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-frutillera-2/"
+    ],
+    "cache_comments": [],
+    "sha256": "6e25813113adbf60ac07bededf9f632dd6be876a0abb3034a3bd22c5d2eddfff",
+    "card_name": "Caja Frutillera",
+    "api_name": "Caja Frutillera",
+    "pass": true
+  },
+  {
+    "label": "r1-agricola-p7",
+    "at": "2026-09-05T16:14:38.133989+00:00",
+    "url": "https://freeplast.cl/producto/caja-frutera/",
+    "final_url": "https://freeplast.cl/producto/caja-frutera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Frutera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-frutera/"
+    ],
+    "cache_comments": [],
+    "sha256": "7347807f80c5e85d7b27621787046dbe91e7e4f6183f6466ba14e31ca62d1fb1",
+    "card_name": "Caja Frutera",
+    "api_name": "Caja Frutera",
+    "pass": true
+  },
+  {
+    "label": "r1-carnes",
+    "at": "2026-09-05T16:14:41.016928+00:00",
+    "url": "https://freeplast.cl/categoria-producto/carnes/",
+    "final_url": "https://freeplast.cl/categoria-producto/carnes/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Carnes"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/carnes/"
+    ],
+    "cache_comments": [],
+    "sha256": "2f81db3044e36be6480f7f43f338bd4cbd550d80904c3707d3ac694372341e77",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r1-carnes-p0",
+    "at": "2026-09-05T16:14:44.214168+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "35410570a0cb1c773568eafed86a4a46053ad0ed9090b7d25c1a73a26733048e",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "r1-carnes-p1",
+    "at": "2026-09-05T16:14:47.311065+00:00",
+    "url": "https://freeplast.cl/producto/base-para-pediluvio/",
+    "final_url": "https://freeplast.cl/producto/base-para-pediluvio/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Pollera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/base-para-pediluvio/"
+    ],
+    "cache_comments": [],
+    "sha256": "e830a3c298c62c85e1d811ec1753b9e21c4ea4972177d2e738e162a77e9606a3",
+    "card_name": "Caja Pollera",
+    "api_name": "Caja Pollera",
+    "pass": true
+  },
+  {
+    "label": "r1-otros",
+    "at": "2026-09-05T16:14:50.224879+00:00",
+    "url": "https://freeplast.cl/categoria-producto/otros/",
+    "final_url": "https://freeplast.cl/categoria-producto/otros/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Otros"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/otros/"
+    ],
+    "cache_comments": [],
+    "sha256": "4fb652008e0036a6f0803810b853c3957279de75b20619ff0273d19f1a870804",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r1-otros-p0",
+    "at": "2026-09-05T16:14:53.211322+00:00",
+    "url": "https://freeplast.cl/producto/ladrillo-plastico/",
+    "final_url": "https://freeplast.cl/producto/ladrillo-plastico/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Ladrillo plástico"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/ladrillo-plastico/"
+    ],
+    "cache_comments": [],
+    "sha256": "a56d4b260008a62b4c41c1bb9550f7302123b7cb258479318f40a669a8fc3d0c",
+    "card_name": "Ladrillo plástico",
+    "api_name": "Ladrillo plástico",
+    "pass": true
+  },
+  {
+    "label": "r1-otros-p1",
+    "at": "2026-09-05T16:14:56.226652+00:00",
+    "url": "https://freeplast.cl/producto/pediluvio/",
+    "final_url": "https://freeplast.cl/producto/pediluvio/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Bases plásticas para pediluvios"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/pediluvio/"
+    ],
+    "cache_comments": [],
+    "sha256": "39b25cc85f67c6533e63a306e3974404ed15743c38d43525647e761e21583c1d",
+    "card_name": "Bases plásticas para pediluvios",
+    "api_name": "Bases plásticas para pediluvios",
+    "pass": true
+  },
+  {
+    "label": "r1-productos-del-mar",
+    "at": "2026-09-05T16:14:59.531744+00:00",
+    "url": "https://freeplast.cl/categoria-producto/productos-del-mar/",
+    "final_url": "https://freeplast.cl/categoria-producto/productos-del-mar/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Productos del mar"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/productos-del-mar/"
+    ],
+    "cache_comments": [],
+    "sha256": "ee537ff885450915519013e77c21b6724909277fc3f4b895573f7cbb1159e93e",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r1-productos-del-mar-p0",
+    "at": "2026-09-05T16:15:03.248819+00:00",
+    "url": "https://freeplast.cl/producto/caja-merlucera/",
+    "final_url": "https://freeplast.cl/producto/caja-merlucera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Merlucera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-merlucera/"
+    ],
+    "cache_comments": [],
+    "sha256": "f82195934ef08ea28f8af24459475bca32fb73049fc47d51e9c30c4dc1289f03",
+    "card_name": "Caja Merlucera",
+    "api_name": "Caja Merlucera",
+    "pass": true
+  },
+  {
+    "label": "r1-productos-del-mar-p1",
+    "at": "2026-09-05T16:15:08.010287+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "acda678d8163f147ea08bc5822f786466ff7ca746974a7f5731db5a6f894d913",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola",
+    "at": "2026-09-05T16:15:10.828889+00:00",
+    "url": "https://freeplast.cl/categoria-producto/agricola/",
+    "final_url": "https://freeplast.cl/categoria-producto/agricola/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Agricola"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/agricola/"
+    ],
+    "cache_comments": [],
+    "sha256": "b335892dd4465e870ff89ab9d98a2867de55d101fa82bf8fa3018a4e23f6632b",
+    "card_count": 8,
+    "expected_count": 8,
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p0",
+    "at": "2026-09-05T16:15:14.123507+00:00",
+    "url": "https://freeplast.cl/producto/totem/",
+    "final_url": "https://freeplast.cl/producto/totem/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "670f7bf460c3771e33e8f95020a43b0b28ae108527b427db5d2c7861bc8aa295",
+    "card_name": "Tote",
+    "api_name": "Tote",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p1",
+    "at": "2026-09-05T16:15:19.779021+00:00",
+    "url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
+    "final_url": "https://freeplast.cl/producto/caja-cosechera-3-4/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Cosechera 3/4"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-cosechera-3-4/"
+    ],
+    "cache_comments": [],
+    "sha256": "db090e6bd39f5a844b1160ddc60155728a5b954f624393dd8b94d767c89f99a5",
+    "card_name": "Caja Cosechera 3/4",
+    "api_name": "Caja Cosechera 3/4",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p2",
+    "at": "2026-09-05T16:15:22.831115+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "b124efbf2eb86f931a5eae9cf3c92d2640d9bab8cadc6de90f6a1fb5ef6cd596",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p3",
+    "at": "2026-09-05T16:15:25.939708+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bines/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bines/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo UPC"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bines/"
+    ],
+    "cache_comments": [],
+    "sha256": "c21bf751a464d111dea05f2d9f7f25fd0fb8edc139ffee71b10a67802747154d",
+    "card_name": "Traversas para Bins Tipo UPC",
+    "api_name": "Traversas para Bins Tipo UPC",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p4",
+    "at": "2026-09-05T16:15:28.937030+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "1aa08c751cb8ad64221a2539818ef278d51f7699a92aa21cb65413b6038a0b80",
+    "card_name": "Traversas para Bins Tipo G1",
+    "api_name": "Traversas para Bins Tipo G1",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p5",
+    "at": "2026-09-05T16:15:32.236711+00:00",
+    "url": "https://freeplast.cl/producto/caja-tomatera/",
+    "final_url": "https://freeplast.cl/producto/caja-tomatera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Tomatera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-tomatera/"
+    ],
+    "cache_comments": [],
+    "sha256": "152b9b5d63622d623aff1cef8f23e0c153e528f46c0de64ea8ef38aeba849a15",
+    "card_name": "Caja Tomatera",
+    "api_name": "Caja Tomatera",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p6",
+    "at": "2026-09-05T16:15:35.531707+00:00",
+    "url": "https://freeplast.cl/producto/caja-frutillera-2/",
+    "final_url": "https://freeplast.cl/producto/caja-frutillera-2/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Frutillera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-frutillera-2/"
+    ],
+    "cache_comments": [],
+    "sha256": "eb0ba9f2036f0bccf15ac1368ed3c45a0a4265e44b794a147133a99b9efbff47",
+    "card_name": "Caja Frutillera",
+    "api_name": "Caja Frutillera",
+    "pass": true
+  },
+  {
+    "label": "r2-agricola-p7",
+    "at": "2026-09-05T16:15:38.707285+00:00",
+    "url": "https://freeplast.cl/producto/caja-frutera/",
+    "final_url": "https://freeplast.cl/producto/caja-frutera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Frutera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-frutera/"
+    ],
+    "cache_comments": [],
+    "sha256": "c47a817d13f49498fdd70dd91ec570f160a351bd30c76987b8e0330f5e098096",
+    "card_name": "Caja Frutera",
+    "api_name": "Caja Frutera",
+    "pass": true
+  },
+  {
+    "label": "r2-carnes",
+    "at": "2026-09-05T16:15:41.585544+00:00",
+    "url": "https://freeplast.cl/categoria-producto/carnes/",
+    "final_url": "https://freeplast.cl/categoria-producto/carnes/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Carnes"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/carnes/"
+    ],
+    "cache_comments": [],
+    "sha256": "2f81db3044e36be6480f7f43f338bd4cbd550d80904c3707d3ac694372341e77",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r2-carnes-p0",
+    "at": "2026-09-05T16:15:44.810901+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "1e01abacbc1ea64407e59c2f87002a39fa2880051fd641e4f6715e068461f267",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "r2-carnes-p1",
+    "at": "2026-09-05T16:15:47.809604+00:00",
+    "url": "https://freeplast.cl/producto/base-para-pediluvio/",
+    "final_url": "https://freeplast.cl/producto/base-para-pediluvio/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Pollera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/base-para-pediluvio/"
+    ],
+    "cache_comments": [],
+    "sha256": "e830a3c298c62c85e1d811ec1753b9e21c4ea4972177d2e738e162a77e9606a3",
+    "card_name": "Caja Pollera",
+    "api_name": "Caja Pollera",
+    "pass": true
+  },
+  {
+    "label": "r2-otros",
+    "at": "2026-09-05T16:15:50.631111+00:00",
+    "url": "https://freeplast.cl/categoria-producto/otros/",
+    "final_url": "https://freeplast.cl/categoria-producto/otros/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Otros"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/otros/"
+    ],
+    "cache_comments": [],
+    "sha256": "4fb652008e0036a6f0803810b853c3957279de75b20619ff0273d19f1a870804",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r2-otros-p0",
+    "at": "2026-09-05T16:15:53.820877+00:00",
+    "url": "https://freeplast.cl/producto/ladrillo-plastico/",
+    "final_url": "https://freeplast.cl/producto/ladrillo-plastico/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Ladrillo plástico"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/ladrillo-plastico/"
+    ],
+    "cache_comments": [],
+    "sha256": "a56d4b260008a62b4c41c1bb9550f7302123b7cb258479318f40a669a8fc3d0c",
+    "card_name": "Ladrillo plástico",
+    "api_name": "Ladrillo plástico",
+    "pass": true
+  },
+  {
+    "label": "r2-otros-p1",
+    "at": "2026-09-05T16:15:56.932153+00:00",
+    "url": "https://freeplast.cl/producto/pediluvio/",
+    "final_url": "https://freeplast.cl/producto/pediluvio/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Bases plásticas para pediluvios"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/pediluvio/"
+    ],
+    "cache_comments": [],
+    "sha256": "39b25cc85f67c6533e63a306e3974404ed15743c38d43525647e761e21583c1d",
+    "card_name": "Bases plásticas para pediluvios",
+    "api_name": "Bases plásticas para pediluvios",
+    "pass": true
+  },
+  {
+    "label": "r2-productos-del-mar",
+    "at": "2026-09-05T16:15:59.847948+00:00",
+    "url": "https://freeplast.cl/categoria-producto/productos-del-mar/",
+    "final_url": "https://freeplast.cl/categoria-producto/productos-del-mar/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Productos del mar"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/productos-del-mar/"
+    ],
+    "cache_comments": [],
+    "sha256": "ee537ff885450915519013e77c21b6724909277fc3f4b895573f7cbb1159e93e",
+    "card_count": 2,
+    "expected_count": 2,
+    "pass": true
+  },
+  {
+    "label": "r2-productos-del-mar-p0",
+    "at": "2026-09-05T16:16:03.034872+00:00",
+    "url": "https://freeplast.cl/producto/caja-merlucera/",
+    "final_url": "https://freeplast.cl/producto/caja-merlucera/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Merlucera"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-merlucera/"
+    ],
+    "cache_comments": [],
+    "sha256": "f82195934ef08ea28f8af24459475bca32fb73049fc47d51e9c30c4dc1289f03",
+    "card_name": "Caja Merlucera",
+    "api_name": "Caja Merlucera",
+    "pass": true
+  },
+  {
+    "label": "r2-productos-del-mar-p1",
+    "at": "2026-09-05T16:16:06.411001+00:00",
+    "url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "final_url": "https://freeplast.cl/producto/caja-universal-negro/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Caja Universal"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/caja-universal-negro/"
+    ],
+    "cache_comments": [],
+    "sha256": "ac442a114226cd4400d69734ff9b60787e8345ce598943b922aa3c6c869771cc",
+    "card_name": "Caja Universal",
+    "api_name": "Caja Universal",
+    "pass": true
+  },
+  {
+    "label": "repeat-0",
+    "at": "2026-09-05T16:16:09.541213+00:00",
+    "url": "https://freeplast.cl/producto/totem/",
+    "final_url": "https://freeplast.cl/producto/totem/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "05086a292d924b707c0ca5a7901f576bce61ac196a3a6ad8cd864a2ca54a72cf",
+    "pass": true
+  },
+  {
+    "label": "repeat-1",
+    "at": "2026-09-05T16:16:12.623552+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "a87e685bfb9fd494277e16d7be3f482ba11298d5c89aa5fa5d37f5519cbe0e0a",
+    "pass": true
+  },
+  {
+    "label": "repeat-2",
+    "at": "2026-09-05T16:16:15.817552+00:00",
+    "url": "https://freeplast.cl/producto/totem/",
+    "final_url": "https://freeplast.cl/producto/totem/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "8e999a13d906d4e4b5b700541d2139159ba1feff26707525e22c198f31d9fa65",
+    "pass": true
+  },
+  {
+    "label": "repeat-3",
+    "at": "2026-09-05T16:16:20.483284+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "4d1f0adf576b1e13159b4c97e37a0ff07e8398e5c2efa0ef4b6f8bc6bb2870ea",
+    "pass": true
+  },
+  {
+    "label": "repeat-4",
+    "at": "2026-09-05T16:16:23.528942+00:00",
+    "url": "https://freeplast.cl/producto/totem/",
+    "final_url": "https://freeplast.cl/producto/totem/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "ca68f50ae32bc7e64f8c915d9926330cb2d078eb260bda0ff2024dd73e0e0f2b",
+    "pass": true
+  },
+  {
+    "label": "repeat-5",
+    "at": "2026-09-05T16:16:26.605165+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "bc7363c246834887df81bffbc170a9dfd23983413bd22454274d9a8733d552db",
+    "pass": true
+  },
+  {
+    "label": "query-0",
+    "at": "2026-09-05T16:16:29.527627+00:00",
+    "url": "https://freeplast.cl/categoria-producto/agricola/?fp_verify=20260905",
+    "final_url": "https://freeplast.cl/categoria-producto/agricola/?fp_verify=20260905",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Agricola"
+    ],
+    "canonical": [
+      "https://freeplast.cl/categoria-producto/agricola/"
+    ],
+    "cache_comments": [],
+    "sha256": "1f20e6877728c2ddff3930f41d25700ec18d4e94339a5342e67280d92ed9b5e5"
+  },
+  {
+    "label": "query-1",
+    "at": "2026-09-05T16:16:32.615384+00:00",
+    "url": "https://freeplast.cl/producto/totem/?fp_verify=20260905",
+    "final_url": "https://freeplast.cl/producto/totem/?fp_verify=20260905",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Tote"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/totem/"
+    ],
+    "cache_comments": [],
+    "sha256": "0ed39544010ffe8271fc705b7c2d5e3189cd9e15959bc3f438d9294fd0e17e4a",
+    "pass": true
+  },
+  {
+    "label": "query-2",
+    "at": "2026-09-05T16:16:35.652854+00:00",
+    "url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/?fp_verify=20260905",
+    "final_url": "https://freeplast.cl/producto/traversas-para-bins-tipo-w/?fp_verify=20260905",
+    "status": 200,
+    "cache_control": [
+      "max-age=0, public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Traversas para Bins Tipo G1"
+    ],
+    "canonical": [
+      "https://freeplast.cl/producto/traversas-para-bins-tipo-w/"
+    ],
+    "cache_comments": [],
+    "sha256": "772692df29639097fdd6373b3d906020034ad8108960057360729725b70dd66c",
+    "pass": true
+  },
+  {
+    "label": "legacy-pollera",
+    "at": "2026-09-05T16:16:38.429890+00:00",
+    "url": "https://freeplast.cl/producto/caja-pollera/",
+    "final_url": "https://freeplast.cl/producto/caja-pollera/",
+    "status": 404,
+    "cache_control": [
+      "no-transform, no-cache, no-store, must-revalidate",
+      "public"
+    ],
+    "age": null,
+    "vary": [
+      "Accept-Encoding,User-Agent"
+    ],
+    "h1": [
+      "Parece que esta página no existe."
+    ],
+    "canonical": [],
+    "cache_comments": [],
+    "sha256": "56b1c2b91e12459ceba69909282821088004bc1c4026b407c3bc9664a193d577"
+  }
+]

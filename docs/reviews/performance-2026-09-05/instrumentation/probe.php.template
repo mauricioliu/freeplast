@@ -1,0 +1,101 @@
+<?php
+/** Temporary, selected-request instrumentation [DEBUG-fp-perf-20260905]. */
+if (!defined('ABSPATH')) { return; }
+// No cookies, request bodies, SQL text, full URLs, IPs or credentials are logged.
+$fp_perf_token = isset($_SERVER['HTTP_X_FP_PERF']) ? $_SERVER['HTTP_X_FP_PERF'] : '';
+if (time() > __EXPIRES__ || !hash_equals('__TOKEN_HASH__', hash('sha256', $fp_perf_token))) { return; }
+unset($fp_perf_token);
+if (isset($_SERVER['HTTP_X_FP_PERF_CLEANUP']) && $_SERVER['HTTP_X_FP_PERF_CLEANUP'] === '1') {
+    @unlink('__LOG_PATH__');
+    @unlink(__FILE__);
+    if (__REMOVE_DIR__) { @rmdir(__DIR__); }
+    return;
+}
+$fp_perf_path = parse_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '', PHP_URL_PATH);
+if ($_SERVER['REQUEST_METHOD'] !== 'GET' || !in_array($fp_perf_path, array('/', '/producto/totem/', '/categoria-producto/agricola/'), true)
+    || !empty($_SERVER['QUERY_STRING']) || !empty($_SERVER['HTTP_COOKIE'])) { return; }
+$fp_perf_id = isset($_SERVER['HTTP_X_FP_PROBE']) ? $_SERVER['HTTP_X_FP_PROBE'] : '';
+if (!preg_match('/^[a-z0-9-]{1,40}$/D', $fp_perf_id)) { return; }
+// SAVEQUERIES keeps query text in request memory only; it is never serialized below.
+if (!defined('SAVEQUERIES')) { define('SAVEQUERIES', true); }
+$GLOBALS['fp_perf_probe'] = array(
+    'tag' => '[DEBUG-fp-perf-20260905]', 'id' => $fp_perf_id, 'path' => $fp_perf_path,
+    'at' => gmdate('c'), 'php' => PHP_VERSION, 'pid' => getmypid(),
+    'start' => isset($_SERVER['REQUEST_TIME_FLOAT']) ? $_SERVER['REQUEST_TIME_FLOAT'] : microtime(true),
+    'marks' => array(), 'http' => array(), 'http_pending' => array(),
+);
+function fp_perf_mark($name) {
+    $s =& $GLOBALS['fp_perf_probe'];
+    $r = function_exists('getrusage') ? getrusage() : array();
+    $cpu = 0;
+    foreach (array('utime', 'stime') as $k) {
+        $cpu += (isset($r['ru_'.$k.'.tv_sec']) ? $r['ru_'.$k.'.tv_sec'] : 0) * 1000;
+        $cpu += (isset($r['ru_'.$k.'.tv_usec']) ? $r['ru_'.$k.'.tv_usec'] : 0) / 1000;
+    }
+    $s['marks'][] = array('name' => $name, 'ms' => round((microtime(true)-$s['start'])*1000, 3), 'process_cpu_ms' => round($cpu, 3), 'queries' => function_exists('get_num_queries') ? get_num_queries() : null);
+}
+function fp_perf_opcache() {
+    if (!function_exists('opcache_get_status')) { return null; }
+    $o = @opcache_get_status(false);
+    if (!is_array($o)) { return null; }
+    return array_intersect_key($o, array_flip(array('opcache_enabled', 'cache_full', 'restart_pending', 'restart_in_progress', 'memory_usage', 'interned_strings_usage', 'opcache_statistics')));
+}
+$GLOBALS['fp_perf_probe']['runtime'] = array('sapi' => PHP_SAPI, 'loaded_ini' => php_ini_loaded_file(), 'scanned_ini' => php_ini_scanned_files(), 'ini' => array(), 'lsapi_env' => array());
+foreach (array('opcache.enable', 'opcache.memory_consumption', 'opcache.interned_strings_buffer', 'opcache.max_accelerated_files', 'opcache.validate_timestamps', 'opcache.revalidate_freq', 'opcache.file_update_protection', 'opcache.file_cache', 'opcache.file_cache_only', 'opcache.validate_permission', 'opcache.validate_root') as $fp_perf_key) {
+    $GLOBALS['fp_perf_probe']['runtime']['ini'][$fp_perf_key] = ini_get($fp_perf_key);
+}
+foreach (array('LSAPI_CHILDREN', 'PHP_LSAPI_CHILDREN', 'LSAPI_AVOID_FORK', 'LSAPI_MAX_REQS', 'PHP_LSAPI_MAX_REQUESTS', 'LSAPI_MAX_IDLE', 'LSAPI_MAX_IDLE_CHILDREN', 'LSAPI_PGRP_MAX_IDLE') as $fp_perf_key) {
+    $value = getenv($fp_perf_key);
+    $GLOBALS['fp_perf_probe']['runtime']['lsapi_env'][$fp_perf_key] = $value === false ? null : $value;
+}
+$GLOBALS['fp_perf_probe']['opcache_begin'] = fp_perf_opcache();
+fp_perf_mark('mu_entry');
+add_action('mu_plugin_loaded', function($file) { fp_perf_mark('mu:' . basename($file)); }, PHP_INT_MAX);
+add_action('plugin_loaded', function($file) {
+    $file = str_replace(WP_PLUGIN_DIR . '/', '', $file);
+    fp_perf_mark('plugin:' . $file);
+}, PHP_INT_MAX);
+foreach (array('muplugins_loaded', 'plugins_loaded', 'setup_theme', 'after_setup_theme', 'init', 'wp_loaded', 'parse_request', 'send_headers', 'wp', 'template_redirect', 'wp_head', 'wp_footer', 'shutdown') as $fp_perf_hook) {
+    add_action($fp_perf_hook, function() use ($fp_perf_hook) { fp_perf_mark($fp_perf_hook . ':begin'); }, -999999);
+    add_action($fp_perf_hook, function() use ($fp_perf_hook) { fp_perf_mark($fp_perf_hook . ':end'); }, 999999);
+}
+add_filter('pre_http_request', function($pre, $args, $url) {
+    $key = hash('sha256', $url);
+    $GLOBALS['fp_perf_probe']['http_pending'][$key][] = microtime(true);
+    return $pre;
+}, -999999, 3);
+add_action('http_api_debug', function($response, $context, $class, $args, $url) {
+    $s =& $GLOBALS['fp_perf_probe'];
+    $key = hash('sha256', $url);
+    $pending = isset($s['http_pending'][$key]) ? array_pop($s['http_pending'][$key]) : null;
+    if (count($s['http']) < 30) {
+        $s['http'][] = array('host' => parse_url($url, PHP_URL_HOST), 'ms' => $pending ? round((microtime(true)-$pending)*1000,3) : null, 'error' => is_wp_error($response), 'code' => is_wp_error($response) ? null : wp_remote_retrieve_response_code($response));
+    }
+}, PHP_INT_MAX, 5);
+add_action('shutdown', function() {
+    global $wpdb;
+    fp_perf_mark('capture');
+    $s = $GLOBALS['fp_perf_probe'];
+    unset($s['http_pending'], $s['start']);
+    $s['peak_bytes'] = memory_get_peak_usage(true);
+    $s['status'] = http_response_code();
+    $s['opcache_end'] = fp_perf_opcache();
+    $s['sql'] = array('count' => 0, 'total_ms' => 0, 'max_ms' => 0, 'by_operation' => array());
+    if (isset($wpdb->queries) && is_array($wpdb->queries)) {
+        foreach ($wpdb->queries as $q) {
+            $ms = $q[1] * 1000;
+            $op = preg_match('/^\s*(SELECT|INSERT|UPDATE|DELETE|SHOW|SET|DESCRIBE)\b/i', $q[0], $m) ? strtoupper($m[1]) : 'OTHER';
+            if (!isset($s['sql']['by_operation'][$op])) { $s['sql']['by_operation'][$op] = array('count' => 0, 'ms' => 0); }
+            $s['sql']['by_operation'][$op]['count']++;
+            $s['sql']['by_operation'][$op]['ms'] += $ms;
+            $s['sql']['count']++;
+            $s['sql']['total_ms'] += $ms;
+            $s['sql']['max_ms'] = max($ms, $s['sql']['max_ms']);
+        }
+    }
+    $file = '__LOG_PATH__';
+    if (!file_exists($file) || filesize($file) < 262144) {
+        $line = json_encode($s, JSON_UNESCAPED_SLASHES) . "\n";
+        if (strlen($line) < 65536) { @file_put_contents($file, $line, FILE_APPEND | LOCK_EX); @chmod($file, 0600); }
+    }
+}, PHP_INT_MAX);

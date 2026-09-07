@@ -56,6 +56,7 @@ if (existsSync(join(BUILD_DIR, '.provisioned.json')) && !process.argv.includes('
   syncContent();
   reactivate();
   pinComingSoonOff();
+  seedVariantProduct();
   console.log('  disposable installation ready (existing build)');
   process.exit(0);
 }
@@ -128,6 +129,7 @@ wp(['theme', 'activate', 'freeplast']);
 wp(['option', 'update', 'blog_public', '0']);
 installWoo();
 wp(['plugin', 'activate', 'freeplast-woo']);  // after Woo: the adapter declares Requires Plugins
+seedVariantProduct();
 
 /* 7. Marker */
 const wpVersion = wp(['core', 'version']);
@@ -204,6 +206,87 @@ function reactivate() {
   if (active.includes('woocommerce') && active.includes('quotes-for-woocommerce')) {
     wp(['plugin', 'activate', 'freeplast-woo']);
   }
+}
+
+/** #35: a VARIABLE synthetic fixture with one variant (Color: Rojo) so the
+ *  native regression's preservation snapshots cover a distinct variant line,
+ *  not only simple products. Price 0 is the documented technical value
+ *  enabling native purchasability; the parent carries the quotes extension's
+ *  per-product flag exactly like the two simple fixtures above (the extension
+ *  maps a variation line to its parent before reading it). Idempotent by
+ *  title and seeded on EVERY bootstrap — fresh installs and wp-content
+ *  re-syncs alike — so an existing disposable build gains it too.
+ *  The variation's attribute KEY is the normalized slug ('color'), and the
+ *  seeded variant is verified through the SAME seam add-to-cart uses —
+ *  WC_Product_Data_Store_CPT::find_matching_product_variation with
+ *  attribute_color=Rojo (pinned Woo 11.1.0): WC_Product_Variation::set_attributes
+ *  strips only the attribute_ prefix and preserves key case, while the matcher
+ *  requires attribute_ + sanitize_title(parent attribute name), so a
+ *  'Color'-keyed variant can never match attribute_color. A wrong or
+ *  unmatchable preexisting fixture is REPAIRED (attribute + variant), never
+ *  silently accepted — and a still-unmatchable fixture fails the bootstrap
+ *  loudly instead of seeding a scenario that cannot run. */
+function seedVariantProduct() {
+  const code = `
+    $found = get_posts( array( 'post_type' => 'product', 'title' => 'Caja Variable Color (prueba)', 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids' ) );
+    $created = 'reused';
+    if ( empty( $found ) ) {
+      $product = new WC_Product_Variable();
+      $product->set_name( 'Caja Variable Color (prueba)' );
+      $created = 'created';
+    } else {
+      // A preexisting fixture of the WRONG type is repaired to variable (the
+      // catalog type term drives wc_get_product/add-to-cart), never accepted.
+      $existing = wc_get_product( $found[0] );
+      if ( ! $existing || 'variable' !== $existing->get_type() ) {
+        wp_set_object_terms( (int) $found[0], 'variable', 'product_type' );
+        $created = 'repaired-type';
+      }
+      $product = new WC_Product_Variable( (int) $found[0] );
+    }
+    $has_color = false;
+    foreach ( $product->get_attributes() as $attribute ) {
+      if ( $attribute->get_variation() && 'color' === sanitize_title( $attribute->get_name() ) ) { $has_color = true; }
+    }
+    if ( ! $has_color ) {
+      $attribute = new WC_Product_Attribute();
+      $attribute->set_id( 0 );
+      $attribute->set_name( 'Color' );
+      $attribute->set_options( array( 'Rojo', 'Azul' ) );
+      $attribute->set_position( 0 );
+      $attribute->set_visible( true );
+      $attribute->set_variation( true );
+      $attributes = $product->get_attributes();
+      $attributes[] = $attribute;
+      $product->set_attributes( $attributes );
+      $created = ( 'created' === $created ) ? $created : 'repaired-attribute';
+    }
+    $product->set_status( 'publish' );
+    $product->save();
+    update_post_meta( $product->get_id(), 'qwc_enable_quotes', 'on' );
+    $store = new WC_Product_Data_Store_CPT();
+    $match = $store->find_matching_product_variation( $product, array( 'attribute_color' => 'Rojo' ) );
+    if ( ! $match ) {
+      $variation = new WC_Product_Variation();
+      $variation->set_parent_id( $product->get_id() );
+      // The key must be the NORMALIZED slug: set_attributes strips only the
+      // attribute_ prefix (case preserved) while find_matching matches
+      // attribute_ . sanitize_title( parent attribute name ) — 'Color' would
+      // persist as attribute_Color and never match attribute_color.
+      $variation->set_attributes( array( 'color' => 'Rojo' ) );
+      $variation->set_status( 'publish' );
+      $variation->set_regular_price( '0' );
+      $variation->save();
+      $match = $store->find_matching_product_variation( $product, array( 'attribute_color' => 'Rojo' ) );
+      $created = ( 'created' === $created ) ? $created : 'repaired-variation';
+    }
+    if ( ! $match ) {
+      fwrite( STDERR, 'seedVariantProduct: fixture unmatchable through the pinned variation matcher — aborting loudly' );
+      exit( 1 );
+    }
+    echo $created . ':' . $product->get_id() . ':variation-' . $match;
+  `;
+  wp(['eval', code, '--user=1']);
 }
 
 /** Woo 11.x "coming soon" mode replaces store-page content for logged-out visitors

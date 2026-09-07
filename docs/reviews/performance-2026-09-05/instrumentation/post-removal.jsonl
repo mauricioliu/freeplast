@@ -1,0 +1,4 @@
+{"at": "2026-09-05T17:56:50.426251+00:00", "run": 1, "path": "/", "exit": 0, "http_code": 200, "time_namelookup": 0.017251, "time_connect": 0.025256, "time_appconnect": 0.038484, "time_starttransfer": 7.990011, "time_total": 7.990871, "size_download": 21311, "remote_ip": "186.64.116.115"}
+{"at": "2026-09-05T17:56:53.192024+00:00", "run": 2, "path": "/", "exit": 0, "http_code": 200, "time_namelookup": 0.024637, "time_connect": 0.032344, "time_appconnect": 0.047106, "time_starttransfer": 1.755708, "time_total": 1.758566, "size_download": 21312, "remote_ip": "186.64.116.115"}
+{"at": "2026-09-05T17:56:55.700103+00:00", "run": 3, "path": "/", "exit": 0, "http_code": 200, "time_namelookup": 0.018458, "time_connect": 0.026293, "time_appconnect": 0.038834, "time_starttransfer": 1.500815, "time_total": 1.501105, "size_download": 21311, "remote_ip": "186.64.116.115"}
+{"path": "/", "median_ttfb_s": 1.755708, "max_ttfb_s": 7.990011, "verdict": "FAIL"}

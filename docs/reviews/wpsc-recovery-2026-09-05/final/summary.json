@@ -1,0 +1,7 @@
+{
+  "requests": 47,
+  "checks": 44,
+  "passed": 44,
+  "failed": 0,
+  "multiple_cache_control": 47
+}

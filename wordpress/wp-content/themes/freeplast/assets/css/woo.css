@@ -58,3 +58,14 @@
 }
 @media (min-width: 600px) { .fp-woo-selection { font-size: 14px; max-width: 170px; } }
 @media (prefers-reduced-motion: reduce) { .fp-sheet { transition: none; } }
+/* Product-card quantity selector (freeplast-woo loop filter): Woo's own qty
+   input beside the native anchor, one row on every viewport — the card is the
+   narrowest container (four columns share 1152px), so the input keeps a fixed
+   compact width and the button absorbs the rest, wrapping its own label rather
+   than growing the row. The native «Ver Productos a Cotizar» link Woo inserts
+   after an add lands below, full width. */
+.fpw-loop-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-top: 12px; }
+.fpw-loop-add .quantity { flex: 0 0 auto; margin: 0; }
+.fpw-loop-add .quantity input.qty { width: 4.25rem; min-height: 44px; padding: 8px; margin: 0; }
+.fpw-loop-add .add_to_cart_button { flex: 1 1 auto; margin-top: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
+.fpw-loop-add .added_to_cart { flex-basis: 100%; margin-top: 8px; }

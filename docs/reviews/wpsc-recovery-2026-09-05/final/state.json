@@ -1,0 +1,52 @@
+{
+  "settings": {
+    "cache_enabled": [
+      "true"
+    ],
+    "super_cache_enabled": [
+      "true"
+    ],
+    "cache_path": [
+      "'/home/freeplast/wpsc-cache/'"
+    ],
+    "cache_max_time": [
+      "1800"
+    ],
+    "cache_time_interval": [
+      "600"
+    ],
+    "cache_rebuild_files": [
+      "0"
+    ],
+    "wp_cache_preload_on": [
+      "0"
+    ],
+    "wp_cache_preload_taxonomies": [
+      "0"
+    ],
+    "wp_cache_clear_on_post_edit": [
+      "1"
+    ],
+    "wp_cache_mod_rewrite": [
+      "0"
+    ],
+    "wp_cache_no_cache_for_get": [
+      "1"
+    ],
+    "wp_cache_not_logged_in": [
+      "2"
+    ],
+    "wpsc_rejected_cookies": [
+      "array('.')"
+    ]
+  },
+  "guard_exact": true,
+  "stock_dropin": true,
+  "canary_dirs_left": [],
+  "synthetic_dirs_left": [],
+  "stage_files_left": [],
+  "mu_plugins_exists": false,
+  "backup_exists": true,
+  "cache_config_sha256": "5861a77efb4a43dd94d074692f81abfd71b1fb7d8435d1865742a1affd708473",
+  "wpcachehome_declared": true
+}

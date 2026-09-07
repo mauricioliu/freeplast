@@ -1,0 +1,27 @@
+{"snapshot-keys": {"timestamp": 1788625163, "keys": ["dump_time", "incident_start_time", "server_id", "snap_faults", "snap_http", "snap_proc", "snap_sql", "uid"]}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "dump_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "incident_start_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "server_id", "type": "str", "count": 10}}
+{"snapshot-faults": {"timestamp": 1788625163, "faults": {"cpu_fault": 1}}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "snap_http", "type": "list", "count": 0}}
+{"processes": {"timestamp": 1788625163, "rows": [{"CPU": "0%", "MEM": "9", "PID": null, "script": ["lsphp"]}]}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "snap_sql", "type": "list", "count": 0}}
+{"snapshot-section": {"timestamp": 1788625163, "key": "uid", "type": "int", "count": null}}
+{"snapshot-keys": {"timestamp": 1788621905, "keys": ["dump_time", "incident_start_time", "server_id", "snap_faults", "snap_http", "snap_proc", "snap_sql", "uid"]}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "dump_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "incident_start_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "server_id", "type": "str", "count": 10}}
+{"snapshot-faults": {"timestamp": 1788621905, "faults": {"cpu_fault": 1}}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "snap_http", "type": "list", "count": 0}}
+{"processes": {"timestamp": 1788621905, "rows": [{"CPU": "0%", "MEM": "9", "PID": null, "script": ["lsphp"]}, {"CPU": "50%", "MEM": "43", "PID": null, "script": ["lsphp"]}]}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "snap_sql", "type": "list", "count": 0}}
+{"snapshot-section": {"timestamp": 1788621905, "key": "uid", "type": "int", "count": null}}
+{"snapshot-keys": {"timestamp": 1788621615, "keys": ["dump_time", "incident_start_time", "server_id", "snap_faults", "snap_http", "snap_proc", "snap_sql", "uid"]}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "dump_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "incident_start_time", "type": "int", "count": null}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "server_id", "type": "str", "count": 10}}
+{"snapshot-faults": {"timestamp": 1788621615, "faults": {"cpu_fault": 1}}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "snap_http", "type": "list", "count": 0}}
+{"processes": {"timestamp": 1788621615, "rows": [{"CPU": "0%", "MEM": "9", "PID": null, "script": ["lsphp"]}, {"CPU": "N/A", "MEM": "75", "PID": null, "script": ["lsphp"]}, {"CPU": "N/A", "MEM": "29", "PID": null, "script": ["lsphp"]}]}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "snap_sql", "type": "list", "count": 0}}
+{"snapshot-section": {"timestamp": 1788621615, "key": "uid", "type": "int", "count": null}}

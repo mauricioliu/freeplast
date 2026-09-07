@@ -1,0 +1,24 @@
+{
+  "source": "chrome-devtools-axi perf-stop summary and PerformanceNavigationTiming reads",
+  "url": "https://freeplast.cl/",
+  "insight_set": "NAVIGATION_1",
+  "network_throttling": "none",
+  "cpu_throttling": 1,
+  "resource_cache": "mostly warm browser cache",
+  "lcp_ms": 7082,
+  "lcp_breakdown": {
+    "ttfb_ms": 6962,
+    "load_delay_ms": 48,
+    "load_duration_ms": 0.071,
+    "render_delay_ms": 73
+  },
+  "cls": 0,
+  "earlier_navigation": {
+    "response_start_ms": 11254.4,
+    "fcp_ms": 11384,
+    "load_event_end_ms": 11451.4
+  },
+  "unmeasured": ["INP", "TBT", "Speed Index", "real-user field metrics", "mobile hardware"],
+  "raw_trace_temporary_path": "/tmp/freeplast-perf-20260905.json.gz",
+  "note": "CLI insight text exports are truncated by the CLI. Numbers here are transcribed from the returned trace summary/DOM timing output, not calculated from truncated insight files. Not a cold-mobile benchmark."
+}

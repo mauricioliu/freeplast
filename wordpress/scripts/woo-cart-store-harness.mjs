@@ -147,7 +147,10 @@ function makeFakeWindow(bundleSource) {
   // stand-in keeps that surface too.
   windowObj.wp.apiFetch = (options) => {
     const url = new URL(options.path, 'https://freeplast.mliu.site/wp-json').href;
-    return windowObj.fetch({...options, url});
+    return windowObj.fetch({...options, url}).then((response) => {
+      if (!response.ok) { throw response; } // api-fetch rejects HTTP errors, fetch itself does not
+      return response;
+    });
   };
   windowObj.wp.apiFetch.setNonce = () => {};
   windowObj.wp.apiFetch.setCartHash = () => {};
@@ -235,7 +238,7 @@ function makeTransport() {
     if (job.kind === 'deferred') { return job.promise; }
     if (job.kind === 'offline') { return Promise.reject({...NETWORK_ERROR}); }
     if (job.kind === 'abort') { return Promise.reject(Object.assign(new Error('The user aborted a request.'), {name: 'AbortError'})); }
-    if (job.kind === 'server-error') { return Promise.reject(new Response(JSON.stringify(job.payload), {status: 400, statusText: 'Bad Request'})); }
+    if (job.kind === 'server-error') { return Promise.resolve(new Response(JSON.stringify(job.payload), {status: 400, statusText: 'Bad Request'})); }
     return Promise.resolve(new Response(JSON.stringify(job.payload), {status: 200, statusText: 'OK'}));
   };
   return transport;
@@ -544,5 +547,62 @@ export async function runCartStoreScenarios(bundlePath, scriptPath) {
     assert(quiet(win), 'transport is quiet after recovery');
   }
 
+  // #39: real Response / real streamed body, controlled separately from headers.
+  // Native store applies the response in promise continuations after json().
+  for (const outcome of ['saved', 'http-error', 'body-error', 'invalid-json']) {
+    const win = makeFakeWindow(bundleSource);
+    win.transport.push('abort'); win.transport.pushDeferred();
+    win.watcher = attachScript(win, scriptSource).watcher;
+    receiveCartOf(win, storeCart(140, 5));
+    userChangesQuantity(win, 'variant-line', 6);
+    const replacement = userChangesQuantity(win, 'variant-line', 7);
+    let body;
+    const response = new Response(new ReadableStream({start(controller) { body = controller; }}),
+      {status: outcome === 'http-error' ? 400 : 200});
+    win.transport.deferred.resolve(response); // headers now; no body bytes yet
+    await settled(() => response.bodyUsed && pendingOf(win).length === 0, 'headers consumed and abort cleared Woo pending');
+    const submit = submitOf(win);
+    assert(win.watcher.inflight() === 1, `${outcome}: headers alone never settle the replacement`);
+    assert(submit.getAttribute('aria-disabled') === 'true', `${outcome}: CTA remains disabled during body read`);
+    for (const detail of [0, 1]) {
+      const click = {type:'click', detail, preventDefault() { this.defaultPrevented = true; }};
+      submit.dispatch(click);
+      assert(click.defaultPrevented, `${outcome}: keyboard/pointer cannot advance before complete response`);
+    }
+    assert(!failureVisible(win) && !savedVisible(win) && win.watcher.intents['variant-line'].quantity === 7,
+      `${outcome}: body pending does not discard intent or announce a verdict`);
+    let lockedAtApplication = false;
+    win.wp.data.subscribe(() => {
+      if (quantity(win, 'variant-line') === 7) { lockedAtApplication ||= submit.getAttribute('aria-disabled') === 'true'; }
+    }, CART_STORE);
+    if (outcome === 'body-error') { body.error(new Error('stream interrupted')); }
+    else {
+      const payload = outcome === 'http-error'
+        ? {code:'invalid_quantity', message:'Cantidad no válida.', data:{status:400,cart:storeCart(140,5)}}
+        : storeCart(140,7);
+      body.enqueue(new TextEncoder().encode(outcome === 'invalid-json' ? '{broken' : JSON.stringify(payload)));
+      body.close();
+    }
+    await replacement; // native response processing / store action completed
+    await settled(() => outcome === 'saved' ? savedVisible(win) : failureVisible(win), `${outcome}: full body settlement`);
+    assert(quiet(win) && submit.getAttribute('aria-disabled') === 'false', `${outcome}: completed failure/success unlocks`);
+    assert(quantity(win, 'simple-line') === 140, `${outcome}: unrelated line preserved`);
+    assert(win.wp.data.select(CART_STORE).getCartItem('variant-line').variation[0].value === 'Rojo', `${outcome}: variant preserved`);
+    if (outcome === 'saved') {
+      assert(lockedAtApplication, 'CTA is locked through native store application, not just body read');
+      assert(!failureVisible(win) && slotsOf(win).status.textContent.includes('Cantidad guardada: 7 unidades'), 'complete success has no stale false error');
+    } else {
+      assert(quantity(win,'variant-line') === 5 && slotsOf(win).error.textContent.includes('sigue con 5 unidades'), `${outcome}: failure states actual saved quantity`);
+      win.transport.push('ok',storeCart(140,7));
+      await userChangesQuantity(win,'variant-line',7);
+      await settled(() => savedVisible(win), `${outcome}: retry succeeds`);
+      assert(!failureVisible(win) && quantity(win,'variant-line') === 7, `${outcome}: successful retry replaces error`);
+      assert(win.transport.calls.map(call => call.data.quantity).join(',') === '6,7,7', `${outcome}: no duplicate increments`);
+    }
+    // A new page consumes the server fixture as Woo would on reload; no watcher-owned writes.
+    const reload = makeFakeWindow(bundleSource);
+    receiveCartOf(reload,storeCart(140,7));
+    assert(quantity(reload,'variant-line') === 7, `${outcome}: reload fixture matches applied state (not HTTP evidence)`);
+  }
   return checks;
 }

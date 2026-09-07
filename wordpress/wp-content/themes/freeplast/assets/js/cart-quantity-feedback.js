@@ -147,16 +147,13 @@
       try { lastFocus.focus({ preventScroll: true }); } catch (err) { try { lastFocus.focus(); } catch (inner) { /* unavailable: stay quiet */ } }
     }
 
-    /* One coherent definition of an unconfirmed quantity operation, shared by
-       the two decisions that must wait for it: the store's own pending flags
-       AND the read-only transport count. The store flag alone clears early —
-       Woo's abort of a replaced request runs its cleanup while the replacement
-       is still in flight — so an in-flight update-item request always counts
-       as pending too. The CTA gates on any pending operation; a verdict
-       additionally waits on its own item's flag (verdictWaiting). */
+    /* CTA and feedback share this conservative, cart-wide predicate. A notice
+       for one item also waits for other native pending item operations: no
+       verdict is taken against an intermediate cart. Transport includes the
+       body reader and Woo's ensuing promise continuations, not only headers. */
     function operationsPending() {
       var storeBusy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
-      return storeBusy || inflight > 0;
+      return storeBusy || store.getItemsPendingQuantityUpdate().length > 0 || inflight > 0;
     }
 
     /* aria state of the «Datos y envío» CTA follows pending quantity
@@ -200,19 +197,15 @@
       }
     }
 
-    /* A verdict must wait while the store still flags the item as pending or
-       an update-item request is still in flight — an aborted request whose
-       replacement is still running counts as active. */
-    function verdictWaiting(key, pending) {
-      return pending.indexOf(key) !== -1 || inflight > 0;
+    function verdictWaiting() {
+      return operationsPending();
     }
 
     function evaluateIntents() {
       cancelVerdict();
-      var pending = store.getItemsPendingQuantityUpdate();
       var remaining = false;
       for (var key in intents) {
-        if (verdictWaiting(key, pending)) { remaining = true; continue; }
+        if (verdictWaiting()) { syncSubmit(); return; }
         if (!store.getCartItem(key)) { delete intents[key]; continue; }
         remaining = true; // settleable — but only once every chain has drained
       }
@@ -222,9 +215,8 @@
 
     function fireVerdict() {
       verdictTimer = null;
-      var pending = store.getItemsPendingQuantityUpdate();
       for (var key in intents) {
-        if (verdictWaiting(key, pending)) { scheduleVerdict(); return; }
+        if (verdictWaiting()) { return; }
         var item = store.getCartItem(key);
         if (!item) { delete intents[key]; continue; }
         settle(key, item);
@@ -245,10 +237,41 @@
         if (url.indexOf(UPDATE_ITEM_URL) === -1) { return original.apply(this, arguments); }
         inflight++;
         syncSubmit(); // the transport observation itself locks the CTA at request start
-        var done = function () { inflight = Math.max(0, inflight - 1); evaluateIntents(); };
-        var request = original.apply(this, arguments);
-        request.then(done, done);
-        return request;
+        var finishing = false;
+        var done = function () {
+          if (finishing) { return; }
+          finishing = true;
+          // Pinned Woo 11.1.0 Et() awaits response.json(), then its quantity
+          // action applies receiveCart and clears pending in promise jobs.
+          // Release in the NEXT TASK, after that microtask queue has drained.
+          // The 50ms verdict debounce is not evidence of response completion.
+          setTimeout(function () {
+            inflight = Math.max(0, inflight - 1);
+            evaluateIntents();
+          }, 0);
+        };
+        var observe = function (response) {
+          if (!response || typeof response.json !== 'function') { done(); return response; }
+          var read = response.json;
+          // Preserve the actual Response object / instanceof / headers and its
+          // single-use body. No clone, extra read, fetch or quantity write.
+          response.json = function () {
+            var body;
+            try { body = read.apply(this, arguments); }
+            catch (err) { done(); throw err; }
+            Promise.resolve(body).then(done, done);
+            return body;
+          };
+          return response;
+        };
+        var request;
+        try { request = original.apply(this, arguments); }
+        catch (err) { done(); throw err; }
+        return request.then(observe, function (err) {
+          // api-fetch's error Response also has a body; network/abort errors do not.
+          observe(err);
+          throw err;
+        });
       };
       try {
         windowObj.fetch = wrapped;

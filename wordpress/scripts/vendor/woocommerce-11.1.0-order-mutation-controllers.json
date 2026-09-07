@@ -1,0 +1,20 @@
+{
+  "version": "11.1.0",
+  "license": "GPL-2.0-or-later",
+  "source": "https://downloads.wordpress.org/plugin/woocommerce.11.1.0.zip",
+  "zip_sha256": "6bae9bf74d722b6deb15f049687c311cfafc26e3a5d8fa55ac6ea4b9a3a8df19",
+  "reason": "Offline regression for issue #37 dispatches the REAL pinned order-mutation controllers that gate on edit_shop_orders only — TaxesController::calc_line_taxes_via_ajax (saves the submitted items before recalculating taxes) and CouponsController::add_coupon_discount_via_ajax — with stubbed WordPress primitives and persistence tripwires, proving the adapter guard is the only boundary between the restricted actor and the write. Not loaded by any site surface.",
+  "verify": "unzip the pinned woocommerce zip and compare each file_sha256",
+  "files": [
+    {
+      "file": "woocommerce-11.1.0-taxes-controller.php",
+      "path_inside_zip": "woocommerce/src/Internal/Orders/TaxesController.php",
+      "file_sha256": "2f24b1c94b296a7638f74146830c159406a6ce9aa21f6d2a38248aa6dc0fde5a"
+    },
+    {
+      "file": "woocommerce-11.1.0-coupons-controller.php",
+      "path_inside_zip": "woocommerce/src/Internal/Orders/CouponsController.php",
+      "file_sha256": "7e54665d388be81d9cfbd51ecde5b5a421819c6a65027afb67f6c259df167469"
+    }
+  ]
+}

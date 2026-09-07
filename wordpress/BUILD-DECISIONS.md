@@ -8,6 +8,56 @@ standalone block theme (`freeplast`) + one private plugin
 
 This file records the decisions taken per slice. Newest first.
 
+## 2026-09-07 — Subsequent owner-authorized staging deployment
+
+Published adapter1.6.3/theme1.0.7 to `freeplast.mliu.site` only after a fresh
+paired backup and isolated restore rehearsal. No migration or new test records.
+29 installed-file hashes and 100 native state checks passed; records preserved,
+mail containment unchanged, public read-only routes/assets checked. Still
+uncommitted; no visual/hardware or native mutation-regression approval. Detailed
+release/backup/evidence: [WOO-MIGRATION.md](WOO-MIGRATION.md).
+
+## 2026-09-07 — Direct closeout of #37–#39 (implementation phase, before deployment)
+
+Current evidence and operator instructions: [verification-safety.md](verification-safety.md).
+Rejected #37 worker verification code was replaced: compare complete native
+order/item/meta/note digests via disposable-only read-only WP-CLI, execute mocked
+operator control flow, and never erase accumulated test failures. The existing
+scoped tax/coupon/core note/meta permission guards remain.
+
+#38 now accepts only a recent newly provisioned operator fixture receipt. Native
+stored run provenance and creation time must match before any dependent write;
+temporary accounts are cleaned up on rejection and later failure. Arbitrary
+`--order-id`/historical search fallbacks and nonce-less trash evidence are removed.
+Independent mail containment and separate staging authorization remain mandatory.
+
+#39 (theme 1.0.7) waits for real response-body consumption and Woo's promise-based
+state application, not fetch headers. Notices and CTA use the same pending
+predicate; stream errors settle without permanent lock. No new transport or cart
+writes. Offline gate: 434 PHP assertions +163 checks. Native HTTP and visual/
+hardware review were not executed. Earlier #37 worker evidence below is
+superseded by this closeout; historical release notes do not authorize execution.
+
+## 2026-09-07 — Issue #37 (SP-01/ST-03): Ventas mutation routes closed as a family
+
+The denylist missed native tax recalculation (a single-cap gate that SAVES the submitted items before recalculating), the coupon-discount route, and WP-core comment/meta routes that map onto the order edit caps the role carries (`capabilities.php` edit_comment → edit_post). Decision (working tree, adapter **1.6.3**, pending review/merge/deploy): close the FAMILY — denylist every order-record-mutating `wp_ajax_woocommerce_*` member (audited against the pinned registration; matrix with sources in report-37), and add a scoped admin_init guard for core `edit-comment`/`delete-comment`/`replyto-comment`, `comment.php`, `edit-comments.php` bulk, and `add-meta`/`delete-meta` — denied only when the target is a shop_order or its note, and only for order-limited staff. Sales Notes stay append-only (creation keeps Woo's private note flow; historical edit/delete refused before any write); managers/admins and non-order targets untouched. Staging deletion probe repaired to use the actor's own valid trash nonce scraped from the native list (UNAVAILABLE recorded honestly if the role is not offered the link); not executed — #38 owns the staging verifier's fail-closed repair.
+
+## 2026-09-07 — Issue #36 (SP-03): independent per-attempt recovery lifetime
+
+Follow-up of #32 on #31's lifecycle and #35's submitted identity (both untouched). Defect: only the latest landing binding survived in the session, so after B completed, A was refused recovery inside its own declared lifetime. Decision (working tree, adapter **1.6.2**, pending review/merge/deploy):
+
+- **Durable per-attempt rows, immutable times, no eviction:** every completed attempt keeps its own `fpw_recovery_<hash>` row (INSERT-only: session + order + landing time); the vigencia is measured per attempt from an immutable timestamp that no fold, replay or re-landing extends. The session keeps only the latest record (rotation); no LRU/cap can evict an eligible attempt. Sweep only past vigencia + 1 h; a swept attempt cannot be reborn (insert refused once the durable binding exists; landing recorded before finalization; the session record sources its time from the row or becomes a rotation-only, non-authorizing record) — the legacy pre-#36 session fallback never reauthorizes a post-#36 attempt after expiry/sweep.
+- **Recovery per attempt, read-only:** `fpw_recover_landed_attempt` authorizes per attempt (lookup row + own recovery row/legacy record + same order + same session + own lifetime, behind Woo's nonce): A recovers after B, empty or full basket, repeatedly, creating nothing; expiry is per attempt and never extended by another attempt's activity.
+- **No destructive fallback (fresh or expired; evidence, not clocks):** any COMPLETED attempt reached by a route the read-only recovery did not serve — including the no-JS plain form POST and a fresh completed token still equal to the open one — gets ONE cart-preserving recoverable rejection at the identity gate. A fold is authorized only by REQUEST-OBSERVED, HASH-SCOPED in-flight evidence: the request's own validation ran before the attempt's completion existed (durable lookup OR finalized claim row — an absent lookup alone proves nothing), or its claim wait saw the unfinalized claim row. Wall-clock ages (`landed_at`, vigencia, the WordPress nonce window) are never concurrency evidence; the claim seam enforces the same rule at every recovery source, in-flight retries keep the documented wait/fold, and the takeover branch keeps crash-window recovery for requests that observed the unfinalized row. Full no-JS read-only recovery stays optional and explicitly uncovered — the cart-preserving rejection is the mandatory boundary.
+
+## 2026-09-07 — Issue #35 (ST-01/SP-02): preserving the submitted attempt identity
+
+Follow-up of #31/#32 (untouched). Defect: the hidden `fpw_attempt` field was not registered in Woo's checkout-field normalization, so `WC_Checkout::get_posted_data()` (pinned 11.1.0) dropped it and the claim substituted the session's CURRENT open token — after completing attempt A and building a new selection, submitting any form with an unknown token folded into A and emptied the new selection through Woo's cart-emptying fold path. Implemented in the working tree, uncommitted (adapter **1.6.1**, pending review/merge/deploy):
+
+- **Register the field, keep the seam:** `fpw_attempt` is registered in its own non-rendered `fpw` fieldset so the SUBMITTED token survives Woo's own normalization; the adapter still emits the hidden input itself. The claim, the durable binding and the order meta all use the submitted identifier — verified offline against the REAL vendored pinned `get_posted_data()`, never a stubbed posted-data array. The native variant fixture applies the same discipline: the variation's attribute key is the NORMALIZED slug (`color`) and the seed verifies itself through the pinned `find_matching_product_variation` seam (`attribute_color`), repairing or loudly aborting on a wrong preexisting fixture — `WC_Product_Variation::set_attributes` preserves key case while the matcher requires `attribute_` + `sanitize_title(parent name)`, so a `Color`-keyed variant is unmatchable by design.
+- **Remove the substitution fallback:** identity is the well-formed posted token and nothing else; missing/malformed claim no identity, unknown tokens are their own key. No posted identifier can alias another attempt.
+- **One deliberate gate, not silent compatibility:** `fpw_validate_attempt_identity` on Woo's own `woocommerce_after_checkout_validation` rejects missing/malformed/unknown/older-than-open tokens recoverably (no order, no confirmation, cart untouched; the customer reopens the form and retries — pre-save retries of the same form keep working). Authorized landed-attempt replays keep answering earlier through the #32 recovery, read-only; Woo's own nonce and session authorization are untouched. This replaces the old documented compatibility fallback (open-token substitution) — it is the documented compatibility handling now, and it cannot alias a different attempt. The pre-existing no-JS-resubmission and expired-vigencia gaps are explicitly deferred to #36, not proven fixed here.
+
 ## 2026-09-06 — Issue #32 (SP-02): recovering the confirmation when the response is lost
 
 Follow-up of #24 and its Woo port in #1, built on #31's attempt identity. Defect: the reviewed implementation recovered the landed attempt's confirmation too late — Woo rejects the emptied basket inside `WC_Checkout::process_checkout()` (the pinned 11.1.0 empty-cart throw) before the recovery integration runs, so a customer whose saved request's response was lost could only accept «sesión caducada», and the round's regression still demanded the replay to fail. Decision (adapter **1.6.0**, pending deploy):

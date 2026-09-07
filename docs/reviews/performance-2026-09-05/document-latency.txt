@@ -1,0 +1,47 @@
+insight:
+## Insight Title: Document request latency
+
+## Insight Summary:
+This insight checks that the first request is responded to promptly. We use the following criteria to check this:
+1. Was the initial request redirected?
+2. Did the server respond in 600ms or less? We want developers to aim for as close to 100ms as possible, but our threshold for this insight is 600ms.
+3. Was there compression applied to the response to minimize the transfer size?
+
+## Detailed analysis:
+The Largest Contentful Paint (LCP) time for this navigation was 7,082 ms.
+The LCP element (DIV class='swiper-slide-bg elementor-ken-burns elementor-ken-burns--in', nodeId: 186) is an image fetched from https://freeplast.cl/wp-content/uploads/2020/07/32046f_5442a2e137084f60934d33fd3b085aef_mv2-1-scaled.jpg (eventKey: s-739654, ts: 830860833056).
+## LCP resource network request: https://freeplast.cl/wp-content/uploads/2020/07/32046f_5442a2e137084f60934d33fd3b085aef_mv2-1-scaled.jpg
+eventKey: s-739654
+Timings:
+- Queued at: 7,009 ms
+- Request sent at: 7,009 ms
+- Download complete at: 7,009 ms
+- Main thread processing completed at: 7,009 ms
+Durations:
+- Download time: 71 μs
+- Main thread processing time: 0 μs
+- Total duration: 71 μs
+Initiator: https://freeplast.cl/wp-content/uploads/elementor/css/post-31.css?ver=1788280324
+Redirects: no redirects
+Status code: 200
+MIME Type: image/jpeg
+Protocol: h2
+Priority: Low
+Render-blocking: No
+From a service worker: No
+Initiators (root request to the request that directly loaded this one): https://freeplast.cl/, https://freeplast.cl/wp-content/uploads/elementor/css/post-31.css?ver=1788280324
+Response headers
+- cache-control: max-age=604800, public
+- etag: <redacted>
+- age: 58930
+- expires: Mon, 05 Oct 2026 00:49:57 GMT
+- accept-ranges: bytes
+- content-length: <redacted>
+- date: Sat, 05 Sep 2026 17:12:07 GMT
+- last-modified: Fri, 13 Sep 2024 14:35:14 GMT
+- content-type: image/jpeg
+- server: Apache
+
+## Document network request: https://freeplast.cl/
+eventKey: s-735727
+    ... (truncated, 3311 chars total)

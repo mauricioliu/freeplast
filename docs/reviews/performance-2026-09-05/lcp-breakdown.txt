@@ -1,0 +1,46 @@
+insight:
+## Insight Title: LCP breakdown
+
+## Insight Summary:
+This insight is used to analyze the time spent that contributed to the final LCP time and identify which of the 4 subparts (or 2 if there was no LCP resource) are contributing most to the delay in rendering the LCP element.
+
+## Detailed analysis:
+The Largest Contentful Paint (LCP) time for this navigation was 7,082 ms.
+The LCP element (DIV class='swiper-slide-bg elementor-ken-burns elementor-ken-burns--in', nodeId: 186) is an image fetched from https://freeplast.cl/wp-content/uploads/2020/07/32046f_5442a2e137084f60934d33fd3b085aef_mv2-1-scaled.jpg (eventKey: s-739654, ts: 830860833056).
+## LCP resource network request: https://freeplast.cl/wp-content/uploads/2020/07/32046f_5442a2e137084f60934d33fd3b085aef_mv2-1-scaled.jpg
+eventKey: s-739654
+Timings:
+- Queued at: 7,009 ms
+- Request sent at: 7,009 ms
+- Download complete at: 7,009 ms
+- Main thread processing completed at: 7,009 ms
+Durations:
+- Download time: 71 μs
+- Main thread processing time: 0 μs
+- Total duration: 71 μs
+Initiator: https://freeplast.cl/wp-content/uploads/elementor/css/post-31.css?ver=1788280324
+Redirects: no redirects
+Status code: 200
+MIME Type: image/jpeg
+Protocol: h2
+Priority: Low
+Render-blocking: No
+From a service worker: No
+Initiators (root request to the request that directly loaded this one): https://freeplast.cl/, https://freeplast.cl/wp-content/uploads/elementor/css/post-31.css?ver=1788280324
+Response headers
+- cache-control: max-age=604800, public
+- etag: <redacted>
+- age: 58930
+- expires: Mon, 05 Oct 2026 00:49:57 GMT
+- accept-ranges: bytes
+- content-length: <redacted>
+- date: Sat, 05 Sep 2026 17:12:07 GMT
+- last-modified: Fri, 13 Sep 2024 14:35:14 GMT
+- content-type: image/jpeg
+- server: Apache
+
+We can break this time down into the 4 subparts that combine to make the LCP time:
+
+- Time to first byte: 6,962 ms (98.3% of total LCP time)
+- Resource load delay: 48 ms (0.7% of total LCP time)
+    ... (truncated, 2255 chars total)
