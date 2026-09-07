@@ -842,10 +842,10 @@ add_action( 'woocommerce_checkout_order_exception', static function ( $order ) {
 } );
 
 /**
- * Confirmation recovery for the SAME attempt (issues #31/#32): a checkout
- * submission whose cart Woo already emptied — the request landed but the
- * response never arrived —, or whose form is resubmitted later, must return
- * the landed attempt's own confirmation instead of «sesión caducada». It fires
+ * Confirmation recovery for the SAME attempt (issues #31/#32): when a
+ * checkout submission's request already landed — the response never arrived,
+ * or the same form is resubmitted later — the retry must return the landed
+ * attempt's own confirmation instead of «sesión caducada». It fires
  * only when every authorization agrees: Woo's own process-checkout nonce
  * verifies (never bypassed), the posted attempt token is well-formed, and
  * BOTH bindings — the durable lookup row and the session's landing record —

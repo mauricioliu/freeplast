@@ -173,6 +173,23 @@ def post_checkout(session, values):
     except (TypeError, ValueError):
         return {'result': 'error', 'message': str(body)[:160]}
 
+def post_checkout_in_background(session, values, timeout):
+    """POST the native checkout endpoint in a background thread on an
+    independent connection (cookies cloned): the answer lands in
+    result['body'] when read, in result['error'] when lost or failed."""
+    result = {}
+    def run():
+        opener = session.clone_client()
+        req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(values).encode())
+        try:
+            with opener.open(req, timeout=timeout) as response:
+                result['body'] = json.loads(response.read())
+        except Exception as error:
+            result['error'] = error
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread, result
+
 def add_to_cart(session, name, quantity):
     """Add the featured product to a session's cart; every scenario starts here."""
     code, _ = session.request('/wp-json/wc/store/v1/cart/add-item', {'id': pid, 'quantity': quantity}, api=True)
@@ -298,16 +315,7 @@ add_to_cart(session, 'cart_add_lost', 70)
 lost_values = checkout_form(session)
 ok('lost_form_present', 'woocommerce-process-checkout-nonce' in lost_values and bool(lost_values.get('fpw_attempt')))
 lost_values.update(RACE_FIELDS)
-lost_result = {}
-def fire_and_lose():
-    opener = session.clone_client()
-    req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(lost_values).encode())
-    try:
-        opener.open(req, timeout=0.05)
-        lost_result['abandoned'] = False   # the answer arrived: the loss was not simulated
-    except Exception:
-        lost_result['abandoned'] = True    # the response never reached the client
-threading.Thread(target=fire_and_lose).start()
+lost_thread, lost_result = post_checkout_in_background(session, lost_values, timeout=0.05)
 # Persistence proof that never reads the lost response: Woo empties the basket
 # on persisted success — poll until the basket is empty (bounded).
 cart_empty = False
@@ -317,8 +325,9 @@ for _ in range(150):
         cart_empty = True
         break
     time.sleep(0.2)
-ok('lost_persisted_without_response', cart_empty and lost_result.get('abandoned') is True,
-   f"cart_empty={cart_empty} abandoned={lost_result.get('abandoned')}")
+lost_thread.join()   # the abandoned client has certainly given up by now
+ok('lost_persisted_without_response', cart_empty and 'error' in lost_result,
+   f"cart_empty={cart_empty} answer_read={'body' in lost_result}")
 retried = post_checkout(session, lost_values)
 ok('lost_retry_recovers_confirmation', retried.get('result') == 'success', str(retried)[:160])
 lost_order = order_of(retried) if retried.get('result') == 'success' else None
@@ -333,14 +342,7 @@ ok('lost_retry_original_reference', lost_order is not None and lost_order not in
 add_to_cart(session, 'cart_add_inflight', 70)
 inflight_values = checkout_form(session)
 inflight_values.update(RACE_FIELDS)
-original_answer = {}
-def submit_original():
-    opener = session.clone_client()
-    req = urllib.request.Request(BASE + '/?wc-ajax=checkout', data=urllib.parse.urlencode(inflight_values).encode())
-    with opener.open(req, timeout=180) as response:
-        original_answer['body'] = json.loads(response.read())
-orig_thread = threading.Thread(target=submit_original)
-orig_thread.start()
+orig_thread, original_answer = post_checkout_in_background(session, inflight_values, timeout=180)
 time.sleep(0.2)   # the original is now in flight
 inflight_retry = post_checkout(session, inflight_values)
 orig_thread.join(timeout=180)

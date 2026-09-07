@@ -707,7 +707,6 @@ check(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),nonce_valid:fal
 // Cotizar — and the recovery path never mutates the cart, so that selection
 // survives (the real-stack preserve probe drives the same contract over native
 // HTTP; Woo's fold-in path would empty it through the quotes gateway).
-$GLOBALS['fpw_cart_empty']=false;
 check(is_array(fpw_recovery_attempt(array('fpw_attempt'=>$recovery_token),empty_cart:false)),'An authorized retry recovers the original confirmation even with a new selection already in the basket (issue #32)');
 check($GLOBALS['fpw_cart_empty']===false,'The recovery path never mutates the cart: the unrelated selection survives');
 $GLOBALS['fpw_cart_empty']=true;
