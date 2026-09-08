@@ -1,0 +1,28 @@
+
+> freeplast@0.1.0 test
+> node wordpress/scripts/check-woo.mjs
+
+card quantities: per-product, repeated add, duplicates, remove, empty, reload, malformed payloads and pinned Woo add/remove handlers passed
+chrome nav: 25 A · Directa chrome script checks passed (native dialogs, aria-expanded, dialog replacement, focus return, current-page marking)
+card controls: 42 A · Directa stepper + dock + cart-summary bridge checks passed (native input/anchor contracts, store-driven header count, dock and basket truth)
+cart presentation: 14 late-DOM/focus checks passed (modeled store; hydrated native browser unrun)
+product colors: 24 A · Directa variation-control checks passed (native select driven exclusively, two-way sync, no silent defaults)
+checkout form: 25 A · Directa checkout enhancement checks passed (linked errors, honest ambiguity, busy submit)
+native checkout: 29 pinned Woo/jQuery lifecycle checks passed (intercepted transport; no HTTP/storage evidence)
+evidence fingerprint: 6 offline checks passed (stable, complete input families, versions, fail-closed)
+checks: 504 local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + attempt identity vs content + submitted attempt identity through the real Woo normalization + landed-attempt retry recovery with lifetime and cart preservation)
+card projection: 27 PHP checks passed
+card theme: 25 PHP checks passed
+catalog tools: 21 offline form/query/SQL checks passed (native HTTP unrun)
+product sheet: 32 PHP checks passed
+cart page: 30 PHP checks passed
+checkout form: 49 PHP checks passed
+confirmation: 27 PHP checks passed
+native chrome: 13 PHP checks passed (pinned hooks/ClassicTemplate/HTML parser; HTTP/rendered focus unrun)
+post_checkout_plain self-test: 7 checks passed (place-order trigger present, no update_totals shortcut, caller values unchanged, native checkout_action dispatch predicate satisfied)
+
+native-state digest: 10 offline checks passed
+
+stack harness: skipped (FREEPLAST_SKIP_STACK=1)
+checks: 421 syntax, dependency and deployment checks passed
+scope: offline only; native HTTP stack skipped; no staging, browser, device or visual approval

@@ -77,8 +77,40 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 { const {runLoopAddedCountTests}=await import('./loop-added-count-test.mjs');
   checks+=await runLoopAddedCountTests(); }
 
+// Issue #41: A · Directa shared chrome script over the real header/footer
+// markup — native dialogs, aria bookkeeping, focus return, current marking.
+{ const {runChromeNavTests}=await import('./chrome-nav-test.mjs');
+  checks+=await runChromeNavTests(); }
+
+// Issue #42: A · Directa card controls — stepper around Woo's own quantity
+// input, data-quantity mirror, header count + dock store bridge.
+{ const {runCardControlsTests}=await import('./card-controls-test.mjs');
+  checks+=await runCardControlsTests(); }
+{ const {runCartPresentationTests}=await import('./cart-presentation-test.mjs');
+  checks+=await runCartPresentationTests(); }
+
+// Issue #44: A · Directa color controls over the single Woo variation form.
+{ const {runProductColorTests}=await import('./product-color-test.mjs');
+  checks+=await runProductColorTests(); }
+
+// Issues #46/#47: A · Directa checkout enhancements — linked error summary,
+// honest ambiguous transport wording, busy submit semantics.
+{ const {runCheckoutFormTests}=await import('./checkout-form-js-test.mjs');
+  checks+=await runCheckoutFormTests(); }
+{ const {runNativeCheckoutTests}=await import('./checkout-native-test.mjs');
+  checks+=await runNativeCheckoutTests(); }
+{ const {runEvidenceFingerprintTests}=await import('./evidence-fingerprint-test.mjs');
+  checks+=runEvidenceFingerprintTests(); }
+
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
 console.log(run(php,[path.join(root,'scripts/card-selection-test.php')]));
+console.log(run(php,[path.join(root,'scripts/card-theme-test.php')]));
+console.log(run(php,[path.join(root,'scripts/catalog-tools-test.php')]));
+console.log(run(php,[path.join(root,'scripts/product-sheet-test.php')]));
+console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
+console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
+console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
+console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));
 // Issue #36 final red-gate: the native plain-route helper's payload self-test
 // (place-order submit trigger, no update_totals shortcut, native dispatch
 // predicate) — offline, mocked Session, no HTTP/server.

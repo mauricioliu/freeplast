@@ -2,6 +2,194 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
+## Issue #48 (allowed portion) — evidence & handoff package (2026-09-08, NOT runtime)
+
+Worker: pi / zai-coding-cn/glm-5.3 (high). No new runtime code: a durable
+in-repo evidence package `wordpress/docs/journey-a-evidence/` —
+`README.md` (source-A identity `785e65b` + reproducible `fingerprint.sh`
++ recorded `fingerprints/integrated-48.txt`, prerequisites, evidence
+layers with explicit limits), `commands.md` (executed vs never-run command
+records; safety-first authorized-later procedures; mliu-only external
+links), `traceability.md` (#41–#48 AC → executed suites vs UNRUN
+stack/browser/owner layers), `visual-matrix-procedure.md`
+(320…1440 + 600/1000 boundaries, matched-state recipes, allowed
+normalizations, keyboard/reduced-motion/zoom protocol, owner SR/phone
+steps), `differences.md` (audited deliberate differences + gaps incl.
+CSS-hidden block zero totals; two candidate diffs — confirmation «Editar»
+and checkout-CTA placement — were withdrawn after owner source correction,
+recorded in that file). Stack harness gains
+§48 checks (corporate pages chrome-only without product grid; Home shared
+cards) — implemented, UNRUN. Offline gate re-run green after package
+(504 adapter + 414 aggregate). No acceptance claimed; matrix/hardware remain
+unexecuted.
+
+## Issue #48 — integration evidence and lead review (2026-09-08, PARTIAL / NOT released)
+
+Package: [journey-a-evidence](docs/journey-a-evidence/README.md), with a
+reproducible input fingerprint, exact offline gate output, traceability,
+matched-state matrix and explicit gaps. Worker: pi / GLM-5.3 high; subsequent
+corrections by lead. No commit/push/deploy or GitHub writes.
+
+Lead reproduced native ClassicTemplate's duplicate outer/inner breadcrumb
+and fixed its scoped placement + Catálogo/category presentation.13 new PHP
+checks execute the pinned native hooks/frame/HTML parser; WordPress's existing
+skip-link insertion is proven at that boundary, not falsely reported absent.
+Fingerprint generation now covers full runtime/fixture/test input families,
+actual cached probe sources and fields.js1.0.4;6 checks catch omissions,
+empty versions and failures. Narrow checkout/cart/confirmation gutters follow
+A below360px as well as360/600+.
+
+Final permitted gate: **504 adapter assertions + 421 aggregate checks**, all
+PHP/native/DOM/regression suites green. This is OFFLINE ONLY. No live HTTP,
+hydrated browser, matched-state rendered comparison or owner hardware
+acceptance. Native pagination>24 still needs an owned enlarged fixture. A
+completed full gate would stop its server; browser setup remains separately
+authorized work, not an already-running preview. Presentation differences
+(toast channel, extra copy/chrome) remain open in the package; no parity claim.
+
+## Issues #45–#47 — A · Directa basket, details form and confirmation (2026-09-08, implemented, NOT released)
+
+Batch 3 on the lead-reviewed #41–#44 base. Theme **1.0.13 → 1.0.14**;
+adapter **1.6.7 → 1.6.8** (dispatch field → native radio si/no, native
+first/last row classes, fields.js 1.0.4 enhancing the actual native radios). Native
+ownership unchanged: REAL Cart block, ONE classic checkout form (names,
+nonces, hooks, hidden attempt, draft session, place-order trigger literal),
+native validation/sanitization, adapter recovery/idempotence/mail
+containment/ventas guards all intact.
+
+- #45: canonical basket page markup (A steps/heading/rows/empty state; same
+  file feeds the fixture and the migration), block styled to A (stepper,
+  remove, sidebar summary card with store-driven lines/units), zero-total
+  surfaces hidden `!important` (class vocabulary verified against the pinned
+  block build), dock excluded from the cart route, new multi-chunk
+  staged-body store scenario.
+- #46: `form-checkout.php` override (four A groups, summary disclosure
+  holding Woo's own review-table fragment target, native payment at the
+  foot), `checkout-form.js` enhancement (linked focused error summary built
+  FROM the native group, per-field aria wiring, values preserved).
+- #47: busy submit + honest ambiguous-transport wording;
+  `thankyou.php` A confirmation reading only the stored order (real
+  reference, stored lines/options/quantities/dispatch; no demo markers,
+  timers, delivery claims, prices).
+
+Lead personally corrected6 failures reproduced with pinned checkout.js/jQuery:
+live native errors, full causes and radio focus, DIV transport uncertainty,
+and unrelated review completion prematurely releasing submission. Busy now
+tracks actual native checkout AJAX; Editar waits for native review/draft save
+(latest edits/replacements/failure included), without new persistence. Native
+PHP field renderer drives the checkout lifecycle fixture. Hook priority and
+extension execution, formatted stored options and invalid-order refusal are
+covered. Cart late React DOM, removal identity/focus and progress/uncertain
+removal feedback were corrected; quantity body/settlement engine unchanged.
+CSS fixes include native47% field widths, actual radio grid and conditional
+slot, root widths on true Woo body classes, confirmation820px. These are
+source changes, not observed/rendered fidelity.
+
+Lead offline gate `FREEPLAST_SKIP_STACK=1 npm test`: **504 adapter +
+27/25/21/32 PHP suites + 30 cart-page + 49 checkout-form + 27 confirmation;
+25 chrome + 42 controls + 14 cart-presentation + 24 colors + 25 form helper
++ 29 actual native checkout/jQuery checks, all prior race/recovery/store
+scenarios, 414 combined syntax/dependency checks** — 0 failures. Stack additions implemented, **NOT executed** (A basket/details
+route checks, dispatch radio contract, attempt identity presence, no-amount
+guards); hydrated browser scenarios documented for the authorized run. Not
+deployed; no commit/push by the worker; UI unvalidated on hardware.
+
+## Issues #42–#44 — A · Directa cards, discovery and product sheet (2026-09-08, implemented, NOT released)
+
+Batch 2 (lead-reviewed #41 base preserved). Theme **1.0.12 → 1.0.13**
+(uncommitted shared tree); adapter **1.6.6 → 1.6.7** after lead review.
+Native Woo persistence/mutations unchanged: cards render through
+`wc_product_class` + the adapter's loop filter. Adapter projections now include
+explicit variable-parent totals without multi-delete, retaining native keys;
+explicit ordinary-content searches are no longer coerced into products. The
+archive/loop templates keep native hooks, the variation form keeps its
+select/ids/hidden inputs (color buttons are an enhancement over the single
+`attribute_color` / `attribute_pa_color` select, two-way synced). New surfaces:
+`woocommerce/content-product.php` (A card), `woocommerce/archive-product.php`
++ `loop/result-count.php` + `loop/orderby.php` (A discovery),
+`woocommerce/content-single-product.php` + `single-product/related.php` (A
+sheet), `assets/js/product-color-options.js`, stepper + dock bridges in
+`loop-add-to-cart-quantity.js`/`basket-count.js`, mobile selection dock +
+detail-added projections as theme-side fragments, loop/single add-to-cart
+text filters, breadcrumb/related filters. Block templates lost their
+duplicate search blocks; grid scoped to `ul.products` so Home featured
+shares the card without Woo body classes. Bootstrap gains staging-parity
+control texts. Scoped contract recorded in `design/DECISIONS.md`.
+
+- Lead offline gate `FREEPLAST_SKIP_STACK=1 npm test`: **504 adapter + 27 card
+  projection + 25 card theme + 21 catalog form/query/SQLite + 32 product sheet
+  checks**, **25 chrome-nav + 32 card-controls + 24 product-color + 56 loop
+  DOM/native-handler checks**, prior quantity/race/ventas regressions and
+  **311 combined syntax/deployment checks** — 0 failures. Generated discovery
+  SQL executes against in-memory SQLite; this is not native HTTP evidence.
+  RED proof: pre-batch quantity script fails the stepper suite
+  («initSteppers is not a function»).
+- Stack extensions implemented, **NOT executed** (execution boundary):
+  shop-route card/dock checks, discovery checks (toolbar, counts, two
+  ordering options, accented query, category current, A no-results) and
+  sheet checks (titles, disclosure, native select + enhancement enqueue,
+  related) in `woo-stack-harness.mjs`.
+- Lead review corrected duplicate native add hooks (actual WP hook probe
+  RED2→GREEN1 callback), nonexistent ordering helper, lost filter/query state,
+  wrong featured ordering, accent folding on SQLite, general-search layout,
+  AJAX-only dock/detail projections, parent-color units, product-page steppers,
+  invalid quantity/duplicate activation, uncertain add feedback, real TABLE-row
+  color enhancement/availability, protected-product password guard, short
+  excerpt/disclosure placement, placeholder-photo honesty and Woo CSS overrides.
+  `inc/catalog.php` owns the bounded native query presentation; no extra catalog,
+  public API, basket, checkout persistence or vendor edits were introduced.
+- Not deployed; no commit/push by worker or lead. Rendered comparisons and owner
+  review pending; UI unvalidated on hardware.
+
+## Issue #41 — A · Directa shared chrome (2026-09-08, implemented, NOT released)
+
+First slice of the approved #40/#41–#48 breakdown; explicit owner
+authorization to implement superseded the «no desarrolles aún» hold for
+development only. Theme **1.0.11 → 1.0.12** on `main` working tree
+(see git status at handoff): the shared chrome (persistent 76/84 px header
+bar, native-dialog mobile menu + help, A footer) replaces the v6 island,
+burger sheet and dark footer across public routes; Manrope now loads from
+the shipped OFL-licensed `assets/fonts/manrope.woff2` (+ preload). Real
+destinations only (brand→/, /tienda/, /nosotros/, /contacto/,
+/cotizacion/, /politica-de-privacidad/, help channels). The
+`span.fpw-basket-count` native count contract is unchanged; its badge
+styling moved to a `.count` wrapper that survives the adapter's fragment
+replacement. Adapter untouched. Scoped contract documented in
+`wordpress/design/DECISIONS.md` (§ «Scoped supersession — A · Directa
+quotation chrome»).
+
+- Offline gate `FREEPLAST_SKIP_STACK=1 npm test`: **504 PHP assertions**
+  (up from 466 — new A chrome source-contract checks: real destinations,
+  native dialogs, font/license presence, no review-only prototype tooling,
+  retired-class absence, sticky-bar contract updated to `top:
+  var(--fp-admin-offset)` + hairline), **25 chrome-nav behavioral checks**
+  (`scripts/chrome-nav-test.mjs`, jsdom: dialog wiring, aria-expanded,
+  dialog replacement, focus return, aria-current incl. Woo's
+  single-product body class; RED proven against the old header/nav),
+  21 card-projection, 49 loop DOM/native-handler, all prior race/recovery
+  self-tests and the pinned cart-store scenarios — **0 failures**.
+- Disposable-stack extensions implemented but **NOT executed** (execution
+  boundary: no server/browser): `bootstrap.mjs` now seeds the 17 reference
+  products (slugs/categories/featured/2×5-color variables, 15 checksummed
+  reference photographs and 2 explicit pending photographs) from
+  `wordpress/data/products.json` as a synthetic fixture, sets `/tienda/`
+  as the native shop and points `/cotizacion/` at the **real Cart block**
+  (staging parity, classic checkout unchanged per ADR-0001) and backs the
+  chrome destinations with synthetic pages; `woo-stack-harness.mjs` gains
+  the #41 journey checks (chrome render, native add → count 1 → other page
+  → reload → Store-API removal → zero state, Cart-block page, classic
+  checkout guard, 17-product fixture, no prototype tooling). PHP eval
+  blocks lint clean; run when a stack execution is authorized.
+- **Not deployed** to freeplast.mliu.site; no commit/push made by the
+  worker or lead. Lead independently reran the offline gate (504 adapter,
+  21 card PHP, 239 aggregate checks) and corrected queued-dialog focus races,
+  menu CSS specificity/320px treatment, non-scoped corporate line-height and
+  missing native shop/media fixtures. Fixture payload generation + PHP lint
+  also passed without running WordPress. Extra corporate-menu/privacy links
+  remain explicit owner-review differences, not accepted visual exceptions.
+  Side-by-side 412/1440px comparisons and human PC/phone review remain open;
+  no browser/device run.
+
 ## Owner-authorized staging release — 20260908T112200Z (persistent island navigation)
 
 Owner requested the whole header remain visible when scrolling down, then

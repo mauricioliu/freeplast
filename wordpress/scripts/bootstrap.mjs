@@ -56,7 +56,10 @@ if (existsSync(join(BUILD_DIR, '.provisioned.json')) && !process.argv.includes('
   syncContent();
   reactivate();
   pinComingSoonOff();
+  ensureStagingControlTexts();
   seedVariantProduct();
+  seedReferenceCatalog();
+  ensureChromePages();
   console.log('  disposable installation ready (existing build)');
   process.exit(0);
 }
@@ -130,6 +133,8 @@ wp(['option', 'update', 'blog_public', '0']);
 installWoo();
 wp(['plugin', 'activate', 'freeplast-woo']);  // after Woo: the adapter declares Requires Plugins
 seedVariantProduct();
+seedReferenceCatalog();
+ensureChromePages();
 
 /* 7. Marker */
 const wpVersion = wp(['core', 'version']);
@@ -182,6 +187,7 @@ function installWoo() {
   // equivalent in Checkout Blocks), so the pages get the classic shortcodes.
   wp(['wc', 'tool', 'run', 'install_pages', '--user=1']);
   pinComingSoonOff();
+  ensureStagingControlTexts();
   const classicShortcodes = {
     woocommerce_cart_page_id: '[woocommerce_cart]',
     woocommerce_checkout_page_id: '[woocommerce_checkout]',
@@ -297,4 +303,195 @@ function pinComingSoonOff() {
   wp(['option', 'update', 'woocommerce_coming_soon', 'no']);
   wp(['option', 'update', 'woocommerce_store_pages_only', 'no']);
   wp(['option', 'update', 'woocommerce_private_link', 'no']);
+}
+
+/** Staging-parity control copy (issue #42): the same extension texts the
+ *  production migration sets, so the fixture's native buttons read exactly
+ *  what the real service shows. Idempotent option updates only — no business
+ *  rule (prices/stock/coupons/registration) is introduced. */
+function ensureStagingControlTexts() {
+  const texts = {
+    qwc_add_to_cart_button_text: 'Agregar a Productos a Cotizar',
+    qwc_cart_page_name: 'Productos a Cotizar',
+    qwc_checkout_page_name: 'Datos y envío',
+    qwc_place_order_text: 'Solicitar cotización',
+    qwc_proceed_checkout_btn_label: 'Continuar con mis datos',
+  };
+  const payload = Buffer.from(JSON.stringify(texts), 'utf8').toString('base64');
+  wp(['eval', `
+    $texts = json_decode(base64_decode('${payload}'), true);
+    foreach ($texts as $key => $value) { update_option($key, $value); }
+    echo 'control-texts:' . count($texts);
+  `, '--user=1']);
+}
+
+/** Issue #41: seed the 17 reference catalog products — the controlled synthetic
+ *  dataset that reproduces the frozen A · Directa fixture (titles, slugs, Agrícola/
+ *  Otros categories, featured flags, the two Color variable products with their
+ *  five named colors, matching reference media and explicit missing photos).
+ *  Source: wordpress/data/products.json, the same bootstrap snapshot the approved
+ *  prototype froze (prototype catalog.js). This is a TEST FIXTURE, never a Catalog
+ *  Source: production keeps Woo's editable catalog untouched. Idempotent by slug:
+ *  existing fixtures are never duplicated or overwritten. */
+function seedReferenceCatalog() {
+  const raw = JSON.parse(readFileSync(join(WORDPRESS_DIR, 'data', 'products.json'), 'utf8'));
+  const items = (Array.isArray(raw) ? raw : raw.products).map((item) => ({
+    slug: item.slug,
+    title: item.title,
+    excerpt: item.excerpt,
+    description: item.description,
+    category: item.category,
+    featured: Boolean(item.featured),
+    options: (item.options || []).map((option) => option.label),
+    specs: item.specs || {},
+    // These two source files are pending-photo placeholders in frozen A.
+    image: item.image && !['caja-paltera', 'traversa-para-bins-tipo-romano'].includes(item.slug)
+      ? { ...item.image, file: join(WORDPRESS_DIR, 'data', item.image.file) } : null,
+  }));
+  // Refuse altered/missing source media before any database mutation.
+  for (const item of items) {
+    if (item.image && 'sha256:' + createHash('sha256').update(readFileSync(item.image.file)).digest('hex') !== item.image.checksum) {
+      throw new Error('Reference fixture media checksum mismatch: ' + item.slug);
+    }
+  }
+  const payload = Buffer.from(JSON.stringify(items), 'utf8').toString('base64');
+  const code = `
+    $items = json_decode(base64_decode('${payload}'), true);
+    if (!is_array($items)) { fwrite(STDERR, 'seedReferenceCatalog: bad fixture payload'); exit(1); }
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    require_once ABSPATH . 'wp-admin/includes/media.php';
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    $cats = array();
+    foreach (array('agricola' => 'Agrícola', 'otros' => 'Otros') as $slug => $label) {
+      $term = term_exists($slug, 'product_cat');
+      if (!$term) { $term = wp_insert_term($label, 'product_cat', array('slug' => $slug)); }
+      if (is_wp_error($term)) { fwrite(STDERR, $term->get_error_message()); exit(1); }
+      $cats[$slug] = (int) (is_array($term) ? $term['term_id'] : $term);
+    }
+    $specFields = array('material' => 'Material', 'dimensions' => 'Medidas', 'weight' => 'Peso propio', 'use' => 'Uso', 'units_per_pallet' => 'Unidades por pallet');
+    $created = 0;
+    foreach ($items as $item) {
+      $existing = get_posts(array('post_type' => 'product', 'name' => $item['slug'], 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids'));
+      if ($existing) { continue; }
+      $isVariable = !empty($item['options']);
+      $product = $isVariable ? new WC_Product_Variable() : new WC_Product_Simple();
+      $product->set_name($item['title']);
+      $product->set_slug($item['slug']);
+      $product->set_description((string) $item['description']);
+      $product->set_short_description((string) $item['excerpt']);
+      $product->set_status('publish');
+      $product->set_catalog_visibility('visible');
+      $product->set_category_ids(array($cats[$item['category']] ?? $cats['otros']));
+      $product->set_featured(!empty($item['featured']));
+      $product->set_reviews_allowed(false);
+      $product->set_manage_stock(false);
+      $product->set_stock_status('instock'); // technical eligibility, never a stock promise
+      $product->update_meta_data('_fp_unpriced', 'yes');
+      $product->update_meta_data('qwc_enable_quotes', 'on');
+      $attributes = array();
+      foreach ($specFields as $key => $label) {
+        if (!empty($item['specs'][$key])) {
+          $attribute = new WC_Product_Attribute();
+          $attribute->set_name($label);
+          $attribute->set_options(array((string) $item['specs'][$key]));
+          $attribute->set_visible(true);
+          $attributes[] = $attribute;
+        }
+      }
+      if ($isVariable) {
+        $attribute = new WC_Product_Attribute();
+        $attribute->set_name('Color');
+        $attribute->set_options($item['options']);
+        $attribute->set_visible(true);
+        $attribute->set_variation(true);
+        $attributes[] = $attribute;
+        $product->set_attributes($attributes);
+        $product->save();
+        foreach ($item['options'] as $label) {
+          $variation = new WC_Product_Variation();
+          $variation->set_parent_id($product->get_id());
+          // Normalized attribute key (see seedVariantProduct): the matcher
+          // requires attribute_ . sanitize_title('Color') = attribute_color.
+          $variation->set_attributes(array('color' => $label));
+          $variation->set_regular_price('0'); // unpriced sentinel, never a commercial offer
+          $variation->set_manage_stock(false);
+          $variation->set_stock_status('instock');
+          $variation->set_status('publish');
+          $variation->update_meta_data('_fp_unpriced', 'yes');
+          $variation->save();
+        }
+        WC_Product_Variable::sync($product->get_id());
+      } else {
+        $product->set_regular_price('0');
+        $product->set_attributes($attributes);
+        $product->save();
+      }
+      if (!empty($item['image'])) {
+        $image = $item['image'];
+        $temp = wp_tempnam(basename($image['file']));
+        if (!$temp || !copy($image['file'], $temp)) { throw new RuntimeException('Cannot copy reference fixture media'); }
+        $attachment = media_handle_sideload(array('name' => basename($image['file']), 'tmp_name' => $temp), $product->get_id());
+        if (file_exists($temp)) { unlink($temp); }
+        if (is_wp_error($attachment)) { throw new RuntimeException('Cannot import reference fixture media'); }
+        update_post_meta($attachment, '_wp_attachment_image_alt', (string) $image['alt']);
+        $product->set_image_id($attachment);
+        $product->save();
+      }
+      wc_delete_product_transients($product->get_id());
+      $created++;
+    }
+    wp_cache_flush();
+    echo 'reference-catalog:' . $created;
+  `;
+  wp(['eval', code, '--user=1']);
+}
+
+/** Issue #41: the disposable stack renders the surfaces the real site uses —
+ *  /cotizacion/ carries the ACTUAL Cart block (staging parity; the classic-
+ *  shortcode cart fixture alone cannot prove the block journey) while the
+ *  checkout stays CLASSIC (ADR-0001). Synthetic placeholder pages back the
+ *  shared chrome's real destinations (Nosotros, Contacto, privacy) so every
+ *  header/footer/help link resolves. */
+function ensureChromePages() {
+  const cartBlockMarkup = readFileSync(join(HERE, 'woo-cart.html'), 'utf8');
+  const pages = {
+    tienda: { title: 'Catálogo', content: '' },
+    cotizacion: { title: 'Productos a Cotizar', content: cartBlockMarkup },
+    // Staging parity: the classic checkout page carries its native slug/name.
+    'datos-y-envio': { title: 'Datos y envío', content: '<!-- wp:shortcode -->[woocommerce_checkout]<!-- /wp:shortcode -->' },
+    nosotros: { title: 'Nosotros', content: '<!-- wp:paragraph --><p>Página sintética de prueba.</p><!-- /wp:paragraph -->' },
+    contacto: { title: 'Contacto', content: '<!-- wp:paragraph --><p>Página sintética de prueba.</p><!-- /wp:paragraph -->' },
+    'politica-de-privacidad': { title: 'Política de privacidad', content: '<!-- wp:paragraph --><p>Política sintética de prueba.</p><!-- /wp:paragraph -->' },
+  };
+  const payload = Buffer.from(JSON.stringify(pages), 'utf8').toString('base64');
+  const code = `
+    $pages = json_decode(base64_decode('${payload}'), true);
+    $ids = array();
+    foreach ($pages as $slug => $page) {
+      $existing = get_page_by_path($slug, OBJECT, 'page');
+      if ($existing) {
+        if (trim((string) $existing->post_content) !== trim((string) $page['content'])) {
+          wp_update_post(array('ID' => $existing->ID, 'post_content' => $page['content'], 'post_status' => 'publish'));
+        }
+        $ids[$slug] = (int) $existing->ID;
+      } else {
+        $ids[$slug] = wp_insert_post(array(
+          'post_type' => 'page',
+          'post_title' => $page['title'],
+          'post_name' => $slug,
+          'post_content' => $page['content'],
+          'post_status' => 'publish',
+        ), true);
+      }
+      if (is_wp_error($ids[$slug]) || !$ids[$slug]) { fwrite(STDERR, 'ensureChromePages failed for ' . $slug); exit(1); }
+    }
+    // /cotizacion/ becomes THE cart page: the header's Productos a Cotizar and
+    // Woo's own cart redirects point at the Cart block surface, as on staging.
+    update_option('woocommerce_cart_page_id', $ids['cotizacion']);
+    update_option('woocommerce_shop_page_id', $ids['tienda']);
+    update_option('woocommerce_checkout_page_id', $ids['datos-y-envio']);
+    flush_rewrite_rules(false);
+    echo 'chrome-pages:' . implode(',', array_keys($ids));
+  `;
+  wp(['eval', code, '--user=1']);
 }

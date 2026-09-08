@@ -1,49 +1,59 @@
-<!-- wp:group {"className":"fp-island-wrap"} -->
-<div class="wp-block-group fp-island-wrap">
-	<!-- wp:group {"className":"fp-island"} -->
-	<div class="wp-block-group fp-island">
-		<!-- wp:html -->
-		<a class="fp-island-logo" href="/" aria-label="Freeplast — Inicio">
-			<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark.svg" alt="" width="40" height="40" />
+<!-- wp:group {"className":"site-header"} -->
+<div class="wp-block-group site-header">
+	<!-- wp:html -->
+	<div class="header-inner">
+		<a class="brand" href="/" aria-label="Freeplast — Inicio">
+			<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark.svg" alt="" width="29" height="29" />
 			<span>Freeplast</span>
 		</a>
-		<!-- /wp:html -->
-
-		<!-- wp:html -->
-		<nav class="fp-island-links" aria-label="Navegación principal">
-			<a href="/">INICIO</a>
-			<a href="/nosotros/">NOSOTROS</a>
-			<a href="/tienda/">CATÁLOGO</a>
-			<a href="/contacto/">CONTACTO</a>
+		<nav class="desktop-nav" aria-label="Navegación principal">
+			<a href="/tienda/">Catálogo</a>
+			<button type="button" data-fp-dialog="fp-help">Cómo cotizar</button>
+			<a href="/contacto/">Contacto</a>
 		</nav>
-		<!-- /wp:html -->
-
-		<!-- wp:html --><a class="fp-woo-selection" href="/cotizacion/">Productos a Cotizar (<span class="fpw-basket-count">{{FREEPLAST_BASKET_COUNT}}</span>)</a><!-- /wp:html -->
-
-		<!-- wp:html -->
-		<button class="fp-burger" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="fp-menu" data-fp-burger>
-			<span></span><span></span><span></span>
+		<a class="header-selection" href="/cotizacion/">
+			<span class="selection-label">Productos a Cotizar</span>
+			<span class="count"><span class="fpw-basket-count">{{FREEPLAST_BASKET_COUNT}}</span></span>
+		</a>
+		<button class="icon-button menu-trigger" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="fp-menu" data-fp-dialog="fp-menu">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" width="20" height="20"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
 		</button>
-		<!-- /wp:html -->
 	</div>
-	<!-- /wp:group -->
+	<!-- /wp:html -->
 </div>
 <!-- /wp:group -->
 
 <!-- wp:html -->
-<dialog class="fp-sheet" id="fp-menu" data-fp-sheet aria-label="Menú de navegación">
-	<button type="button" class="fp-menu-close" data-fp-close>Cerrar menú</button>
-	<nav aria-label="Navegación móvil">
-		<a href="/"><span>INICIO</span></a>
-		<a href="/nosotros/"><span>NOSOTROS</span></a>
-		<a href="/tienda/"><span>CATÁLOGO</span></a>
-		<a href="/cotizacion/"><span>Productos a Cotizar (<span class="fpw-basket-count">{{FREEPLAST_BASKET_COUNT}}</span>)</span></a>
-		<a href="/contacto/"><span>CONTACTO</span></a>
-	</nav>
-	<div class="fp-sheet-foot">
-		<a href="tel:+56968444265">+ 56 9 6844 4265</a>
-		<a href="https://api.whatsapp.com/send?phone=56968444265">WhatsApp + 56 9 6844 4265</a>
-		<a href="mailto:ventas@freeplast.cl">ventas@freeplast.cl</a>
+<dialog class="fp-chrome menu-dialog" id="fp-menu" aria-labelledby="fp-menu-title">
+	<div class="dialog-top">
+		<h2 id="fp-menu-title">Freeplast</h2>
+		<button class="icon-button" type="button" data-fp-close aria-label="Cerrar menú">×</button>
 	</div>
+	<nav aria-label="Navegación móvil">
+		<a href="/tienda/">Catálogo <span aria-hidden="true">→</span></a>
+		<a href="/nosotros/">Nosotros <span aria-hidden="true">→</span></a>
+		<a href="/contacto/">Contacto <span aria-hidden="true">→</span></a>
+		<a href="/cotizacion/">Productos a Cotizar <span aria-hidden="true">→</span></a>
+		<button type="button" data-fp-dialog="fp-help">Ayuda para cotizar <span aria-hidden="true">→</span></button>
+	</nav>
+	<p class="muted">Venta mayorista · Sin registro ni pago en línea.</p>
+</dialog>
+<!-- /wp:html -->
+
+<!-- wp:html -->
+<dialog class="fp-chrome content-dialog" id="fp-help" aria-labelledby="fp-help-title">
+	<div class="dialog-top">
+		<h2 id="fp-help-title">Estamos para ayudarte</h2>
+		<button class="icon-button" type="button" data-fp-close aria-label="Cerrar ayuda">×</button>
+	</div>
+	<p>Elige productos, revisa sus cantidades y completa tus datos. Ventas confirmará precios, disponibilidad y condiciones.</p>
+	<dl class="help-details">
+		<dt>Teléfono / WhatsApp</dt>
+		<dd><a href="https://api.whatsapp.com/send?phone=56968444265">+56 9 6844 4265</a></dd>
+		<dt>Email</dt>
+		<dd><a href="mailto:ventas@freeplast.cl">ventas@freeplast.cl</a></dd>
+		<dt>Horario</dt>
+		<dd>Lun–vie · 09:00–13:00 y 14:00–18:00</dd>
+	</dl>
 </dialog>
 <!-- /wp:html -->

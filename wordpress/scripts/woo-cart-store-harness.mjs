@@ -604,5 +604,33 @@ export async function runCartStoreScenarios(bundlePath, scriptPath) {
     receiveCartOf(reload,storeCart(140,7));
     assert(quantity(reload,'variant-line') === 7, `${outcome}: reload fixture matches applied state (not HTTP evidence)`);
   }
+  // #45: the same real Response with the body released in SEVERAL chunks —
+  // no verdict and no CTA release until the last chunk plus close arrive.
+  {
+    const win = makeFakeWindow(bundleSource);
+    win.transport.push('abort'); win.transport.pushDeferred();
+    win.watcher = attachScript(win, scriptSource).watcher;
+    receiveCartOf(win, storeCart(140, 5));
+    userChangesQuantity(win, 'variant-line', 6);
+    const replacement = userChangesQuantity(win, 'variant-line', 7);
+    let body;
+    const response = new Response(new ReadableStream({start(controller) { body = controller; }}), {status: 200});
+    win.transport.deferred.resolve(response);
+    await settled(() => response.bodyUsed && pendingOf(win).length === 0, 'chunked: headers consumed, abort cleared');
+    const submit = submitOf(win);
+    const payload = JSON.stringify(storeCart(140, 7));
+    const chunks = payload.match(/.{1,40}/gs) || [payload];
+    for (let index = 0; index < chunks.length - 1; index++) {
+      body.enqueue(new TextEncoder().encode(chunks[index]));
+      await settled(() => true, 'chunk boundary');
+      assert(submit.getAttribute('aria-disabled') === 'true' && !savedVisible(win) && !failureVisible(win), 'chunked: a partial body never settles a verdict');
+    }
+    body.enqueue(new TextEncoder().encode(chunks[chunks.length - 1]));
+    body.close();
+    await replacement;
+    await settled(() => savedVisible(win), 'chunked: full body settlement');
+    assert(quiet(win) && submit.getAttribute('aria-disabled') === 'false', 'chunked: settled success unlocks the CTA');
+    assert(quantity(win, 'variant-line') === 7, 'chunked: the persisted quantity is the applied one');
+  }
   return checks;
 }

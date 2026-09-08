@@ -15,6 +15,11 @@ class CardTestProduct {
     public function __construct(private string $name) {}
     public function get_name() { return $this->name; }
 }
+function wc_get_product($id) { return new class($id) {
+    public function __construct(private int $id) {}
+    public function is_type($type) { return $this->id === 77 && $type === 'variable'; }
+    public function get_name() { return 'Producto variable'; }
+}; }
 class CardTestCart {
     public array $lines = array();
     public function get_cart() { return $this->lines; }
@@ -47,7 +52,9 @@ verify(str_contains($a, 'woocommerce-mini-cart-item'), 'Native removal can block
 verify(str_contains($a, 'remove_item=key-11&amp;_wpnonce=woo-nonce'), 'Native signed URL survives as no-JS fallback');
 verify(str_contains($a, 'Caja &lt;azul&gt; &quot;A&quot;') && !str_contains($a, '<azul>'), 'Product names are escaped in accessible labels');
 verify(str_contains($a, '>Quitar</a>'), 'Visible explicit Quitar control');
-verify(str_contains($a, 'aria-label="3 en cotización'), 'Accessible name starts with visible text');
+verify(str_contains($a, 'aria-label="3 unidades agregadas a Productos a Cotizar'), 'Accessible name states the added units');
+verify(str_contains($a, 'fp-added-pill__text">unidades agregadas</span>'), 'Visible A · Directa added-state copy');
+verify(str_contains($a, 'fp-added-pill__check'), 'The added state carries the reference check mark');
 $empty = fpw_card_selection(33, $wc->cart->lines);
 verify(!str_contains($empty, '<a ') && str_contains($empty, 'data-product-id="33"'), 'Empty product keeps a render slot, without controls');
 $wc->cart->lines['key-11']['quantity'] += 4;
@@ -62,6 +69,12 @@ $wc->cart->lines['split'] = item(22, 5);
 $split = fpw_card_selection(22, $wc->cart->lines);
 verify(str_contains($split, 'fp-added-pill__badge">7</span>'), 'Split lines sum quantities for the same product');
 verify(substr_count($split, 'remove_from_cart_button') === 2, 'Extension-created split lines keep each native removal key');
+$wc->cart->lines = array('red' => item(77, 3, 771), 'blue' => item(77, 8, 772));
+$parent = fpw_card_selection(77, $wc->cart->lines);
+verify(str_contains($parent, 'data-quantity="11"') && str_contains($parent, 'en total del producto'), 'variable parent projects its own aggregate units explicitly');
+verify(!str_contains($parent, 'remove_from_cart_button'), 'parent total does not invent a multi-delete operation');
+verify(str_contains(fpw_card_selection(771, $wc->cart->lines), 'data-cart_item_key="red"'), 'chosen color retains its own native removal identity');
+verify(str_contains(fpw_card_selections_fragment(), 'data-product-id="77"'), 'complete native snapshot includes the variable parent projection');
 $wc->cart->lines = array();
 $fragment = $filters['woocommerce_add_to_cart_fragments'][0](array('other' => 'retained'));
 verify($fragment['other'] === 'retained', 'Other native fragments preserved');

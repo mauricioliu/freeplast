@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.6.6
+ * Version: 1.6.8
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -105,18 +105,26 @@ add_action( 'init', static function () {
 function fpw_card_selection( int $product_id, array $lines ): string {
 	$quantity = 0;
 	$selected = array();
+	$parent_aggregate = false;
+	$native_product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : null;
+	$can_aggregate = $native_product && $native_product->is_type( 'variable' );
 	foreach ( $lines as $key => $item ) {
 		$id = (int) ( ! empty( $item['variation_id'] ) ? $item['variation_id'] : ( $item['product_id'] ?? 0 ) );
-		if ( $id !== $product_id || (int) $item['quantity'] <= 0 ) { continue; }
+		$matches_parent = $can_aggregate && ! empty( $item['variation_id'] ) && (int) ( $item['product_id'] ?? 0 ) === $product_id;
+		if ( ( $id !== $product_id && ! $matches_parent ) || (int) $item['quantity'] <= 0 ) { continue; }
+		$parent_aggregate = $parent_aggregate || $matches_parent;
 		$quantity += (int) $item['quantity'];
 		$selected[$key] = $item;
 	}
-	$html = '<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="' . $product_id . '">';
+	$html = '<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="' . $product_id . '" data-quantity="' . $quantity . '">';
 	if ( $quantity > 0 ) {
 		$first = reset( $selected );
-		$name = $first['data']->get_name();
-		$html .= '<a class="fp-added-pill" href="' . esc_url( wc_get_cart_url() ) . '" aria-label="' . esc_attr( $quantity . ' en cotización — ' . $name . ' — ver Productos a Cotizar' ) . '"><span class="fp-added-pill__badge">' . $quantity . '</span><span class="fp-added-pill__text">en cotización</span></a>';
-		foreach ( $selected as $key => $item ) {
+		$name = $parent_aggregate ? $native_product->get_name() : $first['data']->get_name();
+		// A · Directa added-state copy (#42): «✓ 3 unidades agregadas» + Quitar.
+		$plural = 1 === $quantity ? 'unidad agregada' : 'unidades agregadas';
+		if ( $parent_aggregate ) { $plural .= ' en total del producto'; }
+		$html .= '<a class="fp-added-pill" href="' . esc_url( wc_get_cart_url() ) . '" aria-label="' . esc_attr( $quantity . ' ' . $plural . ' a Productos a Cotizar — ' . $name . ' — ver Productos a Cotizar' ) . '"><svg class="fp-added-pill__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="15" height="15"><path d="m5 12 4 4L19 6"/></svg><span class="fp-added-pill__badge">' . $quantity . '</span><span class="fp-added-pill__text">' . esc_html( $plural ) . '</span></a>';
+		foreach ( $parent_aggregate ? array() : $selected as $key => $item ) {
 			$label = count( $selected ) === 1 ? 'Quitar' : 'Quitar línea (' . (int) $item['quantity'] . ')';
 			$html .= '<a class="fp-remove-product remove_from_cart_button" role="button" href="' . esc_url( wc_get_cart_remove_url( $key ) ) . '" data-product_id="' . $product_id . '" data-cart_item_key="' . esc_attr( $key ) . '" data-success_message="' . esc_attr( $name . ' se quitó de Productos a Cotizar.' ) . '" aria-label="' . esc_attr( $label . ' — ' . $name . ' de Productos a Cotizar' ) . '">' . esc_html( $label ) . '</a>';
 		}
@@ -133,6 +141,7 @@ function fpw_card_selections_fragment(): string {
 	foreach ( $lines as $item ) {
 		$id = (int) ( ! empty( $item['variation_id'] ) ? $item['variation_id'] : ( $item['product_id'] ?? 0 ) );
 		if ( $id > 0 ) { $ids[$id] = true; }
+		if ( ! empty( $item['variation_id'] ) && ! empty( $item['product_id'] ) ) { $ids[(int) $item['product_id']] = true; }
 	}
 	$html = '<div class="fpw-card-selections" data-fpw-cart-state="1" hidden>';
 	foreach ( array_keys( $ids ) as $id ) { $html .= fpw_card_selection( $id, $lines ); }
@@ -150,18 +159,18 @@ add_filter( 'woocommerce_add_to_cart_fragments', static function ( $fragments ) 
 /** One definition for local fields; native Woo validates and persists the billing fields. */
 function fpw_checkout_fields( $fields ) {
 	$fields['billing'] = array(
-		'billing_first_name' => array( 'label'=>'Nombre', 'required'=>true, 'type'=>'text', 'autocomplete'=>'name', 'class'=>array('form-row-wide'), 'priority'=>10 ),
-		'billing_phone' => array( 'label'=>'Teléfono', 'required'=>true, 'type'=>'tel', 'autocomplete'=>'tel', 'class'=>array('form-row-wide'), 'priority'=>20 ),
-		'billing_email' => array( 'label'=>'Email', 'required'=>true, 'type'=>'email', 'autocomplete'=>'email', 'validate'=>array('email'), 'class'=>array('form-row-wide'), 'priority'=>30 ),
-		'billing_company' => array( 'label'=>'Nombre Empresa', 'required'=>true, 'type'=>'text', 'autocomplete'=>'organization', 'class'=>array('form-row-wide'), 'priority'=>40 ),
-		'billing_fp_rut' => array( 'label'=>'RUT Empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-wide'), 'priority'=>50 ),
-		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-wide'), 'priority'=>60 ),
-		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'select', 'options'=>array(''=>'Selecciona una opción','si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
+		'billing_first_name' => array( 'label'=>'Nombre', 'required'=>true, 'type'=>'text', 'autocomplete'=>'name', 'placeholder'=>'Tu nombre', 'class'=>array('form-row-wide'), 'priority'=>10 ),
+		'billing_phone' => array( 'label'=>'Teléfono', 'required'=>true, 'type'=>'tel', 'autocomplete'=>'tel', 'placeholder'=>'Ej.: +56 9 1234 5678', 'class'=>array('form-row-first'), 'priority'=>20 ),
+		'billing_email' => array( 'label'=>'Email', 'required'=>true, 'type'=>'email', 'autocomplete'=>'email', 'placeholder'=>'nombre@empresa.cl', 'validate'=>array('email'), 'class'=>array('form-row-last'), 'priority'=>30 ),
+		'billing_company' => array( 'label'=>'Nombre de empresa', 'required'=>true, 'type'=>'text', 'autocomplete'=>'organization', 'placeholder'=>'Nombre o razón social', 'class'=>array('form-row-wide'), 'priority'=>40 ),
+		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-first'), 'priority'=>50 ),
+		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
+		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
 		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Calle, número, comuna y región', 'class'=>array('form-row-wide'), 'priority'=>80 ),
 	);
 	$fields['shipping'] = array();
 	$fields['order']['order_comments']['label'] = 'Mensaje';
-	$fields['order']['order_comments']['placeholder'] = 'Información adicional para ventas (opcional)';
+	$fields['order']['order_comments']['placeholder'] = '¿Qué más debería saber el equipo de ventas?';
 	// Issue #35: the attempt-identity field is REGISTERED so Woo's own
 	// normalization keeps it. WC_Checkout::get_posted_data() builds its answer
 	// from the registered checkout fields only (verified against the pinned Woo
@@ -220,7 +229,7 @@ add_action( 'woocommerce_cart_emptied', static function () {
 
 add_action( 'wp_enqueue_scripts', static function () {
 	if ( function_exists('is_checkout') && is_checkout() && ! is_order_received_page() ) {
-		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.2', true);
+		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.4', true);
 	}
 } );
 
@@ -1364,6 +1373,10 @@ add_action('init', static function() {
 // Conservative plural normalization, not unverified product-use recommendations.
 add_action('pre_get_posts', static function($query) {
 	if (is_admin() || !$query->is_main_query() || !$query->is_search()) { return; }
+	// Plain storefront search remains product discovery; explicitly requested
+	// ordinary content searches must retain their native type and layout.
+	$type = $query->get('post_type');
+	if ( $type && 'product' !== $type ) { return; }
 	$query->set('post_type', 'product');
 	// archive-product.php only reads real result counts from wc_setup_loop() when
 	// the wc_query var is present (Woo sets it natively via product archive
@@ -1371,7 +1384,7 @@ add_action('pre_get_posts', static function($query) {
 	// <ul> even though the main query found products.
 	$query->set('wc_query', 'product_query');
 	$term = $query->get('s');
-	$query->set('s', preg_replace('/\bcajas\b/iu', 'caja', $term));
+	$query->set('s', preg_replace('/\bcajas\b/iu', 'caja', is_string($term) ? $term : ''));
 });
 
 // The plain searches the hook above turns into product loops satisfy none of
@@ -1384,7 +1397,7 @@ add_action('pre_get_posts', static function($query) {
 // (the native route) already got them, which is why only plain searches
 // looked broken.
 add_filter('body_class', static function($classes) {
-	if (is_search()) {
+	if (is_search() && 'product' === get_query_var('post_type')) {
 		$classes[] = 'woocommerce';
 		$classes[] = 'woocommerce-page';
 	}

@@ -60,8 +60,9 @@ $fragments=$fragment_filter(array());
 check(isset($fragments['span.fpw-basket-count']),'Header count joins the native add-to-cart fragment refresh');
 check($fragments['span.fpw-basket-count']==='<span class="fpw-basket-count">4</span>','Fragment carries the current distinct line count');
 $header=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/parts/header.html');
-check(substr_count($header,'fpw-basket-count')===2,'Both header surfaces (desktop link + mobile menu) carry the count span');
-check(substr_count($header,'{{FREEPLAST_BASKET_COUNT}}')===2,'Both header surfaces server-render the count token');
+check(substr_count($header,'fpw-basket-count')===1,'The A · Directa header pill carries the count span (the reference menu row shows no count)');
+check(substr_count($header,'{{FREEPLAST_BASKET_COUNT}}')===1,'The header pill server-renders the count token');
+check(substr_count($header,'class="count"')===1,'The count badge wrapper keeps A styling across the adapter fragment swap');
 $resolvers=array_values(array_filter($registered_filters['render_block'],static function($resolver){
     $rendered=$resolver('{{FREEPLAST_BASKET_COUNT}}');
     return is_string($rendered) && !str_contains($rendered,'{{FREEPLAST_BASKET_COUNT}}');
@@ -516,20 +517,63 @@ $style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.c
 check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');
 check($style_version[1]===FREEPLAST_THEME_VERSION,'style.css Version header matches FREEPLAST_THEME_VERSION — a cache-bust bump moves both');
 
-// Persistent navigation: sticky must belong to the outer template part, not
-// its island child (which is constrained by a header-height containing block).
+// Persistent navigation (A · Directa, issue #41): the compact header bar is
+// sticky on the outer template part, clears the fixed admin toolbar natively
+// and never re-creates the retired pill island or a second sticky surface.
 // Source contracts only; these do not claim browser layout/scroll verification.
 check(preg_match('/\.wp-site-blocks\s*>\s*header\.wp-block-template-part\s*\{([^}]+)\}/',$style_source,$sticky_header)===1,'Outer header template part owns the sticky rule');
 check(str_contains($sticky_header[1],'position: sticky;'),'Outer header stays in flow and sticks across the page');
-check(str_contains($sticky_header[1],'top: calc(var(--fp-s-2) + var(--fp-admin-offset));'),'Sticky header clears the fixed WordPress admin toolbar');
+check(str_contains($sticky_header[1],'top: calc(var(--fp-admin-offset));'),'Sticky bar sits at the admin-toolbar offset exactly (A: top 0 on the public site)');
 check(str_contains($sticky_header[1],'z-index: 50;'),'Sticky header stays above page content');
-check(preg_match('/^\.fp-island-wrap\s*\{([^}]+)\}/m',$style_source,$island_wrap)===1 && !str_contains($island_wrap[1],'position:'),'Inner island does not create a second constrained sticky surface');
+check(str_contains($sticky_header[1],'border-bottom: 1px solid var(--fp-chrome-line);'),'Sticky bar carries the A hairline border');
+check(!str_contains($style_source,'fp-island') && !str_contains($style_source,'fp-burger') && !str_contains($style_source,'fp-sheet'),'The retired v6 island/burger/sheet chrome is fully retired from the stylesheet');
+check(str_contains($style_source,'--fp-nav-h: 76px;'),'A compact header height 76px mobile');
+check(preg_match('/@media\s*\(min-width:\s*1000px\)\s*\{\s*:root\s*\{\s*--fp-nav-h:\s*84px;/',$style_source)===1,'A header height 84px from 1000px');
 check(str_contains($style_source,'--fp-admin-offset: 0px;'),'Small-screen scrolling admin toolbar reserves no persistent gap');
 check(preg_match('/@media\s*\(min-width: 601px\)\s*\{\s*:root\s*\{\s*--fp-admin-offset: var\(--wp-admin--admin-bar--height, 0px\);/',$style_source)===1,'Fixed admin toolbar offset uses WordPress native height above 600px');
 check(preg_match('/scroll-padding-top:[^;]+var\(--fp-admin-offset\)/',$style_source)===1,'Anchor and focus scroll clearance includes the admin toolbar');
 foreach(glob(__DIR__.'/../wp-content/themes/freeplast/templates/*.html') as $template_file){
 	check(str_starts_with(trim(file_get_contents($template_file)),'<!-- wp:template-part {"slug":"header","tagName":"header"} /-->'),'Top-level semantic header on '.basename($template_file));
 }
+
+// Issue #41: the A · Directa shared chrome contract — real destinations,
+// native dialogs, real Manrope load, no review-only prototype tooling.
+$footer=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/parts/footer.html');
+foreach(array(
+	array($header,'class="header-inner"','A header inner row'),
+	array($header,'class="brand" href="/"','Brand navigates the real Home destination'),
+	array($header,'href="/tienda/"','Catálogo real destination'),
+	array($header,'href="/nosotros/"','Nosotros stays available in the shared nav'),
+	array($header,'href="/contacto/"','Contacto real destination'),
+	array($header,'class="header-selection" href="/cotizacion/"','Productos a Cotizar links the native cart page'),
+	array($header,'aria-label="Abrir menú"','Menu trigger is a named control'),
+	array($header,'aria-expanded="false"','Menu trigger exposes its collapsed state'),
+	array($header,'aria-controls="fp-menu"','Menu trigger controls the menu dialog'),
+	array($header,'data-fp-dialog="fp-help"','Help opens the shared help dialog'),
+	array($header,'Cómo cotizar','Help carries the reference label'),
+	array($header,'Ayuda para cotizar','Mobile menu keeps the reference help row'),
+	array($header,'Venta mayorista · Sin registro ni pago en línea.','Menu keeps the reference wholesale note'),
+	array($header,'ventas@freeplast.cl','Help shows the authoritative email'),
+	array($header,'+56 9 6844 4265','Help shows the authoritative phone'),
+	array($header,'Lun–vie · 09:00–13:00 y 14:00–18:00','Help shows the authoritative schedule'),
+	array($footer,'class="site-footer"','A footer band'),
+	array($footer,'class="footer-content"','A footer content row'),
+	array($footer,'href="/politica-de-privacidad/"','Privacy keeps its real destination in the footer'),
+	array($footer,'¿Necesitas ayuda?','Footer help keeps the reference label'),
+	array($footer,'Productos plásticos. Nuevas posibilidades.','Footer keeps the reference tagline'),
+) as $contract){
+	check(str_contains($contract[0],$contract[1]),$contract[2]);
+}
+foreach(array('prototype-bar','prototype-notice','data-scenario','data-switch','Escenarios','state inspector','DEMO ·') as $review_only){
+	check(!str_contains($header,$review_only) && !str_contains($footer,$review_only),'No review-only prototype element reaches the chrome: '.$review_only);
+}
+check(preg_match('/@font-face\s*\{[^}]*font-family:\s*Manrope;[^}]*manrope\.woff2/',$style_source)===1,'Manrope is loaded from the local variable font file');
+check(is_file(__DIR__.'/../wp-content/themes/freeplast/assets/fonts/manrope.woff2'),'The Manrope woff2 file ships with the theme');
+check(is_file(__DIR__.'/../wp-content/themes/freeplast/assets/fonts/OFL.txt'),'The Manrope OFL license ships with the theme');
+check(str_contains($style_source,'--fp-blue-soft: #eeedf8;') && str_contains($style_source,'--fp-chrome-line: #dedfe6;') && str_contains($style_source,'--fp-chrome-muted: #60626d;'),'A · Directa chrome palette tokens are registered');
+$navjs=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/assets/js/nav.js');
+check(str_contains($navjs,'showModal'),'Chrome dialogs use the native showModal top layer');
+check(!str_contains($navjs,'localStorage') && !str_contains($navjs,'sessionStorage'),'Chrome script keeps no parallel state');
 
 // Issue #27 (WA-04): Home renders the featured grid through the adapter's plugin-rendered dynamic
 // block, not wp:shortcode — WordPress' core/shortcode renderer runs wpautop() over the shortcode's

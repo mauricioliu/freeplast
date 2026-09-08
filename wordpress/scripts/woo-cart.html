@@ -1,4 +1,18 @@
-<!-- wp:paragraph --><p>Revisa productos, colores y cantidades antes de completar tus datos. Esto no es una compra ni una reserva de stock.</p><!-- /wp:paragraph -->
+<!-- wp:html -->
+<div class="fp-shell fp-catalog fp-cart-page">
+<ol class="fp-steps" aria-label="Pasos de la solicitud">
+<li class="active" aria-current="step"><span class="step-number">1</span><span>Productos</span></li>
+<li><span class="step-number">2</span><span>Tus datos</span></li>
+<li><span class="step-number">3</span><span>Solicitud</span></li>
+</ol>
+<div class="fp-page-heading">
+<p class="fp-eyebrow">Revisa tu selección</p>
+<h1>Productos a Cotizar</h1>
+<p class="fp-page-lead">Comprueba productos, colores y cantidades antes de continuar. Esto no es una compra ni una reserva de stock.</p>
+</div>
+</div>
+<!-- /wp:html -->
+<!-- wp:html --><div class="fp-shell fp-catalog fp-cart-page"><div class="fp-cart-tools" data-fpw-cart-tools hidden><span class="fp-fine" data-fpw-line-count></span><a class="fp-text-link" href="/tienda/">← Agregar productos</a></div><p class="fp-cart-feedback__error" data-fpw-removal-error role="alert" hidden></p><p class="fp-cart-feedback__status" data-fpw-removal-status role="status" hidden></p><!-- /wp:html -->
 <!-- wp:woocommerce/cart -->
 <div class="wp-block-woocommerce-cart alignwide is-loading">
 <!-- wp:woocommerce/filled-cart-block -->
@@ -12,6 +26,13 @@
 </div><!-- /wp:woocommerce/cart-totals-block -->
 </div><!-- /wp:woocommerce/filled-cart-block -->
 <!-- wp:woocommerce/empty-cart-block -->
-<div class="wp-block-woocommerce-empty-cart-block"><!-- wp:heading {"level":2} --><h2 class="wp-block-heading">Aún no tienes Productos a Cotizar</h2><!-- /wp:heading --><!-- wp:paragraph --><p><a href="/tienda/">Explorar el catálogo</a></p><!-- /wp:paragraph --></div>
+<div class="wp-block-woocommerce-empty-cart-block"><div class="empty-state large">
+<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="30" height="30"><path d="m3 7 9-4 9 4v10l-9 4-9-4V7Zm0 0 9 5 9-5M12 12v9M7 5l10 5"/></svg></div>
+<h2>Aún no agregas productos.</h2>
+<p>Explora el catálogo y reúne lo que necesitas en una sola solicitud de cotización.</p>
+<div class="action-row"><a class="fp-btn" href="/tienda/">Elegir productos</a><button class="fp-text-button" type="button" data-fp-dialog="fp-help">¿No sabes qué producto elegir?</button></div>
+</div></div>
 <!-- /wp:woocommerce/empty-cart-block -->
-</div><!-- /wp:woocommerce/cart -->
+</div>
+<!-- /wp:woocommerce/cart -->
+<!-- wp:html --><p class="fp-fine" data-fpw-cart-hint hidden>Las cantidades se actualizan al modificarlas.</p></div><!-- /wp:html -->

@@ -199,7 +199,9 @@ register_shutdown_function( static function () {
       const homeForPill = await fetchBody('/');
       check(/assets\/js\/loop-added-count\.js\?ver=/.test(homeForPill),
             'home must enqueue loop-added-count.js — the added-count pill would never render');
-      const productId = (homeForPill.match(/data-product_id="(\d+)"/) || [])[1];
+      /* Only SIMPLE products carry Woo's add_to_cart_button loop anchor; a
+         variable product's loop link cannot be added directly. */
+      const productId = (homeForPill.match(/<a[^>]*class="[^"]*\badd_to_cart_button\b[^"]*"[^>]*data-product_id="(\d+)"/) || [])[1];
       check(Boolean(productId), 'home must expose an add-to-cart product id for the pill data-contract probe');
       const addResponse = await fetch(SITE_URL + '/?wc-ajax=add_to_cart', {
         method: 'POST',
@@ -213,6 +215,190 @@ register_shutdown_function( static function () {
       const count = typeof fragment === 'string' ? (fragment.match(/fpw-basket-count">\s*(\d+)\s*</) || [])[1] : null;
       check(count !== null && Number(count) >= 1,
             `the add-to-cart fragments must carry a numeric span.fpw-basket-count count (got ${JSON.stringify(fragment)})`);
+    }
+
+    /* 2d. Issue #41 — A · Directa shared chrome + the minimal native journey.
+       The chrome renders on public routes with real destinations, the count is
+       the native distinct-line count (add → other page → reload → removal →
+       zero), /cotizacion/ is the REAL Cart block, checkout stays CLASSIC
+       (ADR-0001), the 17 reference products are seeded, and no review-only
+       prototype tooling reaches the served site. A tiny cookie jar carries
+       the WooCommerce session cookie across the requests — the exact
+       persistence the journey must survive. */
+    {
+      const jar = new Map();
+      const cookieHeader = () => [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+      const jarFetch = async (path, opts = {}) => {
+        const headers = { ...(opts.headers || {}) };
+        if (jar.size > 0) { headers.cookie = cookieHeader(); }
+        const response = await fetch(SITE_URL + path, { ...opts, headers, redirect: 'manual', signal: AbortSignal.timeout(60_000) });
+        for (const raw of (response.headers.getSetCookie ? response.headers.getSetCookie() : [])) {
+          const pair = raw.split(';')[0];
+          const eq = pair.indexOf('=');
+          if (eq > 0) { jar.set(pair.slice(0, eq), pair.slice(eq + 1)); }
+        }
+        return response;
+      };
+      const headerCount = (html) => Number((html.match(/fpw-basket-count">\s*(\d+)\s*</) || [])[1]);
+
+      const homeChrome = await fetchBody('/');
+      check(/class="header-inner"/.test(homeChrome), 'home renders the A · Directa header row');
+      check(/class="header-selection" href="\/cotizacion\/"/.test(homeChrome), 'the header selection links the native cart page');
+      check(/class="count"><span class="fpw-basket-count">\d+<\/span><\/span>/.test(homeChrome), 'the header count badge server-renders a number');
+      check(/id="fp-menu"/.test(homeChrome) && /id="fp-help"/.test(homeChrome), 'the native menu and help dialogs ship with the chrome');
+      check(/class="site-footer"/.test(homeChrome), 'the A footer band renders');
+      check(/assets\/js\/nav\.js\?ver=/.test(homeChrome), 'the chrome script is enqueued');
+      check(/rel="preload"[^>]*manrope\.woff2/.test(homeChrome), 'the local Manrope file is preloaded');
+      for (const forbidden of ['prototype-bar', 'prototype-notice', 'data-scenario', 'data-switch', 'Escenarios']) {
+        check(!homeChrome.includes(forbidden), `no review-only prototype tooling on the served site: ${forbidden}`);
+      }
+
+      const shop = await (await jarFetch('/tienda/')).text();
+      const journeyId = (shop.match(/<a[^>]*class="[^"]*\badd_to_cart_button\b[^"]*"[^>]*data-product_id="(\d+)"/) || [])[1];
+      check(Boolean(journeyId), 'the catalog exposes a native add-to-cart id for the journey');
+      /* Issue #42: A · Directa cards on the native shop surface. */
+      check(/class="[^"]*\bproduct-card\b[^"]*"/.test(shop), 'shop products render through the A · Directa card');
+      check(/class="photo-link"/.test(shop) && /class="product-photo"/.test(shop), 'cards render the A photo surface');
+      check(/class="product-category">Agrícola|class="product-category">Otros/.test(shop), 'cards carry the catalog category kicker');
+      check(shop.includes('Elegir color'), 'a variable card offers Elegir color into its native product page');
+      check(/<input[^>]*class="[^"]*\bqty\b[^"]*"[^>]*type="number"|<input[^>]*type="number"[^>]*class="[^"]*\bqty\b/.test(shop), 'simple cards expose Woo\'s native quantity input');
+      check(/data-fpw-selection-dock/.test(shop), 'the catalog route ships the mobile selection dock');
+      check(!/prototype-bar|data-scenario|Escenarios/.test(shop), 'no review tooling rides the catalog surface');
+      /* Issue #43: A discovery tools over native queries. */
+      check(/class="catalog-tools"/.test(shop) && /role="search"/.test(shop) && /name="s"/.test(shop), 'the A search toolbar renders on the native shop route');
+      check(/class="filter-tabs" aria-label="Categorías"/.test(shop) && shop.includes('Agrícola <span>1') && shop.includes('Otros <span>'), 'native category filters carry live term counts');
+      check(/woocommerce-result-count/.test(shop) && /<strong>\d+<\/strong> productos/.test(shop), 'the native loop total is presented in A copy');
+      check(/name="orderby"/.test(shop) && shop.includes('>Destacados<') && shop.includes('>Nombre A–Z<') && !shop.includes('>Popularity<') && !shop.includes('>Price'), 'ordering offers exactly the two reference choices');
+      const searchAccent = await fetchBody('/?s=caj%C3%A1');
+      const accentCount = liProducts(searchAccent);
+      const searchPlain = await fetchBody('/?s=caja');
+      check(accentCount >= 1 && accentCount === liProducts(searchPlain), `an accented query matches like the reference (${accentCount} vs ${liProducts(searchPlain)})`);
+      const searchNoneA = await fetchBody('/?s=zz-sin-coincidencias');
+      check(/No encontramos «/.test(searchNoneA) && searchNoneA.includes('Ver todos los productos'), 'the A no-results state names the query and offers the catalog return');
+      check(/data-fp-dialog="fp-help"/.test(searchNoneA), 'the no-results state offers real help');
+      const nativeRoutes = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $simple = get_page_by_path('caja-cosechera-3-4', OBJECT, 'product');
+        $color = get_page_by_path('caja-universal-cerrada-color', OBJECT, 'product');
+        $term = get_term_by('slug', 'agricola', 'product_cat');
+        if (!$simple || !$color || !$term) { throw new RuntimeException('Missing owned catalog fixture'); }
+        echo wp_json_encode(array('simple'=>get_permalink($simple), 'color'=>get_permalink($color), 'category'=>get_term_link($term)));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const nativePath = value => { const url = new URL(value); check(url.origin === new URL(SITE_URL).origin, 'fixture route must stay on the isolated origin'); return url.pathname + url.search; };
+      const categoryPage = await fetchBody(nativePath(nativeRoutes.category));
+      check(/class="filter"[^>]*aria-current="page"[^>]*>Agrícola/.test(categoryPage), 'the actual native category route marks Agrícola current');
+      const sorted = await fetchBody('/tienda/?orderby=title');
+      const firstSortedTitle = (sorted.match(/woocommerce-loop-product__title"><a href="[^"]*">([^<]+)</) || [])[1];
+      check(Boolean(firstSortedTitle), 'Nombre A–Z ordering renders product titles');
+      check(/name="orderby"/.test(sorted), 'the ordering control survives with a query applied');
+      /* Issue #44: A product sheets on the native surfaces. */
+      const simpleSheet = await fetchBody(nativePath(nativeRoutes.simple));
+      check(/product_title">Caja Cosechera 3\/4/.test(simpleSheet), 'the simple sheet renders its native title');
+      check(/Detalles que importan\./.test(simpleSheet), 'the summary title renders');
+      check(/Ficha técnica completa/.test(simpleSheet), 'the technical disclosure renders');
+      check(/data-fpw-detail-added/.test(simpleSheet) && /Sin compra ni reserva de stock\./.test(simpleSheet), 'the sheet carries the added-state slot and the no-purchase note');
+      const colorSheet = await fetchBody(nativePath(nativeRoutes.color));
+      check(/name="attribute_color"/.test(colorSheet), 'the variable sheet keeps the native color select');
+      check(/product-color-options\.js\?ver=/.test(colorSheet), 'the color enhancement ships on the variable sheet');
+      check(/variation-button-state\.js\?ver=/.test(colorSheet), 'the variation button state regression ships');
+      check(/RELATED|related/.test(colorSheet), 'related products render on the sheet');
+      const add = await jarFetch('/?wc-ajax=add_to_cart', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'product_id=' + journeyId + '&quantity=3',
+      });
+      check(add.status === 200, `the journey add must answer 200 (got ${add.status})`);
+      const nativeFragments = (await add.json()).fragments || {};
+      const addedFragment = nativeFragments['span.fpw-basket-count'];
+      const dockFragment = nativeFragments['div.fpw-selection-dock'] || '';
+      check(dockFragment.includes('1 producto seleccionado') && dockFragment.includes('3 unidades') && !/data-fpw-selection-dock[^>]*hidden/.test(dockFragment), 'actual wc-ajax response includes the complete dock even without page conditionals');
+      check(typeof addedFragment === 'string' && Number((addedFragment.match(/(\d+)/) || [])[1]) === 1,
+            `the add answers a distinct-line count of 1 (got ${JSON.stringify(addedFragment)})`);
+
+      const otherPage = await jarFetch('/nosotros/');
+      check(otherPage.status === 200, `the Nosotros destination must answer 200 (got ${otherPage.status})`);
+      const reloaded = await (await jarFetch('/')).text();
+      check(headerCount(reloaded) === 1, `a reload keeps the selection and server-renders count 1 (got ${headerCount(reloaded)})`);
+      const shopAfterAdd = await (await jarFetch('/tienda/')).text();
+      check(/data-fpw-selection-dock(?![^>]*hidden)/.test(shopAfterAdd), 'with a live selection the dock renders unhidden on the catalog route');
+      check(/1 producto seleccionado/.test(shopAfterAdd), 'the dock states the native single-line truth');
+      check(/unidades agregadas/.test(shopAfterAdd), 'the card added state shows the product\'s own units after the journey add');
+
+      const cartPage = await (await jarFetch('/cotizacion/')).text();
+      check(/wp-block-woocommerce-cart/.test(cartPage), '/cotizacion/ renders the REAL Cart block, not the classic shortcode fixture');
+      check(!/\[woocommerce_cart\]/.test(cartPage), 'no raw cart shortcode leaks on /cotizacion/');
+      const checkoutPage = await (await jarFetch('/checkout/'));
+      const checkoutHtml = await checkoutPage.text();
+      check(checkoutPage.status === 200 && /woocommerce-checkout/.test(checkoutHtml), 'the CLASSIC checkout form still renders');
+      check(!/wp-block-woocommerce-checkout/.test(checkoutHtml), 'the checkout must NOT have migrated to Checkout Blocks (ADR-0001)');
+      for (const path of ['/contacto/', '/politica-de-privacidad/']) {
+        const code = await fetchCode(path);
+        check(code === 200, `${path} must stay reachable (got ${code})`);
+      }
+
+      /* Issues #45/#46: the A basket and details routes over native
+         surfaces (markup-level checks; hydrated block behavior is the
+         browser scenario). */
+      const basketPage = await (await jarFetch('/cotizacion/')).text();
+      check(/Pasos de la solicitud/.test(basketPage) && /<h1>Productos a Cotizar<\/h1>/.test(basketPage), 'the A basket heading and steps render');
+      check(/wp-block-woocommerce-cart/.test(basketPage) && /wp-block-woocommerce-proceed-to-checkout-block/.test(basketPage), 'the REAL Cart block with its native CTA block');
+      check(/Aún no agregas productos\./.test(basketPage) && /Elegir productos/.test(basketPage), 'the A empty state ships with the page markup');
+      check(!basketPage.includes('$'), 'no currency amount on the basket page markup');
+      const detailsPage = await jarFetch('/datos-y-envio/');
+      const detailsHtml = await detailsPage.text();
+      check(detailsPage.status === 200, `the Datos y envío route must answer 200 (got ${detailsPage.status})`);
+      check(/<form name="checkout"/.test(detailsHtml) && /class="checkout woocommerce-checkout"/.test(detailsHtml), 'ONE classic native checkout form');
+      check(!/wp-block-woocommerce-checkout/.test(detailsHtml), 'no Checkout Blocks migration (ADR-0001)');
+      check((detailsHtml.match(/name="billing_fp_dispatch"/g) || []).length === 2 && detailsHtml.includes('value="si"') && detailsHtml.includes('value="no"'), 'dispatch is one native radio name carrying the two accepted values');
+      check(!detailsHtml.includes('<select'), 'no dispatch select contradicts the radios');
+      check(/01<\/span> Contacto/.test(detailsHtml) && /02<\/span> Empresa/.test(detailsHtml) && /03<\/span> Despacho/.test(detailsHtml) && /04<\/span> Algo más que debamos saber/.test(detailsHtml), 'the four A groups render');
+      check(/woocommerce-checkout-review-order-table/.test(detailsHtml) && detailsHtml.includes('Editar productos'), 'the summary holds the native review table and Editar productos');
+      check(/name="fpw_attempt"/.test(detailsHtml), 'the hidden submitted-attempt identity is present');
+      check(/name="woocommerce_checkout_place_order"/.test(detailsHtml), 'the native place-order trigger is preserved');
+      check(/checkout-form\.js\?ver=/.test(detailsHtml), 'the A checkout enhancement ships');
+      check(/fields\.js\?ver=1\.0\.3/.test(detailsHtml), 'the adapter field enhancement ships at its bumped version');
+      check(!detailsHtml.includes('$'), 'no currency amount on the details route');
+      /* Issue #48: corporate pages keep the shared chrome without inheriting
+         the product grid; Home carries the A cards through the native loop. */
+      const corporate = await (await jarFetch('/nosotros/')).text();
+      check(/class="header-inner"/.test(corporate) && /class="site-footer"/.test(corporate), 'a corporate page keeps the shared chrome');
+      check(!/ul class="products|product-card/.test(corporate), 'an ordinary page does not inherit the product grid');
+      check(!/prototype-bar|data-scenario|Escenarios|DEMO ·/.test(corporate), 'no demo tooling reaches corporate pages');
+      const homeAgain = await fetchBody('/');
+      check(/<ul[^>]*class="[^"]*products/.test(homeAgain) || /product-card/.test(homeAgain), 'Home renders its featured products through the shared card surface');
+
+      /* Native removal through the cart's own Store API (the same mutations
+         the Cart block performs), then the zero state on a fresh page load. */
+      const storeCart = await jarFetch('/wp-json/wc/store/v1/cart');
+      check(storeCart.status === 200, `the Store API cart must answer 200 (got ${storeCart.status})`);
+      const storeNonce = storeCart.headers.get('nonce');
+      const storeData = await storeCart.json();
+      check(Array.isArray(storeData.items) && storeData.items.length === 1,
+            `the native cart holds one distinct line after the journey add (got ${JSON.stringify(storeData.items && storeData.items.length)})`);
+      const removed = await jarFetch('/wp-json/wc/store/v1/cart/remove-item', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...(storeNonce ? { nonce: storeNonce } : {}) },
+        body: JSON.stringify({ key: storeData.items[0].key }),
+      });
+      check(removed.status === 200, `the native remove-item must answer 200 (got ${removed.status})`);
+      const zeroPage = await (await jarFetch('/')).text();
+      check(headerCount(zeroPage) === 0, `the empty selection server-renders the zero state (got ${headerCount(zeroPage)})`);
+
+      /* The controlled reference fixture: all 17 products, categories, and the
+         two 5-color variable products — synthetic run-owned data only. */
+      const seeded = sh(PHP, [WPCLI, 'eval', `
+        $names = array();
+        foreach (get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'numberposts' => -1)) as $post) { $names[] = $post->post_name; }
+        $variable = get_posts(array('post_type' => 'product', 'name' => 'caja-universal-cerrada-color', 'post_status' => 'any', 'numberposts' => 1));
+        $variations = 0;
+        if ($variable) { $product = wc_get_product($variable[0]->ID); $variations = $product ? count($product->get_children()) : 0; }
+        echo wp_json_encode(array('names' => $names, 'variations' => $variations));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+      const fixture = JSON.parse(seeded.split('\n').pop());
+      const reference = JSON.parse(readFileSync(join(WORDPRESS_DIR, 'data', 'products.json'), 'utf8'));
+      const referenceSlugs = (Array.isArray(reference) ? reference : reference.products).map((item) => item.slug);
+      const missing = referenceSlugs.filter((slug) => !fixture.names.includes(slug));
+      check(missing.length === 0, `the disposable catalog must seed all 17 reference products (missing: ${missing.join(', ')})`);
+      check(fixture.variations === 5, `the reference color product carries its 5 named variations (got ${fixture.variations})`);
     }
 
     /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight

@@ -8,7 +8,7 @@ import jquery from 'jquery';
 const source = readFileSync(new URL('../wp-content/themes/freeplast/assets/js/loop-added-count.js', import.meta.url), 'utf8');
 const api = new Function('module', source + '\nreturn module.exports;')({ exports: {} });
 const KEY = 'div.fpw-card-selections';
-const selection = (id, quantity) => `<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="${id}"><a class="fp-added-pill" href="/cotizacion/" aria-label="${quantity} en cotización — producto ${id}"><span class="fp-added-pill__badge">${quantity}</span><span class="fp-added-pill__text">en cotización</span></a><a class="fp-remove-product remove_from_cart_button" role="button" data-cart_item_key="key-${id}" href="/cotizacion/?remove_item=key-${id}&amp;_wpnonce=native">Quitar</a></div>`;
+const selection = (id, quantity) => `<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="${id}" data-quantity="${quantity}"><a class="fp-added-pill" href="/cotizacion/" aria-label="${quantity} unidades agregadas a Productos a Cotizar — producto ${id}"><svg class="fp-added-pill__check" viewBox="0 0 24 24" aria-hidden="true"></svg><span class="fp-added-pill__badge">${quantity}</span><span class="fp-added-pill__text">unidades agregadas</span></a><a class="fp-remove-product remove_from_cart_button" role="button" data-cart_item_key="key-${id}" href="/cotizacion/?remove_item=key-${id}&amp;_wpnonce=native">Quitar</a></div>`;
 const snapshot = (entries) => `<div class="fpw-card-selections" data-fpw-cart-state="1" hidden>${entries.map(([id, quantity]) => selection(id, quantity)).join('')}</div>`;
 const fragments = (entries) => ({ 'span.fpw-basket-count': '<span class="fpw-basket-count">5</span>', [KEY]: snapshot(entries) });
 const card = (id) => `<div class="fpw-loop-add" data-fpw-loop-add><a class="add_to_cart_button" href="/?add-to-cart=${id}" data-product_id="${id}">Agregar</a><a class="added_to_cart">Ver carrito</a><div class="fpw-card-selection" data-product-id="${id}"></div></div>`;
@@ -18,7 +18,11 @@ const count = (doc, index) => doc.querySelectorAll('[data-fpw-loop-add]')[index]
 export async function runLoopAddedCountTests() {
   const dom = page();
   const doc = dom.window.document;
+  doc.body.insertAdjacentHTML('beforeend', '<div data-fpw-detail-added data-product-id="11" hidden><strong></strong><a href="/cotizacion/">Revisar</a></div>');
+  const detail = doc.querySelector('[data-fpw-detail-added]');
   api.updateAll(doc, fragments([[11, 3], [22, 2]]));
+  assert.equal(detail.hidden, false, 'native projection shows detail added state');
+  assert.match(detail.textContent, /3 unidades de este producto/, 'detail reads typed per-product quantity, not header or parsed badge text');
   assert.equal(count(doc, 0), '3', 'Frutillera must show its 3 units, not the header total of 5 lines');
   assert.equal(count(doc, 1), '2', 'Frutera must show its own 2 units');
   assert.equal(count(doc, 2), '3', 'duplicate product cards stay synchronized');
@@ -33,10 +37,12 @@ export async function runLoopAddedCountTests() {
   assert.equal(doc.activeElement, stableLink, 'unchanged fragments preserve focused controls');
   api.updateAll(doc, fragments([[11, 7], [22, 2]]));
   assert.equal(count(doc, 0), '7', 'repeated adds use authoritative accumulated quantity');
+  assert.match(detail.textContent, /7 unidades de este producto/, 'detail reconciles a subsequent snapshot');
   assert.equal(count(doc, 1), '2', 'adding A never changes B');
   assert.equal(doc.querySelectorAll('[data-fpw-loop-add]')[0].querySelectorAll('.fp-added-pill').length, 1);
   api.updateAll(doc, fragments([[22, 2]]));
   assert.equal(count(doc, 0), undefined, 'removal clears count and control on all A cards');
+  assert.equal(detail.hidden, true, 'complete empty product snapshot clears stale detail state');
   assert.equal(count(doc, 2), undefined);
   assert.equal(count(doc, 1), '2', 'removal preserves unrelated product');
   api.updateAll(doc, fragments([]));
@@ -83,7 +89,7 @@ export async function runLoopAddedCountTests() {
   dom.window.close();
   await runNativeHandlerTests();
   console.log('card quantities: per-product, repeated add, duplicates, remove, empty, reload, malformed payloads and pinned Woo add/remove handlers passed');
-  return 49;
+  return 56;
 }
 
 async function runNativeHandlerTests() {
@@ -145,6 +151,11 @@ async function runNativeHandlerTests() {
   assert.equal(count(doc, 1), '2', 'native removal leaves B unchanged');
   assert.equal(doc.activeElement, add, 'focus returns to Add when the removed control disappears');
   assert.equal(doc.querySelectorAll('[data-fpw-loop-add] .test-block-overlay').length, 0, 'completed removal does not leave a blocked row');
+  add.classList.add('loading');
+  $(doc).trigger('ajaxError', [{ status: 0 }, { url: '/?wc-ajax=add_to_cart', data: 'product_id=11&quantity=4' }]);
+  assert.equal(add.classList.contains('loading'), false, 'transport failure releases the finished native loading state');
+  assert.match(doc.querySelector('[data-fpw-add-error]').textContent, /No pudimos confirmar.*Revisa Productos a Cotizar/, 'ambiguous add outcome directs to persisted truth, not a false no-save claim');
+  assert.equal(count(doc, 1), '2', 'transport error never changes another product quantity');
   dom.window.close();
 }
 

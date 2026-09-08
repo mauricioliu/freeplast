@@ -23,8 +23,12 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+$fp_review = array_filter( WC()->cart->get_cart(), static fn( $item ) => (int) $item['quantity'] > 0 );
+$fp_lines = count( $fp_review );
+$fp_units = array_sum( array_column( $fp_review, 'quantity' ) );
+$fp_count = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . ' · ' . number_format( $fp_units, 0, ',', '.' ) . ( 1 === (int) $fp_units ? ' unidad' : ' unidades' );
 ?>
-<table class="shop_table woocommerce-checkout-review-order-table">
+<table class="shop_table woocommerce-checkout-review-order-table" data-fpw-review-count="<?php echo esc_attr( $fp_count ); ?>">
 	<thead>
 		<tr>
 			<th scope="col" class="product-name">Producto</th>

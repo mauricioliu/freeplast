@@ -10,8 +10,10 @@
     "color": {
       "palette": [
         { "slug": "blue", "color": "#100090", "name": "Freeplast Blue" },
+        { "slug": "blue-soft", "color": "#eeedf8", "name": "Blue Soft (A chrome)" },
         { "slug": "blue-heading", "color": "#0b078c", "name": "Blue Heading" },
         { "slug": "green", "color": "#306020", "name": "Freeplast Green" },
+        { "slug": "green-tint", "color": "#eef5ea", "name": "Green Tint (A chrome)" },
         { "slug": "green-soft", "color": "#558948", "name": "Green Soft" },
         { "slug": "ink", "color": "#17181c", "name": "Ink" },
         { "slug": "text", "color": "#3a3a3a", "name": "Text" },
@@ -20,7 +22,9 @@
         { "slug": "muted-dark", "color": "#9b9b9b", "name": "Muted Dark" },
         { "slug": "dark", "color": "#181818", "name": "Dark" },
         { "slug": "dark-raised", "color": "#272727", "name": "Dark Raised" },
-        { "slug": "paper", "color": "#ffffff", "name": "Paper" }
+        { "slug": "paper", "color": "#ffffff", "name": "Paper" },
+        { "slug": "chrome-line", "color": "#dedfe6", "name": "Chrome Hairline (A chrome)" },
+        { "slug": "chrome-muted", "color": "#60626d", "name": "Chrome Muted (A chrome)" }
       ]
     },
     "typography": {
