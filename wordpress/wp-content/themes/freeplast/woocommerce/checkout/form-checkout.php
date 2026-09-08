@@ -149,8 +149,8 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 	<?php do_action( 'woocommerce_checkout_after_customer_details' ); ?>
 
 	<div class="fp-form-submit">
-		<p class="fp-privacy-copy">Usaremos tus datos para preparar y responder tu solicitud de cotización. Consulta nuestra <a href="<?php echo esc_url( home_url( '/politica-de-privacidad/' ) ); ?>">política de privacidad</a>.</p>
-		<?php woocommerce_checkout_payment(); ?>
+		<?php // Native payment → terms owns the privacy notice, including AJAX refreshes.
+		woocommerce_checkout_payment(); ?>
 		<p class="fp-submit-note fp-fine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg> Sin pagos ni reserva de stock.</p>
 		<?php do_action( 'woocommerce_checkout_after_order_review' ); ?>
 	</div>

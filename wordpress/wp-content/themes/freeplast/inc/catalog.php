@@ -2,6 +2,23 @@
 /** A discovery is presentation over native product queries, never a catalog copy. */
 defined( 'ABSPATH' ) || exit;
 
+/** Woo's ClassicTemplate calls native hooks directly, bypassing the theme's
+ * archive-product.php. Install the same frame on that real rendering path;
+ * do not replace the block callback, query, asset loading or extension hooks. */
+function fp_catalog_setup_frame(): void {
+	if ( ! ( is_shop() || is_product_taxonomy() || ( is_search() && 'product' === get_query_var( 'post_type' ) ) ) ) { return; }
+	$priority = has_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb' );
+	if ( false !== $priority ) { remove_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb', $priority ); }
+	add_filter( 'woocommerce_show_page_title', '__return_false' );
+	add_action( 'woocommerce_before_main_content', 'fp_catalog_open_frame', 40 );
+	add_action( 'woocommerce_archive_description', 'fp_catalog_intro', 5 );
+	add_action( 'woocommerce_after_main_content', 'fp_catalog_close_frame', 5 );
+}
+function fp_catalog_open_frame(): void { echo '<div class="fp-shell fp-catalog">'; }
+function fp_catalog_intro(): void { wc_get_template( 'loop/catalog-intro.php' ); }
+function fp_catalog_close_frame(): void { echo '</div>'; }
+add_action( 'wp', 'fp_catalog_setup_frame' );
+
 function fp_catalog_orderby(): string {
 	$value = $_GET['orderby'] ?? '';
 	return is_string( $value ) && 'title' === $value ? 'title' : 'menu_order';

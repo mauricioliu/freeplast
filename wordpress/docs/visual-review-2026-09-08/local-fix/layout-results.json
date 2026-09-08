@@ -1,0 +1,3148 @@
+[
+  {
+    "page": "catalog",
+    "width": 320,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 305
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 375,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 360
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 412,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 397
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 599,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 584
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 600,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 585
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 601,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 586
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 768,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 753
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 769,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 754
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 999,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 984
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 1000,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 985
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.671875,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.671875,
+          "card": 297.671875
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 1001,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 986
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 1024,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1009
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.671875,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.671875,
+          "card": 305.671875
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      }
+    ]
+  },
+  {
+    "page": "catalog",
+    "width": 1440,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1425
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.34375,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.34375,
+          "card": 385.34375
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 320,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 305
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 273,
+          "track": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 111,
+          "card": 273
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 375,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 360
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 138,
+          "card": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 412,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 397
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 175,
+          "card": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 599,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 584
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 362,
+          "card": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 600,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 585
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 259.5,
+          "track": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 87.5,
+          "card": 259.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 601,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 586
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 260,
+          "track": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 88,
+          "card": 260
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 768,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 753
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 343.5,
+          "track": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 171.5,
+          "card": 343.5
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 769,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 754
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 344,
+          "track": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 172,
+          "card": 344
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 999,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 984
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 459,
+          "track": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 287,
+          "card": 459
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 1000,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 985
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.671875,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.671875,
+          "card": 297.671875
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 297.65625,
+          "track": 297.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 97.65625,
+          "card": 297.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 1001,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 986
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 298,
+          "track": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 98,
+          "card": 298
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 1024,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1009
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.671875,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.671875,
+          "card": 305.671875
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 305.65625,
+          "track": 305.656
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 105.65625,
+          "card": 305.65625
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "product",
+    "width": 1440,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1425
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.34375,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.34375,
+          "card": 385.34375
+        }
+      },
+      {
+        "ok": true,
+        "label": "card fills its grid track",
+        "actual": {
+          "card": 385.328125,
+          "track": 385.328
+        }
+      },
+      {
+        "ok": true,
+        "label": "CTA fits card and remains usable",
+        "actual": {
+          "button": 185.328125,
+          "card": 385.328125
+        }
+      },
+      {
+        "ok": true,
+        "label": "disabled add is visually distinct",
+        "actual": {
+          "enabled": "rgb(16, 0, 144)",
+          "disabled": "rgb(244, 245, 247)"
+        }
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 320,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 305
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 281,
+          "track": 281
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 281
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 12,
+            "y": 507.3125,
+            "width": 281,
+            "height": 208.953125,
+            "top": 507.3125,
+            "right": 293,
+            "bottom": 716.265625,
+            "left": 12
+          },
+          "side": {
+            "x": 12,
+            "y": 740.265625,
+            "width": 281,
+            "height": 510.96875,
+            "top": 740.265625,
+            "right": 293,
+            "bottom": 1251.234375,
+            "left": 12
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 375,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 360
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 328,
+          "track": 328
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 328
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 16,
+            "y": 443.328125,
+            "width": 328,
+            "height": 137.03125,
+            "top": 443.328125,
+            "right": 344,
+            "bottom": 580.359375,
+            "left": 16
+          },
+          "side": {
+            "x": 16,
+            "y": 604.359375,
+            "width": 328,
+            "height": 437.375,
+            "top": 604.359375,
+            "right": 344,
+            "bottom": 1041.734375,
+            "left": 16
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 412,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 397
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 365,
+          "track": 365
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 365
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 16,
+            "y": 405.359375,
+            "width": 365,
+            "height": 137.03125,
+            "top": 405.359375,
+            "right": 381,
+            "bottom": 542.390625,
+            "left": 16
+          },
+          "side": {
+            "x": 16,
+            "y": 566.390625,
+            "width": 365,
+            "height": 437.375,
+            "top": 566.390625,
+            "right": 381,
+            "bottom": 1003.765625,
+            "left": 16
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 599,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 584
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 552,
+          "track": 552
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 552
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 16,
+            "y": 379.765625,
+            "width": 552,
+            "height": 121.109375,
+            "top": 379.765625,
+            "right": 568,
+            "bottom": 500.875,
+            "left": 16
+          },
+          "side": {
+            "x": 16,
+            "y": 524.875,
+            "width": 552,
+            "height": 416.578125,
+            "top": 524.875,
+            "right": 568,
+            "bottom": 941.453125,
+            "left": 16
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 600,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 585
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 537,
+          "track": 537
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 537
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 401.375,
+            "width": 537,
+            "height": 123,
+            "top": 401.375,
+            "right": 561,
+            "bottom": 524.375,
+            "left": 24
+          },
+          "side": {
+            "x": 24,
+            "y": 548.375,
+            "width": 537,
+            "height": 416.578125,
+            "top": 548.375,
+            "right": 561,
+            "bottom": 964.953125,
+            "left": 24
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 601,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 586
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 538,
+          "track": 538
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 538
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 401.375,
+            "width": 538,
+            "height": 123,
+            "top": 401.375,
+            "right": 562,
+            "bottom": 524.375,
+            "left": 24
+          },
+          "side": {
+            "x": 24,
+            "y": 548.375,
+            "width": 538,
+            "height": 416.578125,
+            "top": 548.375,
+            "right": 562,
+            "bottom": 964.953125,
+            "left": 24
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 768,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 753
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 705,
+          "track": 705
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 705
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 401.375,
+            "width": 705,
+            "height": 124,
+            "top": 401.375,
+            "right": 729,
+            "bottom": 525.375,
+            "left": 24
+          },
+          "side": {
+            "x": 24,
+            "y": 549.375,
+            "width": 705,
+            "height": 395.78125,
+            "top": 549.375,
+            "right": 729,
+            "bottom": 945.15625,
+            "left": 24
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 769,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 754
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 706,
+          "track": 706
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 706
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 401.375,
+            "width": 706,
+            "height": 124,
+            "top": 401.375,
+            "right": 730,
+            "bottom": 525.375,
+            "left": 24
+          },
+          "side": {
+            "x": 24,
+            "y": 549.375,
+            "width": 706,
+            "height": 395.78125,
+            "top": 549.375,
+            "right": 730,
+            "bottom": 945.15625,
+            "left": 24
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 999,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 984
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 936,
+          "track": 936
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 936
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 401.375,
+            "width": 936,
+            "height": 124,
+            "top": 401.375,
+            "right": 960,
+            "bottom": 525.375,
+            "left": 24
+          },
+          "side": {
+            "x": 24,
+            "y": 549.375,
+            "width": 936,
+            "height": 395.78125,
+            "top": 549.375,
+            "right": 960,
+            "bottom": 945.15625,
+            "left": 24
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 1000,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 985
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 547,
+          "track": 547
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 340
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 409.375,
+            "width": 547,
+            "height": 144,
+            "top": 409.375,
+            "right": 571,
+            "bottom": 553.375,
+            "left": 24
+          },
+          "side": {
+            "x": 621,
+            "y": 409.375,
+            "width": 340,
+            "height": 437.375,
+            "top": 409.375,
+            "right": 961,
+            "bottom": 846.75,
+            "left": 621
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 1001,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 986
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 548,
+          "track": 548
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 340
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 409.375,
+            "width": 548,
+            "height": 144,
+            "top": 409.375,
+            "right": 572,
+            "bottom": 553.375,
+            "left": 24
+          },
+          "side": {
+            "x": 622,
+            "y": 409.375,
+            "width": 340,
+            "height": 437.375,
+            "top": 409.375,
+            "right": 962,
+            "bottom": 846.75,
+            "left": 622
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 1024,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1009
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 571,
+          "track": 571
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 340
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 24,
+            "y": 409.375,
+            "width": 571,
+            "height": 144,
+            "top": 409.375,
+            "right": 595,
+            "bottom": 553.375,
+            "left": 24
+          },
+          "side": {
+            "x": 645,
+            "y": 409.375,
+            "width": 340,
+            "height": 437.375,
+            "top": 409.375,
+            "right": 985,
+            "bottom": 846.75,
+            "left": 645
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "cart",
+    "width": 1440,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1425
+      },
+      {
+        "ok": true,
+        "label": "cart stays grid after native CSS",
+        "actual": "grid"
+      },
+      {
+        "ok": true,
+        "label": "main fills track",
+        "actual": {
+          "main": 810,
+          "track": 810
+        }
+      },
+      {
+        "ok": true,
+        "label": "summary fills track",
+        "actual": 340
+      },
+      {
+        "ok": true,
+        "label": "summary retains mobile padding",
+        "actual": "22px"
+      },
+      {
+        "ok": true,
+        "label": "summary does not overlap items",
+        "actual": {
+          "main": {
+            "x": 112.5,
+            "y": 409.375,
+            "width": 810,
+            "height": 144,
+            "top": 409.375,
+            "right": 922.5,
+            "bottom": 553.375,
+            "left": 112.5
+          },
+          "side": {
+            "x": 972.5,
+            "y": 409.375,
+            "width": 340,
+            "height": 437.375,
+            "top": 409.375,
+            "right": 1312.5,
+            "bottom": 846.75,
+            "left": 972.5
+          }
+        }
+      },
+      {
+        "ok": true,
+        "label": "remove retains bordered 44px target after late native CSS",
+        "actual": ""
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 320,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 305
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 12,
+          "right": 12
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 375,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 360
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 16,
+          "right": 16
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 412,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 397
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 16,
+          "right": 16
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 599,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 584
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 16,
+          "right": 16
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 600,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 585
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 601,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 586
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 768,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 753
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 769,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 754
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 999,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 984
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 1000,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 985
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 1001,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 986
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 1024,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1009
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 24,
+          "right": 24
+        }
+      }
+    ]
+  },
+  {
+    "page": "checkout",
+    "width": 1440,
+    "checks": [
+      {
+        "ok": true,
+        "label": "no horizontal page overflow",
+        "actual": 1425
+      },
+      {
+        "ok": true,
+        "label": "checkout centered in viewport",
+        "actual": {
+          "left": 112.5,
+          "right": 112.5
+        }
+      }
+    ]
+  }
+]

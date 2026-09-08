@@ -1,0 +1,79 @@
+[
+  {
+    "width": 320,
+    "result": {
+      "success": true,
+      "data": "{\"width\":320,\"client\":305,\"scrollWidth\":305,\"cards\":[{\"width\":146.390625,\"grid\":\"72px 36.3906px\",\"parentGrid\":\"305px\",\"buttonWidth\":26},{\"width\":146.390625,\"grid\":\"72px 36.3906px\",\"parentGrid\":\"305px\",\"buttonWidth\":26}],\"search\":0}"
+    }
+  },
+  {
+    "width": 375,
+    "result": {
+      "success": true,
+      "data": "{\"width\":375,\"client\":360,\"scrollWidth\":360,\"cards\":[{\"width\":172.796875,\"grid\":\"94px 28.7969px\",\"parentGrid\":\"360px\",\"buttonWidth\":26},{\"width\":172.796875,\"grid\":\"94px 28.7969px\",\"parentGrid\":\"360px\",\"buttonWidth\":26}],\"search\":0}"
+    }
+  },
+  {
+    "width": 599,
+    "result": {
+      "success": true,
+      "data": "{\"width\":599,\"client\":584,\"scrollWidth\":584,\"cards\":[{\"width\":280.3125,\"grid\":\"94px 136.312px\",\"parentGrid\":\"584px\",\"buttonWidth\":90.3125},{\"width\":280.3125,\"grid\":\"94px 136.312px\",\"parentGrid\":\"584px\",\"buttonWidth\":90.3125}],\"search\":0}"
+    }
+  },
+  {
+    "width": 600,
+    "result": {
+      "success": true,
+      "data": "{\"width\":600,\"client\":585,\"scrollWidth\":585,\"cards\":[{\"width\":136.078125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"283.5px 283.5px\",\"buttonWidth\":26},{\"width\":136.078125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"283.5px 283.5px\",\"buttonWidth\":26}],\"search\":0}"
+    }
+  },
+  {
+    "width": 601,
+    "result": {
+      "success": true,
+      "data": "{\"width\":601,\"client\":586,\"scrollWidth\":586,\"cards\":[{\"width\":136.3125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"284px 284px\",\"buttonWidth\":26},{\"width\":136.3125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"284px 284px\",\"buttonWidth\":26}],\"search\":0}"
+    }
+  },
+  {
+    "width": 768,
+    "result": {
+      "success": true,
+      "data": "{\"width\":768,\"client\":753,\"scrollWidth\":753,\"cards\":[{\"width\":176.390625,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"367.5px 367.5px\",\"buttonWidth\":26},{\"width\":176.390625,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"367.5px 367.5px\",\"buttonWidth\":26}],\"search\":0}"
+    }
+  },
+  {
+    "width": 769,
+    "result": {
+      "success": true,
+      "data": "{\"width\":769,\"client\":754,\"scrollWidth\":754,\"cards\":[{\"width\":368,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"368px 368px\",\"buttonWidth\":196},{\"width\":368,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"368px 368px\",\"buttonWidth\":196}],\"search\":0}"
+    }
+  },
+  {
+    "width": 999,
+    "result": {
+      "success": true,
+      "data": "{\"width\":999,\"client\":984,\"scrollWidth\":984,\"cards\":[{\"width\":483,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"483px 483px\",\"buttonWidth\":311},{\"width\":483,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"483px 483px\",\"buttonWidth\":311}],\"search\":0}"
+    }
+  },
+  {
+    "width": 1000,
+    "result": {
+      "success": true,
+      "data": "{\"width\":1000,\"client\":985,\"scrollWidth\":985,\"cards\":[{\"width\":313.65625,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"313.656px 313.672px 313.656px\",\"buttonWidth\":113.65625},{\"width\":313.671875,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"313.656px 313.672px 313.656px\",\"buttonWidth\":113.671875}],\"search\":0}"
+    }
+  },
+  {
+    "width": 1024,
+    "result": {
+      "success": true,
+      "data": "{\"width\":1024,\"client\":1009,\"scrollWidth\":1009,\"cards\":[{\"width\":321.65625,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"321.656px 321.672px 321.656px\",\"buttonWidth\":121.65625},{\"width\":321.671875,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"321.656px 321.672px 321.656px\",\"buttonWidth\":121.671875}],\"search\":0}"
+    }
+  },
+  {
+    "width": 1440,
+    "result": {
+      "success": true,
+      "data": "{\"width\":1440,\"client\":1425,\"scrollWidth\":1425,\"cards\":[{\"width\":460.328125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"460.328px 460.328px 460.344px\",\"buttonWidth\":260.328125},{\"width\":460.328125,\"grid\":\"94px minmax(0px, 1fr)\",\"parentGrid\":\"460.328px 460.328px 460.344px\",\"buttonWidth\":260.328125}],\"search\":0}"
+    }
+  }
+]

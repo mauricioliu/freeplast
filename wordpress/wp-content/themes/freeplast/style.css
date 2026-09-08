@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.14
+Version: 1.0.15
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -982,6 +982,14 @@ body ul.products.catalog-grid {
 body ul.products.catalog-grid::before,
 body ul.products.catalog-grid::after {
   display: none; /* Woo float clear helpers — the grid owns layout */
+}
+
+/* Beat Woo's [class*=columns-] percentage widths on every loop, including
+   shortcode Home/related loops. Grid tracks, not legacy floats, own sizing. */
+body ul.products.catalog-grid > li.product.product-card {
+  width: auto;
+  float: none;
+  margin: 0;
 }
 
 body ul.products.catalog-grid li.product-card {
@@ -1976,7 +1984,16 @@ body.woocommerce .fp-product-shell .product-options form.cart button.single_add_
   text-decoration: none;
 }
 
-body.woocommerce .fp-product-shell .product-options form.cart button.single_add_to_cart_button:hover {
+body.woocommerce .fp-product-shell .product-options form.cart button.single_add_to_cart_button[aria-disabled="true"],
+body.woocommerce .fp-product-shell .product-options form.cart button.single_add_to_cart_button[aria-disabled="true"]:hover {
+  background: var(--fp-tint);
+  border-color: var(--fp-line-strong);
+  color: var(--fp-muted);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+body.woocommerce .fp-product-shell .product-options form.cart button.single_add_to_cart_button:not([aria-disabled="true"]):hover {
   background: var(--fp-blue-heading);
   border-color: var(--fp-blue-heading);
   color: #fff;
@@ -3511,24 +3528,29 @@ body.fpw-has-dock.fpw-has-selection {
   margin-top: 24px;
 }
 
-.fp-checkout-page .fp-privacy-copy {
+.fp-checkout-page #payment .woocommerce-privacy-policy-text {
   font-size: 13px;
   line-height: 1.7;
   color: var(--fp-chrome-muted);
   margin-bottom: 16px;
 }
 
-.fp-checkout-page .fp-privacy-copy a {
+.fp-checkout-page #payment .woocommerce-privacy-policy-text a {
   color: var(--fp-blue);
 }
 
-.fp-checkout-page #payment {
+body.woocommerce-checkout .fp-checkout-page #payment {
   background: transparent;
   border-radius: 0;
   padding: 0;
 }
 
-.fp-checkout-page #payment ul.wc_payment_methods {
+body.woocommerce-checkout .fp-checkout-page #payment .place-order {
+  padding: 0;
+  margin: 0;
+}
+
+body.woocommerce-checkout .fp-checkout-page #payment ul.wc_payment_methods {
   list-style: none;
   padding: 0;
   margin: 0 0 16px;

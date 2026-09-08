@@ -22,7 +22,16 @@
    the block's technical zero totals and per-line subtotals are hidden — no
    public amounts exist on this surface (same rule as the review table). ---------- */
 .fp-cart-page .wp-block-woocommerce-cart { margin-block: 4px 64px; }
-.wc-block-cart { display: grid; gap: 24px; }
+/* Native cart.css can arrive after the theme during hydration. Reset its
+   65%/35% flex widths inside OUR grid, including the mobile padding reset. */
+body .wc-block-cart.wc-block-components-sidebar-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-main,
+body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-sidebar { width: 100%; min-width: 0; margin: 0; }
+body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-main { padding: 0; order: 0; }
+/* Quotes also absolutely positions this sidebar at right:40% from 700px.
+   Clear ALL its insets; otherwise a correctly sized sticky card still overlaps
+   the items. The theme alone owns position inside this grid. */
+body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-sidebar { padding: 22px; order: 1; position: static; inset: auto; }
 .wc-block-cart.is-loading { min-height: 220px; }
 /* No table header in A's basket list; each row IS the line. */
 .wc-block-cart .wc-block-cart-items__header { display: none; }
@@ -53,6 +62,9 @@
 .wc-block-cart__sidebar .wc-block-components-totals-shipping,
 .wc-block-cart__sidebar .wc-block-components-totals-footer-item,
 .wc-block-cart__cross-sells { display: none !important; }
+/* A narrow line must wrap removal below the native stepper, not expand the
+   page (320px). Do not shrink either 44px tap target to force one row. */
+.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-width: 0; }
 /* A's stepper look for the block's own quantity selector. */
 .wc-block-cart .wc-block-components-quantity-selector { border: 1px solid #b5b5c2; border-radius: 7px; background: var(--fp-paper); overflow: hidden; width: max-content; }
 .wc-block-cart .wc-block-components-quantity-selector button.wc-block-components-quantity-selector__button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; border: 0; background: transparent; color: var(--fp-text); font-size: 20px; line-height: 1; cursor: pointer; box-shadow: none; }
@@ -77,11 +89,14 @@
   .wc-block-cart .wc-block-cart-item__product a { font-size: 18px; }
 }
 @media (min-width: 1000px) {
-  .wc-block-cart { grid-template-columns: minmax(0, 1fr) 340px; gap: 50px; align-items: start; }
-  .wc-block-cart__sidebar { position: sticky; top: calc(var(--fp-admin-offset, 0px) + 84px + 16px); }
+  body .wc-block-cart.wc-block-components-sidebar-layout { grid-template-columns: minmax(0, 1fr) 340px; gap: 50px; align-items: start; }
+  body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-sidebar { position: sticky; top: calc(var(--fp-admin-offset, 0px) + 84px + 16px); }
 }
 /* Classic checkout is used for local conditional fields; the review table itself carries no amounts (issue #29 override). */
 .woocommerce-billing-fields, .woocommerce-additional-fields { margin-block: 24px; }
+/* The block-theme skin caps the shortcode wrapper at 1000px and leaves it
+   left-aligned. The inner journey shell alone owns its 1200px/gutter limit. */
+body.woocommerce-checkout main .woocommerce:has(> .fp-checkout-page) { width: 100%; max-width: none; }
 .woocommerce-checkout #payment { background: var(--fp-tint); }
 .woocommerce .woocommerce-notices-wrapper { scroll-margin-top: 90px; }
 /* Issue #28 (WA-05): the variation button's state is semantic, not just a class.
@@ -105,7 +120,7 @@
 /* While the store reports pending cart operations the CTA is truthfully inert
    (aria-disabled + synchronous click guard): the muted look is explicit, not
    Woo's opacity blend, and the guard is removed as soon as operations settle. */
-.wc-block-cart__submit-button[aria-disabled="true"], .wc-block-cart__submit-button[aria-disabled="true"]:hover { background: var(--fp-tint); color: var(--fp-muted); border: 2px solid var(--fp-line); opacity: 1; cursor: progress; }
+.wc-block-cart a.wc-block-cart__submit-button[aria-disabled="true"], .wc-block-cart a.wc-block-cart__submit-button[aria-disabled="true"]:hover { background: var(--fp-tint); color: var(--fp-muted); border: 2px solid var(--fp-line); opacity: 1; cursor: progress; }
 @media (max-width: 599px) {
  .woocommerce ul.products li.product, .woocommerce-page ul.products li.product { width: 100%; float: none; margin: 0 0 32px; }
  .woocommerce .col2-set .col-1, .woocommerce .col2-set .col-2 { width: 100%; float: none; }
@@ -149,7 +164,7 @@
    and its narrow-container hiding without depending on stylesheet order.
    Removal itself stays WooCommerce's own handler (ADR-0001): this is
    presentation only, no cart mutation of any kind. */
-.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; flex: 0 0 auto; margin: 0 0 0 8px; padding: 0; background: var(--fp-paper); border: 1px solid var(--fp-line-strong); border-radius: var(--fp-r-lg); box-shadow: none; color: var(--fp-ink); text-decoration: none; cursor: pointer; }
-.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:hover, .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus { background: var(--fp-tint); color: var(--fp-blue); border-color: var(--fp-blue); text-decoration: none; }
-.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
-.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled], .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled]:hover { background: var(--fp-tint); color: var(--fp-muted); border-color: var(--fp-line); cursor: not-allowed; }
+body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; flex: 0 0 auto; margin: 0; padding: 0; background: var(--fp-paper); border: 1px solid var(--fp-line-strong); border-radius: var(--fp-r-lg); box-shadow: none; color: var(--fp-ink); text-decoration: none; cursor: pointer; }
+body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:hover, body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus { background: var(--fp-tint); color: var(--fp-blue); border-color: var(--fp-blue); text-decoration: none; }
+body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
+body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled], body .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled]:hover { background: var(--fp-tint); color: var(--fp-muted); border-color: var(--fp-line); cursor: not-allowed; }

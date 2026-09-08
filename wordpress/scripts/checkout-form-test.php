@@ -35,7 +35,16 @@ if (!preg_match('/\tfunction woocommerce_form_field\(.*?\n\t\}/s', $native_field
 eval($native_match[0]);
 function checked_stub($value, $current) { return $value === $current ? ' checked="checked"' : ''; }
 function woocommerce_order_review() { echo 'REVIEW-TABLE[woocommerce-checkout-review-order-table]'; }
-function woocommerce_checkout_payment() { echo 'PAYMENT-BLOCK[#place_order]'; }
+function wc_terms_and_conditions_checkbox_enabled() { return false; }
+// The old payment marker missed native terms/privacy output and let the
+// duplicate through. Execute Woo's terms template at the payment boundary.
+add_action('woocommerce_checkout_terms_and_conditions', static function () {
+	echo '<div class="woocommerce-privacy-policy-text"><p>Usaremos tus datos para preparar y responder tu solicitud de cotización. Consulta nuestra <a href="https://example.test/politica-de-privacidad/">política de privacidad</a>.</p></div>';
+}, 20);
+function woocommerce_checkout_payment() {
+	echo 'PAYMENT-BLOCK[#place_order]';
+	include __DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/terms.php';
+}
 
 class StubCheckout {
 	public array $draft = array();
@@ -120,6 +129,8 @@ verify(!str_contains($html, 'REVIEW-TABLE') || strpos($html, 'data-fp-summary-de
 /* Submit: native payment block, privacy link, no new requirements. */
 verify(str_contains($html, 'PAYMENT-BLOCK'), 'the native payment/place-order block renders at the form foot');
 verify(str_contains($html, 'política de privacidad</a>') && str_contains($html, '/politica-de-privacidad/'), 'privacy links the real policy page');
+verify(substr_count($html, 'Usaremos tus datos para preparar') === 1, 'one privacy notice including native terms output');
+verify(str_contains(file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/payment.php'), "wc_get_template( 'checkout/terms.php' )"), 'pinned native payment calls the exercised terms template');
 verify(!str_contains($html, 'checkbox') || !str_contains($html, 'consentimiento'), 'no consent checkbox invented');
 verify(!str_contains($html, 'registro') || !str_contains($html, 'Regístrate'), 'no registration requirement invented');
 verify(str_contains($html, 'Todos los campos son obligatorios, salvo Mensaje.'), 'the required-fields hint matches the real rules');
