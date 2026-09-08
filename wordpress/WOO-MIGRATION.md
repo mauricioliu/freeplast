@@ -2,6 +2,45 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
+## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, NOT deployed)
+
+Owner request (screenshot of Home cards): after «Agregar a Cotización», the
+count of added items should appear where the native «Ver carrito» link lands,
+plus a way to remove items. Two presentation-only surfaces, theme only
+(**1.0.8 → 1.0.9**, style.css header and cache-bust constant together); no
+adapter change, no release, staging untouched.
+
+- Count pill: Woo's own AJAX add appends the native `.added_to_cart` link and
+  fires `added_to_cart` carrying the add-to-cart fragments — the same payload
+  the header count uses (`span.fpw-basket-count`, distinct cart lines,
+  `fpw_cart_line_count()`). New theme script `loop-added-count.js` (enqueued
+  on every route with a `jquery` dependency, inert without the event) parses
+  that fragment and re-renders EVERY `.added_to_cart` on the page as the pill
+  «N en cotización» (tint band, blue badge, 44px touch target, one line even on
+  a ~180px two-column phone card; aria-label starts with the visible text and
+  names the destination). The render is deferred one task so it covers the link
+  Woo appends inside its own listener regardless of script binding order; an
+  unusable payload leaves Woo's links untouched; without JavaScript the native
+  link is kept. The number is always Woo's own fragment value — no parallel
+  count (ADR-0001). The count remains distinct lines, the header's frozen
+  definition, not summed units.
+- Per-line removal already existed on the quote list — the cart block renders
+  an «Eliminar {producto} del carrito» icon button per line — but as a bare
+  24×24 glyph beside the quantity stepper it read as decoration, and Woo's own
+  cart.css hides it inside narrow containers (`@container max-width:699px`)
+  and the `.wc-block-cart` layout. `woo.css` restyles it as a 44px bordered
+  button (existing hues, hover/focus/disabled states) through a selector chain
+  that outspecifies both Woo's base skin and the narrow-container hiding;
+  removal itself stays Woo's own handler — no cart mutation code (ADR-0001).
+- Locked by: 26 offline assertions (strict fragment parsing, all-links
+  re-render, idempotent badge, unusable payloads, deferred render covering the
+  link Woo appends in the same event, no-bind without jQuery) and 2 new
+  real-stack probes (loop routes enqueue the script; the classic
+  `?wc-ajax=add_to_cart` answer carries a numeric `span.fpw-basket-count`
+  count) — stack suite 96 → 100. Observed on the disposable stack at 412/1440
+  (pill render, both pills updating together, native removal + header refresh);
+  no browser/device validation claimed.
+
 ## Owner-authorized staging release — 20260907T225331Z (search styling fix)
 
 Owner screenshot of live `/?s=caja`: products rendered as an unstyled bullet list

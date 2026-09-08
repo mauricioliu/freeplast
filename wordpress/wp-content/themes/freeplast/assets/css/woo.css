@@ -69,3 +69,34 @@
 .fpw-loop-add .quantity input.qty { width: 4.25rem; min-height: 44px; padding: 8px; margin: 0; }
 .fpw-loop-add .add_to_cart_button { flex: 1 1 auto; margin-top: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
 .fpw-loop-add .added_to_cart { flex-basis: 100%; margin-top: 8px; }
+/* Owner request (2026-09-08): after an add, Woo's native «Ver carrito» link is
+   re-rendered by loop-added-count.js as the count pill — the same distinct-line
+   number the header shows, read from Woo's own add-to-cart fragment, never a
+   parallel count (ADR-0001). Tint band with the blue count badge, 44px touch
+   target, one line even on the narrowest two-column phone card; existing hues
+   only: ink on tint (16.3:1) and white on blue (14.7:1), both above AA.
+   Scoped to the adapter's loop wrapper — the only surface where the native
+   link exists — so the pill rules also outspecify Woo's own added_to_cart skin
+   (.woocommerce a.added_to_cart). */
+.fpw-loop-add .added_to_cart.fp-added-pill { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 6px 14px; background: var(--fp-tint); border: 1px solid var(--fp-line); border-radius: var(--fp-r-full); font-size: 14px; font-weight: 700; color: var(--fp-ink); text-align: center; text-decoration: none; }
+.fpw-loop-add .added_to_cart.fp-added-pill .fp-added-pill__badge { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; background: var(--fp-blue); color: #fff; border-radius: var(--fp-r-full); font-size: 13px; font-weight: 800; line-height: 1; }
+.fpw-loop-add .added_to_cart.fp-added-pill:hover { text-decoration: none; }
+.fpw-loop-add .added_to_cart.fp-added-pill:hover .fp-added-pill__text { text-decoration: underline; }
+.fpw-loop-add .added_to_cart.fp-added-pill:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
+/* Owner request (2026-09-08): the quote list already owned per-line removal —
+   Woo's cart block renders a «Eliminar {producto} del carrito» icon button —
+   but as a bare 24×24 underline-less glyph beside the quantity stepper it read
+   as decoration, and Woo's own cart.css hides it outright inside narrow
+   containers (@container max-width:699px display:none) and in the .wc-block-cart
+   layout. Give it the visible, plainly tappable button it was meant to be:
+   44px square, bordered, existing hues only (ink icon on paper 17.7:1, blue on
+   tint on hover 13.5:1, muted on tint disabled 4.8:1 — all above AA). The
+   extra class chain outspecifies Woo's base skin
+   (table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link)
+   and its narrow-container hiding without depending on stylesheet order.
+   Removal itself stays WooCommerce's own handler (ADR-0001): this is
+   presentation only, no cart mutation of any kind. */
+.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; min-width: 44px; min-height: 44px; flex: 0 0 auto; margin: 0 0 0 8px; padding: 0; background: var(--fp-paper); border: 1px solid var(--fp-line-strong); border-radius: var(--fp-r-lg); box-shadow: none; color: var(--fp-ink); text-decoration: none; cursor: pointer; }
+.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:hover, .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus { background: var(--fp-tint); color: var(--fp-blue); border-color: var(--fp-blue); text-decoration: none; }
+.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
+.wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled], .wc-block-cart table.wc-block-cart-items .wc-block-cart-item__quantity .wc-block-cart-item__remove-link[disabled]:hover { background: var(--fp-tint); color: var(--fp-muted); border-color: var(--fp-line); cursor: not-allowed; }

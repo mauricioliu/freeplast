@@ -190,6 +190,31 @@ register_shutdown_function( static function () {
     check(searchNoneBodyClasses.includes('woocommerce') && searchNoneBodyClasses.includes('woocommerce-page'),
           `a no-match search page must ship Woo's body scope classes — got [${searchNoneBodyClasses.join(', ')}]`);
 
+    /* 2c. Added-to-cart count pill (owner request, 2026-09-08): the number shown
+       on the card after an add is read from the SAME fragment the header count
+       uses — never a parallel count — so (a) every loop route must enqueue the
+       pill script and (b) the classic AJAX add, the exact request the cards
+       fire, must answer it with a real numeric span.fpw-basket-count count. */
+    {
+      const homeForPill = await fetchBody('/');
+      check(/assets\/js\/loop-added-count\.js\?ver=/.test(homeForPill),
+            'home must enqueue loop-added-count.js — the added-count pill would never render');
+      const productId = (homeForPill.match(/data-product_id="(\d+)"/) || [])[1];
+      check(Boolean(productId), 'home must expose an add-to-cart product id for the pill data-contract probe');
+      const addResponse = await fetch(SITE_URL + '/?wc-ajax=add_to_cart', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'product_id=' + productId + '&quantity=2',
+        signal: AbortSignal.timeout(60_000),
+      });
+      check(addResponse.status === 200, `the classic add-to-cart AJAX must answer 200 (got ${addResponse.status})`);
+      const payload = await addResponse.json();
+      const fragment = payload && payload.fragments && payload.fragments['span.fpw-basket-count'];
+      const count = typeof fragment === 'string' ? (fragment.match(/fpw-basket-count">\s*(\d+)\s*</) || [])[1] : null;
+      check(count !== null && Number(count) >= 1,
+            `the add-to-cart fragments must carry a numeric span.fpw-basket-count count (got ${JSON.stringify(fragment)})`);
+    }
+
     /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight
        + preserve + stranger + isolation over real HTTP. */
     const py = process.env.PYTHON || 'python3';

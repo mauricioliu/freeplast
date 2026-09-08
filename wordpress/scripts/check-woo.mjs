@@ -73,6 +73,84 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
  assertVariationState(button.attrs['aria-busy']==='true'&&button.attrs['aria-disabled']==='true','pending submission exposes aria-busy and stays inert');
  assertVariationState(hint.textContent===variationState.TEXTS.pending,'pending submission announces itself in the instruction');
 }
+// Added-to-cart count pill (loop-added-count.js): pure helpers plus a fake DOM —
+// the count MUST come from Woo's own fragment payload and never be invented.
+{
+ const addedCountSource=readFileSync(path.join(root,'wp-content/themes/freeplast/assets/js/loop-added-count.js'),'utf8');
+ const addedCount=new Function('module',addedCountSource+'\nreturn module.exports;')({exports:{}});
+ const assertPill=(ok,message)=>{if(!ok)throw Error(message);checks++;};
+ const FRAG=(n)=>({'span.fpw-basket-count':'<span class="fpw-basket-count">'+n+'</span>'});
+ function fakePillLink(){
+  const el={
+   children:[{nativeText:'View cart'}],
+   attrs:{title:'View cart',href:'/cotizacion/'},
+   className:'added_to_cart wc-forward',
+   classList:{add(c){if((' '+el.className+' ').indexOf(' '+c+' ')===-1)el.className+=' '+c;}},
+   appendChild(child){el.children.push(child);return child;},
+   removeChild(child){const i=el.children.indexOf(child);if(i!==-1)el.children.splice(i,1);return child;},
+   get firstChild(){return el.children[0]||null;},
+   setAttribute(n,v){el.attrs[n]=String(v);},
+   removeAttribute(n){delete el.attrs[n];},
+   querySelector(sel){const wanted=sel.replace(/^\./,'');const walk=(node)=>{for(const child of node.children||[]){if(child.className&&child.className.split(/\s+/).indexOf(wanted)!==-1)return child;const deep=walk(child);if(deep)return deep;}return null;};return walk(el);}
+  };
+  return el;
+ }
+ function pillDoc(links){return {createElement(){return {className:'',textContent:'',children:[]};},querySelectorAll(){return links;}};}
+ // extractCount: strict read of the adapter's pinned fragment shape.
+ assertPill(addedCount.extractCount(FRAG(5))===5,'a well-formed fragment yields its count');
+ assertPill(addedCount.extractCount({'span.fpw-basket-count':'<span class="fpw-basket-count"> 12 </span>'})===12,'whitespace around the count is tolerated');
+ assertPill(addedCount.extractCount()===null&&addedCount.extractCount(null)===null,'a missing payload yields no count');
+ assertPill(addedCount.extractCount({})===null&&addedCount.extractCount({'span.fpw-basket-count':7})===null,'a non-string fragment value yields no count');
+ assertPill(addedCount.extractCount({'span.fpw-basket-count':'<span>5</span>'})===null,'a foreign fragment shape yields no count');
+ assertPill(addedCount.extractCount({'span.fpw-basket-count':'<span class="fpw-basket-count">x</span>'})===null,'a non-numeric count yields no count');
+ // updateAll: every .added_to_cart link is re-rendered from the payload.
+ {
+  const links=[fakePillLink(),fakePillLink()];
+  const updated=addedCount.updateAll(pillDoc(links),FRAG(5));
+  assertPill(updated===2,'both native links are re-rendered');
+  for(const link of links){
+   const badge=link.querySelector('.fp-added-pill__badge');
+   assertPill(badge&&badge.textContent==='5','the badge carries the fragment count');
+   assertPill(link.className.indexOf('fp-added-pill')!==-1,'the pill class marks the rendered link');
+   assertPill(link.attrs.title===undefined,'the stale native title is dropped');
+   assertPill(link.attrs['aria-label']==='5 en cotización — ver Productos a Cotizar','the accessible name starts with the visible text and names the destination');
+   assertPill(link.children.length===2&&link.children.every(c=>!c.nativeText),'the native «View cart» text is replaced, not appended to');
+  }
+  // Idempotent re-render (a later add on the same page): badge reused, counts move.
+  const second=addedCount.updateAll(pillDoc(links),FRAG(8));
+  assertPill(second===2,'re-render still reports every link');
+  for(const link of links){
+   assertPill(link.children.length===2,'a re-render never duplicates the badge');
+   assertPill(link.querySelector('.fp-added-pill__badge').textContent==='8','the badge follows the newer payload');
+   assertPill(link.attrs['aria-label']==='8 en cotización — ver Productos a Cotizar','the accessible name follows the newer payload');
+  }
+ }
+ // Unusable payloads leave WooCommerce's own links exactly as rendered.
+ {
+  const links=[fakePillLink()];
+  assertPill(addedCount.updateAll(pillDoc(links),{})===0,'a payload without the count fragment updates nothing');
+  assertPill(addedCount.updateAll(pillDoc(links),undefined)===0,'a missing payload updates nothing');
+  assertPill(links[0].className==='added_to_cart wc-forward'&&links[0].children.length===1,'an untouched link keeps its native text, class and title');
+ }
+ // bind: the render runs one task AFTER the event so it also covers the link
+ // Woo's own listener appends (binding order between scripts is not guaranteed).
+ {
+  const links=[fakePillLink()];
+  const doc=Object.assign(pillDoc(links),{body:{}});
+  const timeouts=[];
+  const fakeJq=()=>({on(event,handler){fakeJq.handlers[event]=handler;return fakeJq;}});
+  fakeJq.handlers={};
+  const fakeWindow={jQuery:fakeJq,document:doc,setTimeout(fn){timeouts.push(fn);}};
+  assertPill(addedCount.bind(fakeWindow)===true,'bind succeeds with jQuery present');
+  assertPill(addedCount.bind({})===false,'bind refuses to bind without jQuery');
+  fakeJq.handlers.added_to_cart({type:'added_to_cart'},FRAG(7),'hash',{});
+  assertPill(timeouts.length===1,'the event schedules exactly one deferred render');
+  assertPill(links[0].children.length===1,'nothing is rendered synchronously (Woo has not appended its link yet)');
+  links.push(fakePillLink()); // Woo's own listener appends the new link in the same event
+  timeouts.splice(0).forEach((fn)=>fn());
+  assertPill(links.every((link)=>link.querySelector('.fp-added-pill__badge')&&link.querySelector('.fp-added-pill__badge').textContent==='7'),'the deferred render covers every link including the one Woo appended in the same event');
+ }
+}
 
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
 // Issue #36 final red-gate: the native plain-route helper's payload self-test
