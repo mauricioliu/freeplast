@@ -2,7 +2,7 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
-## Per-product card quantity + native card removal — 2026-09-08 (local, NOT released)
+## Per-product card quantity + native card removal — 2026-09-08 (released 20260908T095829Z)
 
 Owner clarified the circled card pills: each must show the **units of that
 product**, not the header's distinct-line total, and offer removal directly
@@ -40,8 +40,47 @@ semantics remain unchanged.
   projection assertions, 49 DOM/native-handler assertions (314 combined
   syntax/JS/deployment/stack checks). The disposable HTTP test runner exited;
   no persistent dev server, browser/device interaction or visual approval.
-  Release still requires the paired backup/restore rehearsal and verified
-  installation recorded below; human must inspect the cards on the phone.
+  Paired backup/restore rehearsal and verified installation completed below;
+  human must still inspect the cards on the phone.
+
+## Owner-authorized staging release — 20260908T095829Z (per-product quantity + card removal)
+
+Owner requested **commit, push and deploy**. Source commit **`24b2df7`** pushed
+on `main`, then shipped adapter **1.6.6** and theme **1.0.10** only. No migration,
+Woo/Quotes vendor update, media/catalog change, nginx change or `freeplast.cl`
+operation. Operator: pi session at owner's request.
+
+- Paired backup `/root/freeplast-wordpress-backups/20260908T095829Z/`, checksums
+  verified; isolated DB+CLI-only restore rehearsal verified **17 products / 7
+  Woo requests / 2 original requests**, matching live. Rehearsal resources
+  removed; no HTTP service started in that rehearsal.
+- Immutable release `/opt/freeplast-wordpress/bundle/releases/20260908T095829Z/`;
+  transferred files verified before install. ZIP SHA256:
+  - adapter: `8841e535a2f1bc5f9565b3c86e0c7724a7ad688b5e594dc0a3784ca3ab974cd5`
+  - theme: `0622a8e46f16af1d25346b6b320e7a42c584fd6b274fbea392570550f0c54e7d`
+- Maintenance-window install: all **31 installed source hashes** matched;
+  native WP-CLI verifier **100 state checks passed**. Pre/post record digest
+  identical (`88abfd9594e860677262ec248b66dc031d8e35600539002a6bcad36193a88482`):
+  posts/meta, notes/meta and order items/meta preserved. Mail MU hash unchanged
+  (`71164446…`); cache flushed and maintenance deactivated. Existing WordPress
+  and MariaDB containers/images left in place; DB still healthy.
+- Public read-only checks: Home, `/cotizacion/` and `/?s=caja` HTTP 200;
+  Home serves per-product slots, complete snapshot, native add/remove + fragment
+  dependencies and version **1.0.10** assets. Served JS/CSS match source bytes.
+  Noindex remains, `X-Powered-By` absent. No public add/remove POST or submitted
+  request was generated; no browser/device/visual approval claimed.
+- Private operator scripts/artifacts:
+  `/root/freeplast-release-20260908T095829Z/` (remote),
+  `/tmp/freeplast-publish-20260908T095829Z/` (local). Local gate/deploy logs:
+  `/tmp/freeplast-card-release-tests.log`,
+  `/tmp/freeplast-backup-20260908T095829Z.log`,
+  `/tmp/freeplast-deploy-20260908T095829Z.log`.
+- Paired rollback, if required, on OpenClaw:
+  `bash /root/freeplast-release-20260908T095829Z/restore-woo-backup.sh /root/freeplast-wordpress-backups/20260908T095829Z --execute`.
+  The repo's restore script and companion `staging.sh` are preserved at that
+  private path. Restores both DB and files; consider any later human writes
+  before choosing a full rollback. Previous code-only artifacts also remain in
+  release `20260908T031702Z`.
 
 ## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, released 20260908T031702Z; card meaning superseded above)
 
