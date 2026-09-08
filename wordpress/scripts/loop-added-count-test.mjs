@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { JSDOM } from 'jsdom';
+import jquery from 'jquery';
+
+const source = readFileSync(new URL('../wp-content/themes/freeplast/assets/js/loop-added-count.js', import.meta.url), 'utf8');
+const api = new Function('module', source + '\nreturn module.exports;')({ exports: {} });
+const KEY = 'div.fpw-card-selections';
+const selection = (id, quantity) => `<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="${id}"><a class="fp-added-pill" href="/cotizacion/" aria-label="${quantity} en cotización — producto ${id}"><span class="fp-added-pill__badge">${quantity}</span><span class="fp-added-pill__text">en cotización</span></a><a class="fp-remove-product remove_from_cart_button" role="button" data-cart_item_key="key-${id}" href="/cotizacion/?remove_item=key-${id}&amp;_wpnonce=native">Quitar</a></div>`;
+const snapshot = (entries) => `<div class="fpw-card-selections" data-fpw-cart-state="1" hidden>${entries.map(([id, quantity]) => selection(id, quantity)).join('')}</div>`;
+const fragments = (entries) => ({ 'span.fpw-basket-count': '<span class="fpw-basket-count">5</span>', [KEY]: snapshot(entries) });
+const card = (id) => `<div class="fpw-loop-add" data-fpw-loop-add><a class="add_to_cart_button" href="/?add-to-cart=${id}" data-product_id="${id}">Agregar</a><a class="added_to_cart">Ver carrito</a><div class="fpw-card-selection" data-product-id="${id}"></div></div>`;
+const page = () => new JSDOM(`<body>${card(11)}${card(22)}${card(11)}${card(33)}${snapshot([])}</body>`, { url: 'https://example.test/' });
+const count = (doc, index) => doc.querySelectorAll('[data-fpw-loop-add]')[index].querySelector('.fp-added-pill__badge')?.textContent;
+
+export async function runLoopAddedCountTests() {
+  const dom = page();
+  const doc = dom.window.document;
+  api.updateAll(doc, fragments([[11, 3], [22, 2]]));
+  assert.equal(count(doc, 0), '3', 'Frutillera must show its 3 units, not the header total of 5 lines');
+  assert.equal(count(doc, 1), '2', 'Frutera must show its own 2 units');
+  assert.equal(count(doc, 2), '3', 'duplicate product cards stay synchronized');
+  assert.equal(count(doc, 3), undefined, 'a product outside the cart has no false count');
+  assert.equal(doc.querySelectorAll('.added_to_cart').length, 0, 'no duplicate native View cart links');
+  assert.equal(doc.querySelector('.fp-remove-product').dataset.cart_item_key, 'key-11', 'removal targets this product, not the last added product');
+  assert.match(doc.querySelector('.fp-remove-product').href, /remove_item=key-11.*_wpnonce=native/, 'native no-JS fallback retained');
+
+  const stableLink = doc.querySelector('.fp-remove-product');
+  stableLink.focus();
+  api.updateAll(doc, fragments([[11, 3], [22, 2]]));
+  assert.equal(doc.activeElement, stableLink, 'unchanged fragments preserve focused controls');
+  api.updateAll(doc, fragments([[11, 7], [22, 2]]));
+  assert.equal(count(doc, 0), '7', 'repeated adds use authoritative accumulated quantity');
+  assert.equal(count(doc, 1), '2', 'adding A never changes B');
+  assert.equal(doc.querySelectorAll('[data-fpw-loop-add]')[0].querySelectorAll('.fp-added-pill').length, 1);
+  api.updateAll(doc, fragments([[22, 2]]));
+  assert.equal(count(doc, 0), undefined, 'removal clears count and control on all A cards');
+  assert.equal(count(doc, 2), undefined);
+  assert.equal(count(doc, 1), '2', 'removal preserves unrelated product');
+  api.updateAll(doc, fragments([]));
+  assert.equal(doc.querySelectorAll('[data-fpw-loop-add] .fp-remove-product').length, 0, 'empty cart removes all card controls');
+  api.updateAll(doc, fragments([[11, 1]]));
+  assert.equal(count(doc, 0), '1', 're-add after removal starts at server quantity');
+  const before = doc.body.innerHTML;
+  for (const bad of [undefined, {}, { [KEY]: 5 }, { [KEY]: '<div>not a cart snapshot</div>' }]) {
+    api.updateAll(doc, bad);
+    assert.equal(doc.body.innerHTML, before, 'invalid payload cannot invent zero or wipe the last confirmed count');
+  }
+
+  const window = dom.window;
+  const $ = jquery(window);
+  window.jQuery = $;
+  const pending = [];
+  window.setTimeout = (fn) => { pending.push(fn); };
+  const flush = () => { pending.splice(0).forEach(fn => fn()); };
+  doc.querySelector(KEY).outerHTML = snapshot([[11, 9]]);
+  assert.equal(api.bind(window), true);
+  assert.equal(api.bind({}), false);
+  assert.equal(count(doc, 0), '9', 'initial/reloaded page reads the server snapshot, not local state');
+  $(doc.body).trigger('added_to_cart', [fragments([[11, 10], [22, 4]]), 'hash', $(doc.querySelector('.add_to_cart_button'))]);
+  doc.querySelector('[data-fpw-loop-add]').insertAdjacentHTML('beforeend', '<a class="added_to_cart">Ver carrito</a>');
+  flush();
+  assert.equal(count(doc, 0), '10', 'event renders after Woo appends its native link');
+  assert.equal(count(doc, 1), '4');
+  assert.equal(doc.querySelectorAll('.added_to_cart').length, 0);
+  $(doc.body).trigger('removed_from_cart', [fragments([[22, 4]]), 'hash']);
+  flush();
+  assert.equal(count(doc, 0), undefined, 'native removal event clears the product controls');
+  doc.querySelector(KEY).outerHTML = snapshot([[22, 6]]);
+  $(doc.body).trigger('wc_fragments_refreshed');
+  flush();
+  assert.equal(count(doc, 1), '6', 'session fragment refresh restores quantities after navigation');
+  doc.querySelector(KEY).outerHTML = snapshot([[22, 8]]);
+  $(doc.body).trigger('wc_fragments_loaded');
+  flush();
+  assert.equal(count(doc, 1), '8', 'cached fragment restoration also updates cards');
+  let refreshes = 0;
+  $(doc.body).on('wc_fragment_refresh', () => refreshes++);
+  window.dispatchEvent(new window.PageTransitionEvent('pageshow', { persisted: true }));
+  assert.equal(refreshes, 1, 'bfcache restoration requests a native session refresh');
+  dom.window.close();
+  await runNativeHandlerTests();
+  console.log('card quantities: per-product, repeated add, duplicates, remove, empty, reload, malformed payloads and pinned Woo add/remove handlers passed');
+  return 49;
+}
+
+async function runNativeHandlerTests() {
+  const native = readFileSync(new URL('./vendor/woocommerce-11.1.0-add-to-cart.js', import.meta.url), 'utf8');
+  assert.equal(createHash('sha256').update(native).digest('hex'), '0fc09a783746f16c4f6133418bbb4b340750364bf912d43d9a298ce3fbb92ae3');
+  const php = process.env.PHP_BINARY || new URL('../.tools/php/php', import.meta.url).pathname;
+  const serverFragments = JSON.parse(execFileSync(php, [new URL('./card-selection-test.php', import.meta.url).pathname, '--fixture'], { encoding: 'utf8' }));
+  const dom = new JSDOM(`<body>${card(11)}${card(22)}${serverFragments[KEY]}</body>`, { url: 'https://example.test/', runScripts: 'outside-only' });
+  const window = dom.window;
+  const doc = window.document;
+  const $ = jquery(window);
+  window.jQuery = $;
+  $.fx.off = true;
+  // Only transport/overlay plumbing is stubbed. Woo's real handler, event
+  // order, queue, dataset reads and fragment replacement run unmodified.
+  $.fn.block = function () { return this.append('<span class="test-block-overlay"></span>'); };
+  $.fn.unblock = function () { this.find('.test-block-overlay').remove(); return this; };
+  const requests = [];
+  $.ajax = (request) => { requests.push(request); };
+  window.wc_add_to_cart_params = { wc_ajax_url: '/?wc-ajax=%%endpoint%%', cart_redirect_after_add: 'no', cart_url: '/cotizacion/', i18n_view_cart: 'Ver carrito', is_cart: false };
+  window.eval(native);
+  await new Promise(resolve => $(resolve));
+  api.bind(window);
+  const settle = () => new Promise(resolve => window.setTimeout(resolve, 5));
+  const reply = async (payload) => {
+    const request = requests.shift();
+    request.success(payload);
+    request.complete();
+    await settle();
+  };
+  assert.equal(count(doc, 0), '3', 'real PHP markup and JS agree on product A');
+  assert.equal(count(doc, 1), '2', 'real PHP markup and JS agree on product B');
+  const add = doc.querySelector('.add_to_cart_button');
+  add.classList.add('ajax_add_to_cart');
+  add.insertAdjacentHTML('beforebegin', '<input class="qty" value="4">');
+  window.eval(readFileSync(new URL('../wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js', import.meta.url), 'utf8'));
+  doc.querySelector('input.qty').dispatchEvent(new window.Event('input', { bubbles: true }));
+  $(add).trigger('click');
+  assert.equal(requests[0].url, '/?wc-ajax=add_to_cart');
+  assert.equal(requests[0].data.product_id, '11');
+  assert.equal(requests[0].data.quantity, '4', 'real quantity mirror reaches native AJAX request');
+  $(add).trigger('click');
+  assert.equal(requests.length, 1, 'Woo queues repeated clicks instead of racing requests');
+  await reply({ fragments: fragments([[11, 7], [22, 2]]), cart_hash: 'one' });
+  assert.equal(count(doc, 0), '7');
+  assert.equal(count(doc, 1), '2');
+  assert.equal(requests.length, 1, 'second queued add starts after completion');
+  await reply({ fragments: fragments([[11, 11], [22, 2]]), cart_hash: 'two' });
+  assert.equal(count(doc, 0), '11');
+  assert.equal(doc.querySelectorAll('.added_to_cart').length, 0);
+  const remove = doc.querySelector('[data-fpw-loop-add] .fp-remove-product');
+  remove.focus();
+  $(remove).trigger($.Event('keydown', { key: ' ' }));
+  assert.equal(requests[0].url, '/?wc-ajax=remove_from_cart', 'Space activates Woo native button handler');
+  assert.equal(requests[0].data.cart_item_key, 'key-11', 'native remove targets A only');
+  assert.ok(remove.closest('.woocommerce-mini-cart-item').querySelector('.test-block-overlay'), 'native pending overlay covers the card controls');
+  await reply({ fragments: fragments([[22, 2]]), cart_hash: 'three' });
+  assert.equal(count(doc, 0), undefined, 'native removal clears A immediately');
+  assert.equal(count(doc, 1), '2', 'native removal leaves B unchanged');
+  assert.equal(doc.activeElement, add, 'focus returns to Add when the removed control disappears');
+  assert.equal(doc.querySelectorAll('[data-fpw-loop-add] .test-block-overlay').length, 0, 'completed removal does not leave a blocked row');
+  dom.window.close();
+}
+
+if (process.argv[1] === new URL(import.meta.url).pathname) await runLoopAddedCountTests();

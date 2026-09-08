@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.9' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.10' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -95,12 +95,9 @@ add_action(
 		// featured grid, shop archive, search results), and the script is inert
 		// wherever the adapter's [data-fpw-loop-add] wrapper is absent.
 		wp_enqueue_script( 'freeplast-loop-quantity', get_template_directory_uri() . '/assets/js/loop-add-to-cart-quantity.js', array(), FREEPLAST_THEME_VERSION, true );
-		// Added-to-cart count pill: Woo's own AJAX add fires added_to_cart with the
-		// same fragments the header count uses; the script re-renders the native
-		// .added_to_cart link as a count pill on every route that may render a loop,
-		// and is inert wherever that event never fires (jQuery comes from Woo's own
-		// add-to-cart script, already global with AJAX adds enabled).
-		wp_enqueue_script( 'freeplast-added-count', get_template_directory_uri() . '/assets/js/loop-added-count.js', array( 'jquery' ), FREEPLAST_THEME_VERSION, true );
+		// Per-product quantities/removal: native Woo handlers own mutations and
+		// fragment refresh owns session restoration on cached/navigation pages.
+		wp_enqueue_script( 'freeplast-added-count', get_template_directory_uri() . '/assets/js/loop-added-count.js', array( 'jquery', 'wc-add-to-cart', 'wc-cart-fragments' ), FREEPLAST_THEME_VERSION, true );
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			wp_enqueue_script( 'freeplast-variation-state', get_template_directory_uri() . '/assets/js/variation-button-state.js', array(), FREEPLAST_THEME_VERSION, true );
 		}

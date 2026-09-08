@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.6.5
+ * Version: 1.6.6
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -96,9 +96,54 @@ add_action( 'init', static function () {
 	) );
 }, 20 );
 
-/** The header count participates in Woo's native add-to-cart fragment refresh. */
+/**
+ * Product-card selection is a projection of Woo's cart, NOT the header's line
+ * count. Native removal owns the mutation, request queue and no-JS nonce URL.
+ * Simple catalog products have one Woo key; keep each key if extensions split
+ * a product into multiple lines. Variations retain their own identity.
+ */
+function fpw_card_selection( int $product_id, array $lines ): string {
+	$quantity = 0;
+	$selected = array();
+	foreach ( $lines as $key => $item ) {
+		$id = (int) ( ! empty( $item['variation_id'] ) ? $item['variation_id'] : ( $item['product_id'] ?? 0 ) );
+		if ( $id !== $product_id || (int) $item['quantity'] <= 0 ) { continue; }
+		$quantity += (int) $item['quantity'];
+		$selected[$key] = $item;
+	}
+	$html = '<div class="fpw-card-selection woocommerce-mini-cart-item" data-product-id="' . $product_id . '">';
+	if ( $quantity > 0 ) {
+		$first = reset( $selected );
+		$name = $first['data']->get_name();
+		$html .= '<a class="fp-added-pill" href="' . esc_url( wc_get_cart_url() ) . '" aria-label="' . esc_attr( $quantity . ' en cotización — ' . $name . ' — ver Productos a Cotizar' ) . '"><span class="fp-added-pill__badge">' . $quantity . '</span><span class="fp-added-pill__text">en cotización</span></a>';
+		foreach ( $selected as $key => $item ) {
+			$label = count( $selected ) === 1 ? 'Quitar' : 'Quitar línea (' . (int) $item['quantity'] . ')';
+			$html .= '<a class="fp-remove-product remove_from_cart_button" role="button" href="' . esc_url( wc_get_cart_remove_url( $key ) ) . '" data-product_id="' . $product_id . '" data-cart_item_key="' . esc_attr( $key ) . '" data-success_message="' . esc_attr( $name . ' se quitó de Productos a Cotizar.' ) . '" aria-label="' . esc_attr( $label . ' — ' . $name . ' de Productos a Cotizar' ) . '">' . esc_html( $label ) . '</a>';
+		}
+	}
+	return $html . '</div>';
+}
+
+/** One complete snapshot, including empty, lets removed products disappear.
+ * Woo's fragment cache/session refresh also restores it after navigation.
+ */
+function fpw_card_selections_fragment(): string {
+	$lines = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_cart() : array();
+	$ids = array();
+	foreach ( $lines as $item ) {
+		$id = (int) ( ! empty( $item['variation_id'] ) ? $item['variation_id'] : ( $item['product_id'] ?? 0 ) );
+		if ( $id > 0 ) { $ids[$id] = true; }
+	}
+	$html = '<div class="fpw-card-selections" data-fpw-cart-state="1" hidden>';
+	foreach ( array_keys( $ids ) as $id ) { $html .= fpw_card_selection( $id, $lines ); }
+	return $html . '</div>';
+}
+add_action( 'wp_footer', static function () { echo fpw_card_selections_fragment(); }, 5 );
+
+/** Header and per-product quantities participate in Woo's native refresh. */
 add_filter( 'woocommerce_add_to_cart_fragments', static function ( $fragments ) {
 	$fragments['span.fpw-basket-count'] = '<span class="fpw-basket-count">' . fpw_cart_line_count() . '</span>';
+	$fragments['div.fpw-card-selections'] = fpw_card_selections_fragment();
 	return $fragments;
 } );
 
@@ -1309,7 +1354,8 @@ add_filter('woocommerce_product_single_add_to_cart_text', static fn() => 'Agrega
 add_filter('woocommerce_loop_add_to_cart_link', static function($html,$product,$args) {
 	if ( ! $product->is_type('simple') || ! $product->is_purchasable() || ! $product->is_in_stock() || ! function_exists('woocommerce_quantity_input') ) { return $html; }
 	$quantity = woocommerce_quantity_input( array(), $product, false );
-	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$quantity.$html.'</div>';
+	$lines = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_cart() : array();
+	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$quantity.$html.fpw_card_selection( $product->get_id(), $lines ).'</div>';
 }, 100, 3);
 add_action('init', static function() {
 	load_textdomain('quote-wc', WP_PLUGIN_DIR.'/quotes-for-woocommerce/languages/quote-wc-es_ES.mo');

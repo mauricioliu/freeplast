@@ -69,20 +69,20 @@
 .fpw-loop-add .quantity input.qty { width: 4.25rem; min-height: 44px; padding: 8px; margin: 0; }
 .fpw-loop-add .add_to_cart_button { flex: 1 1 auto; margin-top: 0; display: flex; align-items: center; justify-content: center; text-align: center; }
 .fpw-loop-add .added_to_cart { flex-basis: 100%; margin-top: 8px; }
-/* Owner request (2026-09-08): after an add, Woo's native «Ver carrito» link is
-   re-rendered by loop-added-count.js as the count pill — the same distinct-line
-   number the header shows, read from Woo's own add-to-cart fragment, never a
-   parallel count (ADR-0001). Tint band with the blue count badge, 44px touch
-   target, one line even on the narrowest two-column phone card; existing hues
-   only: ink on tint (16.3:1) and white on blue (14.7:1), both above AA.
-   Scoped to the adapter's loop wrapper — the only surface where the native
-   link exists — so the pill rules also outspecify Woo's own added_to_cart skin
-   (.woocommerce a.added_to_cart). */
-.fpw-loop-add .added_to_cart.fp-added-pill { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 6px 14px; background: var(--fp-tint); border: 1px solid var(--fp-line); border-radius: var(--fp-r-full); font-size: 14px; font-weight: 700; color: var(--fp-ink); text-align: center; text-decoration: none; }
-.fpw-loop-add .added_to_cart.fp-added-pill .fp-added-pill__badge { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 7px; background: var(--fp-blue); color: #fff; border-radius: var(--fp-r-full); font-size: 13px; font-weight: 800; line-height: 1; }
-.fpw-loop-add .added_to_cart.fp-added-pill:hover { text-decoration: none; }
-.fpw-loop-add .added_to_cart.fp-added-pill:hover .fp-added-pill__text { text-decoration: underline; }
-.fpw-loop-add .added_to_cart.fp-added-pill:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
+/* Each card shows ITS units, with a separate native removal button below.
+   Stack controls at phone-card width rather than squeezing two tap targets
+   into the pill. Let large quantities/text wrap without horizontal overflow. */
+/* Woo fades fragment targets before replacement; never expose this snapshot. */
+.fpw-card-selections[hidden] { display: none !important; }
+.fpw-loop-add .fpw-card-selection { flex: 0 0 100%; min-width: 0; display: grid; gap: 6px; }
+.fpw-loop-add .fpw-card-selection:empty { display: none; }
+.fpw-loop-add .fp-added-pill { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; min-height: 44px; box-sizing: border-box; padding: 6px 10px; background: var(--fp-tint); border: 1px solid var(--fp-line); border-radius: var(--fp-r-full); font-size: 14px; font-weight: 700; color: var(--fp-ink); text-align: center; text-decoration: none; }
+.fpw-loop-add .fp-added-pill__badge { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; max-width: 100%; box-sizing: border-box; padding: 2px 7px; background: var(--fp-blue); color: #fff; border-radius: var(--fp-r-full); font-size: 13px; font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
+.fpw-loop-add .fp-added-pill:hover { text-decoration: none; }
+.fpw-loop-add .fp-added-pill:hover .fp-added-pill__text { text-decoration: underline; }
+.fpw-loop-add .fp-remove-product { display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--fp-muted); border-radius: var(--fp-r-md); background: var(--fp-paper); color: var(--fp-ink); font-size: 14px; font-weight: 700; text-align: center; text-decoration: none; }
+.fpw-loop-add .fp-remove-product:hover { background: var(--fp-tint); color: var(--fp-blue); text-decoration: underline; }
+.fpw-loop-add .fp-added-pill:focus-visible, .fpw-loop-add .fp-remove-product:focus-visible { outline: 2px solid var(--fp-blue); outline-offset: 2px; }
 /* Owner request (2026-09-08): the quote list already owned per-line removal —
    Woo's cart block renders a «Eliminar {producto} del carrito» icon button —
    but as a bare 24×24 underline-less glyph beside the quantity stepper it read

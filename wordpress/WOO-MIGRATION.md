@@ -2,7 +2,48 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
-## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, released 20260908T031702Z)
+## Per-product card quantity + native card removal — 2026-09-08 (local, NOT released)
+
+Owner clarified the circled card pills: each must show the **units of that
+product**, not the header's distinct-line total, and offer removal directly
+there. The 1.0.9 interpretation below was incorrect for the cards. Header
+semantics remain unchanged.
+
+- Theme **1.0.10**, adapter **1.6.6**. Each simple-product loop card renders its
+  own Woo cart quantity and a separate full-width **Quitar** button underneath.
+  The server renders these controls on navigation too; absent products keep an
+  empty slot. A dedicated complete Woo fragment carries the per-product markup,
+  including the empty-cart snapshot. The JS maps by product identity, updates
+  duplicate cards and removes stale controls after native removal. No independent
+  cart/session, optimistic increments or custom mutation endpoint.
+- `wc-add-to-cart` owns add/remove, request queuing, keyboard activation,
+  pending-row blocking and success announcements. Removal carries that line's
+  `cart_item_key` and Woo's nonce-protected URL as the native failure/no-JS
+  fallback. Current simple catalog products have one native line each, so
+  **Quitar removes all units of that product**. If a future extension splits one
+  product across keys, each line retains a separately labelled native removal.
+- `wc-cart-fragments` is explicitly enqueued for session/cache restoration;
+  fragment-load/refresh events update cards, and bfcache return requests a native
+  refresh. Unchanged controls retain focus; removing a focused control returns
+  focus to that card's Add link. Layout uses separate >=44px controls, wrapping
+  for large quantities rather than squeezing the removal action inside the pill.
+- Repro `node wordpress/scripts/loop-added-count-test.mjs` failed on the old code
+  with **5 !== 3**. Now 49 DOM/jQuery assertions exercise the delivered script,
+  PHP-rendered fixture and byte-identical pinned Woo 11.1.0 add/remove handler
+  (mocked transport/overlay plumbing): different quantities, repeat-add queue,
+  duplicate cards, unrelated-product preservation, empty/re-add, malformed
+  payloads, native Space removal, pending cleanup and focus restoration.
+  `card-selection-test.php`: 21 projection/escaping/identity assertions.
+- `FREEPLAST_SKIP_STACK=1 npm test` passed existing and new offline regressions.
+  On the owner's subsequent commit/push/deploy request, full `npm test` also
+  passed: **100 real-stack checks**, 447 existing PHP assertions, 21 new PHP
+  projection assertions, 49 DOM/native-handler assertions (314 combined
+  syntax/JS/deployment/stack checks). The disposable HTTP test runner exited;
+  no persistent dev server, browser/device interaction or visual approval.
+  Release still requires the paired backup/restore rehearsal and verified
+  installation recorded below; human must inspect the cards on the phone.
+
+## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, released 20260908T031702Z; card meaning superseded above)
 
 Owner request (screenshot of Home cards): after «Agregar a Cotización», the
 count of added items should appear where the native «Ver carrito» link lands,
