@@ -1,0 +1,9 @@
+{
+  "name": "freeplast-quote-journey-prototype",
+  "private": true,
+  "type": "module",
+  "description": "Disposable static design exploration. No real submissions.",
+  "scripts": {
+    "preview": "python3 -m http.server 7785 --bind \"$(tailscale ip -4)\" --directory ."
+  }
+}

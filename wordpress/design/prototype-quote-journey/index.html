@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- PROTOTYPE ONLY. Three compositions of the same quote journey, ?variant=A|B|C.
+     Isolated from WordPress. No API calls, storage, analytics, payments or real submissions. -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <title>Freeplast · Prototipo del recorrido de cotización</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="catalog.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body data-variant="A">
+  <a class="skip" href="#main">Saltar al contenido</a>
+  <div class="prototype-notice"><span class="prototype-dot"></span> Prototipo de diseño <span class="notice-divider">/</span> No envía solicitudes reales</div>
+  <header id="header" class="site-header"></header>
+  <main id="main" tabindex="-1"></main>
+  <footer class="site-footer"><div class="shell footer-content"><a class="brand" href="?view=catalog" data-route="catalog"><img src="assets/mark.svg" alt="" width="28" height="28"><span>Freeplast</span></a><p>Productos plásticos. Nuevas posibilidades.</p><button class="text-button" data-action="help">¿Necesitas ayuda?</button></div></footer>
+  <div id="selection-dock"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="prototype-bar" class="prototype-bar" aria-label="Comparar propuestas de diseño"></div>
+  <dialog id="menu" class="menu-dialog" aria-labelledby="menu-title"><div class="dialog-top"><h2 id="menu-title">Freeplast</h2><button class="icon-button" data-action="close-dialog" aria-label="Cerrar menú">×</button></div><nav aria-label="Navegación móvil"><a href="?view=catalog" data-route="catalog">Catálogo <span>→</span></a><a href="?view=basket" data-route="basket">Productos a Cotizar <span>→</span></a><button data-action="help">Ayuda para cotizar <span>→</span></button></nav><p class="muted">Venta mayorista · Sin registro ni pago en línea.</p><p class="fine">Este prototipo cubre el recorrido de cotización. Las páginas corporativas no se están rediseñando.</p></dialog>
+  <dialog id="help" class="content-dialog" aria-labelledby="help-title"><div class="dialog-top"><h2 id="help-title">Estamos para ayudarte</h2><button class="icon-button" data-action="close-dialog" aria-label="Cerrar ayuda">×</button></div><p>Elige productos, revisa sus cantidades y completa tus datos. Ventas confirmará precios, disponibilidad y condiciones.</p><dl class="help-details"><dt>Teléfono / WhatsApp</dt><dd>+56 9 6844 4265</dd><dt>Email</dt><dd>ventas@freeplast.cl</dd><dt>Horario</dt><dd>Lun–vie · 09:00–13:00 y 14:00–18:00</dd></dl><p class="notice">En esta demostración no abrimos canales externos ni enviamos mensajes.</p></dialog>
+  <dialog id="privacy" class="content-dialog" aria-labelledby="privacy-title"><div class="dialog-top"><h2 id="privacy-title">Tus datos, para tu solicitud</h2><button class="icon-button" data-action="close-dialog" aria-label="Cerrar información de privacidad">×</button></div><p>En el sitio real, Freeplast utiliza los datos de contacto, empresa y despacho para preparar y responder tu solicitud.</p><p class="notice">Este es un prototipo sin envío ni almacenamiento. Usa solo datos ficticios. Al recargar se borra toda la demostración. La política definitiva del sitio no se modifica aquí.</p></dialog>
+  <dialog id="lab" class="content-dialog lab-dialog" aria-labelledby="lab-title"><div class="dialog-top"><div><p class="eyebrow">Solo para evaluar el prototipo</p><h2 id="lab-title">Escenarios y estado</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Cerrar escenarios">×</button></div><div class="lab-actions"><button class="button secondary" data-scenario="sample">Cargar selección de ejemplo</button><button class="button secondary" data-scenario="empty">Ver selección vacía</button><button class="button secondary" data-scenario="variant">Ver producto con colores</button><button class="button secondary" data-scenario="form">Ver formulario con datos ficticios</button><button class="button secondary" data-scenario="errors">Ver campos incompletos</button><button class="button secondary" data-scenario="failure">Simular error al enviar</button><button class="button secondary" data-scenario="success">Ver confirmación simulada</button><button class="button text-button" data-scenario="reset">Reiniciar demostración</button></div><p class="fine">La selección se conserva al cambiar de propuesta, pero no al recargar. Los escenarios reemplazan el estado de la demostración.</p><h3>Estado actual</h3><pre id="state-output"></pre></dialog>
+  <noscript><p>Este prototipo requiere JavaScript para simular el recorrido. El sitio real no se modifica.</p></noscript>
+</body>
+</html>
