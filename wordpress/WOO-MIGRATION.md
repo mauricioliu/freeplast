@@ -2,6 +2,57 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
+## Owner-authorized staging release — 20260908T112200Z (persistent island navigation)
+
+Owner requested the whole header remain visible when scrolling down, then
+explicitly requested **commit, push and deploy**. Source commit **`be3ed73`**
+pushed to `main`; theme **1.0.10 → 1.0.11** installed on
+**https://freeplast.mliu.site/**. Adapter **1.6.6** unchanged and not reinstalled.
+No migration, vendor update, catalog/media change, nginx change or `freeplast.cl`
+operation.
+
+- Sticky positioning now belongs to the outer `header.wp-block-template-part`
+  directly under `.wp-site-blocks`, instead of the island child constrained by
+  its header-height parent. Preserves normal flow and the native menu dialog.
+  Clears the fixed WordPress admin bar above 600px using its native height;
+  below that width the toolbar scrolls away. Anchor/focus scroll padding includes
+  that offset and outspecifies WordPress admin-bar CSS.
+- Added **19 source-contract assertions** (not layout evidence): reproduced RED
+  against the old outer-header rule, then GREEN. Full `npm test` passed:
+  **466 PHP assertions**, 21 card-projection assertions, **100 real-stack checks**
+  (314 combined syntax/JS/deployment/stack checks). Disposable HTTP runner exited;
+  no persistent development server, browser/device run or visual approval.
+- Fresh paired backup `/root/freeplast-wordpress-backups/20260908T112200Z/`:
+  hashes verified; isolated DB+CLI-only restore rehearsal recovered **17 catalog
+  products / 7 Woo requests / 2 original requests**, matching live. Temporary
+  rehearsal containers/volumes/network removed; no rehearsal HTTP listener.
+- Immutable bundle `/opt/freeplast-wordpress/bundle/releases/20260908T112200Z/`:
+  transfer hashes verified; theme ZIP SHA256
+  `9825702fd83502ce6b7dcc8548c648da8e89d1f2053e92daacccc6eda4a7bcdb`.
+  Adapter ZIP byte-identical to the prior release (`8841e535…`). Prior installed
+  source matched all 31 baseline hashes before release; after maintenance-window
+  theme installation all **31 installed source hashes** match the new bundle.
+- Native WP-CLI verifier: **100 state checks passed**. Pre/post full record
+  digest unchanged:
+  `88abfd9594e860677262ec248b66dc031d8e35600539002a6bcad36193a88482`.
+  Mail-containment MU plugin unchanged (`71164446…`); cache flushed, maintenance
+  deactivated, existing DB healthy and WordPress running.
+- Public **GET-only** checks: Home, `/tienda/`, `/cotizacion/`, `/?s=caja` all
+  HTTP 200 with the direct-child header markup and **1.0.11** stylesheet URL.
+  Served `style.css`, `woo.css` and `nav.js` match source bytes. Noindex retained;
+  `X-Powered-By` absent. No public cart mutations or synthetic requests created.
+  **Scroll behavior still needs human phone review; HTTP/source checks are not
+  visual acceptance.**
+- Private scripts: `/root/freeplast-release-20260908T112200Z/` remote;
+  `/tmp/freeplast-publish-20260908T112200Z/` local. Local logs:
+  `/tmp/freeplast-sticky-release-tests.log`,
+  `/tmp/freeplast-backup-20260908T112200Z.log`,
+  `/tmp/freeplast-deploy-20260908T112200Z.log`.
+- Paired rollback, if required (not executed):
+  `bash /root/freeplast-release-20260908T112200Z/restore-woo-backup.sh /root/freeplast-wordpress-backups/20260908T112200Z --execute`.
+  This restores DB and files; evaluate any subsequent human writes first.
+  Previous code artifacts remain in release `20260908T095829Z`.
+
 ## Per-product card quantity + native card removal — 2026-09-08 (released 20260908T095829Z)
 
 Owner clarified the circled card pills: each must show the **units of that
