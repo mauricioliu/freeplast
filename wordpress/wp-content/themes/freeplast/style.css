@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.10
+Version: 1.0.11
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -61,6 +61,7 @@ Tags: block-theme, custom-colors, custom-menu
   --fp-shell: 1152px;
   --fp-measure: 680px;
   --fp-nav-h: 58px;
+  --fp-admin-offset: 0px;
 
   --fp-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --fp-dur: 200ms;
@@ -74,10 +75,11 @@ Tags: block-theme, custom-colors, custom-menu
   box-sizing: border-box;
 }
 
-html {
+/* Outrank the admin-bar stylesheet's :root scroll-padding declaration. */
+html:root {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
-  scroll-padding-top: calc(var(--fp-s-5) + var(--fp-nav-h) + var(--fp-s-5));
+  scroll-padding-top: calc(var(--fp-admin-offset) + var(--fp-s-5) + var(--fp-nav-h) + var(--fp-s-5));
 }
 
 body {
@@ -131,10 +133,24 @@ a {
 
 /* ---------- Island header (v6 pill chrome) ---------- */
 
-.fp-island-wrap {
+/* Stick the outer template part, whose containing block spans the page.
+   Sticking only .fp-island-wrap traps it inside its header-height parent.
+   Keep the header in normal flow; the native dialog still uses the top layer. */
+.wp-site-blocks > header.wp-block-template-part {
   position: sticky;
-  top: var(--fp-s-2);
+  top: calc(var(--fp-s-2) + var(--fp-admin-offset));
   z-index: 50;
+}
+
+/* WordPress makes its admin toolbar fixed only above 600px; below that it
+   scrolls away. Its native variable supplies 46px / 32px when logged in. */
+@media (min-width: 601px) {
+  :root {
+    --fp-admin-offset: var(--wp-admin--admin-bar--height, 0px);
+  }
+}
+
+.fp-island-wrap {
   display: flex;
   justify-content: center;
   padding-inline: var(--fp-s-3);

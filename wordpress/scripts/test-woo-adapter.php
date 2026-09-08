@@ -516,6 +516,21 @@ $style_source=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/style.c
 check(preg_match('/^Version:\s*(\S+)/m',$style_source,$style_version)===1,'style.css declares its Version header');
 check($style_version[1]===FREEPLAST_THEME_VERSION,'style.css Version header matches FREEPLAST_THEME_VERSION — a cache-bust bump moves both');
 
+// Persistent navigation: sticky must belong to the outer template part, not
+// its island child (which is constrained by a header-height containing block).
+// Source contracts only; these do not claim browser layout/scroll verification.
+check(preg_match('/\.wp-site-blocks\s*>\s*header\.wp-block-template-part\s*\{([^}]+)\}/',$style_source,$sticky_header)===1,'Outer header template part owns the sticky rule');
+check(str_contains($sticky_header[1],'position: sticky;'),'Outer header stays in flow and sticks across the page');
+check(str_contains($sticky_header[1],'top: calc(var(--fp-s-2) + var(--fp-admin-offset));'),'Sticky header clears the fixed WordPress admin toolbar');
+check(str_contains($sticky_header[1],'z-index: 50;'),'Sticky header stays above page content');
+check(preg_match('/^\.fp-island-wrap\s*\{([^}]+)\}/m',$style_source,$island_wrap)===1 && !str_contains($island_wrap[1],'position:'),'Inner island does not create a second constrained sticky surface');
+check(str_contains($style_source,'--fp-admin-offset: 0px;'),'Small-screen scrolling admin toolbar reserves no persistent gap');
+check(preg_match('/@media\s*\(min-width: 601px\)\s*\{\s*:root\s*\{\s*--fp-admin-offset: var\(--wp-admin--admin-bar--height, 0px\);/',$style_source)===1,'Fixed admin toolbar offset uses WordPress native height above 600px');
+check(preg_match('/scroll-padding-top:[^;]+var\(--fp-admin-offset\)/',$style_source)===1,'Anchor and focus scroll clearance includes the admin toolbar');
+foreach(glob(__DIR__.'/../wp-content/themes/freeplast/templates/*.html') as $template_file){
+	check(str_starts_with(trim(file_get_contents($template_file)),'<!-- wp:template-part {"slug":"header","tagName":"header"} /-->'),'Top-level semantic header on '.basename($template_file));
+}
+
 // Issue #27 (WA-04): Home renders the featured grid through the adapter's plugin-rendered dynamic
 // block, not wp:shortcode — WordPress' core/shortcode renderer runs wpautop() over the shortcode's
 // EXPANDED output and splits the native product link at its internal blank lines (the unnamed-link
