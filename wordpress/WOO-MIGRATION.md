@@ -2,13 +2,13 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
-## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, NOT deployed)
+## Count pill on cards + visible per-line removal — 2026-09-08 (theme 1.0.9, released 20260908T031702Z)
 
 Owner request (screenshot of Home cards): after «Agregar a Cotización», the
 count of added items should appear where the native «Ver carrito» link lands,
 plus a way to remove items. Two presentation-only surfaces, theme only
 (**1.0.8 → 1.0.9**, style.css header and cache-bust constant together); no
-adapter change, no release, staging untouched.
+adapter change (1.6.5 zip byte-identical), no migrations, no vendor updates.
 
 - Count pill: Woo's own AJAX add appends the native `.added_to_cart` link and
   fires `added_to_cart` carrying the add-to-cart fragments — the same payload
@@ -40,6 +40,35 @@ adapter change, no release, staging untouched.
   count) — stack suite 96 → 100. Observed on the disposable stack at 412/1440
   (pill render, both pills updating together, native removal + header refresh);
   no browser/device validation claimed.
+
+## Owner-authorized staging release — 20260908T031702Z (count pill + visible removal)
+
+Owner requested commit, push and deploy for the count-pill/removal work.
+Commit `e7f40f1` (pushed to `mauricioliu/freeplast` main) shipped **freeplast
+theme 1.0.8 → 1.0.9**, adapter unchanged at 1.6.5. Full gate re-run on the
+committed tree before push (offline + 100 real-stack + syntax, all green).
+Release chain, all green:
+
+- Paired backup `/root/freeplast-wordpress-backups/20260908T031702Z` with
+  isolated DB+CLI-only restore rehearsal (catalog/orders/originals **17/7/2**,
+  identical to live; rehearsal containers/volumes removed).
+- Immutable bundle `/opt/freeplast-wordpress/bundle/releases/20260908T031702Z/`
+  (transfer SHA256-verified); maintenance-window install; **31 installed source
+  files** match their packaged hashes (30 + the new `loop-added-count.js`);
+  native WP-CLI verifier **100 state checks passed**; pre/post record
+  fingerprint identical (`88abfd95…` — the same value as every 2026-09-07
+  release). Mail MU byte-identical (`71164446…`). Cache flushed, maintenance
+  deactivated.
+- Public read-only HTTP checks: home 200 with `woo.css?ver=1.0.9` and
+  `loop-added-count.js?ver=1.0.9` enqueued; «Agregar a Cotización» live on the
+  featured grid; served `loop-added-count.js` and `woo.css` byte-identical to
+  the repo; `/cotizacion/` 200; `/?s=caja` renders 10 products; noindex
+  retained; `X-Powered-By` absent. No add-to-cart mutation was fired against
+  production (the data contract is locked by the stack harness on the exact
+  shipped bytes; a production POST would have broken the just-proven record
+  fingerprint with an anonymous session).
+- Local release scripts: `/tmp/freeplast-publish-20260908T031702Z/`; private
+  remote operator scripts: `/root/freeplast-release-20260908T031702Z/`.
 
 ## Owner-authorized staging release — 20260907T225331Z (search styling fix)
 
