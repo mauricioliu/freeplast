@@ -1,5 +1,11 @@
 # Lead review — #41–#48 local implementation
 
+> Historical offline checkpoint. The owner subsequently authorized commit,
+> push and staging deployment: implementation `cf5f1cf`, 2026-09-08.
+> [Release record](../releases/2026-09-08-a-directa.md) documents that separate
+> operation. The restrictions/status below describe this review, not the
+> later release. #48 remains partial; no visual acceptance was granted.
+
 Worker: **pi / zai-coding-cn/glm-5.3 high**, same live impl-1 pane throughout.
 Lead personally reviewed and corrected each batch after worker DONE.
 No commit/push, issue writes, deployment, server/bootstrap/HTTP/browser,

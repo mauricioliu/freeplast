@@ -2,6 +2,21 @@
 
 Date: 2026-09-05. Scope approved explicitly by the owner: replace the repo implementation and **https://freeplast.mliu.site/**, back up first, preserve catalog/media/history; **do not change freeplast.cl**. Decision: [ADR-0001](../docs/adr/0001-woocommerce-quote-only.md). No paid plugin licenses.
 
+## Staging release — A · Directa (2026-09-08 21:38 UTC)
+
+Owner requested **commit, push and deploy**. Implementation `cf5f1cf` is on
+`main` and installed at **https://freeplast.mliu.site/**: theme **1.0.14**,
+adapter **1.6.8**, fields.js **1.0.4**. Backup/isolated DB+CLI trial completed;
+100 native state checks and 45 installed-source hashes passed on staging.
+Catalog, media, orders and historical records preserved; guarded cart/checkout
+page content and continuation label updated without rerunning migration.
+Read-only HTTPS smoke passed. No browser/device or visual acceptance;
+**#48 remains partial**. Earlier “NOT released” sections are historical.
+
+Full release identity, backup, ownership-probe finding, artifact checksums,
+prepared rollback and evidence limits:
+[2026-09-08 release record](docs/releases/2026-09-08-a-directa.md).
+
 ## Issue #48 (allowed portion) — evidence & handoff package (2026-09-08, NOT runtime)
 
 Worker: pi / zai-coding-cn/glm-5.3 (high). No new runtime code: a durable
@@ -16,7 +31,7 @@ stack/browser/owner layers), `visual-matrix-procedure.md`
 normalizations, keyboard/reduced-motion/zoom protocol, owner SR/phone
 steps), `differences.md` (audited deliberate differences + gaps incl.
 CSS-hidden block zero totals; two candidate diffs — confirmation «Editar»
-and checkout-CTA placement — were withdrawn after owner source correction,
+and checkout-CTA placement — were withdrawn after lead source audit, not owner approval,
 recorded in that file). Stack harness gains
 §48 checks (corporate pages chrome-only without product grid; Home shared
 cards) — implemented, UNRUN. Offline gate re-run green after package

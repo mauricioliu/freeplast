@@ -1,5 +1,11 @@
 # A · Directa quotation journey — evidence & handoff package (issue #48)
 
+> Subsequent event: owner-authorized commit/push/staging deployment completed
+> with implementation `cf5f1cf` on 2026-09-08. See the
+> [release record](../releases/2026-09-08-a-directa.md) for separately executed
+> DB/CLI and HTTPS smoke checks. This package retains its earlier offline
+> checkpoint; #48 and visual/owner acceptance remain incomplete.
+
 Model/agent: pi, `zai-coding-cn/glm-5.3` (high) — implementation worker
 #41–#48. Status of this package: **integration evidence prepared; NOT a
 declaration of acceptance**. Every layer below states exactly what it does
