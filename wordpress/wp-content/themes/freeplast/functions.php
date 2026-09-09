@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.16' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.17' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -151,6 +151,18 @@ function fp_theme_has_product_photo( $product ): bool {
 	if ( ! $id ) { return false; }
 	$alt = function_exists( 'get_post_meta' ) ? (string) get_post_meta( $id, '_wp_attachment_image_alt', true ) : '';
 	return ! str_starts_with( $alt, 'Imagen referencial pendiente para ' );
+}
+
+/** Native attachment captions follow the chosen media, not stale product meta.
+ * A replacement uploaded by the merchant never inherits a PDF caption. */
+function fp_theme_product_photo_caption( $product ): string {
+	if ( ! fp_theme_has_product_photo( $product ) ) {
+		return 'La fotografía de este producto está por confirmar.';
+	}
+	$caption = function_exists( 'wp_get_attachment_caption' ) ? wp_get_attachment_caption( $product->get_image_id() ) : '';
+	return is_string( $caption ) && '' !== trim( $caption )
+		? wp_strip_all_tags( $caption )
+		: 'Fotografía referencial. Puede no representar el color o la configuración seleccionados.';
 }
 
 /**

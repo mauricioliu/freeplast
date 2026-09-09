@@ -65,6 +65,15 @@ export async function runChromeNavTests() {
   const doc = dom.window.document;
   ok(doc.getElementById('fp-menu') instanceof dom.window.HTMLDialogElement && doc.getElementById('fp-help') instanceof dom.window.HTMLDialogElement, 'the chrome dialogs are native <dialog> elements');
 
+  const desktopItems = [...doc.querySelectorAll('.desktop-nav a, .desktop-nav button')];
+  const mobileItems = [...doc.querySelectorAll('.menu-dialog nav a, .menu-dialog nav button')];
+  const destination = el => el.getAttribute('href') || '#' + el.getAttribute('data-fp-dialog');
+  const label = el => el.textContent.replace('→', '').trim();
+  ok(JSON.stringify(desktopItems.map(destination)) === JSON.stringify(mobileItems.slice(0, 4).map(destination)), 'desktop and mobile share destinations and order');
+  ok(JSON.stringify(desktopItems.map(label)) === JSON.stringify(mobileItems.slice(0, 4).map(label)), 'desktop and mobile share labels, including Cómo cotizar');
+  ok(desktopItems.some(el => el.getAttribute('href') === '/nosotros/'), 'Nosotros is not mobile-only');
+  ok(doc.querySelector('.header-selection').getAttribute('href') === mobileItems.at(-1).getAttribute('href'), 'the separate desktop selection CTA matches the mobile selection destination');
+
   const menuTrigger = doc.querySelector('.menu-trigger');
   const menu = doc.getElementById('fp-menu');
   const help = doc.getElementById('fp-help');
@@ -123,6 +132,11 @@ export async function runChromeNavTests() {
   ok(doc.querySelector('.menu-dialog nav a[href="/tienda/"]').getAttribute('aria-current') === 'page', 'the mobile menu marks the same destination');
   ok(doc.querySelector('.desktop-nav a[href="/contacto/"]').getAttribute('aria-current') === null, 'other destinations stay unmarked');
   ok(doc.querySelector('.brand').getAttribute('aria-current') === null, 'the brand never carries aria-current');
+
+  const about = boot('/nosotros/');
+  ok(about.window.document.querySelector('.desktop-nav a[href="/nosotros/"]').getAttribute('aria-current') === 'page', 'Nosotros is current on desktop');
+  ok(about.window.document.querySelector('.menu-dialog nav a[href="/nosotros/"]').getAttribute('aria-current') === 'page', 'Nosotros is current on mobile');
+  about.window.close();
 
   const home = boot('/');
   ok(home.window.document.querySelector('.desktop-nav a[href="/tienda/"]').getAttribute('aria-current') === null, 'no nav link is marked current on Home');

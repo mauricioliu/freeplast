@@ -1,0 +1,5 @@
+native_photo_checks: 73
+network: blocked
+server: not started
+visual_acceptance: false
+photo_cli_checks: 5 (help, version, invalid command, incomplete apply, live import blocked)

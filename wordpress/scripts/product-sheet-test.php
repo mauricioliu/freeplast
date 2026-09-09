@@ -31,6 +31,7 @@ function the_title() { echo 'Caja Universal Cerrada Color'; }
 function wc_product_class($class, $product) { echo 'class="product type-product ' . esc_attr($class) . '"'; }
 function wp_get_post_terms($id, $tax, $args) { return array('Otros'); }
 function get_post_meta($id, $key, $single) { return $id === 999 ? 'Imagen referencial pendiente para un producto' : ''; }
+function wp_get_attachment_caption($id) { return $GLOBALS['photo_captions'][$id] ?? ''; }
 function post_password_required() { return $GLOBALS['protected_product'] ?? false; }
 function get_the_password_form() { return 'NATIVE-PASSWORD-FORM'; }
 function woocommerce_breadcrumb() { echo 'BREADCRUMB-MARKUP'; }
@@ -113,6 +114,13 @@ verify(!str_contains($sheet, 'price') && !str_contains($sheet, 'clp'), 'no price
 $noPhoto = render_card_helper(array_merge($base, array('image_id' => 0)));
 verify(str_contains($noPhoto, 'Fotografía pendiente') && str_contains($noPhoto, 'La fotografía de este producto está por confirmar.'), 'a missing photo renders the honest pending state');
 verify(!str_contains($noPhoto, 'GALLERY-MARKUP'), 'no gallery is invented without an image');
+$GLOBALS['photo_captions'][66] = 'Fotografía del catálogo 2026 en rojo. Los demás colores no se muestran en esta imagen.';
+$captioned = render_card_helper($base);
+verify(str_contains($captioned, $GLOBALS['photo_captions'][66]), 'the selected native attachment supplies its honest color caption');
+$GLOBALS['photo_captions'][66] = '<b>Foto</b> & referencia';
+verify(str_contains(render_card_helper($base), 'Foto &amp; referencia'), 'native captions are stripped and escaped at the presentation boundary');
+verify(str_contains(render_card_helper(array_merge($base, array('image_id'=>67))), 'Fotografía referencial. Puede no representar'), 'a replacement attachment never inherits the prior PDF caption');
+unset($GLOBALS['photo_captions']);
 
 /* Internal review prose is never presented as a confirmed fact. */
 $pendingDesc = render_card_helper(array_merge($base, array('description' => 'Los colores están sujetos a confirmación del cliente, al igual que sus especificaciones.')));

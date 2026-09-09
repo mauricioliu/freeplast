@@ -82,7 +82,7 @@ $fp_has_image = fp_theme_has_product_photo( $product );
 				}
 				?>
 			</div>
-			<p class="image-caption"><?php echo $fp_has_image ? 'Fotografía referencial. Puede no representar el color o la configuración seleccionados.' : 'La fotografía de este producto está por confirmar.'; ?></p>
+			<p class="image-caption"><?php echo esc_html( fp_theme_product_photo_caption( $product ) ); ?></p>
 		</div>
 
 		<div class="product-summary">

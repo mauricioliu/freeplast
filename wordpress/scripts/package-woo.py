@@ -23,6 +23,15 @@ for source, filename in [(root/'wp-content/plugins/freeplast-woo','freeplast-woo
                 archive.writestr(info,path.read_bytes())
 for source in [root/'scripts/migrate-to-woo.php',root/'scripts/verify-woo-state.php',root/'scripts/woo-cart.html',root/'wp-content/mu-plugins/freeplast-staging-mail.php']:
     shutil.copy2(source,out/source.name)
-files = sorted(p for p in out.iterdir() if p.is_file() and p.name != 'WOO-SHA256SUMS')
-(out/'WOO-SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in files))
+# A separate sealed closure, not a public plugin or an automatic init migration.
+migration = out / 'photo-migration'
+if migration.exists():
+    shutil.rmtree(migration)
+migration.mkdir()
+shutil.copy2(root/'scripts/migrate-catalog-photos-release.php', migration/'run.php')
+for name in ['catalog-photos.php', 'photo-release-state.php']:
+    shutil.copy2(root/'scripts/lib'/name, migration/name)
+shutil.copytree(root/'data/catalog-photos', migration/'photos')
+files = sorted(p for p in out.rglob('*') if p.is_file() and p.name != 'WOO-SHA256SUMS')
+(out/'WOO-SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(out))+'\n' for p in files))
 print(out)

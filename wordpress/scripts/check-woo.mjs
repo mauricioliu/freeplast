@@ -10,7 +10,7 @@ const php=process.env.PHP_BINARY || path.join(root,'.tools/php/php');
 if(!existsSync(php)) throw Error('PHP missing. Set PHP_BINARY to your PHP executable.');
 function walk(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);}
 function run(bin,args){const result=spawnSync(bin,args,{encoding:'utf8'});if(result.status!==0)throw Error(result.stderr||result.stdout);return result.stdout.trim();}
-const files=[...walk(path.join(root,'wp-content/plugins/freeplast-woo')),...walk(path.join(root,'wp-content/themes/freeplast')),...walk(path.join(root,'wp-content/mu-plugins')),...['migrate-to-woo.php','verify-woo-state.php'].map(p=>path.join(root,'scripts',p))];
+const files=[...walk(path.join(root,'wp-content/plugins/freeplast-woo')),...walk(path.join(root,'wp-content/themes/freeplast')),...walk(path.join(root,'wp-content/mu-plugins')),...['migrate-to-woo.php','verify-woo-state.php','import-catalog-photos.php','lib/catalog-photos.php','lib/photo-release-state.php','record-state.php','migrate-catalog-photos-release.php','catalog-photos-native-test.php'].map(p=>path.join(root,'scripts',p))];
 let checks=0;
 for(const file of files){
  if(file.endsWith('.php')) {run(php,['-l',file]);checks++;}
@@ -135,6 +135,8 @@ run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
  if(createHash('sha256').update(readFileSync(bundle)).digest('hex')!==sidecar.file_sha256) throw Error('Vendored wc-blocks-data hash mismatch against its sidecar');
  checks+=2; // bundle integrity + sidecar verification
  checks+=await runCartStoreScenarios(bundle,path.join(root,'wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js'));}
+const { catalogPhotoChecks } = await import('./catalog-photos-test.mjs');
+checks += catalogPhotoChecks;
 // Count actual product class tokens, independent of theme class ordering.
 await import('./catalog-markup-test.mjs');
 checks+=7;

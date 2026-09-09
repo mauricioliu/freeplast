@@ -551,7 +551,7 @@ foreach(array(
 	array($header,'aria-controls="fp-menu"','Menu trigger controls the menu dialog'),
 	array($header,'data-fp-dialog="fp-help"','Help opens the shared help dialog'),
 	array($header,'Cómo cotizar','Help carries the reference label'),
-	array($header,'Ayuda para cotizar','Mobile menu keeps the reference help row'),
+	array($header,'Cómo cotizar','Mobile and desktop use the same help label'),
 	array($header,'Venta mayorista · Sin registro ni pago en línea.','Menu keeps the reference wholesale note'),
 	array($header,'ventas@freeplast.cl','Help shows the authoritative email'),
 	array($header,'+56 9 6844 4265','Help shows the authoritative phone'),

@@ -14,9 +14,10 @@
     "dbEnv": ".env"
   },
   "rehearsal": { "env": "on-host" },
-  "gate": "npm test",
+  "gate": "npm test && npm run test:photos && node wordpress/scripts/photo-release-readiness.mjs",
   "packaging": { "command": "python3 wordpress/scripts/package-woo.py", "outDir": "wordpress/.build/woo-release" },
   "artifacts": ["freeplast-woo.zip", "freeplast-woo-theme.zip"],
+  "migration": { "source": "wordpress/.build/woo-release/photo-migration", "hook": "run.php" },
   "install": {
     "themes":  [ { "slug": "freeplast",    "artifact": "freeplast-woo-theme.zip" } ],
     "plugins": [ { "slug": "freeplast-woo", "artifact": "freeplast-woo.zip" } ]
@@ -24,7 +25,7 @@
   "tiers": {
     "surface": ["wordpress/wp-content/themes/**"],
     "logic":   ["wordpress/wp-content/plugins/**", "wordpress/wp-content/mu-plugins/**"],
-    "data":    ["wordpress/scripts/migrate-to-woo.php", "wordpress/data/**"]
+    "data":    ["wordpress/scripts/migrate-to-woo.php", "wordpress/scripts/import-catalog-photos.php", "wordpress/scripts/lib/catalog-photos.php", "wordpress/scripts/lib/photo-release-state.php", "wordpress/scripts/migrate-catalog-photos-release.php", "wordpress/scripts/record-state.php", "wordpress/scripts/prepare-catalog-photos.py", "wordpress/data/**"]
   },
   "hooks": {
     "verifyState": "wordpress/scripts/verify-woo-state.php",

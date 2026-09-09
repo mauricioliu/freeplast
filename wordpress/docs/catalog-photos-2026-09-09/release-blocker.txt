@@ -1,0 +1,4 @@
+error: catalog photo release is not integrated with the release ceremony
+missing: a sealed media bundle and the same native import in trial and install
+protected_records: the current fingerprint includes attachments and featured-image pointers
+help: implement and test the migration boundary and expected-delta verification before publishing this data-tier change

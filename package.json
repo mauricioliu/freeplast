@@ -7,6 +7,7 @@
   "scripts": {
     "bootstrap": "python3 wordpress/scripts/package-woo.py",
     "test": "node wordpress/scripts/check-woo.mjs",
+    "test:photos": "node wordpress/scripts/catalog-photos-native-test.mjs",
     "check": "node wordpress/scripts/check-woo.mjs",
     "typecheck": "node wordpress/scripts/check-woo.mjs",
     "woo:package": "python3 wordpress/scripts/package-woo.py"

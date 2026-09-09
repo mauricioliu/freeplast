@@ -1,0 +1,485 @@
+{
+  "version": 1,
+  "revision": "2026-09-09",
+  "products": [
+    {
+      "source_id": "fp-caja-cosechera-3-4",
+      "slug": "caja-cosechera-3-4",
+      "file": "caja-cosechera-3-4.webp",
+      "sha256": "60df4481dccf945b6c0dc191d8451e4aa59ae4e2b68526bbc6dc1b05f23fa9f6",
+      "previous_sha256": "7d808d71de2f0cd6510d6ac0844a5f7164f42e534c773bea029351df8e4fa57e",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Cosechera 3/4 — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 7,
+        "crop": [
+          421,
+          821,
+          2083,
+          2023
+        ],
+        "framing_crop": [
+          30,
+          101,
+          1626,
+          1202
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-cerrada-negra",
+      "slug": "caja-universal-cerrada-negra",
+      "file": "caja-universal-cerrada-negra.webp",
+      "sha256": "453af45e2b44b2a26c257b2a6622fd48d977292430bdb8338779eb82afb3c9da",
+      "previous_sha256": "d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Universal Cerrada Negra — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 8,
+        "crop": [
+          425,
+          881,
+          2107,
+          1975
+        ],
+        "framing_crop": [
+          20,
+          144,
+          1552,
+          963
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-ventilada-negra",
+      "slug": "caja-universal-ventilada-negra",
+      "file": "caja-universal-ventilada-negra.webp",
+      "sha256": "cd01be5481acc70d9e51043fd9e675eb30078976e595aa8639e09af39bd72bd8",
+      "previous_sha256": "d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Universal Ventilada Negra — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 10,
+        "crop": [
+          441,
+          881,
+          2103,
+          2063
+        ],
+        "framing_crop": [
+          19,
+          0,
+          1558,
+          1182
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-cerrada-color",
+      "slug": "caja-universal-cerrada-color",
+      "file": "caja-universal-cerrada-color.webp",
+      "sha256": "c6798c7ddf970613cc3352716bf02a39ae72938fdd4b77971bdd29f4c4426121",
+      "previous_sha256": "d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Universal Cerrada Color — fotografía referencial en rojo; no representa los demás colores",
+      "caption": "Fotografía del catálogo 2026 en rojo. Los demás colores no se muestran en esta imagen.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 9,
+        "crop": [
+          421,
+          942,
+          2143,
+          2043
+        ],
+        "framing_crop": [
+          25,
+          51,
+          1580,
+          946
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-universal-ventilada-color",
+      "slug": "caja-universal-ventilada-color",
+      "file": "caja-universal-ventilada-color.webp",
+      "sha256": "c47b288f032075fea643a4a6385fb4dd8f3f850cf8b1b591ca51196b33c4de87",
+      "previous_sha256": "d1c32e8a16686a89bdb3d3882c46cef3b0fa42e6c5645235f6dd45be82f9cea4",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Universal Ventilada Color — fotografía referencial en rojo; no representa los demás colores",
+      "caption": "Fotografía del catálogo 2026 en rojo. Los demás colores no se muestran en esta imagen.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 11,
+        "crop": [
+          421,
+          1002,
+          2143,
+          2023
+        ],
+        "framing_crop": [
+          17,
+          42,
+          1592,
+          913
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-tomatera",
+      "slug": "caja-tomatera",
+      "file": "caja-tomatera.webp",
+      "sha256": "3068ee1d02d8c8603cdbf46431dfbc57498123a27af0ccc6ab3ef7d3ba795d95",
+      "previous_sha256": "129415c500a8853384c180080ff348cc37a8406a1e08bb2ec09703dde02bd123",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Tomatera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 12,
+        "crop": [
+          461,
+          821,
+          2083,
+          2063
+        ],
+        "framing_crop": [
+          70,
+          0,
+          1500,
+          1242
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-frutillera",
+      "slug": "caja-frutillera",
+      "file": "caja-frutillera.webp",
+      "sha256": "54975ffe76aa09b323f80e115acf4fe9bb1f24e51647f59ff40388392213d013",
+      "previous_sha256": "924bd5716ebdb0ce33297af67d6b634cb49e232c34ae0169b1bb90d22ba3119c",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Frutillera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 13,
+        "crop": [
+          421,
+          901,
+          2123,
+          1983
+        ],
+        "framing_crop": [
+          70,
+          71,
+          1579,
+          679
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-frutera",
+      "slug": "caja-frutera",
+      "file": "caja-frutera.webp",
+      "sha256": "ffabcaa78565358406c2630d3f91c561f0a389cf56eb5f350889fa6bba4f6758",
+      "previous_sha256": "8cccfb29b991e3d3f05b6510fb706f61ef1ab7082220ba2e59aaef7d9f2f88aa",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Frutera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 14,
+        "crop": [
+          481,
+          861,
+          2103,
+          2063
+        ],
+        "framing_crop": [
+          160,
+          20,
+          1388,
+          1145
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-paltera",
+      "slug": "caja-paltera",
+      "file": "caja-paltera.webp",
+      "sha256": "ab0bb683526a66923546176796d12ea166d159fa5d8ee9b6e472259158d53e82",
+      "previous_sha256": "3cb9afe2a5b3c50340fdacb33285cb4b08a0c00b1aa50c61de3e3426b75406b2",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Paltera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 15,
+        "crop": [
+          421,
+          982,
+          2083,
+          1943
+        ],
+        "framing_crop": [
+          24,
+          48,
+          1639,
+          898
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-merlucera",
+      "slug": "caja-merlucera",
+      "file": "caja-merlucera.webp",
+      "sha256": "b672affc2fc1b69ca9db71ff0cb95fa85bb884ee34983ceda622ff2343098ac0",
+      "previous_sha256": "61276792b35ad002d4c0e901cd2c6316be386bf0b1628b62610f1e32c25487b3",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Merlucera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 20,
+        "crop": [
+          641,
+          841,
+          1943,
+          2083
+        ],
+        "framing_crop": [
+          13,
+          25,
+          1259,
+          1224
+        ]
+      }
+    },
+    {
+      "source_id": "fp-caja-pollera",
+      "slug": "caja-pollera",
+      "file": "caja-pollera.webp",
+      "sha256": "e5381abc3fc0a9c0235ce967c7b74aa9c697a1416998211a9e5f06de4d14d5ea",
+      "previous_sha256": "453c6c93192005e2c1b0184c6c950b3d5e3ef39f03826001951eb0a7ec63b948",
+      "width": 960,
+      "height": 960,
+      "alt": "Caja Pollera — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 19,
+        "crop": [
+          401,
+          781,
+          2123,
+          2083
+        ],
+        "framing_crop": [
+          26,
+          0,
+          1619,
+          1302
+        ]
+      }
+    },
+    {
+      "source_id": "fp-tote",
+      "slug": "tote",
+      "file": "tote.webp",
+      "sha256": "a753b83112280b9df36a8925e5a7dc170d13ef6a77217eb89c3ce2112317a967",
+      "previous_sha256": "4721ffec1b911215e993ff54bc602a6bdca42f3d300c0599fee002d35ea9a683",
+      "width": 960,
+      "height": 960,
+      "alt": "Tote — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 6,
+        "crop": [
+          581,
+          801,
+          1883,
+          1983
+        ],
+        "framing_crop": [
+          56,
+          40,
+          1237,
+          1102
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-upc",
+      "slug": "traversa-para-bins-tipo-upc",
+      "file": "traversa-para-bins-tipo-upc.webp",
+      "sha256": "ad899f59ecd8debd5f200bdc6a8f23218f69535f71ce774b508d5fad747e4b50",
+      "previous_sha256": "4a2175c9f3e11c189bfbf47f51b5807e7f8b9850bd7c204fb04b6e2f54bb9dc2",
+      "width": 960,
+      "height": 960,
+      "alt": "Traversa para Bins Tipo UPC — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 18,
+        "crop": [
+          441,
+          1062,
+          2123,
+          2083
+        ],
+        "framing_crop": [
+          140,
+          0,
+          1551,
+          930
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-g1",
+      "slug": "traversa-para-bins-tipo-g1",
+      "file": "traversa-para-bins-tipo-g1.webp",
+      "sha256": "322e4564b3db6fc3db12ace8f5e100905c75ed96e292221828cd2705940eaff4",
+      "previous_sha256": "09a5fca731064482439021976e09d5e1e771143bc0e2d93f23780448eb430d08",
+      "width": 960,
+      "height": 960,
+      "alt": "Traversa para Bins Tipo G1 — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 16,
+        "crop": [
+          401,
+          1042,
+          2123,
+          1943
+        ],
+        "framing_crop": [
+          61,
+          43,
+          1610,
+          651
+        ]
+      }
+    },
+    {
+      "source_id": "fp-traversa-para-bins-tipo-romano",
+      "slug": "traversa-para-bins-tipo-romano",
+      "file": "traversa-para-bins-tipo-romano.webp",
+      "sha256": "dbb5d7652301bca92d27cd269160731667fa9bd8c7d1ca57b0238989b660cae7",
+      "previous_sha256": "0bd78c9fe03b6a70967b7ca1a8b4c80afb4c24584404bd94dce06e8865155204",
+      "width": 960,
+      "height": 960,
+      "alt": "Traversa para Bins Tipo Romano — fotografía referencial",
+      "caption": "Fotografía referencial del catálogo Freeplast 2026.",
+      "provisional": true,
+      "source": {
+        "file": "docs/Catálogo Freeplast 2026.pdf",
+        "sha256": "fa76b5475fe71b9725e40fb49e7a2f43a7a804a139ed46837410e9cff55bea31",
+        "page": 17,
+        "crop": [
+          661,
+          942,
+          1963,
+          2184
+        ],
+        "framing_crop": [
+          25,
+          30,
+          1281,
+          1226
+        ]
+      }
+    },
+    {
+      "source_id": "fp-bases-plasticas-para-pediluvios",
+      "slug": "bases-plasticas-para-pediluvios",
+      "file": "bases-plasticas-para-pediluvios.webp",
+      "sha256": "c9ba4d0f0237e3c197c2c98309b65414763aa517fa390839b0c75249bcfcd569",
+      "previous_sha256": "fb19cb786ab8b528550e7588f34aed0586a3e6be145d225a32c9276a3f9d04b8",
+      "width": 593,
+      "height": 593,
+      "alt": "Bases plásticas para pediluvios — fotografía referencial",
+      "caption": "Fotografía referencial del sitio anterior. Original de mayor resolución pendiente.",
+      "provisional": true,
+      "source": {
+        "file": "wordpress/data/media/fp-pediluvio.webp",
+        "sha256": "fb19cb786ab8b528550e7588f34aed0586a3e6be145d225a32c9276a3f9d04b8",
+        "framing_crop": [
+          53,
+          141,
+          547,
+          444
+        ]
+      }
+    },
+    {
+      "source_id": "fp-ladrillo-plastico",
+      "slug": "ladrillo-plastico",
+      "file": "ladrillo-plastico.webp",
+      "sha256": "aa5cf65d2abf5646a2bea093e8d3fce11de3c413cfd4e17b7e30fc66a2fcd894",
+      "previous_sha256": "def3b5160b7f29d51763240f4d058e026e9c44853fbb609621f65b02e60b5ced",
+      "width": 673,
+      "height": 673,
+      "alt": "Ladrillo plástico — fotografía referencial",
+      "caption": "Fotografía referencial del sitio anterior. Original de mayor resolución pendiente.",
+      "provisional": true,
+      "source": {
+        "file": "wordpress/data/media/fp-ladrillo.webp",
+        "sha256": "def3b5160b7f29d51763240f4d058e026e9c44853fbb609621f65b02e60b5ced",
+        "framing_crop": [
+          15,
+          33,
+          576,
+          568
+        ]
+      }
+    }
+  ]
+}
