@@ -1,0 +1,13 @@
+wp-release: — gate
+wp-release: — package
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: — install
+wp-release: — verify
+wp-release: — smoke
+wp-release: — record
+wp-release: record written: /home/mauricio-liu/Projects/freeplast/wordpress/docs/releases/2026-09-09-data-8d8f31.md
+wp-release: RELEASE 20260909T114639Z-8d8f31 COMPLETE → https://freeplast.mliu.site
+wp-release: record: wordpress/docs/releases/2026-09-09-data-8d8f31.md — narrative sections are yours to fill.

@@ -1,0 +1,144 @@
+{
+  "at": "2026-09-09T11:55:53.531Z",
+  "scope": "read-only public HTTP + native media lookup; no form submissions, browser, device or visual acceptance",
+  "navigation": [
+    {
+      "label": "Catálogo",
+      "destination": "/tienda/"
+    },
+    {
+      "label": "Nosotros",
+      "destination": "/nosotros/"
+    },
+    {
+      "label": "Contacto",
+      "destination": "/contacto/"
+    },
+    {
+      "label": "Cómo cotizar",
+      "destination": "#fp-help"
+    }
+  ],
+  "publicAssetsByteIdentical": 5,
+  "products": [
+    {
+      "slug": "caja-cosechera-3-4",
+      "page": "https://freeplast.mliu.site/producto/caja-cosechera-3-4/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-cosechera-3-4.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-universal-cerrada-negra",
+      "page": "https://freeplast.mliu.site/producto/caja-universal-cerrada-negra/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-universal-cerrada-negra.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-universal-ventilada-negra",
+      "page": "https://freeplast.mliu.site/producto/caja-universal-ventilada-negra/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-universal-ventilada-negra.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-universal-cerrada-color",
+      "page": "https://freeplast.mliu.site/producto/caja-universal-cerrada-color/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-universal-cerrada-color.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-universal-ventilada-color",
+      "page": "https://freeplast.mliu.site/producto/caja-universal-ventilada-color/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-universal-ventilada-color.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-tomatera",
+      "page": "https://freeplast.mliu.site/producto/caja-tomatera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-tomatera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-frutillera",
+      "page": "https://freeplast.mliu.site/producto/caja-frutillera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-frutillera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-frutera",
+      "page": "https://freeplast.mliu.site/producto/caja-frutera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-frutera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-paltera",
+      "page": "https://freeplast.mliu.site/producto/caja-paltera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-paltera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-merlucera",
+      "page": "https://freeplast.mliu.site/producto/caja-merlucera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-merlucera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "caja-pollera",
+      "page": "https://freeplast.mliu.site/producto/caja-pollera/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/caja-pollera.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "tote",
+      "page": "https://freeplast.mliu.site/producto/tote/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/tote.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "traversa-para-bins-tipo-upc",
+      "page": "https://freeplast.mliu.site/producto/traversa-para-bins-tipo-upc/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/traversa-para-bins-tipo-upc.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "traversa-para-bins-tipo-g1",
+      "page": "https://freeplast.mliu.site/producto/traversa-para-bins-tipo-g1/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/traversa-para-bins-tipo-g1.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "traversa-para-bins-tipo-romano",
+      "page": "https://freeplast.mliu.site/producto/traversa-para-bins-tipo-romano/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/traversa-para-bins-tipo-romano.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "bases-plasticas-para-pediluvios",
+      "page": "https://freeplast.mliu.site/producto/bases-plasticas-para-pediluvios/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/bases-plasticas-para-pediluvios.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    },
+    {
+      "slug": "ladrillo-plastico",
+      "page": "https://freeplast.mliu.site/producto/ladrillo-plastico/",
+      "image": "https://freeplast.mliu.site/wp-content/uploads/2026/09/ladrillo-plastico.webp",
+      "hashMatches": true,
+      "captionMatches": true
+    }
+  ]
+}

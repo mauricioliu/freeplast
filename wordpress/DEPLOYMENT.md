@@ -1,5 +1,15 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-09-09 11:53 UTC: RELEASE DATA COMPLETADO EN STAGING.**
+> Tema **1.0.17**, adaptador **1.6.8**, 17 fotos nativas; menú PC/móvil unificado
+> e incluye el pulido previo de avisos/resumen/textos. Backup, restore, trial,
+> instalación con guard, fingerprint por delta esperado y smoke completos.
+> Solo `https://freeplast.mliu.site`; producción intacta. Revisión visual humana
+> pendiente. [Registro y recuperación](docs/releases/2026-09-09-data-8d8f31.md) ·
+> [Integración, pruebas y límites](docs/releases/2026-09-09-photo-migration/README.md).
+
+**Notas anteriores (históricas):**
+
 > **2026-09-09: PUBLICACIÓN BLOQUEADA.** El gate de Freeplast está verde, pero
 > el driver actual falla en rollback y conservación de mantenimiento al fallar
 > install. No publicar hasta corregir esas ramas y sus pruebas. Evidencia:

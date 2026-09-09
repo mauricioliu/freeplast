@@ -1,0 +1,1 @@
+postdeploy: 17 public image hashes + 17 rendered captions + navigation parity + 5 exact public assets passed; no visual acceptance

@@ -8,11 +8,16 @@ freeplast.mliu.site, sin tocar producción?». El responsable respondió literal
 **«confirmo»**. Autoriza DATA solo en **https://freeplast.mliu.site**; no autoriza
 contacto ni publicación en `freeplast.cl`.
 
-Integración, gate completo y certificación final del driver **verdes**.
-`self-test.txt` registra cinco releases y recuperaciones; `certification.txt`
-identifica las fuentes exactas certificadas. El registro generado por la
-ceremonia se enlazará aquí después de finalizar. **Esta preparación por sí sola
-no es prueba de publicación.**
+**PUBLICADO en staging el 2026-09-09, 11:53 UTC.** Release DATA
+[`20260909T114639Z-8d8f31`](../2026-09-09-data-8d8f31.md), fuente `abdfe0f`:
+tema **1.0.17**, adaptador **1.6.8**, 17 fotografías nativas. Todas las fases
+completadas; restore/trial on-host verificados, `LIVE-CHECK=27`, fingerprint
+protegido idéntico antes/después. No se necesitó rollback. No producción.
+
+`ceremony.txt` conserva la salida del driver; `bundle-sha256s.txt`, el sello
+completo de ZIPs, hooks y clausura de migración. `self-test.txt` registra cinco
+releases y recuperaciones; `certification.txt` identifica las fuentes exactas
+certificadas antes de contactar el target para la ceremonia.
 
 ## Implementación
 
@@ -82,6 +87,15 @@ conservaron; no se mezclan con esta integración.
 
 Los contenedores, usuarios/solicitudes y fallos inducidos pertenecen exclusivamente
 a fixtures. No se envían formularios ni correos reales para validar la publicación.
+
+## Comprobaciones posteriores de solo lectura
+
+`postdeploy-readonly.json` y `postdeploy.txt`: 17 originales públicos con SHA-256
+idéntico al manifest, 17 fichas con la leyenda nativa correcta y sin placeholder,
+misma navegación en PC/móvil, cinco CSS/JS públicos byte a byte iguales a fuente.
+Se consultaron medios nativos por CLI y páginas/archivos públicos por HTTP; no se
+hicieron envíos de formularios ni aceptación visual. Backup y rollback preparado
+constan en el registro principal; no ejecutar recuperación sin nueva decisión.
 
 ## Límites y material pendiente
 
