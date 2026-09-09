@@ -1,9 +1,15 @@
-import assert from 'node:assert/strict';
+import strictAssert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { JSDOM } from 'jsdom';
 import jquery from 'jquery';
+
+let checks = 0;
+const assert = Object.fromEntries(['equal', 'match', 'ok'].map(name => [name, (...args) => {
+  checks++;
+  return strictAssert[name](...args);
+}]));
 
 const source = readFileSync(new URL('../wp-content/themes/freeplast/assets/js/loop-added-count.js', import.meta.url), 'utf8');
 const api = new Function('module', source + '\nreturn module.exports;')({ exports: {} });
@@ -16,6 +22,7 @@ const page = () => new JSDOM(`<body>${card(11)}${card(22)}${card(11)}${card(33)}
 const count = (doc, index) => doc.querySelectorAll('[data-fpw-loop-add]')[index].querySelector('.fp-added-pill__badge')?.textContent;
 
 export async function runLoopAddedCountTests() {
+  checks = 0;
   const dom = page();
   const doc = dom.window.document;
   doc.body.insertAdjacentHTML('beforeend', '<div data-fpw-detail-added data-product-id="11" hidden><strong></strong><a href="/cotizacion/">Revisar</a></div>');
@@ -86,10 +93,30 @@ export async function runLoopAddedCountTests() {
   $(doc.body).on('wc_fragment_refresh', () => refreshes++);
   window.dispatchEvent(new window.PageTransitionEvent('pageshow', { persisted: true }));
   assert.equal(refreshes, 1, 'bfcache restoration requests a native session refresh');
+  window.wc_add_to_cart_params = { cart_url: '/cotizacion/' };
+  const duplicateAdd = doc.querySelectorAll('.add_to_cart_button')[2];
+  duplicateAdd.classList.add('loading');
+  $(doc).trigger('ajaxError', [{ status: 0 }, { url: '/?wc-ajax=add_to_cart', data: 'product_id=11&quantity=1' }]);
+  assert.equal(doc.querySelectorAll('[data-fpw-add-error]').length, 1, 'duplicate cards announce one transport failure');
+  assert.ok(duplicateAdd.parentElement.querySelector('[data-fpw-add-error]'), 'feedback stays with the originating duplicate card');
+  $(doc.body).trigger('added_to_cart', [{ [KEY]: snapshot([[11, 'bad']]) }, 'invalid-quantity', $(duplicateAdd)]);
+  flush();
+  assert.ok(duplicateAdd.parentElement.querySelector('[data-fpw-add-error]'), 'malformed quantity cannot clear an error');
+  assert.equal(count(doc, 2), undefined, 'malformed event does not replace the last confirmed selection');
+  $(doc.body).trigger('added_to_cart', [fragments([[11, 2], [22, 8]]), 'good', $(duplicateAdd)]);
+  flush();
+  assert.equal(doc.querySelectorAll('[data-fpw-add-error]').length, 0, 'confirmed recovery clears matching duplicate-card errors');
+  $(doc.body).trigger('removed_from_cart', [fragments([[22, 8]]), 'removed', $(duplicateAdd.parentElement.querySelector('.fp-remove-product'))]);
+  flush();
+  assert.equal(doc.querySelectorAll('[data-fpw-card-status]:not([hidden])').length, 1, 'one initiating card announces removal, not every duplicate');
+  doc.querySelector(KEY).outerHTML = snapshot([[11, 4], [22, 8]]);
+  $(doc.body).trigger('wc_fragments_refreshed');
+  flush();
+  assert.equal(doc.querySelectorAll('[data-fpw-card-status]:not([hidden])').length, 0, 'a subsequent session re-add clears obsolete removal success');
   dom.window.close();
   await runNativeHandlerTests();
-  console.log('card quantities: per-product, repeated add, duplicates, remove, empty, reload, malformed payloads and pinned Woo add/remove handlers passed');
-  return 56;
+  console.log(`card quantities: ${checks} checks passed (per-product, repeated add, duplicate feedback, remove, empty, reload, malformed outcomes and pinned Woo handlers)`);
+  return checks;
 }
 
 async function runNativeHandlerTests() {
@@ -149,6 +176,11 @@ async function runNativeHandlerTests() {
   await reply({ fragments: fragments([[22, 2]]), cart_hash: 'three' });
   assert.equal(count(doc, 0), undefined, 'native removal clears A immediately');
   assert.equal(count(doc, 1), '2', 'native removal leaves B unchanged');
+  const removalStatus = doc.querySelector('[data-fpw-card-status]');
+  assert.ok(removalStatus && !removalStatus.hidden, 'settled removal leaves a contextual confirmation outside the deleted slot');
+  assert.match(removalStatus.textContent, /quitado.*Productos a Cotizar/);
+  assert.equal(removalStatus.getAttribute('role'), 'status');
+  assert.equal(doc.querySelectorAll('[data-fpw-card-status]').length, 1, 'one feedback surface for the initiated removal');
   assert.equal(doc.activeElement, add, 'focus returns to Add when the removed control disappears');
   assert.equal(doc.querySelectorAll('[data-fpw-loop-add] .test-block-overlay').length, 0, 'completed removal does not leave a blocked row');
   add.classList.add('loading');
@@ -156,6 +188,21 @@ async function runNativeHandlerTests() {
   assert.equal(add.classList.contains('loading'), false, 'transport failure releases the finished native loading state');
   assert.match(doc.querySelector('[data-fpw-add-error]').textContent, /No pudimos confirmar.*Revisa Productos a Cotizar/, 'ambiguous add outcome directs to persisted truth, not a false no-save claim');
   assert.equal(count(doc, 1), '2', 'transport error never changes another product quantity');
+  assert.ok(removalStatus.hidden, 'uncertain add cannot leave an old removal success visible');
+  $(doc.body).trigger('added_to_cart', [{}, 'incomplete', $(add)]);
+  await settle();
+  assert.ok(doc.querySelector('[data-fpw-add-error]'), 'an event without authoritative snapshot cannot clear uncertainty');
+  $(doc.body).trigger('added_to_cart', [fragments([[22, 3]]), 'other', $(doc.querySelectorAll('.add_to_cart_button')[1])]);
+  await settle();
+  assert.ok(doc.querySelector('[data-fpw-add-error]'), 'success for B does not clear error for A');
+  $(doc.body).trigger('added_to_cart', [fragments([[11, 4], [22, 3]]), 'recovered', $(add)]);
+  await settle();
+  assert.equal(doc.querySelector('[data-fpw-add-error]'), null, 'confirmed recovery clears the matching error');
+  assert.ok(!doc.querySelector('[data-fpw-card-status]:not([hidden])'), 'add confirmation uses its quantity pill, not a second message');
+  $(doc.body).trigger('removed_from_cart', [fragments([[11, 4], [22, 3]]), 'not-removed', $(doc.querySelector('.fp-remove-product'))]);
+  await settle();
+  assert.match(doc.querySelector('[data-fpw-add-error]').textContent, /No pudimos confirmar.*eliminación/, 'still-present product never produces removal success');
+  assert.equal(count(doc, 0), '4', 'uncertain removal preserves the server projection');
   dom.window.close();
 }
 

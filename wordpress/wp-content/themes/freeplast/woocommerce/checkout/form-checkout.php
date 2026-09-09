@@ -71,7 +71,6 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 				<summary><span class="fp-summary-count"><?php echo esc_html( $fp_count_line ); ?></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="15" height="15"><path d="m5 9 7 7 7-7"/></svg></summary>
 				<div class="fp-summary-body">
 					<?php $fp_extensions( 'woocommerce_checkout_order_review', 'woocommerce_checkout_payment' ); ?>
-					<p class="fp-fine">El precio se confirma con ventas.</p>
 				</div>
 			</details>
 			<a class="fp-text-link fp-edit-products" href="<?php echo esc_url( wc_get_cart_url() ); ?>">Editar productos</a>
@@ -151,7 +150,7 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 	<div class="fp-form-submit">
 		<?php // Native payment → terms owns the privacy notice, including AJAX refreshes.
 		woocommerce_checkout_payment(); ?>
-		<p class="fp-submit-note fp-fine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg> Sin pagos ni reserva de stock.</p>
+		<p class="fp-submit-note fp-fine"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="14" height="14"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg><span>Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.</span></p>
 		<?php do_action( 'woocommerce_checkout_after_order_review' ); ?>
 	</div>
 	</div>

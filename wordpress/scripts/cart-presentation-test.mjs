@@ -26,6 +26,12 @@ export async function runCartPresentationTests() {
     notify(); await tick();
     ok(summary.querySelector('h2') === stableHeading, 'unchanged store/DOM reconciliation is idempotent, not an observer mutation loop');
     ok(doc.querySelectorAll('[data-fpw-cart-next]').length === 1, 'native CTA follow-up stays singular');
+    const followUp = doc.querySelector('[data-fpw-cart-next]');
+    ok(followUp.querySelectorAll('p').length === 2, 'follow-up contains only the commercial note and secondary link');
+    ok(followUp.firstElementChild.textContent === 'Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.', 'one complete commercial explanation follows the native CTA');
+    ok(followUp.lastElementChild.querySelector('a')?.textContent === 'Seguir agregando productos', 'secondary action follows the explanation');
+    ok(!followUp.textContent.includes('El siguiente paso'), 'no redundant next-step paragraph');
+    ok(Boolean(summary.compareDocumentPosition(doc.querySelector('.wc-block-cart__submit-button')) & w.Node.DOCUMENT_POSITION_FOLLOWING) && Boolean(doc.querySelector('.wc-block-cart__submit-button').compareDocumentPosition(followUp) & w.Node.DOCUMENT_POSITION_FOLLOWING), 'native nested CTA remains between numbers and explanation');
 
     ok(translations['%s has been removed from your cart.'][0].includes('actualizando'), 'native optimistic removal announcement is progress, not an unconfirmed success');
     const removeA = doc.getElementById('remove-a'); removeA.focus(); pending = true; removeA.click(); removing('a');
@@ -58,7 +64,16 @@ export async function runCartPresentationTests() {
     ok(doc.activeElement === removeD && doc.getElementById('qty-d').value === '3', 'native failed removal restores its still-present control without changing quantity');
     const failure = doc.querySelector('[data-fpw-removal-error]');
     ok(!failure.hidden && failure.textContent.includes('3 unidades') && failure.textContent.includes('No pudimos confirmar'), 'unconfirmed deletion names the native quantity without falsely asserting backend non-persistence');
-    console.log(`cart presentation: ${checks} late-DOM/focus checks passed (modeled store; hydrated native browser unrun)`);
+    doc.querySelector('tbody').insertAdjacentHTML('beforeend', row('e')); items.push({ key: 'e', quantity: 1 }); notify(); await tick();
+    pending = true; removing('e'); await tick();
+    ok(!failure.hidden, 'a new removal does not prematurely dismiss an unresolved error');
+    doc.getElementById('row-e').remove(); items = items.filter(item => item.key !== 'e'); pending = false; notify(); await tick();
+    ok(!failure.hidden && failure.textContent.includes('3 unidades'), 'success for another line does not clear the failed line');
+    pending = true; removing('d'); await tick();
+    ok(!failure.hidden, 'retry keeps its error until confirmed');
+    doc.getElementById('row-d').remove(); items = []; pending = false; notify(); await tick();
+    ok(failure.hidden && failure.textContent === '', 'successful retry clears only its resolved error');
+    console.log(`cart presentation: ${checks} late-DOM/focus/feedback checks passed (modeled store; hydrated native browser unrun)`);
     return checks;
   } finally { dom.window.close(); }
 }

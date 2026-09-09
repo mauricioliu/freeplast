@@ -18,6 +18,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, write
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { JSDOM } from 'jsdom';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORDPRESS_DIR = dirname(HERE);
@@ -53,6 +54,22 @@ async function fetchBody(path) {
   } catch {
     return '';
   }
+}
+
+// Class order is presentation, not the search contract. The theme may put
+// product-card before Woo's product token; parse tokens rather than prefixes.
+export function countProductCards(html) {
+  const dom = new JSDOM(html);
+  try { return dom.window.document.querySelectorAll('ul.products > li.product').length; }
+  finally { dom.window.close(); }
+}
+
+export function serverRenderedText(html) {
+  const dom = new JSDOM(html);
+  try {
+    dom.window.document.querySelectorAll('script,style,template,[hidden]').forEach(node => node.remove());
+    return dom.window.document.body.textContent;
+  } finally { dom.window.close(); }
 }
 
 let checks = 0;
@@ -166,7 +183,7 @@ register_shutdown_function( static function () {
        its while loop, rendering an empty <ul> even though the main query found
        the products (the ?s=…&post_type=product route always worked because the
        URL makes Woo run product_query natively). */
-    const liProducts = (html) => (html.match(/<li class="product[ "]/g) || []).length;
+    const liProducts = countProductCards;
     const search = await fetchBody('/?s=caja');
     const searchPlural = await fetchBody('/?s=cajas');
     const searchNone = await fetchBody('/?s=zz-sin-coincidencias');
@@ -174,7 +191,10 @@ register_shutdown_function( static function () {
     const searchPluralCount = liProducts(searchPlural);
     check(searchCount >= 1, `catalog search 'caja' rendered ${searchCount} products — the search loop is collapsing to an empty <ul> (wc_query/search contract regressed)`);
     check(searchPluralCount === searchCount, `plural search 'cajas' rendered ${searchPluralCount} products vs ${searchCount} for 'caja' — the conservative plural normalization regressed`);
-    check(/woocommerce-no-products-found/.test(searchNone), "a no-match search must render WooCommerce's native empty-results message");
+    const emptySearch = new JSDOM(searchNone);
+    try {
+      check(liProducts(searchNone) === 0 && emptySearch.window.document.querySelector('.fp-catalog .empty-state h2')?.textContent === 'No encontramos «zz-sin-coincidencias».', 'a no-match search must render the theme empty state through the native archive path');
+    } finally { emptySearch.window.close(); }
     /* 2026-09-07 visual regression (owner screenshot): products rendered but
        unstyled — Woo's catalog CSS (woocommerce-layout.css grid floats, the
        .woocommerce button skin) and the theme's woo.css are all scoped to the
@@ -266,7 +286,20 @@ register_shutdown_function( static function () {
       check(!/prototype-bar|data-scenario|Escenarios/.test(shop), 'no review tooling rides the catalog surface');
       /* Issue #43: A discovery tools over native queries. */
       check(/class="catalog-tools"/.test(shop) && /role="search"/.test(shop) && /name="s"/.test(shop), 'the A search toolbar renders on the native shop route');
-      check(/class="filter-tabs" aria-label="Categorías"/.test(shop) && shop.includes('Agrícola <span>1') && shop.includes('Otros <span>'), 'native category filters carry live term counts');
+      const termCounts = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $counts = array();
+        foreach (array('agricola'=>'Agrícola', 'otros'=>'Otros') as $slug=>$label) {
+          $term = get_term_by('slug', $slug, 'product_cat');
+          if (!$term) { throw new RuntimeException('Missing owned category fixture'); }
+          $counts[$label] = (int) $term->count;
+        }
+        echo wp_json_encode($counts);
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const filterDom = new JSDOM(shop);
+      try {
+        const tabs = filterDom.window.document.querySelector('.filter-tabs[aria-label="Categorías"]');
+        check(Boolean(tabs) && Object.entries(termCounts).every(([label, count]) => [...tabs.querySelectorAll('a')].some(a => a.firstChild?.textContent.trim() === label && a.querySelector('span')?.textContent === String(count))), `native category filters must match current WP term counts ${JSON.stringify(termCounts)}`);
+      } finally { filterDom.window.close(); }
       check(/woocommerce-result-count/.test(shop) && /<strong>\d+<\/strong> productos/.test(shop), 'the native loop total is presented in A copy');
       check(/name="orderby"/.test(shop) && shop.includes('>Destacados<') && shop.includes('>Nombre A–Z<') && !shop.includes('>Popularity<') && !shop.includes('>Price'), 'ordering offers exactly the two reference choices');
       const searchAccent = await fetchBody('/?s=caj%C3%A1');
@@ -342,7 +375,7 @@ register_shutdown_function( static function () {
       check(/Pasos de la solicitud/.test(basketPage) && /<h1>Productos a Cotizar<\/h1>/.test(basketPage), 'the A basket heading and steps render');
       check(/wp-block-woocommerce-cart/.test(basketPage) && /wp-block-woocommerce-proceed-to-checkout-block/.test(basketPage), 'the REAL Cart block with its native CTA block');
       check(/Aún no agregas productos\./.test(basketPage) && /Elegir productos/.test(basketPage), 'the A empty state ships with the page markup');
-      check(!basketPage.includes('$'), 'no currency amount on the basket page markup');
+      check(!serverRenderedText(basketPage).includes('$'), 'no currency amount in server-rendered basket text (scripts and technical payloads are not public copy)');
       const detailsPage = await jarFetch('/datos-y-envio/');
       const detailsHtml = await detailsPage.text();
       check(detailsPage.status === 200, `the Datos y envío route must answer 200 (got ${detailsPage.status})`);
@@ -355,8 +388,8 @@ register_shutdown_function( static function () {
       check(/name="fpw_attempt"/.test(detailsHtml), 'the hidden submitted-attempt identity is present');
       check(/name="woocommerce_checkout_place_order"/.test(detailsHtml), 'the native place-order trigger is preserved');
       check(/checkout-form\.js\?ver=/.test(detailsHtml), 'the A checkout enhancement ships');
-      check(/fields\.js\?ver=1\.0\.3/.test(detailsHtml), 'the adapter field enhancement ships at its bumped version');
-      check(!detailsHtml.includes('$'), 'no currency amount on the details route');
+      check(/fields\.js\?ver=1\.0\.4/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
+      check(!serverRenderedText(detailsHtml).includes('$'), 'no currency amount in server-rendered details text');
       /* Issue #48: corporate pages keep the shared chrome without inheriting
          the product grid; Home carries the A cards through the native loop. */
       const corporate = await (await jarFetch('/nosotros/')).text();

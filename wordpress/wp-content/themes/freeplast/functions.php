@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.15' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.16' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -142,6 +142,7 @@ add_filter(
 );
 
 require_once __DIR__ . '/inc/catalog.php';
+require_once __DIR__ . '/inc/quote-presentation.php';
 
 /** Recognize the migrated pending-photo attachment, not a product-id list.
  * Replacing that attachment in Woo immediately restores the real photograph. */

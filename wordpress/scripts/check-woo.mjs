@@ -109,6 +109,7 @@ console.log(run(php,[path.join(root,'scripts/catalog-tools-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-native-frame-test.php')]));
 console.log(run(php,[path.join(root,'scripts/product-sheet-test.php')]));
 console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
+console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));
@@ -134,6 +135,9 @@ run('bash',['-n',path.join(root,'infra/deploy-woo.sh')]);
  if(createHash('sha256').update(readFileSync(bundle)).digest('hex')!==sidecar.file_sha256) throw Error('Vendored wc-blocks-data hash mismatch against its sidecar');
  checks+=2; // bundle integrity + sidecar verification
  checks+=await runCartStoreScenarios(bundle,path.join(root,'wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js'));}
+// Count actual product class tokens, independent of theme class ordering.
+await import('./catalog-markup-test.mjs');
+checks+=7;
 // Issue #1 (Woo-side ports of #24/#27): boot the disposable WP+Woo stack and exercise the
 // delivered Home card contract (WA-04) and the concurrent-checkout attempt claim (WA-01)
 // over real HTTP — loopback only; the port is refused if a foreign server owns it.

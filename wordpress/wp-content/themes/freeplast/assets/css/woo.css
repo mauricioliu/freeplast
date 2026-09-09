@@ -71,12 +71,23 @@ body .wc-block-cart.wc-block-components-sidebar-layout > .wc-block-components-si
 .wc-block-cart .wc-block-components-quantity-selector button.wc-block-components-quantity-selector__button:hover { background: var(--fp-blue-soft); }
 .wc-block-cart .wc-block-components-quantity-selector input.wc-block-components-quantity-selector__input { width: 54px; min-width: 54px; min-height: 44px; border: 0; border-inline: 1px solid var(--fp-chrome-line); border-radius: 0; background: var(--fp-paper); color: var(--fp-ink); font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; box-shadow: none; -moz-appearance: textfield; }
 .wc-block-cart .wc-block-components-quantity-selector input.wc-block-components-quantity-selector__input::-webkit-inner-spin-button, .wc-block-cart .wc-block-components-quantity-selector input.wc-block-components-quantity-selector__input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-/* Sidebar: A summary card + native CTA. */
+/* Compact summary: numbers → native CTA → one explanation → secondary link.
+   Hide only empty/price-only native wrappers, not arbitrary extension content:
+   a hidden total's parent otherwise remains a flex item and adds another gap. */
 .wc-block-cart__sidebar { display: flex; flex-direction: column; gap: 16px; padding: 22px; border: 1px solid var(--fp-chrome-line); border-radius: 14px; background: var(--fp-tint); }
 .wc-block-cart__sidebar footer { position: static; }
+.wc-block-cart__sidebar > .wc-block-cart__payment-options:empty,
+.wc-block-cart__sidebar > :is(div:not([class]), div[class=""]):has(> .wc-block-components-totals-wrapper:only-child) { display: none; }
 .fpw-cart-summary.summary-card { background: transparent; border: 0; padding: 0; }
-[data-fpw-cart-next] .fp-fine { font-size: 13px; }
-[data-fpw-cart-next] .summary-links { text-align: center; }
+.wc-block-cart__sidebar .fpw-cart-summary h2 { margin: 0 0 12px; }
+.wc-block-cart__sidebar .fpw-cart-summary .summary-numbers { flex-wrap: wrap; gap: 16px 24px; margin: 0; padding: 0 0 16px; }
+.wc-block-cart__sidebar .wc-block-cart__submit { margin: 0; }
+[data-fpw-cart-next] { display: grid; gap: 12px; }
+[data-fpw-cart-next] .fp-fine { margin: 0; font-size: 13px; }
+[data-fpw-cart-next] .summary-links { margin: 0; text-align: center; }
+[data-fpw-cart-next] .summary-links a { display: inline-flex; align-items: center; min-height: 44px; }
+.fp-checkout-page .fp-submit-note { align-items: flex-start; text-align: left; }
+.fp-checkout-page .fp-submit-note svg { flex: 0 0 14px; margin-top: 3px; }
 .fp-cart-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
 .fp-cart-tools[hidden], [data-fpw-cart-hint][hidden], [data-fpw-cart-next][hidden] { display: none; }
 .fpw-cart-summary[hidden] { display: none; }
@@ -107,16 +118,35 @@ body.woocommerce-checkout main .woocommerce:has(> .fp-checkout-page) { width: 10
 .woocommerce button.single_add_to_cart_button.button[aria-disabled="true"], .woocommerce button.single_add_to_cart_button.button[aria-disabled="true"]:hover { background: var(--fp-tint); color: var(--fp-muted); opacity: 1; cursor: not-allowed; }
 .fp-variation-hint { margin: 12px 0 0; font-size: 14px; line-height: 1.5; font-weight: 600; color: var(--fp-text); }
 .fp-variation-hint[hidden] { display: none; }
-/* Issue #26 (WA-03): feedback for failed/saved quantity changes, rendered by
-   cart-quantity-feedback.js from the cart block's own store. Existing hues
-   only: ink text on the tint band with the blue border family; the wording
-   itself (not colour) carries the meaning. Measured pairs: error 16.3:1,
-   confirmation 5.3:1, blocked CTA 4.9:1 — all above AA. */
+/* Contextual feedback: one type scale/spacing/border family for card and
+   selection outcomes. Text + alert/status semantics carry the outcome, never
+   colour alone. Native errors are not hidden or auto-dismissed. */
 .fp-cart-feedback { margin: 0 0 16px; }
-.fp-cart-feedback__error, .fp-cart-feedback__status { margin: 0 0 8px; padding: 12px 16px; border-radius: 8px; font-size: 15px; line-height: 1.5; font-weight: 600; }
-.fp-cart-feedback__error { background: var(--fp-tint); color: var(--fp-ink); border: 2px solid var(--fp-line-strong); }
-.fp-cart-feedback__status { background: var(--fp-paper); color: var(--fp-muted); border: 1px solid var(--fp-line); }
-.fp-cart-feedback__error[hidden], .fp-cart-feedback__status[hidden] { display: none; }
+.fp-cart-feedback:not(:has(> :not([hidden]))) { display: none; }
+.fp-cart-feedback__error, .fp-cart-feedback__status,
+body ul.products.catalog-grid .fp-card-add-error,
+body ul.products.catalog-grid .fp-card-status { margin: 0 0 8px; padding: 12px 16px; border-radius: 8px; font-size: 15px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+.fp-cart-feedback__error,
+body ul.products.catalog-grid .fp-card-add-error { background: var(--fp-tint); color: var(--fp-ink); border: 2px solid var(--fp-line-strong); }
+.fp-cart-feedback__status,
+body ul.products.catalog-grid .fp-card-status { background: var(--fp-tint); color: var(--fp-ink); border: 1px solid var(--fp-line); }
+body ul.products.catalog-grid .fp-card-add-error,
+body ul.products.catalog-grid .fp-card-status { grid-column: 1 / -1; flex-basis: 100%; min-width: 0; margin: 8px 0 0; }
+body ul.products.catalog-grid .fp-card-add-error a { color: inherit; text-decoration: underline; display: flex; width: fit-content; align-items: center; min-height: 44px; margin-top: 4px; }
+.fp-cart-feedback__error[hidden], .fp-cart-feedback__status[hidden],
+body ul.products.catalog-grid .fp-card-status[hidden] { display: none; }
+/* Persistent product quantities and native notices use the same visual
+   vocabulary. Keep Woo's content, controls, roles and error recovery intact. */
+body.woocommerce .fp-product-shell .fpw-detail-added { background: var(--fp-tint); color: var(--fp-ink); border: 1px solid var(--fp-line); border-radius: 8px; padding: 12px 16px; }
+body.woocommerce .fp-product-shell .fpw-detail-added strong { font-size: 15px; }
+body.woocommerce .fp-product-shell .fpw-detail-added .fp-detail-link { color: var(--fp-ink); min-height: 44px; align-items: center; }
+.woocommerce-notices-wrapper .woocommerce-message,
+.woocommerce-notices-wrapper .woocommerce-info,
+.woocommerce-notices-wrapper .woocommerce-error { background: var(--fp-tint); color: var(--fp-ink); border: 1px solid var(--fp-line); border-radius: 8px; font-size: 15px; line-height: 1.5; }
+.woocommerce-notices-wrapper .woocommerce-error { border: 2px solid var(--fp-line-strong); }
+.woocommerce-notices-wrapper .woocommerce-message::before,
+.woocommerce-notices-wrapper .woocommerce-info::before,
+.woocommerce-notices-wrapper .woocommerce-error::before { color: var(--fp-blue); }
 /* While the store reports pending cart operations the CTA is truthfully inert
    (aria-disabled + synchronous click guard): the muted look is explicit, not
    Woo's opacity blend, and the guard is removed as soon as operations settle. */

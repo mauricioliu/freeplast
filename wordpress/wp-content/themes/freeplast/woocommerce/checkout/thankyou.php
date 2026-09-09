@@ -51,8 +51,8 @@ $fp_email = (string) ( $fp_details['billing_email'] ?? '' );
 <div class="fp-confirmation-content">
 <h2>¿Qué sigue ahora?</h2>
 <ol class="fp-next-steps">
-<li><span class="step-number" aria-hidden="true">1</span><div><strong>Ventas revisa tu solicitud.</strong><p>Confirmará disponibilidad, precios y condiciones de los productos seleccionados.</p></div></li>
-<li><span class="step-number" aria-hidden="true">2</span><div><strong>Te contactaremos con los detalles.</strong><p>Usaremos los datos que ingresaste en el paso anterior. No estás realizando una compra.</p></div></li>
+<li><span class="step-number" aria-hidden="true">1</span><div><strong>Ventas revisa tu solicitud.</strong><p>Revisará los productos, cantidades y despacho solicitados.</p></div></li>
+<li><span class="step-number" aria-hidden="true">2</span><div><strong>Te contactaremos con los detalles.</strong><p>Usaremos los datos que ingresaste en el paso anterior.</p></div></li>
 </ol>
 <div class="summary-card">
 <h2>Resumen de tu selección</h2>
@@ -66,7 +66,7 @@ $fp_email = (string) ( $fp_details['billing_email'] ?? '' );
 <?php endforeach; ?>
 </ul>
 <p class="fp-fine"><?php echo 'si' === $fp_dispatch ? ( '' !== $fp_address ? 'Despacho solicitado: ' . esc_html( $fp_address ) . '.' : 'Despacho solicitado; dirección por confirmar.' ) : ( 'no' === $fp_dispatch ? 'Solicitud sin despacho.' : 'Despacho por confirmar con ventas.' ); ?><?php if ( '' !== $fp_email ) { echo ' Email de contacto: ' . esc_html( $fp_email ) . '.'; } ?></p>
-<p class="fp-fine">Ventas confirmará precios, disponibilidad y condiciones. No estás realizando una compra. No hay reserva de stock.</p>
+<p class="fp-fine">Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.</p>
 </div>
 </div>
 <div class="fp-action-row">

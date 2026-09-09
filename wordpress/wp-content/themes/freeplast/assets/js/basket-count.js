@@ -91,7 +91,7 @@
       var sidebar = node.parentNode;
       if (!sidebar.querySelector('[data-fpw-cart-next]')) {
         var next = document.createElement('div'); next.setAttribute('data-fpw-cart-next', '');
-        next.innerHTML = '<p class="fp-fine">El siguiente paso es completar tus datos de contacto, empresa y despacho.</p><p class="summary-links"><a href="/tienda/">Seguir agregando productos</a></p><p class="fp-fine">Ventas confirmará precios, disponibilidad y condiciones. No estás realizando una compra.</p>';
+        next.innerHTML = '<p class="fp-fine">Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.</p><p class="summary-links"><a href="/tienda/">Seguir agregando productos</a></p>';
         sidebar.appendChild(next);
       }
     } else if (!node.hidden) {
@@ -140,7 +140,7 @@
      name). Retain the intent through deferred React commits and native error
      rollback; discard it on deliberate subsequent pointer/keyboard focus. */
   function createRemovalFocus() {
-    var intent = null, restoring = false, removals = {};
+    var intent = null, restoring = false, removals = {}, removalErrors = {};
     if (!document.body.classList.contains('woocommerce-cart')) { return function () {}; }
     function pendingRemovalCopy() {
       // Pinned Cart speaks this phrase optimistically inside onClick, BEFORE
@@ -160,7 +160,8 @@
         var options = Array.isArray(item.variation) ? item.variation.map(function (value) { return value.attribute + ': ' + value.value; }).join(', ') : '';
         removals[item.key] = String(item.name || '') + (options ? ' · ' + options : '');
         pendingRemovalCopy();
-        document.querySelectorAll('[data-fpw-removal-error], [data-fpw-removal-status]').forEach(function (node) { if (!node.hidden) node.hidden = true; });
+        // A new operation must not erase an unresolved error for another line.
+        document.querySelectorAll('[data-fpw-removal-status]').forEach(function (node) { if (!node.hidden) node.hidden = true; });
         window.setTimeout(restore, 0);
       });
     }
@@ -183,17 +184,21 @@
         var submit = document.querySelector('a.wc-block-cart__submit-button');
         if ((store.hasPendingItemsOperations && store.hasPendingItemsOperations()) || (submit && submit.getAttribute('aria-disabled') === 'true')) { return; }
       } catch (error) { return; }
-      var failures = [], successes = [];
-      Object.keys(removals).forEach(function (key) {
+      var settled = Object.keys(removals), successes = [];
+      settled.forEach(function (key) {
         var saved = store.getCartItem(key), name = removals[key];
-        if (saved) { failures.push('No pudimos confirmar la eliminación de «' + name + '». La selección disponible muestra ' + plural(saved.quantity, 'unidad', 'unidades') + '. Recarga para comprobar la selección guardada antes de volver a elegir Quitar.'); }
-        else { successes.push('Se quitó «' + name + '» de Productos a Cotizar.'); }
+        if (saved) { removalErrors[key] = 'No pudimos confirmar la eliminación de «' + name + '». La última comprobación mostró ' + plural(saved.quantity, 'unidad', 'unidades') + '. Recarga para comprobar la selección guardada antes de volver a elegir Quitar.'; }
+        else { delete removalErrors[key]; successes.push('Se quitó «' + name + '» de Productos a Cotizar.'); }
         delete removals[key];
       });
-      [[failures, '[data-fpw-removal-error]'], [successes, '[data-fpw-removal-status]']].forEach(function (entry) {
-        var node = document.querySelector(entry[1]);
-        if (node && entry[0].length) { node.textContent = entry[0].join(' '); node.hidden = false; }
-      });
+      if (settled.length) {
+        [[Object.values(removalErrors), '[data-fpw-removal-error]'], [successes, '[data-fpw-removal-status]']].forEach(function (entry) {
+          var node = document.querySelector(entry[1]), text = entry[0].join(' ');
+          if (!node) { return; }
+          if (node.textContent !== text) { node.textContent = text; }
+          if (node.hidden !== !text) { node.hidden = !text; }
+        });
+      }
       if (!intent || (document.activeElement && document.activeElement !== document.body)) { return; }
       var target = intent.button.isConnected && !intent.button.disabled ? intent.button : null;
       if (!target && !intent.row.isConnected) {

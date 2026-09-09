@@ -130,6 +130,8 @@ verify(!str_contains($html, 'REVIEW-TABLE') || strpos($html, 'data-fp-summary-de
 verify(str_contains($html, 'PAYMENT-BLOCK'), 'the native payment/place-order block renders at the form foot');
 verify(str_contains($html, 'política de privacidad</a>') && str_contains($html, '/politica-de-privacidad/'), 'privacy links the real policy page');
 verify(substr_count($html, 'Usaremos tus datos para preparar') === 1, 'one privacy notice including native terms output');
+verify(substr_count($html, 'Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.') === 1, 'one commercial explanation separate from native privacy');
+verify(!str_contains($html, 'El precio se confirma con ventas.'), 'summary does not repeat the commercial explanation');
 verify(str_contains(file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/payment.php'), "wc_get_template( 'checkout/terms.php' )"), 'pinned native payment calls the exercised terms template');
 verify(!str_contains($html, 'checkbox') || !str_contains($html, 'consentimiento'), 'no consent checkbox invented');
 verify(!str_contains($html, 'registro') || !str_contains($html, 'Regístrate'), 'no registration requirement invented');

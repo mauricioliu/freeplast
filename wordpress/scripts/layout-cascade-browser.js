@@ -37,6 +37,25 @@ for(const page of pages){
     const remove=cart.querySelector('.wc-block-cart-item__remove-link');
     add(!!remove&&rect(remove).width>=44&&rect(remove).height>=44&&parseFloat(style(remove).borderTopWidth)>=1,'remove retains bordered 44px target after late native CSS',remove&&style(remove).cssText);
    }
+   if(${JSON.stringify(Boolean(params.polish))}){
+    if(cart){
+     const summary=cart.querySelector('[data-fpw-cart-summary]'), submit=cart.querySelector('.wc-block-cart__submit'), next=cart.querySelector('[data-fpw-cart-next]');
+     const before=rect(submit).top-rect(summary).bottom, after=rect(next).top-rect(submit).bottom;
+     add(Math.abs(before-16)<2,'compact numbers to CTA gap',before);
+     add(Math.abs(after-16)<2,'compact CTA to explanation gap',after);
+     add(next.querySelectorAll('p').length===2,'one explanation plus secondary action',next.textContent);
+     const link=next.querySelector('a');add(rect(link).height>=44,'secondary action retains 44px target',rect(link).height);
+     const placeholder=cart.querySelector('.wc-block-cart__payment-options');
+     add(style(placeholder).display==='none','empty payment wrapper leaves no flex gap',style(placeholder).display);
+    }
+    for(const notice of document.querySelectorAll('.fp-card-add-error,.fp-card-status')){
+     const card=notice.closest('.product-card'), r=rect(notice), c=rect(card);
+     add(r.left>=c.left&&r.right<=c.right+1&&notice.scrollWidth<=notice.clientWidth+1,'contextual feedback fits card',{width:r.width,card:c.width});
+     add(parseFloat(style(notice).fontSize)>=15,'feedback keeps readable type',style(notice).fontSize);
+     const recovery=notice.querySelector('a');
+     if(recovery){const text=document.createRange();text.setStart(notice,0);text.setEndBefore(recovery);add(rect(recovery).height>=44&&rect(recovery).top>=text.getBoundingClientRect().bottom,'recovery link has its own line and 44px target',rect(recovery).toJSON());}
+    }
+   }
    const checkout=document.querySelector('.fp-checkout-page');
    if(checkout){const r=rect(checkout);add(Math.abs(r.left-(document.documentElement.clientWidth-r.right))<2,'checkout centered in viewport',{left:r.left,right:document.documentElement.clientWidth-r.right});}
    const button=document.querySelector('.single_add_to_cart_button');

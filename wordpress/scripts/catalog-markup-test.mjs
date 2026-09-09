@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { countProductCards, serverRenderedText } from './woo-stack-harness.mjs';
+const fixture = JSON.parse(readFileSync(new URL('./fixtures/visual-cascade/catalog.json', import.meta.url), 'utf8'));
+assert.equal(countProductCards(fixture.html), 17, 'actual native captured catalog contains 17 products, despite product-card being the first class');
+assert.equal(countProductCards('<ul class="products"><li class="product-card product"></li><li class="product product-card"></li></ul>'), 2, 'both class orders count');
+assert.equal(countProductCards("<ul class='products'><li id='p' class='featured product-card product'></li></ul>"), 1, 'attribute order and quoting are irrelevant');
+assert.equal(countProductCards('<ul class="products"><li class="product-card"></li><li class="product-label"></li></ul><li class="product"></li>'), 0, 'partial class names and non-catalog items do not count');
+assert.equal(countProductCards('<ul class="products"></ul>'), 0, 'a genuinely empty loop still fails the search gate');
+assert.equal(serverRenderedText('<body><script>var $ = {};</script><style>.x:before{content:"$"}</style><p>Selección</p></body>'), 'Selección', 'script identifiers are not commercial amounts');
+assert.ok(serverRenderedText('<body><p>Total: $12</p></body>').includes('$'), 'a real public currency amount remains detectable');
+console.log('catalog markup: 7 class-token/text regression checks passed');

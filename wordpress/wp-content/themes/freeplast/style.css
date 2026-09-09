@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.15
+Version: 1.0.16
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -4354,17 +4354,7 @@ footer.wp-block-template-part .site-footer {
   }
 }
 
-body ul.products.catalog-grid .fp-card-add-error {
-  grid-column: 1 / -1;
-  margin: 8px 0 0;
-  padding: 12px;
-  border: 1px solid #deb5af;
-  border-radius: 10px;
-  background: #fcf2f0;
-  color: #742c25;
-  font-size: 13px;
-  line-height: 1.5;
-}
+/* Quote feedback surfaces share the rules in assets/css/woo.css. */
 body.woocommerce .fp-product-shell .color-option:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ---------- Motion safety ---------- */

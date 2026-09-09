@@ -34,6 +34,9 @@
         }
       }
       wrapper.querySelectorAll('.added_to_cart').forEach(function (link) { link.remove(); });
+      if (selected) {
+        wrapper.querySelectorAll('[data-fpw-card-status]').forEach(function (status) { status.hidden = true; });
+      }
       updated++;
     });
     doc.querySelectorAll('[data-fpw-detail-added]').forEach(function (detail) {
@@ -61,10 +64,89 @@
     var doc = windowObj.document;
     var body = jq(doc.body);
     var restore = function () { updateFromSnapshot(doc, doc.querySelector(KEY)); };
-    body.on('added_to_cart removed_from_cart', function (event, fragments, hash, button) {
-      windowObj.setTimeout(function () { updateAll(doc, fragments); }, 0);
+
+    function hideStatus(wrapper) {
+      var status = wrapper.querySelector('[data-fpw-card-status]');
+      if (status) { status.hidden = true; }
+    }
+
+    function uncertainty(wrapper, removing) {
+      hideStatus(wrapper);
+      var notice = wrapper.querySelector('[data-fpw-add-error]');
+      if (!notice) {
+        notice = doc.createElement('p');
+        notice.setAttribute('data-fpw-add-error', '');
+        notice.setAttribute('role', 'alert');
+        notice.setAttribute('aria-atomic', 'true');
+        notice.className = 'fp-card-add-error';
+        wrapper.appendChild(notice);
+      }
+      var text = removing
+        ? 'No pudimos confirmar la eliminación. Revisa Productos a Cotizar antes de volver a quitar.'
+        : 'No pudimos confirmar el agregado. Revisa Productos a Cotizar antes de volver a agregar.';
+      // Do not repeat the same alert on unrelated fragment events.
+      if (notice.firstChild && notice.firstChild.textContent === text) { return; }
+      notice.textContent = text;
+      var link = doc.createElement('a');
+      link.href = (windowObj.wc_add_to_cart_params && windowObj.wc_add_to_cart_params.cart_url) || '/cotizacion/';
+      link.textContent = ' Revisar selección';
+      notice.appendChild(link);
+    }
+
+    function confirmedUnits(fragments, id) {
+      if (!fragments || typeof fragments[KEY] !== 'string') { return null; }
+      var template = doc.createElement('template');
+      template.innerHTML = fragments[KEY];
+      var snapshot = template.content.querySelector(KEY);
+      if (!snapshot || snapshot.getAttribute('data-fpw-cart-state') !== '1') { return null; }
+      var found = null;
+      snapshot.querySelectorAll('.fpw-card-selection').forEach(function (slot) {
+        if (slot.getAttribute('data-product-id') === id) { found = slot; }
+      });
+      if (!found) { return 0; }
+      var raw = found.getAttribute('data-quantity') || '';
+      var units = /^\d+$/.test(raw) ? Number(raw) : NaN;
+      return Number.isSafeInteger(units) && units > 0 ? units : null;
+    }
+
+    body.on('adding_to_cart', function (event, button) {
       var wrapper = button && button[0] && button[0].closest('[data-fpw-loop-add]');
-      if (wrapper) { wrapper.querySelectorAll('[data-fpw-add-error]').forEach(function (notice) { notice.remove(); }); }
+      if (wrapper) { hideStatus(wrapper); }
+    });
+    body.on('added_to_cart removed_from_cart', function (event, fragments, hash, button) {
+      var wrapper = button && button[0] && button[0].closest('[data-fpw-loop-add]');
+      var slot = wrapper && wrapper.querySelector('.fpw-card-selection');
+      var id = slot && slot.getAttribute('data-product-id');
+      var removing = event.type === 'removed_from_cart';
+      windowObj.setTimeout(function () {
+        var units = id ? confirmedUnits(fragments, id) : null;
+        // Never project malformed quantities as a newly confirmed state.
+        if (!wrapper || units !== null) { updateAll(doc, fragments); }
+        if (!wrapper || !wrapper.isConnected) { return; }
+        if (units === null || (removing ? units !== 0 : units === 0)) {
+          uncertainty(wrapper, removing);
+          return;
+        }
+        // Only this operation's confirmed product clears its prior errors.
+        doc.querySelectorAll('[data-fpw-loop-add]').forEach(function (copy) {
+          var current = copy.querySelector('.fpw-card-selection');
+          if (!current || current.getAttribute('data-product-id') !== id) { return; }
+          copy.querySelectorAll('[data-fpw-add-error]').forEach(function (notice) { notice.remove(); });
+          hideStatus(copy);
+        });
+        if (!removing) { return; } // The native quantity pill already confirms adds.
+        var status = wrapper.querySelector('[data-fpw-card-status]');
+        if (!status) {
+          status = doc.createElement('p');
+          status.className = 'fp-card-status';
+          status.setAttribute('data-fpw-card-status', '');
+          status.setAttribute('role', 'status');
+          status.setAttribute('aria-atomic', 'true');
+          wrapper.appendChild(status);
+        }
+        status.textContent = 'Producto quitado de Productos a Cotizar.';
+        status.hidden = false;
+      }, 0);
     });
     // A transport error is not proof that the native add was not persisted.
     // Release its visual loading state, but direct the user to saved truth
@@ -75,24 +157,13 @@
       if (url.searchParams.get('wc-ajax') !== 'add_to_cart') { return; }
       var params = typeof settings.data === 'string' ? new windowObj.URLSearchParams(settings.data) : null;
       var id = params ? params.get('product_id') : settings.data && settings.data.product_id;
-      doc.querySelectorAll('[data-fpw-loop-add] .add_to_cart_button').forEach(function (button) {
-        if (String(id) !== button.getAttribute('data-product_id')) { return; }
-        button.classList.remove('loading');
-        var wrapper = button.closest('[data-fpw-loop-add]');
-        var notice = wrapper.querySelector('[data-fpw-add-error]');
-        if (!notice) {
-          notice = doc.createElement('p');
-          notice.setAttribute('data-fpw-add-error', '');
-          notice.setAttribute('role', 'alert');
-          notice.className = 'fp-card-add-error';
-          wrapper.appendChild(notice);
-        }
-        notice.textContent = 'No pudimos confirmar el agregado. Revisa Productos a Cotizar antes de volver a agregar.';
-        var link = doc.createElement('a');
-        link.href = windowObj.wc_add_to_cart_params.cart_url;
-        link.textContent = ' Revisar selección';
-        notice.appendChild(link);
+      var buttons = Array.from(doc.querySelectorAll('[data-fpw-loop-add] .add_to_cart_button')).filter(function (button) {
+        return String(id) === button.getAttribute('data-product_id');
       });
+      var origin = buttons.find(function (button) { return button.classList.contains('loading'); }) || buttons[0];
+      buttons.forEach(function (button) { button.classList.remove('loading'); });
+      // Duplicate cards may share an ID; announce the failed operation once.
+      if (origin) { uncertainty(origin.closest('[data-fpw-loop-add]'), false); }
     });
     body.on('wc_fragments_loaded wc_fragments_refreshed', function () {
       windowObj.setTimeout(restore, 0);
