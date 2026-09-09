@@ -1,0 +1,10 @@
+
+> freeplast@0.1.0 test:photos
+> node wordpress/scripts/catalog-photos-native-test.mjs
+
+native_photo_checks: 99
+network: blocked
+server: not started
+visual_acceptance: false
+sealed_photo_checks: 7 (capture, no guard rejected, apply, verify, repeat no-op, verify, foreign baseline rejected)
+photo_cli_checks: 5 (help, version, invalid command, incomplete apply, live import blocked)

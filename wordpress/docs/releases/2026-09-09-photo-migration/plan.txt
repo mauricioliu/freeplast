@@ -1,0 +1,11 @@
+config: OK (freeplast → https://freeplast.mliu.site, rehearsal=on-host)
+  base: 1e00767
+  changed files: 85
+  surface: 10 (wordpress/wp-content/themes/freeplast/assets/css/woo.css, wordpress/wp-content/themes/freeplast/assets/js/basket-count.js, wordpress/wp-content/themes/freeplast/assets/js/loop-added-count.js…)
+  logic: 0
+  data: 24 (wordpress/data/catalog-photos/bases-plasticas-para-pediluvios.webp, wordpress/data/catalog-photos/caja-cosechera-3-4.webp, wordpress/data/catalog-photos/caja-frutera.webp…)
+  sealed migration configured: DATA required
+
+proposed tier: DATA
+
+next: release.mjs run --tier-confirmed data --authorized "<owner quote>"

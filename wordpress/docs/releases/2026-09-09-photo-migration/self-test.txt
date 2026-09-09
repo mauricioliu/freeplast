@@ -1,0 +1,122 @@
+plan: 7 CLI/git path + glob + mixed-tier regressions passed
+ok: partial install retains persistent maintenance
+ok: success stays closed until verified reopen
+ok: changed installed bytes stay closed
+ok: failing verify hook stays closed
+ok: fingerprint mismatch cannot reopen or reset original on resume
+ok: malformed fingerprint rejected
+ok: wrong target has no installation or maintenance mutation
+ok: missing authorization has no installation mutation
+ok: modified executable bundle rejected
+ok: another operation maintenance is not adopted
+ok: maintenance survives expiry and native upgrader removal
+ok: smoke HTTP failure re-holds maintenance
+ok: smoke network failure re-holds maintenance
+ok: smoke cannot hold a site whose home identity changed
+ok: paired requires fresh authorization, risk acknowledgement and current fingerprint
+ok: paired restores SQL AND files, removes post-backup files
+ok: paired import failure never reports success or reopens
+ok: corrupt paired backup rejected before deletion
+ok: code-only preserves compound argv, verifies old bytes and never imports SQL
+ok: first release code-only refuses without side effects
+ok: migration baseline is immutable across backup reuse and install resume
+ok: migration apply failure retains maintenance and resumes with the same baseline
+ok: migration verify failure never reopens
+ok: migration backup tamper rejected before installation
+ok: migration payload tamper rejected before installation
+ok: data migration disables code-only recovery even with a previous bundle
+cli: 16 argument/dry-run/authorization/certification/config-seal cases passed
+safety: 26 executable regression cases passed
+
+== fixture workspace /tmp/wp-release-selftest-1788953781146
+
+== target stack (db + wordpress) up + core install
+   ok: target live: theme+plugin active, 1 post
+
+== release 1 — surface tier, rehearsal local
+wp-release: — gate
+wp-release: — package
+wp-release:   packaged fixture-theme.zip (3 files)
+wp-release:   packaged fixture-plugin.zip (1 files)
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: — install
+wp-release: stopped at --through install; resume: release.mjs resume --id 20260909T113642Z-77d33a
+   ok: real 503 hold, corruption rejection, fresh authorization and repair/resume
+
+== mutate theme (1.0.1) and plugin (1.0.1)
+
+== release 2 — logic tier, rehearsal local (exercises local trial)
+wp-release: — gate
+wp-release: — package
+wp-release:   packaged fixture-theme.zip (3 files)
+wp-release:   packaged fixture-plugin.zip (1 files)
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: — install
+wp-release: — verify
+wp-release: — smoke
+wp-release: — record
+wp-release: record written: /tmp/wp-release-selftest-1788953781146/docs/releases/2026-09-09-logic-bc4435.md
+wp-release: RELEASE 20260909T113736Z-bc4435 COMPLETE → http://mliu:8095
+wp-release: record: docs/releases/2026-09-09-logic-bc4435.md — narrative sections are yours to fill.
+
+== release 3 — logic tier, rehearsal on-host (freeplast shape)
+wp-release: — gate
+wp-release: — package
+wp-release:   packaged fixture-theme.zip (3 files)
+wp-release:   packaged fixture-plugin.zip (1 files)
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: — install
+wp-release: — verify
+wp-release: — smoke
+wp-release: — record
+wp-release: record written: /tmp/wp-release-selftest-1788953781146/docs/releases/2026-09-09-logic-7c5fff.md
+wp-release: RELEASE 20260909T113851Z-7c5fff COMPLETE → http://mliu:8095
+wp-release: record: docs/releases/2026-09-09-logic-7c5fff.md — narrative sections are yours to fill.
+
+== real code-only and paired rollback
+   ok: real previous ZIP install + paired DB/files reset/restore + fingerprint + reopen
+
+== data migration: failed trial never installs on target
+
+== release 4 — data/local, native migration failure stays closed then resumes
+wp-release: — gate
+wp-release: — package
+wp-release:   packaged fixture-theme.zip (3 files)
+wp-release:   packaged fixture-plugin.zip (1 files)
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: stopped at --through trial; resume: release.mjs resume --id 20260909T114127Z-9c3937
+
+== release 5 — data/on-host and paired restoration of migrated data/files
+wp-release: — gate
+wp-release: — package
+wp-release:   packaged fixture-theme.zip (3 files)
+wp-release:   packaged fixture-plugin.zip (1 files)
+wp-release: — transfer
+wp-release: — backup
+wp-release: — rehearse
+wp-release: — trial
+wp-release: — install
+wp-release: — verify
+wp-release: — smoke
+wp-release: — record
+wp-release: record written: /tmp/wp-release-selftest-1788953781146/docs/releases/2026-09-09-data-b3a40d.md
+wp-release: RELEASE 20260909T114303Z-b3a40d COMPLETE → http://mliu:8095
+wp-release: record: docs/releases/2026-09-09-data-b3a40d.md — narrative sections are yours to fill.
+   ok: data/local + data/on-host, immutable stdin baseline, trial failure, 503 live failure/resume, paired data/files recovery
+
+== teardown and leftovers
+   ok: 5 records; no leftover rehearsal projects; target torn down
+
+SELF-TEST PASS — safety receipt written for these exact sources

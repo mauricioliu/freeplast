@@ -1,0 +1,676 @@
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/fixture/compose.yaml /home/mauricio-liu/.agents/skills/wp-release/fixture/compose.yaml
+--- /tmp/freeplast-data-release/skill-before/fixture/compose.yaml	2026-09-08 22:20:04.588783893 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/fixture/compose.yaml	2026-09-09 08:35:46.362832335 -0300
+@@ -26,6 +26,7 @@
+     volumes:
+       - wp_data:/var/www/html
+   cli:
++    profiles: [tools]
+     image: wordpress:cli-php8.3
+     depends_on:
+       db:
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/fixture/migration/assets/revision.txt /home/mauricio-liu/.agents/skills/wp-release/fixture/migration/assets/revision.txt
+--- /tmp/freeplast-data-release/skill-before/fixture/migration/assets/revision.txt	1969-12-31 21:00:00.000000000 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/fixture/migration/assets/revision.txt	2026-09-09 08:24:44.272657497 -0300
+@@ -0,0 +1 @@
++fixture-media-v1
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/fixture/migration/run.php /home/mauricio-liu/.agents/skills/wp-release/fixture/migration/run.php
+--- /tmp/freeplast-data-release/skill-before/fixture/migration/run.php	1969-12-31 21:00:00.000000000 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/fixture/migration/run.php	2026-09-09 08:24:39.002683319 -0300
+@@ -0,0 +1,22 @@
++<?php
++if (!defined('WP_CLI') || !WP_CLI) { throw new RuntimeException('Fixture CLI only'); }
++[$mode, $id] = $args;
++$payload = file_get_contents(__DIR__ . '/assets/revision.txt');
++$file = ABSPATH . 'wp-content/uploads/fixture-migration.txt';
++if ($mode === 'capture') {
++    echo wp_json_encode(array('home'=>get_option('home'), 'id'=>$id, 'payload'=>hash('sha256', $payload), 'previous'=>get_option('fixture_media_revision')));
++    return;
++}
++$base = json_decode(file_get_contents('php://stdin'), true);
++if (!$base || $base['id'] !== $id || $base['home'] !== get_option('home') || $base['payload'] !== hash('sha256', $payload)
++    || @file_get_contents(ABSPATH . '.wp-release-lock/owner') !== $id) { throw new RuntimeException('Invalid baseline or guard'); }
++if ($mode === 'apply') {
++    if (get_option('fixture_migration_fail')) { throw new RuntimeException('Deliberate fixture migration failure'); }
++    $current = get_option('fixture_media_revision');
++    if ($current !== $base['previous'] && $current !== trim($payload)) { throw new RuntimeException('Unexpected migration state'); }
++    wp_mkdir_p(dirname($file));
++    file_put_contents($file, $payload);
++    update_option('fixture_media_revision', trim($payload));
++} elseif ($mode !== 'verify') { throw new RuntimeException('Unknown migration mode'); }
++if (get_option('fixture_media_revision') !== trim($payload) || !is_file($file) || hash_file('sha256', $file) !== $base['payload']) { throw new RuntimeException('Migration verification failed'); }
++echo "fixture migration verified\n";
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/fixture/record-fingerprint.php /home/mauricio-liu/.agents/skills/wp-release/fixture/record-fingerprint.php
+--- /tmp/freeplast-data-release/skill-before/fixture/record-fingerprint.php	2026-09-08 22:10:34.405390218 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/fixture/record-fingerprint.php	2026-09-09 08:24:52.629616398 -0300
+@@ -1,4 +1,9 @@
+ <?php
++$input = file_get_contents('php://stdin');
++if (trim($input) !== '') {
++    $base = json_decode($input, true);
++    if (!$base || ($base['home'] ?? '') !== get_option('home') || empty($base['payload'])) { throw new RuntimeException('Invalid fixture baseline input'); }
++}
+ $posts = get_posts( array( 'post_type' => 'any', 'post_status' => 'any', 'numberposts' => -1, 'orderby' => 'ID', 'order' => 'ASC', 'fields' => 'all' ) );
+ $parts = array();
+ foreach ( $posts as $p ) { $parts[] = $p->ID . '|' . $p->post_status . '|' . $p->post_title . '|' . $p->post_modified_gmt; }
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/MIGRATIONS.md /home/mauricio-liu/.agents/skills/wp-release/MIGRATIONS.md
+--- /tmp/freeplast-data-release/skill-before/MIGRATIONS.md	1969-12-31 21:00:00.000000000 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/MIGRATIONS.md	2026-09-09 08:32:26.404187087 -0300
+@@ -0,0 +1,74 @@
++# Sealed data migrations
++
++Use this contract when a release intentionally changes WordPress data. Keep
++`verifyState` read-only; put mutations in the migration entry point instead.
++
++## Configuration and closure
++
++```json
++"migration": { "source": "build/photo-migration", "hook": "run.php" }
++```
++
++`source` is a directory relative to the config root, prepared by the packaging
++command when applicable. `hook` is a relative PHP path inside that directory.
++All regular files are copied to `bundle/migration/` and covered recursively by
++`SHA256SUMS`; symlinks and unsafe paths are rejected. Both local and on-host
++rehearsals consume this identical closure. Configured migrations require the
++owner-confirmed **data** tier even without a Git diff or base commit.
++
++## Hook protocol
++
++The driver calls `wp eval-file migration/<hook> <mode> <release-id>`:
++
++| Mode | Contract |
++| --- | --- |
++| `capture` | Read-only; print a nonempty baseline snapshot to stdout, no progress text. The driver captures it before the paired backup and includes `MIGRATION-BASELINE` in its checksum manifest. |
++| `apply` | Read that exact snapshot from `php://stdin`. Validate target, manifest and release identity; require the release-owned maintenance guard. Perform only the approved changes; support idempotent retry or fail closed on a partial state requiring recovery. |
++| `verify` | Read the same snapshot from stdin. Read-only expected-result/delta checks. Exit nonzero on any discrepancy. |
++
++Hook output must never expose secrets or private record rows. Prefer identities,
++counts and hashes in the baseline. Hooks must not send mail or reach external
++services during isolated trials.
++
++The baseline is never regenerated by install/resume. Backup checksums cover it;
++changing the configuration, closure or baseline invalidates the evidence.
++
++## Fingerprint contract
++
++When a migration is configured, the **recordFingerprint** hook also receives
++`MIGRATION-BASELINE` on stdin, with plugins/themes skipped as before. It still
++prints exactly one 64-hex digest. Rehearsal and trial now compare that digest to
++the original backup value, in addition to LIVE-CHECK and installed state.
++
++A project that intentionally changes previously fingerprinted rows must define
++and regression-test a bounded expected-delta projection. Preserve the original
++full digest and all unauthorized rows/fields; project only the approved changes
++back to their captured values. Never substitute a newly accepted post-import
++baseline or broaden exclusions to unrelated records. Invalid deltas should
++remain inspectable as a different digest so recovery can still inspect state.
++
++This projection is a project responsibility, not a generic permission to ignore
++attachments, products, options or other data. Explain it in the release record:
++`pre == post` then means the protected invariant, **not zero database writes**.
++
++## Execution and failure boundaries
++
++- Capture precedes the paired backup. Rehearsal restores files/SQL and verifies
++  the original fingerprint using the captured baseline.
++- Trial holds maintenance in the isolated copy, installs code, invokes apply
++  and verify, then checks the original protected fingerprint. Failure destroys
++  the isolated copy and prevents live installation.
++- Live install acquires persistent maintenance and saves/checks the original
++  pre-install fingerprint, installs code and calls apply under the guard.
++- Verify/reopen run migration verify again and compare the protected digest.
++  A failed apply/verify never opens the site. Resume uses the same closure and
++  snapshot with fresh authorization; it cannot adopt a changed digest.
++- **Code-only rollback is unavailable when either release has a migration.**
++  Paired recovery restores both data and files under the existing fresh-owner,
++  current-fingerprint, risk-acknowledgement and RESTORE gates.
++
++The self-test includes real data/local and data/on-host releases, a failing
++trial that leaves the target unchanged, a live migration failure retaining 503
++followed by authorized resume, and paired restoration of the migrated option
++and file. Project-specific migrations still require their own native tests and
++trial against that target's restored backup.
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/RECOVERY.md /home/mauricio-liu/.agents/skills/wp-release/RECOVERY.md
+--- /tmp/freeplast-data-release/skill-before/RECOVERY.md	2026-09-09 07:26:01.409305980 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/RECOVERY.md	2026-09-09 08:33:11.130932467 -0300
+@@ -48,6 +48,11 @@
+ means the tool could not confirm the guard; treat it as requiring operator
+ intervention, not as success.
+ 
++For data migrations, the same sealed migration closure and immutable backup
++baseline are used on resume. A partial state outside the approved delta stays
++closed; never recapture its baseline to make the fingerprint pass. See
++[MIGRATIONS.md](MIGRATIONS.md).
++
+ ## Rollback: prepared is not executed
+ 
+ Run the bundle's **host-side** `rollback.sh` on the configured target, not the
+@@ -60,6 +65,9 @@
+ bash /host/path/to/bundle/<id>/rollback.sh code-only --authorized "<fresh owner quote>"
+ ```
+ 
++Code-only is unavailable if the current or previous release contains a data
++migration; use authorized paired recovery instead.
++
+ The previous release must have completed on the same target and have the same
+ install scope. Its manifest is checked before mutation. The runner preserves
+ compound WP-CLI arguments and skips current plugins/themes for identity,
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/REFERENCE.md /home/mauricio-liu/.agents/skills/wp-release/REFERENCE.md
+--- /tmp/freeplast-data-release/skill-before/REFERENCE.md	2026-09-09 07:24:26.579285261 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/REFERENCE.md	2026-09-09 08:33:01.443987777 -0300
+@@ -83,6 +83,8 @@
+   },                                    // OR builtin deterministic zips:
+   // "packaging": { "sources": [ { "from": "wp-content/themes/x", "zip": "x.zip" } ] },
+   "artifacts": ["x.zip", "y.zip"],
++  // Optional; requires DATA. See MIGRATIONS.md for capture/apply/verify protocol:
++  // "migration": { "source": "build/migration", "hook": "run.php" },
+   "install": {
+     "themes":  [ { "slug": "x", "artifact": "x.zip" } ],
+     "plugins": [ { "slug": "y", "artifact": "y.zip" } ]
+@@ -109,6 +111,10 @@
+   recovery; `verifyState` is optional. No hook output may contain private rows
+   or credentials. Backup and bundle paths must be outside the WordPress root.
+ 
++Intentional data changes use the sealed `migration` closure and immutable
++baseline protocol in **[MIGRATIONS.md](MIGRATIONS.md)**; apply is executed in
++both trial and install under maintenance. `verifyState` stays read-only.
++
+ ## On-host compose contract (rehearsal.env = "on-host")
+ 
+ The target's `compose.yaml` in `stackDir` must provide:
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/cli-test.mjs /home/mauricio-liu/.agents/skills/wp-release/scripts/cli-test.mjs
+--- /tmp/freeplast-data-release/skill-before/scripts/cli-test.mjs	2026-09-09 07:02:56.480475000 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/cli-test.mjs	2026-09-09 08:35:55.247539270 -0300
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env node
+ import assert from 'node:assert/strict';
+-import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,cpSync} from 'node:fs';
++import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,cpSync,symlinkSync} from 'node:fs';
+ import {join,dirname} from 'node:path';
+ import {tmpdir} from 'node:os';
+ import {fileURLToPath} from 'node:url';
+@@ -29,5 +29,20 @@
+   assert.notEqual(r.status,0);assert.match(r.stderr,/Safety certification missing\/stale/);assert.ok(!existsSync(join(root,'bundles')));assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
+   cfg.target.homeUrl='https://another.invalid';writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
+   r=run(['resume','--id','local-package','--authorized','fresh quote']);assert.notEqual(r.status,0);assert.match(r.stderr,/changed configuration/);assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  mkdirSync(join(root,'migration/assets'),{recursive:true});
++  writeFileSync(join(root,'migration/run.php'),'<?php');writeFileSync(join(root,'migration/assets/photo.txt'),'reviewed');
++  cfg.migration={source:'migration',hook:'run.php'};writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
++  r=run(['run','--id','under-tier','--tier-confirmed','surface','--dry-run']);assert.notEqual(r.status,0);assert.match(r.stderr,/confirmed DATA/);count++;
++  r=run(['run','--id','data-dry','--tier-confirmed','data','--dry-run']);assert.equal(r.status,0,r.stdout+r.stderr);
++  const payload=join(root,'.build/wp-release/data-dry/bundle');
++  assert.match(readFileSync(join(payload,'SHA256SUMS'),'utf8'),/migration\/assets\/photo.txt/);
++  assert.equal(readFileSync(join(payload,'migration/assets/photo.txt'),'utf8'),'reviewed');assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  cfg.migration.hook='../escape.php';writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
++  assert.notEqual(run(['plan']).status,0);count++;
++  cfg.migration.hook='run.php';writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));symlinkSync(join(root,'finger.php'),join(root,'migration/foreign.php'));
++  r=run(['run','--id','symlink','--tier-confirmed','data','--dry-run']);assert.notEqual(r.status,0);assert.match(r.stderr,/unsafe bundle path/);count++;
++  symlinkSync(join(root,'migration'),join(root,'migration-alias'));
++  cfg.migration.source='migration-alias';writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
++  r=run(['run','--id','root-symlink','--tier-confirmed','data','--dry-run']);assert.notEqual(r.status,0);assert.match(r.stderr,/repository-local non-symlink/);count++;
+   console.log(`cli: ${count} argument/dry-run/authorization/certification/config-seal cases passed`);
+ } finally {rmSync(root,{recursive:true,force:true});}
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/release-chain.sh /home/mauricio-liu/.agents/skills/wp-release/scripts/release-chain.sh
+--- /tmp/freeplast-data-release/skill-before/scripts/release-chain.sh	2026-09-09 07:27:00.876832217 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/release-chain.sh	2026-09-09 08:14:53.799886855 -0300
+@@ -40,6 +40,11 @@
+     sleep 2
+   done
+   [ "$ok" = 1 ] || fail "rehearsal: restored check never matched live value $(cat "$DEST/LIVE-CHECK")"
++  local restored_fp
++  if [ -n "$MIGRATION_HOOK" ]; then
++    restored_fp="$(rh_wp --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK" < "$DEST/MIGRATION-BASELINE")"
++  else restored_fp="$(rh_wp --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK")"; fi
++  [ "$restored_fp" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'restored protected fingerprint differs from backup'
+   echo "RESTORE-VERIFIED live=restored=$(cat "$DEST/LIVE-CHECK")"
+ }
+ 
+@@ -57,6 +62,11 @@
+     exec_in_wp_root test ! -d .wp-release-lock || fail 'another release holds maintenance'
+     exec_in_wp_root test ! -f .maintenance || fail 'unowned maintenance active'
+     mkdir -p "$DEST"; chmod 700 "$DEST"
++    if [ -n "$MIGRATION_HOOK" ]; then
++      wpr eval-file "$BUNDLE_PATH/$MIGRATION_HOOK" capture "$ID" > "$DEST/MIGRATION-BASELINE.tmp" || fail 'read-only migration capture failed'
++      [ -s "$DEST/MIGRATION-BASELINE.tmp" ] || fail 'empty migration baseline'
++      mv "$DEST/MIGRATION-BASELINE.tmp" "$DEST/MIGRATION-BASELINE"
++    fi
+     fingerprint > "$DEST/FINGERPRINT"
+     exec_in_wp_root sh -c 'find . -type f -exec sha256sum {} + | LC_ALL=C sort' > "$DEST/FILES-SHA256SUMS"
+     wpr db export - > "$DEST/db.sql" 2>/dev/null || fail "wp db export failed"
+@@ -69,7 +79,8 @@
+     exec_in_wp_root sh -c 'find . -type f -exec sha256sum {} + | LC_ALL=C sort' > "$DEST/FILES-AFTER"
+     cmp "$DEST/FILES-SHA256SUMS" "$DEST/FILES-AFTER" || fail 'files changed during backup'
+     rm "$DEST/FILES-AFTER"
+-    (cd "$DEST" && sha256sum db.sql files.tgz LIVE-CHECK FINGERPRINT FILES-SHA256SUMS > SHA256SUMS)
++    extra=(); [ -z "$MIGRATION_HOOK" ] || extra=(MIGRATION-BASELINE)
++    (cd "$DEST" && sha256sum db.sql files.tgz LIVE-CHECK FINGERPRINT FILES-SHA256SUMS "${extra[@]}" > SHA256SUMS)
+   fi
+   log "paired backup stored in $DEST (db.sql + files.tgz + SHA256SUMS + LIVE-CHECK)"
+   echo "BACKUP=$DEST"
+@@ -89,6 +100,7 @@
+   assert_home
+   [ -f "$DEST/LIVE-CHECK" ] || fail "run the backup phase first"
+   restore_rehearsal_stack
++  rh exec -T -w "$WP_ROOT" wordpress php /dev/stdin hold "$ID" < "$BUNDLE_HOST_DIR/maintenance.php"
+   it=
+   for it in $INSTALL_THEMES;  do rh_wp theme  install "$BUNDLE_PATH/${it#*=}" --force;  done
+   for it in $INSTALL_PLUGINS; do rh_wp plugin install "$BUNDLE_PATH/${it#*=}" --force; done
+@@ -97,7 +109,14 @@
+     kind="${pair%%:*}"; rest="${pair#*:}"; slug="${rest%%=*}"; ver="${rest#*=}"
+     [ "$(rh_wp "$kind" get "$slug" --field=version 2>/dev/null)" = "$ver" ] || fail "trial: $kind $slug version != $ver"
+   done
+-  [ -n "$VERIFY_HOOK" ] && rh_wp eval-file "$BUNDLE_PATH/$VERIFY_HOOK"
++  rh exec -T -w "$WP_ROOT" wordpress php /dev/stdin hold "$ID" < "$BUNDLE_HOST_DIR/maintenance.php"
++  if [ -n "$MIGRATION_HOOK" ]; then
++    rh_wp eval-file "$BUNDLE_PATH/$MIGRATION_HOOK" apply "$ID" < "$DEST/MIGRATION-BASELINE"
++    rh_wp eval-file "$BUNDLE_PATH/$MIGRATION_HOOK" verify "$ID" < "$DEST/MIGRATION-BASELINE"
++    post_fp="$(rh_wp --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK" < "$DEST/MIGRATION-BASELINE")"
++  else post_fp="$(rh_wp --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK")"; fi
++  [ "$post_fp" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'trial changed protected records'
++  if [ -n "$VERIFY_HOOK" ]; then rh_wp eval-file "$BUNDLE_PATH/$VERIFY_HOOK"; fi
+   teardown_rehearsal; trap - EXIT
+   echo "TRIAL-VERIFIED (upgrade against restored copy passed; rehearsal torn down)"
+   ;;
+@@ -117,6 +136,10 @@
+   for it in $INSTALL_PLUGINS; do wpr plugin install "$BUNDLE_PATH/${it#*=}" --force; done
+   maintenance hold
+   assert_versions
++  if [ -n "$MIGRATION_HOOK" ]; then
++    wpr_input eval-file "$BUNDLE_PATH/$MIGRATION_HOOK" apply "$ID" < "$DEST/MIGRATION-BASELINE"
++    maintenance check
++  fi
+   echo "FINGERPRINT-PRE=$pre"
+   log 'install complete; maintenance remains held for verification'
+   ;;
+@@ -125,6 +148,7 @@
+   assert_home
+   [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail 'verification/reopen requires current authorization'
+   start_guard
++  backup_check
+   assert_installed
+   pre="$(cat "$RUNTIME/FINGERPRINT-PRE")"
+   post="$(fingerprint)"
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/release-common.sh /home/mauricio-liu/.agents/skills/wp-release/scripts/release-common.sh
+--- /tmp/freeplast-data-release/skill-before/scripts/release-common.sh	2026-09-09 07:07:25.849751067 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/release-common.sh	2026-09-09 08:14:20.785952383 -0300
+@@ -13,6 +13,7 @@
+ INSTALL_THEMES="${INSTALL_THEMES:-}"; INSTALL_PLUGINS="${INSTALL_PLUGINS:-}"
+ EXPECTED_VERSIONS="${EXPECTED_VERSIONS:-}"
+ VERIFY_HOOK="${VERIFY_HOOK:-}"; FINGERPRINT_HOOK="${FINGERPRINT_HOOK:-}"
++MIGRATION_HOOK="${MIGRATION_HOOK:-}"
+ cd "$STACK_DIR"
+ # Non-streaming commands must not consume a rollback operator's confirmation.
+ wpr() { "${WP[@]}" "$@" < /dev/null; }
+@@ -30,7 +31,11 @@
+ }
+ fingerprint() {
+   [ -n "$FINGERPRINT_HOOK" ] || fail 'a protected-record fingerprint hook is required'
+-  local value; value="$(wpr --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK")" || return $?
++  local value
++  if [ -n "$MIGRATION_HOOK" ]; then
++    [ -s "$DEST/MIGRATION-BASELINE" ] || fail 'migration baseline missing'
++    value="$(wpr_input --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK" < "$DEST/MIGRATION-BASELINE")" || return $?
++  else value="$(wpr --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK")" || return $?; fi
+   [[ "$value" =~ ^[0-9a-f]{64}$ ]] || fail 'fingerprint hook must print one 64-hex digest'
+   printf '%s\n' "$value"
+ }
+@@ -56,4 +61,8 @@
+   exec_in_wp_root sha256sum -c - < "$BUNDLE_HOST_DIR/INSTALLED-SHA256SUMS" || fail 'installed files do not match packaged hashes'
+   assert_versions
+   if [ -n "$VERIFY_HOOK" ]; then wpr eval-file "$BUNDLE_PATH/$VERIFY_HOOK" || fail 'state verification hook failed'; fi
++  if [ -n "$MIGRATION_HOOK" ]; then
++    backup_check
++    wpr_input eval-file "$BUNDLE_PATH/$MIGRATION_HOOK" verify "$ID" < "$DEST/MIGRATION-BASELINE" || fail 'migration verification failed'
++  fi
+ }
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/release.mjs /home/mauricio-liu/.agents/skills/wp-release/scripts/release.mjs
+--- /tmp/freeplast-data-release/skill-before/scripts/release.mjs	2026-09-09 07:18:05.682305575 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/release.mjs	2026-09-09 08:35:40.022043721 -0300
+@@ -8,7 +8,7 @@
+  */
+ import {spawnSync} from 'node:child_process';
+ import {createHash,randomBytes} from 'node:crypto';
+-import {existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync} from 'node:fs';
++import {existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync, cpSync, lstatSync, realpathSync} from 'node:fs';
+ import {dirname, join, relative, resolve, isAbsolute} from 'node:path';
+ import {fileURLToPath} from 'node:url';
+ import zlib from 'node:zlib';
+@@ -119,9 +119,25 @@
+   for (const item of [...cfg.install.themes,...cfg.install.plugins]) {
+     if (!/^[A-Za-z0-9_-]+$/.test(item.slug) || !cfg.artifacts.includes(item.artifact)) fail('config: invalid install slug/artifact');
+   }
++  if (cfg.migration) {
++    if (Object.keys(cfg.migration).some(k=>!['source','hook'].includes(k)) || typeof cfg.migration.source!=='string' || !cfg.migration.source) fail('config: migration requires source and hook only');
++    const hook=cfg.migration.hook;
++    if (typeof hook!=='string' || !/^[A-Za-z0-9_./-]+\.php$/.test(hook) || hook.startsWith('/') || hook.split('/').some(x=>!x||x==='.'||x==='..')) fail('config: unsafe migration hook');
++  }
+   return cfg;
+ }
+ 
++/** Bundle closure: sorted regular files only, no symlink escapes. */
++function bundleFiles(dir, prefix='') {
++  return readdirSync(join(dir,prefix),{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(e=>{
++    const name=prefix?`${prefix}/${e.name}`:e.name;
++    if (!/^[A-Za-z0-9_.\/-]+$/.test(name) || e.isSymbolicLink()) fail('unsafe bundle path: '+name);
++    if(e.isDirectory()) return bundleFiles(dir,name);
++    if(!e.isFile()) fail('bundle contains a non-regular file: '+name);
++    return [name];
++  });
++}
++
+ /* ---------- state ---------- */
+ function loadState(cfg,id) {
+   const p = join(cfg.__build,id,'state.json');
+@@ -248,6 +264,15 @@
+     builtinPack(cfg,dir);
+   }
+   for (const a of cfg.artifacts) if (!existsSync(join(dir,a))) fail(`artifact missing in bundle after packaging: ${a}`);
++  if (cfg.migration) {
++    if (st.tier!=='data') fail('a migration requires confirmed DATA tier');
++    const source=resolve(cfg.__repo,cfg.migration.source);
++    if(lstatSync(source).isSymbolicLink() || !realpathSync(source).startsWith(realpathSync(cfg.__repo)+'/')) fail('migration closure must be a repository-local non-symlink directory');
++    const files=bundleFiles(source);
++    if(!files.includes(cfg.migration.hook)) fail('migration hook missing from sealed source closure');
++    for(const file of files) { const dest=join(dir,'migration',file);mkdirSync(dirname(dest),{recursive:true});copyFileSync(join(source,file),dest); }
++  }
++  st.migration=!!cfg.migration;
+   // versions expected on the target after install
+   st.expectedVersions=parseVersionFromZips(cfg,dir);
+   // Hash the entire executable bundle only after hooks/runners are copied.
+@@ -271,17 +296,17 @@
+     copyFileSync(resolve(cfg.__repo,cfg.hooks[h]),join(dir,name));
+   }
+   st.install=cfg.install; st.verifyHook=cfg.hooks?.verifyState?.split('/').pop()||'';
+-  writeFileSync(join(dir,'release.json'),JSON.stringify({id:st.id,commit:st.commit,tier:st.tier,install:st.install,expectedVersions:st.expectedVersions},null,2));
++  writeFileSync(join(dir,'release.json'),JSON.stringify({id:st.id,commit:st.commit,tier:st.tier,install:st.install,expectedVersions:st.expectedVersions,migration:cfg.migration?{hook:'migration/'+cfg.migration.hook,baseline:'MIGRATION-BASELINE'}:null},null,2));
+   // rollback.sh (previous release, captured when this release was created)
+   const prev=st.prevRelease||null;
+   writeFileSync(join(dir,'rollback.sh'),rollbackScript(cfg,st,prev));
+-  const sums=readdirSync(dir).sort().map(a=>`${sha256(readFileSync(join(dir,a)))}  ${a}`).join('\n')+'\n';
++  const sums=bundleFiles(dir).map(a=>`${sha256(readFileSync(join(dir,a)))}  ${a}`).join('\n')+'\n';
+   writeFileSync(join(dir,'SHA256SUMS'),sums);
+   st.bundleHash=sha256(sums);
+   st.phases.package={status:'ok',at:now(),artifacts:cfg.artifacts.map(a=>({name:a,sha256:sha256(readFileSync(join(dir,a)))}))};
+ }
+ export function rollbackScript(cfg,st,prev) {
+-  const compatible=prev && JSON.stringify(prev.install)===JSON.stringify(cfg.install);
++  const compatible=!cfg.migration && !prev?.migration && prev && JSON.stringify(prev.install)===JSON.stringify(cfg.install);
+   const env={
+     PREVIOUS_BUNDLE_HOST:compatible?join(cfg.target.stackDir,cfg.target.bundleDir,prev.id):'',
+     PREVIOUS_BUNDLE_PATH:compatible?bundlePrefixFor(cfg,prev.id):'',
+@@ -305,7 +330,7 @@
+     must(`ssh ${cfg.target.ssh} ${shellQuote(`cd ${q(remote)} && sha256sum -c SHA256SUMS`)}`,{},'verify transferred hashes');
+   } else {
+     mkdirSync(remote,{recursive:true});
+-    for (const f of readdirSync(dir)) copyFileSync(join(dir,f),join(remote,f));
++    for (const f of readdirSync(dir)) cpSync(join(dir,f),join(remote,f),{recursive:true});
+     must(`cd ${q(remote)} && sha256sum -c SHA256SUMS`,{},'verify transferred hashes');
+   }
+   // Runners travel in this hashed bundle, never in a shared mutable location.
+@@ -332,6 +357,7 @@
+     EXPECTED_VERSIONS:versions,
+     VERIFY_HOOK:cfg.hooks?.verifyState ? cfg.hooks.verifyState.split('/').pop() : '',
+     FINGERPRINT_HOOK:cfg.hooks?.recordFingerprint ? cfg.hooks.recordFingerprint.split('/').pop() : '',
++    MIGRATION_HOOK:cfg.migration ? 'migration/'+cfg.migration.hook : '',
+   };
+   return Object.entries(env).map(([k,v])=>`${k}=${shellQuote(String(v))}`).join(' ');
+ }
+@@ -361,10 +387,16 @@
+   }
+   must(dcmd('run --rm -T cli wp config set DISABLE_WP_CRON true --raw --type=constant'),{},'disable restored cron');
+ }
++function localFingerprint(dcmd,cfg,work) {
++  const input=cfg.migration?join(work,'MIGRATION-BASELINE'):'/dev/null';
++  const hook=cfg.hooks.recordFingerprint.split('/').pop();
++  const value=must(`${dcmd('run --rm -T cli wp --skip-plugins --skip-themes eval-file /bundle/'+hook)} < ${q(input)}`,{},'isolated protected fingerprint').trim();
++  if(!/^[a-f0-9]{64}$/.test(value) || value!==readFileSync(join(work,'FINGERPRINT'),'utf8').trim()) fail('isolated protected fingerprint differs from backup');
++}
+ function prepareOnhostIsolation(cfg,st) {
+   const project=`wprelease-rh-${st.id.toLowerCase()}`;
+   const ef=cfg.target.dbEnv?`--env-file ${q(join(cfg.target.stackDir,cfg.target.dbEnv))}`:'';
+-  const result=targetRun(cfg,`cd ${q(cfg.target.stackDir)} && WP_PORT=18093 FREEPLAST_LOOPBACK_PORT=18093 docker compose ${ef} -f compose.yaml -p ${q(project)} config --format json`);
++  const result=targetRun(cfg,`cd ${q(cfg.target.stackDir)} && WP_PORT=18093 FREEPLAST_LOOPBACK_PORT=18093 docker compose ${ef} --profile '*' -f compose.yaml -p ${q(project)} config --format json`);
+   let model; try { if(result.code!==0) throw Error();model=JSON.parse(result.out); } catch { fail('cannot inspect rehearsal compose isolation'); }
+   for(const type of ['volumes','networks']) for(const value of Object.values(model[type]||{})) {
+     if(value.external || !value.name?.startsWith(project+'_')) fail('on-host rehearsal refuses external/fixed resources');
+@@ -392,7 +424,7 @@
+   } else {
+     // pull backup artifacts, spin local-generic compose, restore, check, teardown
+     const work=join(cfg.__build,st.id,'rehearsal'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true,mode:0o700});
+-    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
++    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS',...(cfg.migration?['MIGRATION-BASELINE']:[])]) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
+     must(`cd ${q(work)} && sha256sum -c SHA256SUMS`,{},'verify local backup copy');
+     const composeFile=join(ASSETS,'local-generic.compose.yaml');
+     const proj=`wprelease-rh-${st.id.toLowerCase()}`;
+@@ -413,6 +445,7 @@
+       const checkExpr=cfg.rehearsalCheck || 'echo count(get_posts(array("post_type"=>"any","post_status"=>"any","numberposts"=>-1,"fields"=>"ids")));';
+       const restored=must(dcmd(`run --rm -T cli wp eval ${shellQuote(checkExpr)}`),{},'rehearsal check').trim();
+       if (restored!==String(st.backup.liveCheck)) fail(`rehearsal: check mismatch live=${st.backup.liveCheck} restored=${restored}`);
++      localFingerprint(dcmd,cfg,work);
+       st.rehearsal={env:'local',verified:true,restoredCheck:restored,at:now()};
+     } finally {
+       sh(dcmd('down -v --remove-orphans'));
+@@ -431,7 +464,7 @@
+   } else {
+     // local trial: restored copy in the skill's disposable compose + install + hooks, then teardown
+     const work=join(cfg.__build,st.id,'trial'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true,mode:0o700});
+-    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
++    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS',...(cfg.migration?['MIGRATION-BASELINE']:[])]) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
+     must(`cd ${q(work)} && sha256sum -c SHA256SUMS`,{},'verify trial backup copy');
+     const composeFile=join(ASSETS,'local-generic.compose.yaml');
+     const proj=`wprelease-tr-${st.id.toLowerCase()}`;
+@@ -448,6 +481,9 @@
+       let healthy=false;
+       for (let i=0;i<30;i++) { if (sh(dcmd('run --rm -T cli wp core is-installed')).code===0) {healthy=true;break;} spawnSync('sleep',['2']); }
+       if (!healthy) fail('trial: wp never became healthy in the restored copy');
++      localFingerprint(dcmd,cfg,work);
++      const hold=()=>must(`${dcmd('exec -T -w /var/www/html wordpress')} php /dev/stdin hold ${q(st.id)} < ${q(join(cfg.__build,st.id,'bundle/maintenance.php'))}`,{},'trial maintenance');
++      hold();
+       for (const x of cfg.install.themes)  wpTrial(`theme install /bundle/${x.artifact} --force`);
+       for (const x of cfg.install.plugins) wpTrial(`plugin install /bundle/${x.artifact} --force`);
+       for (const [k,v] of Object.entries(st.expectedVersions||{})) {
+@@ -455,7 +491,12 @@
+         const got=wpTrial(`${kind} get ${slug} --field=version`).trim();
+         if (got!==v) fail(`trial: ${kind} ${slug} version ${got} != expected ${v}`);
+       }
++      hold();
++      if(cfg.migration) {
++        for(const mode of ['apply','verify']) must(`${dcmd('run --rm -T cli wp eval-file /bundle/migration/'+cfg.migration.hook+' '+mode+' '+st.id)} < ${q(join(work,'MIGRATION-BASELINE'))}`,{},'trial migration '+mode);
++      }
+       if (cfg.hooks?.verifyState) wpTrial(`eval-file /bundle/${cfg.hooks.verifyState.split('/').pop()}`);
++      localFingerprint(dcmd,cfg,work);
+       st.trial={env:'local',verified:true,at:now()};
+     } finally { sh(dcmd('down -v --remove-orphans')); }
+   }
+@@ -511,7 +552,7 @@
+   const slug=`${date}-${st.tier}-${st.id.slice(-6).toLowerCase()}`;
+   const dir=resolve(cfg.__repo,cfg.record.dir);
+   const art=st.phases.package?.artifacts||[];
+-  const codeRollback=st.prevRelease && JSON.stringify(st.prevRelease.install)===JSON.stringify(cfg.install);
++  const codeRollback=!cfg.migration && !st.prevRelease?.migration && st.prevRelease && JSON.stringify(st.prevRelease.install)===JSON.stringify(cfg.install);
+   const fill={
+     '{{id}}':st.id,'{{date}}':date,'{{project}}':cfg.project,'{{tier}}':st.tier,
+     '{{commit}}':st.commit||'(uncommitted)','{{prev}}':st.prevRelease?`${st.prevRelease.id} (${st.prevRelease.commit?.slice(0,8)||'uncommitted'})`:'none — first release',
+@@ -542,6 +583,7 @@
+ /* ---------- commands ---------- */
+ function cmdPlan(cfg,args) {
+   const p=proposeTier(cfg,args.base);
++  if(cfg.migration) { p.tier='data';p.evidence.push('sealed migration configured: DATA required'); }
+   console.log(`config: OK (${cfg.project} → ${cfg.target.homeUrl}, rehearsal=${cfg.rehearsal.env})`);
+   for (const e of p.evidence) console.log(`  ${e}`);
+   if (p.tier) console.log(`\nproposed tier: ${p.tier.toUpperCase()}`);
+@@ -562,11 +604,12 @@
+     if (!args.tierConfirmed || !TIERS.includes(args.tierConfirmed)) fail('pass --tier-confirmed surface|logic|data (see `plan`)');
+     const dry=args.dryRun===true;
+     const previous=registry(cfg).releases.map(e=>loadState(cfg,e.id)).filter(s=>s.status==='complete' && s.targetHash===targetHash).at(-1);
++    if (cfg.migration && args.tierConfirmed!=='data') fail('a migration requires confirmed DATA tier');
+     const proposal=proposeTier(cfg,args.base);
+     if (proposal.tier && TIER_RANK[proposal.tier]>TIER_RANK[args.tierConfirmed]) fail('confirmed tier is below the classified risk; review the diff and confirm the higher tier');
+     st={id,configHash,targetHash,status:dry?'dry-run':'in-progress',tier:args.tierConfirmed,tierEvidence:proposeTier(cfg,args.base).evidence,
+       commit:sh('git rev-parse HEAD',{cwd:cfg.__repo}).code===0?sh('git rev-parse HEAD',{cwd:cfg.__repo}).out.trim():null,
+-      createdAt:now(),phases:{},dryRun:dry,prevRelease:previous?{id:previous.id,commit:previous.commit,install:previous.install,expectedVersions:previous.expectedVersions,verifyHook:previous.verifyHook}:null};
++      createdAt:now(),phases:{},dryRun:dry,prevRelease:previous?{id:previous.id,commit:previous.commit,install:previous.install,expectedVersions:previous.expectedVersions,verifyHook:previous.verifyHook,migration:previous.migration}:null};
+     if (!dry) registryAdd(cfg,{id,commit:st.commit,tier:st.tier,at:now()});
+     saveState(cfg,st.id,st);
+   }
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/safety-test.mjs /home/mauricio-liu/.agents/skills/wp-release/scripts/safety-test.mjs
+--- /tmp/freeplast-data-release/skill-before/scripts/safety-test.mjs	2026-09-09 07:27:19.852833250 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/safety-test.mjs	2026-09-09 08:23:28.420022142 -0300
+@@ -22,21 +22,32 @@
+ const A='a'.repeat(64),B='b'.repeat(64);
+ let count=0;
+ const put=(p,s)=>{mkdirSync(dirname(p),{recursive:true});writeFileSync(p,s);};
+-function fixture() {
++function fixture(migration=false) {
+   const root=mkdtempSync(join(tmpdir(),'wp-release-negative-')),wp=join(root,'wp root');
+   const bundle=join(root,'bundle/new');mkdirSync(bundle,{recursive:true});
+   put(join(wp,'wp-config.php'),'<?php');mkdirSync(join(wp,'wp-includes'),{recursive:true});
+   put(join(wp,'wp-content/themes/fixture/style.css'),'Version: 1.0.0\n');put(join(root,'db'),A+'\n');put(join(root,'home'),'https://fixture.invalid\n');
+-  put(join(root,'mock.sh'),`#!/bin/bash\nset -euo pipefail\nR=${q(root)}\nW=${q(wp)}\nprintf '%s\\n' "$*" >> "$R/calls"\nwhile [[ "\${1:-}" == --skip-* ]]; do shift; done\nif [ "$*" != 'db import -' ]; then cat >/dev/null; fi\ncase "$*" in\n 'option get home') cat "$R/home";;\n 'db export -') cat "$R/db";;\n 'db reset --yes') :;;\n 'db import -') [ ! -f "$R/import-fail" ] || exit 43; cat > "$R/db";;\n eval\\ *) echo 1;;\n eval-file\\ *finger.php) if [ -f "$R/bad-fingerprint" ]; then echo bad; else cat "$R/db"; fi;;\n eval-file\\ *verify.php) [ ! -f "$R/verify-fail" ] || exit 44;;\n theme\\ install\\ *) cp "$3" "$W/wp-content/themes/fixture/style.css"; rm -f "$W/.maintenance"; [ ! -f "$R/install-fail" ] || exit 42;;\n 'theme get fixture --field=version') awk '{print $2}' "$W/wp-content/themes/fixture/style.css";;\n 'cache flush') [ ! -f "$R/cache-fail" ] || exit 45;;\n *) echo 'unexpected mock call' >&2; exit 90;;\nesac\n`);
++  put(join(root,'mock.sh'),`#!/bin/bash\nset -euo pipefail\nR=${q(root)}\nW=${q(wp)}\nprintf '%s\\n' "$*" >> "$R/calls"\nwhile [[ "\${1:-}" == --skip-* ]]; do shift; done\nINPUT=''; if [ "$*" != 'db import -' ]; then INPUT="$(cat)"; fi\ncase "$*" in\n 'option get home') cat "$R/home";;\n 'db export -') cat "$R/db";;\n 'db reset --yes') :;;\n 'db import -') [ ! -f "$R/import-fail" ] || exit 43; cat > "$R/db";;\n eval\\ *) echo 1;;\n eval-file\\ *finger.php) if [ -f "$R/bad-fingerprint" ]; then echo bad; else cat "$R/db"; fi;;\n eval-file\\ *verify.php) [ ! -f "$R/verify-fail" ] || exit 44;;\n theme\\ install\\ *) cp "$3" "$W/wp-content/themes/fixture/style.css"; rm -f "$W/.maintenance"; [ ! -f "$R/install-fail" ] || exit 42;;\n 'theme get fixture --field=version') awk '{print $2}' "$W/wp-content/themes/fixture/style.css";;\n 'cache flush') [ ! -f "$R/cache-fail" ] || exit 45;;\n *) echo 'unexpected mock call' >&2; exit 90;;\nesac\n`);
+   const cfg={__repo:root,target:{ssh:'',stackDir:root,wpRoot:wp,wp:`bash ${join(root,'mock.sh')}`,exec:'',filesTar:`tar -czf - -C ${q(wp)} .`,bundleDir:'bundle',backupDir:'backup space',homeUrl:'https://fixture.invalid'},rehearsalCheck:'echo 1;',hooks:{recordFingerprint:'finger.php',verifyState:'verify.php'},install:{themes:[{slug:'fixture',artifact:'fixture.zip'}],plugins:[]},smoke:[]};
+   const st={id:'new',authorized:'fixture-only',expectedVersions:{'theme:fixture':'1.0.1'}};
+   for(const f of ['release-chain.sh','release-common.sh','release-rollback.sh','maintenance.php']) copyFileSync(join(scripts,f),join(bundle,f));
+   put(join(bundle,'fixture.zip'),'Version: 1.0.1\n');put(join(bundle,'finger.php'),'<?php');put(join(bundle,'verify.php'),'<?php');
+   put(join(bundle,'INSTALLED-SHA256SUMS'),hash('Version: 1.0.1\n')+'  wp-content/themes/fixture/style.css\n');
+-  function seal(dir=bundle) {writeFileSync(join(dir,'SHA256SUMS'),readdirSync(dir).filter(f=>f!=='SHA256SUMS').sort().map(f=>hash(readFileSync(join(dir,f)))+'  '+f).join('\n')+'\n');}
++  function seal(dir=bundle) { const files=[];function walk(prefix='') {for(const e of readdirSync(join(dir,prefix),{withFileTypes:true})) {const path=join(prefix,e.name);if(e.isDirectory())walk(path);else if(path!=='SHA256SUMS')files.push(path);}}walk();writeFileSync(join(dir,'SHA256SUMS'),files.sort().map(f=>hash(readFileSync(join(dir,f)))+'  '+f).join('\n')+'\n');}
++  if(migration) {
++    cfg.migration={source:'fixture-migration',hook:'run.php'};st.migration=true;
++    put(join(bundle,'migration/run.php'),'<?php');
++    let mock=readFileSync(join(root,'mock.sh'),'utf8');
++    mock=mock.replace('case "$*" in', `case "$*" in
++ eval-file\\ *run.php\\ capture\\ new) echo baseline;;
++ eval-file\\ *run.php\\ apply\\ new) [ "$INPUT" = baseline ] || exit 47; [ -d "$W/.wp-release-lock" ] || exit 48; [ ! -f "$R/migration-fail" ] || exit 46; echo migrated > "$W/migrated";;
++ eval-file\\ *run.php\\ verify\\ new) [ "$INPUT" = baseline ] || exit 47; [ -f "$W/migrated" ] || exit 49;;`);
++    put(join(root,'mock.sh'),mock);
++  }
+   function wrapper(prev=null) {put(join(bundle,'rollback.sh'),rollbackScript(cfg,st,prev));seal();}
+   wrapper();
+   const env={...process.env,WP_RELEASE_ID:'new',WP_RELEASE_AUTHORIZED:'fixture-only',STACK_DIR:root,WP_ROOT:wp,HOME_URL:cfg.target.homeUrl,BUNDLE_HOST_DIR:bundle,BUNDLE_PATH:bundle,BACKUP_DIR:join(root,cfg.target.backupDir),WP_RUN:cfg.target.wp,EXEC_RUN:'',FILES_TAR:cfg.target.filesTar,REHEARSAL_CHECK:'echo 1;',REHEARSAL_PROJECT:'unused',INSTALL_THEMES:'fixture=fixture.zip',INSTALL_PLUGINS:'',EXPECTED_VERSIONS:'theme:fixture=1.0.1',VERIFY_HOOK:'verify.php',FINGERPRINT_HOOK:'finger.php'};
++  if(migration) env.MIGRATION_HOOK='migration/run.php';
+   const run=(file,args=[],extra={},input='')=>spawnSync('bash',[file,...args],{env:{...env,...extra},encoding:'utf8',input});
+   const chain=(phase,extra={})=>run(join(bundle,'release-chain.sh'),[phase],{WP_RELEASE_PHASE:phase,...extra});
+   const rb=(args,input='')=>run(join(bundle,'rollback.sh'),args,{},input);
+@@ -44,7 +55,7 @@
+   good(chain('backup'));
+   return {root,wp,bundle,cfg,st,seal,wrapper,chain,rb,good,held:()=>existsSync(join(wp,'.wp-release-lock')),close:()=>rmSync(root,{recursive:true,force:true})};
+ }
+-async function test(name,fn) { const f=fixture();try {await fn(f);console.log('ok: '+name);count++;}finally{f.close();} }
++async function test(name,fn,migration=false) { const f=fixture(migration);try {await fn(f);console.log('ok: '+name);count++;}finally{f.close();} }
+ await test('partial install retains persistent maintenance',f=>{
+   put(join(f.root,'install-fail'),'');const r=f.chain('install');assert.equal(r.status,42,r.stdout+r.stderr);assert.ok(f.held());assert.ok(existsSync(join(f.wp,'.maintenance')));assert.ok(existsSync(join(f.wp,'wp-content/mu-plugins/wp-release-guard.php')));
+ });
+@@ -98,6 +109,29 @@
+   f.good(f.rb(['code-only','--authorized','fixture-only']));assert.ok(!f.held());assert.equal(readFileSync(join(f.root,'db'),'utf8').trim(),A);assert.doesNotMatch(readFileSync(join(f.root,'calls'),'utf8'),/db import/);
+ });
+ await test('first release code-only refuses without side effects',f=>{assert.notEqual(f.rb(['code-only','--authorized','fixture-only']).status,0);assert.ok(!f.held());});
++await test('migration baseline is immutable across backup reuse and install resume',f=>{
++  f.good(f.chain('backup'));f.good(f.chain('install'));f.good(f.chain('install'));f.good(f.chain('verify'));
++  assert.equal(readFileSync(join(f.root,'calls'),'utf8').split('\n').filter(x=>x.includes('run.php capture')).length,1);
++  assert.equal(readFileSync(join(f.root,'backup space/new/MIGRATION-BASELINE'),'utf8').trim(),'baseline');
++  f.good(f.chain('reopen'));assert.ok(!f.held());
++},true);
++await test('migration apply failure retains maintenance and resumes with the same baseline',f=>{
++  put(join(f.root,'migration-fail'),'');assert.equal(f.chain('install').status,46);assert.ok(f.held());
++  rmSync(join(f.root,'migration-fail'));f.good(f.chain('install'));f.good(f.chain('reopen'));assert.ok(!f.held());
++},true);
++await test('migration verify failure never reopens',f=>{
++  f.good(f.chain('install'));rmSync(join(f.wp,'migrated'));assert.notEqual(f.chain('reopen').status,0);assert.ok(f.held());
++},true);
++await test('migration backup tamper rejected before installation',f=>{
++  put(join(f.root,'backup space/new/MIGRATION-BASELINE'),'tampered');assert.notEqual(f.chain('install').status,0);assert.ok(!f.held());
++},true);
++await test('migration payload tamper rejected before installation',f=>{
++  put(join(f.bundle,'migration/run.php'),'tampered');assert.notEqual(f.chain('install').status,0);assert.ok(!f.held());
++},true);
++await test('data migration disables code-only recovery even with a previous bundle',f=>{
++  f.wrapper({id:'old',install:f.cfg.install,expectedVersions:{'theme:fixture':'1.0.0'},verifyHook:'verify.php'});
++  assert.notEqual(f.rb(['code-only','--authorized','fixture-only']).status,0);assert.ok(!f.held());
++},true);
+ const cli=spawnSync(process.execPath,[join(scripts,'cli-test.mjs')],{encoding:'utf8'});
+ assert.equal(cli.status,0,cli.stdout+cli.stderr);console.log(cli.stdout.trim());
+ console.log(`safety: ${count} executable regression cases passed`);
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/scripts/self-test.mjs /home/mauricio-liu/.agents/skills/wp-release/scripts/self-test.mjs
+--- /tmp/freeplast-data-release/skill-before/scripts/self-test.mjs	2026-09-09 07:18:20.749143004 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/scripts/self-test.mjs	2026-09-09 08:25:43.867360756 -0300
+@@ -157,7 +157,44 @@
+ if(httpCode()!=='200') die('verified rollback did not reopen');
+ ok('real previous ZIP install + paired DB/files reset/restore + fingerprint + reopen');
+ 
+-/* 7. teardown + leftovers */
++/* 7. Native data migrations on BOTH rehearsal backends. */
++step('data migration: failed trial never installs on target');
++const dataConfig={...JSON.parse(readFileSync(join(WORK,'wp-release.json'),'utf8')),migration:{source:'migration',hook:'run.php'}};
++writeFileSync(join(WORK,'wp-release-data.json'),JSON.stringify(dataConfig,null,2));
++const dataRun=(args,file='wp-release-data.json')=>sh(`node ${driver} --config ${join(WORK,file)} ${args}`,{cwd:WORK});
++wp('option update fixture_migration_fail 1');
++let failed=dataRun('run --tier-confirmed data --authorized "self-test authorization"');
++if(failed.status===0 || !/trial migration apply/.test(failed.stderr)) die('data trial failure was not rejected: '+failed.stdout+failed.stderr);
++if(httpCode()!=='200' || wp('option get fixture_media_revision',false).status===0) die('failed trial altered/closed the target');
++wp('option delete fixture_migration_fail');
++step('release 4 — data/local, native migration failure stays closed then resumes');
++release('wp-release-data.json','data','trial');
++wp('option update fixture_migration_fail 1');
++failed=dataRun(`resume --id ${latest()} --authorized "self-test authorization"`);
++if(failed.status===0 || httpCode()!=='503') die('live migration failure did not retain maintenance');
++wp('option delete fixture_migration_fail');
++let resumed=dataRun(`resume --id ${latest()} --authorized "self-test authorization"`);
++if(resumed.status!==0 || httpCode()!=='200') die('data resume failed: '+resumed.stdout+resumed.stderr);
++if(wp('option get fixture_media_revision').stdout.trim()!=='fixture-media-v1') die('native migration v1 missing');
++const dataRollback=join(WORK,'bundle/releases',latest(),'rollback.sh');
++if(sh(`bash ${dataRollback} code-only --authorized 'fixture rollback'`,{cwd:WORK}).status===0) die('data migration offered code-only recovery');
++step('release 5 — data/on-host and paired restoration of migrated data/files');
++writeFileSync(join(WORK,'migration/assets/revision.txt'),'fixture-media-v2\n');
++writeFileSync(join(WORK,'wp-release-data-onhost.json'),JSON.stringify({...dataConfig,rehearsal:{env:'on-host'}},null,2));
++release('wp-release-data-onhost.json','data');
++if(wp('option get fixture_media_revision').stdout.trim()!=='fixture-media-v2') die('on-host native migration v2 missing');
++const dataRollback2=join(WORK,'bundle/releases',latest(),'rollback.sh');
++const dataInspect=sh(`bash ${dataRollback2} inspect`,{cwd:WORK});
++const dataCurrent=/^fingerprint: ([0-9a-f]{64})$/m.exec(dataInspect.stdout)?.[1];
++if(!dataCurrent) die('data rollback inspect failed');
++const dataRecovery=sh(`bash ${dataRollback2} paired --authorized 'fixture paired rollback' --acknowledge-data-loss-risk --expected-current-fingerprint ${dataCurrent}`,{cwd:WORK,input:'RESTORE\n'});
++if(dataRecovery.status!==0) die('data paired recovery failed: '+dataRecovery.stdout+dataRecovery.stderr);
++if(wp('option get fixture_media_revision').stdout.trim()!=='fixture-media-v1') die('paired did not restore pre-migration option');
++if(docker('exec -T wordpress cat wp-content/uploads/fixture-migration.txt').stdout.trim()!=='fixture-media-v1') die('paired did not restore pre-migration file');
++if(httpCode()!=='200') die('data paired recovery did not reopen');
++ok('data/local + data/on-host, immutable stdin baseline, trial failure, 503 live failure/resume, paired data/files recovery');
++
++/* 8. teardown + leftovers */
+ step('teardown and leftovers');
+ docker('down -v --remove-orphans');ownedTarget=false;
+ let projects=[];
+@@ -165,7 +202,7 @@
+ const leftovers = projects.filter(p => /wprelease/.test(p.Name||p.Project||''));
+ if (leftovers.length) die(`leftover compose projects: ${JSON.stringify(leftovers)}`);
+ const records = readdirSync(join(WORK,'docs','releases')).filter(f=>f.endsWith('.md'));
+-if (records.length !== 3) die(`expected 3 records, found ${records.length}: ${records}`);
++if (records.length !== 5) die(`expected 5 records, found ${records.length}: ${records}`);
+ ok(`${records.length} records; no leftover rehearsal projects; target torn down`);
+ writeSafetyReceipt();
+ console.log('\nSELF-TEST PASS — safety receipt written for these exact sources');
+diff -ruN '--exclude=.self-test.json' '--exclude=.git' /tmp/freeplast-data-release/skill-before/SKILL.md /home/mauricio-liu/.agents/skills/wp-release/SKILL.md
+--- /tmp/freeplast-data-release/skill-before/SKILL.md	2026-09-09 07:29:03.303736844 -0300
++++ /home/mauricio-liu/.agents/skills/wp-release/SKILL.md	2026-09-09 08:32:38.392119034 -0300
+@@ -62,6 +62,9 @@
+   rollback modes and the glossary of canonical terms: **[REFERENCE.md](REFERENCE.md)**
+ - Adopting the skill in a NEW project (both compose-server and shared-hosting
+   shapes, step by step): **[EXAMPLES.md](EXAMPLES.md)**
++- On intentional data changes: **[MIGRATIONS.md](MIGRATIONS.md)** — sealed closure,
++  immutable capture, stdin baseline, expected-delta fingerprint, trial/install
++  hooks and paired-only recovery. Read before designing a data migration.
+ - On a blocked release, maintenance hold, rollback, or stale test receipt:
+   **[RECOVERY.md](RECOVERY.md)**. Follow the recovery procedure; no ad hoc
+   deactivation of maintenance or manual state-file edits.
+@@ -70,8 +73,8 @@
+ 
+ ## Self-test
+ 
+-`node scripts/self-test.mjs` runs fast negative regressions, then three fixture
+-Docker releases, a failed verification/resume, and real code-only/paired
++`node scripts/self-test.mjs` runs fast negative regressions, then five fixture
++Docker releases (surface, logic and data across both rehearsal backends), a failed verification/resume, and real code-only/paired
+ recovery. Requires Docker and PHP CLI; set `WP_RELEASE_PHP=/absolute/path/to/php`
+ if PHP is not on PATH. Run it whenever scripts, assets or fixtures change.
+ 
