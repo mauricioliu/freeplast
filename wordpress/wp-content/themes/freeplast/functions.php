@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.17' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.18' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');

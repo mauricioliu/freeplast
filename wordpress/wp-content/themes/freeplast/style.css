@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.17
+Version: 1.0.18
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -61,6 +61,8 @@ Tags: block-theme, custom-colors, custom-menu
   --fp-chrome-border: #a0a2af;
   --fp-chrome-muted: #60626d;
   --fp-radius-card: 12px;
+  --fp-radius-panel: 16px;
+  --fp-radius-hero: 24px;
 
   /* Spacing */
   --fp-s-1: 4px;
@@ -483,12 +485,19 @@ dialog.fp-chrome.menu-dialog {
   padding-inline: var(--fp-s-4);
 }
 
+/* Hero H1 — Display scale (36 mobile → 40 at the 768 two-column seam →
+   48 ≥1024 → 60 ≥1280); the fixed break returns from 1024, where the
+   column is wide enough to hold «Venta Mayorista de». */
 .fp-hero-title {
   max-width: var(--fp-measure);
-  font-size: 32px;
-  line-height: 1.15;
+  font-size: 36px;
+  line-height: 40px;
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+
+.fp-hero-title br {
+  display: none;
 }
 
 .fp-hero-sub {
@@ -498,20 +507,51 @@ dialog.fp-chrome.menu-dialog {
   color: var(--fp-text);
 }
 
+/* Hero visual — the approved v6 treatment: a covered crop on a tinted
+   24px-radius panel, caption as an in-image chip. */
 .fp-hero figure {
+  position: relative;
   margin: 0;
+  overflow: hidden;
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-radius-hero);
 }
 
 .fp-hero figure img {
   width: 100%;
-  border: 1px solid var(--fp-line);
-  border-radius: var(--fp-r-md);
+  height: 100%;
+  min-height: 240px;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
 }
 
 .fp-hero figcaption {
-  margin-top: var(--fp-s-3);
+  position: absolute;
+  left: var(--fp-s-4);
+  bottom: var(--fp-s-4);
+  display: grid;
+  gap: var(--fp-s-1);
+  max-width: calc(100% - var(--fp-s-8));
+  padding: var(--fp-s-3);
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-radius-card);
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.fp-hero figcaption b {
+  color: var(--fp-blue-heading);
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 700;
+}
+
+.fp-hero figcaption span {
   color: var(--fp-muted);
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 /* ---------- Generic page/empty states ---------- */
@@ -523,10 +563,20 @@ dialog.fp-chrome.menu-dialog {
 }
 
 .fp-page > h1 {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   margin-bottom: var(--fp-s-4);
+}
+
+/* Page content authored with its own H1 lead (Nosotros, Contacto, Privacy):
+   render it at the Headline scale — the same words already use it on Home —
+   so the template title and the content lead keep a stable hierarchy at
+   every viewport. */
+.fp-page .entry-content > h1:first-child {
+  font-size: 30px;
+  line-height: 36px;
+  letter-spacing: -0.02em;
 }
 
 /* Tint band (v6 band-tint) */
@@ -537,17 +587,40 @@ dialog.fp-chrome.menu-dialog {
 
 /* ---------- Home sections: concise Nosotros, Cotiza Online summary, contact ---------- */
 
+/* WordPress flow layout injects `* + *` block-gap margins everywhere; the
+   home sections own their rhythm (64/96px block padding, grid gaps), so the
+   injected sibling margins are dropped on this page only. */
+body.home main.wp-block-group > * + *,
+body.home .fp-woo-shell > * + *,
+body.home .fp-home-mv > * + * {
+  margin-block-start: 0;
+}
+
 .fp-home-about,
-.fp-home-quote,
 .fp-home-contact {
   max-width: var(--fp-shell);
   margin-inline: auto;
   padding: var(--fp-s-8) var(--fp-s-4);
 }
 
-.fp-home-about-lead {
-  font-size: 26px;
-  letter-spacing: -0.01em;
+/* Cotiza Online — full-bleed tint band (v6 band-tint), content in the shell. */
+.fp-home-quote.fp-band {
+  padding: var(--fp-s-8) 0;
+  background: var(--fp-tint);
+}
+
+.fp-home-quote-inner {
+  max-width: var(--fp-shell);
+  margin-inline: auto;
+  padding-inline: var(--fp-s-4);
+}
+
+.fp-home-about-lead,
+.fp-woo-shell > h2,
+.fp-home-quote-inner > h2,
+.fp-home-contact > h2 {
+  font-size: 30px;
+  letter-spacing: -0.02em;
 }
 
 .fp-home-about-sublead {
@@ -585,13 +658,7 @@ dialog.fp-chrome.menu-dialog {
   color: var(--fp-text);
 }
 
-.fp-home-quote > h2,
-.fp-home-contact > h2 {
-  font-size: 26px;
-  letter-spacing: -0.01em;
-}
-
-.fp-home-quote > p {
+.fp-home-quote-inner > p {
   max-width: var(--fp-measure);
   margin-top: var(--fp-s-3);
   color: var(--fp-text);
@@ -2056,6 +2123,27 @@ body.woocommerce .fp-product-shell .product-facts summary {
   color: var(--fp-ink);
   display: flex;
   align-items: center;
+}
+
+body.woocommerce .fp-product-shell .product-facts summary:hover {
+  color: var(--fp-blue);
+}
+
+/* Disclosure affordance: the native marker is gone (flex summary), so the
+   chevron — the theme's 1.6-stroke language — carries the expand state. */
+body.woocommerce .fp-product-shell .product-facts summary::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  background: currentColor;
+  transition: transform var(--fp-dur) var(--fp-ease);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+body.woocommerce .fp-product-shell .product-facts details[open] summary::after {
+  transform: rotate(180deg);
 }
 
 body.woocommerce .fp-product-shell .fp-spec-table {
@@ -3901,7 +3989,7 @@ footer.wp-block-template-part .site-footer {
 }
 
 .footer-content .fp-help-trigger {
-  margin-left: auto;
+  margin-left: 0;
 }
 
 /* ---------- Desktop adaptation (min-width only — mobile-first) ---------- */
@@ -3932,6 +4020,10 @@ footer.wp-block-template-part .site-footer {
     gap: 22px;
   }
 
+  .footer-content .fp-help-trigger {
+    margin-left: auto;
+  }
+
   .footer-content p {
     width: auto;
     order: initial;
@@ -3960,20 +4052,27 @@ footer.wp-block-template-part .site-footer {
   }
 
   .fp-home-about-lead,
-  .fp-home-quote > h2,
+  .fp-woo-shell > h2,
+  .fp-home-quote-inner > h2,
   .fp-home-contact > h2 {
-    font-size: 32px;
+    font-size: 36px;
+    line-height: 40px;
   }
 
   .fp-hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: stretch;
     gap: var(--fp-s-7);
+  }
+
+  .fp-hero figure img {
+    aspect-ratio: auto;
   }
 
   .fp-hero-title {
     font-size: 40px;
+    line-height: 1.1;
   }
 
   .fp-hero-sub {
@@ -3982,6 +4081,7 @@ footer.wp-block-template-part .site-footer {
 
   .fp-page > h1 {
     font-size: 36px;
+    line-height: 40px;
   }
 
   .fp-shop-page > h1 {
@@ -4313,6 +4413,11 @@ footer.wp-block-template-part .site-footer {
 @media (min-width: 1024px) {
   .fp-hero-title {
     font-size: 48px;
+    line-height: 1;
+  }
+
+  .fp-hero-title br {
+    display: inline;
   }
 
   .fp-hero-section {
@@ -4321,6 +4426,13 @@ footer.wp-block-template-part .site-footer {
 
   .fpcq-title {
     font-size: 44px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .fp-hero-title {
+    font-size: 60px;
+    line-height: 1;
   }
 }
 
