@@ -1,0 +1,41 @@
+{
+  "project": "freeplast",
+  "target": {
+    "ssh": "openclaw",
+    "stackDir": "/opt/freeplast-wordpress",
+    "wp": "docker compose run --rm -T cli wp",
+    "exec": "docker compose exec -T -w /var/www/html wordpress",
+    "wpRoot": "/var/www/html",
+    "filesTar": "docker compose exec -T wordpress tar -czf - -C /var/www/html .",
+    "bundleDir": "bundle/releases",
+    "bundlePrefix": "/bundle/releases",
+    "backupDir": "/root/freeplast-wordpress-backups",
+    "homeUrl": "https://freeplast.mliu.site",
+    "dbEnv": ".env"
+  },
+  "rehearsal": { "env": "on-host" },
+  "gate": "npm test",
+  "packaging": { "command": "python3 wordpress/scripts/package-woo.py", "outDir": "wordpress/.build/woo-release" },
+  "artifacts": ["freeplast-woo.zip", "freeplast-woo-theme.zip"],
+  "install": {
+    "themes":  [ { "slug": "freeplast",    "artifact": "freeplast-woo-theme.zip" } ],
+    "plugins": [ { "slug": "freeplast-woo", "artifact": "freeplast-woo.zip" } ]
+  },
+  "tiers": {
+    "surface": ["wordpress/wp-content/themes/**"],
+    "logic":   ["wordpress/wp-content/plugins/**", "wordpress/wp-content/mu-plugins/**"],
+    "data":    ["wordpress/scripts/migrate-to-woo.php", "wordpress/data/**"]
+  },
+  "hooks": {
+    "verifyState": "wordpress/scripts/verify-woo-state.php",
+    "recordFingerprint": "wordpress/scripts/record-state.php"
+  },
+  "rehearsalCheck": "echo count(get_posts(array('post_type'=>array('fp_product','product'),'post_status'=>'any','numberposts'=>-1,'fields'=>'ids'))) + (function_exists('wc_get_orders')?count(wc_get_orders(array('limit'=>-1,'return'=>'ids'))):0) + count(get_posts(array('post_type'=>'fp_quote','post_status'=>'any','numberposts'=>-1,'fields'=>'ids')));",
+  "smoke": [
+    { "url": "https://freeplast.mliu.site/", "status": 200 },
+    { "url": "https://freeplast.mliu.site/tienda/", "status": 200 },
+    { "url": "https://freeplast.mliu.site/cotizacion/", "status": 200 },
+    { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/css/woo.css", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/css/woo.css" }
+  ],
+  "record": { "dir": "wordpress/docs/releases" }
+}

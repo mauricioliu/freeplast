@@ -1,0 +1,20 @@
+{
+  "scope": "local fake WP runner; no Docker/network/site",
+  "failures": [
+    {
+      "check": "compound WP runner reaches mock install",
+      "status": 127,
+      "stderr": "bash: theme: No such file or directory"
+    },
+    {
+      "check": "paired rollback restores files instead of printing a manual placeholder",
+      "status": "unimplemented"
+    },
+    {
+      "check": "failed installation retains maintenance",
+      "status": 42,
+      "maintenancePresent": false,
+      "stderr": "INSTALL FAILED: maintenance retained — investigate before reopening"
+    }
+  ]
+}

@@ -1,5 +1,19 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-09-09: PUBLICACIÓN BLOQUEADA.** El gate de Freeplast está verde, pero
+> el driver actual falla en rollback y conservación de mantenimiento al fallar
+> install. No publicar hasta corregir esas ramas y sus pruebas. Evidencia:
+> [preflight bloqueado](docs/releases/2026-09-09-preflight-blocked/README.md).
+>
+> **2026-09-09 releases move to `wp-release`.** New releases of the Woo stack
+> run through the generic skill `~/.agents/skills/wp-release/` driven by the
+> repo-root [`wp-release.json`](../wp-release.json) (ADR-0002): gate → package →
+> transfer → backup → rehearse → trial → install → verify → smoke → record,
+> with a generated rollback. The ad-hoc `/tmp/freeplast-publish-*` script
+> generation is retired. The operator runbook below is the historical record
+> of the original 2026-09-04 bootstrap; `infra/deploy.sh` still refuses to run
+> and the Woo-era release history lives in [WOO-MIGRATION.md](WOO-MIGRATION.md).
+
 > **2026-09-05 migration:** same staging hostname, stack and volumes now run WooCommerce. Current release/backup/rollback record: [WOO-MIGRATION.md](WOO-MIGRATION.md). Infrastructure identities below remain relevant, but the old plugin activation/synchronization recipe is retired; `infra/deploy.sh` now refuses execution.
 
 The isolated, password-protected staging deployment of the complete build

@@ -6,3 +6,6 @@ node_modules/
 wordpress/.tools/
 wordpress/.build/
 .ralph/
+
+# wp-release driver state
+.build/wp-release/
