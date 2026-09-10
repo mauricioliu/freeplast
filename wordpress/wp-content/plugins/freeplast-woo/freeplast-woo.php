@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.8.0
+ * Version: 1.9.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1412,6 +1412,9 @@ add_action('template_redirect', static function () {
 	$aliases = get_option('fpw_legacy_paths', array());
 	if ( isset($aliases[$path]) ) { wp_safe_redirect(get_permalink((int)$aliases[$path]), 301); exit; }
 } );
+
+// Mantenedor de precios (issue #52, corte 3 de #49): the owner's private, native-identity Price List — the authority that PREFILLS the drafts' suggestions. Loads before the draft so its suggestions are available to the editing form.
+require_once __DIR__ . '/price-list.php';
 
 // Registro de ventas importado (issue #54, corte 5 de #49): the owner's manual CSV import (preview → confirm/cancel, receipts, owner-only screen) and the Purchase History lookups the drafts render. Loads before the draft so its screen can read the history.
 require_once __DIR__ . '/sales-register.php';

@@ -39,6 +39,20 @@
  * A left-empty amount stays pending — never zero — and a zero is refused
  * server-side: no unapproved gratuity policy. Saving never approves or sends
  * anything: the record stays untouched, nothing is notified or issued.
+ *
+ * Cut 3 (issue #52) connects the draft to the owner's private Price List
+ * (Mantenedor de precios, price-list.php): the editing form PREFILLS each
+ * line's net price with the list's current suggestion for that line's native
+ * identity — distinct per option of the same product — and leaves missing
+ * values pending, never zero. The saved work keeps the origin of every amount
+ * (price_source 'suggested' when it tracks the list, 'manual' when it is the
+ * owner's own choice), so a suggested price never masquerades as a decided
+ * one. Changing the list never rewrites saved drafts; the current suggestion
+ * is shown beside any conserved amount that differs from it, and adopting new
+ * suggestions requires the explicit refresh action — itself a guarded save
+ * that bumps the revision, conserving every manual entry and never inventing
+ * destination or freight. No price suggestion ever comes from the Purchase
+ * History, and nothing of this reaches any public surface.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -189,10 +203,26 @@ function fpw_draft_save_action( int $order_id ): string {
 	return 'fpw-draft-save-' . $order_id;
 }
 
+/** The nonce action of one draft's price refresh: scoped to the request it refreshes. */
+function fpw_draft_refresh_action( int $order_id ): string {
+	return 'fpw-draft-refresh-' . $order_id;
+}
+
 /** Whether the receipt snapshot's request asked for dispatch ('si'). */
 function fpw_draft_requests_dispatch( array $draft ): bool {
 	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
 	return 'si' === ( $destination['dispatch'] ?? '' );
+}
+
+/**
+ * The mantenedor's current suggestion for one draft line's native identity
+ * (issue #52): the variation's own maintained price, else its product's; null
+ * when the list holds none — the line stays pending. Only the Price List
+ * suggests: never a historical sale price, never a public amount.
+ */
+function fpw_price_suggestion_for_line( array $line ): ?int {
+	if ( ! function_exists( 'fpw_price_for' ) ) { return null; }
+	return fpw_price_for( (int) ( $line['product_id'] ?? 0 ), (int) ( $line['variation_id'] ?? 0 ) );
 }
 
 /** The raw stored saved-work row of one request, read straight from the database — never through the per-request options cache. */
@@ -280,7 +310,11 @@ function fpw_parse_draft_work_input( array $draft, array $posted ): array {
 			'variation_id' => (int) ( $item['variation_id'] ?? 0 ),
 			'quantity'     => $quantity,
 			'price'        => $price,
-			'price_source' => null === $price ? 'pending' : 'manual',
+			// Issue #52: the origin of every saved amount — a price that equals
+			// the list's CURRENT suggestion tracks it (a later refresh may move
+			// it); anything else is the owner's own choice and is never silently
+			// replaced by a refresh.
+			'price_source' => null === $price ? 'pending' : ( $price === fpw_price_suggestion_for_line( $item ) ? 'suggested' : 'manual' ),
 		);
 	}
 	$destination = '';
@@ -361,6 +395,66 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
 }
 
 /**
+ * The EXPLICIT price refresh (issue #52): adopting the mantenedor's current
+ * suggestions is a deliberate commercial change, so it is itself a guarded
+ * save — it writes the next revision through the same compare-and-set path as
+ * any save. Lines whose saved price is the owner's manual choice are conserved
+ * verbatim (a manual amount that differs from the list keeps differing and
+ * stays beside the new suggestion); lines still tracking the list ('suggested')
+ * and pending lines take the current suggestion, or stay pending when none
+ * exists. The working destination, dispatch amount and its recorded conditions
+ * are preserved exactly as saved — a refresh touches ONLY prices and never
+ * invents anything the owner did not decide.
+ *
+ * @return array{state:'saved'|'conflict',work?:?array,refresh?:bool,stored_revision?:int}
+ */
+function fpw_refresh_draft_prices( int $order_id, array $draft, int $user_id ): array {
+	$stored = fpw_read_draft_work( $order_id );
+	$raw    = fpw_read_draft_work_raw( $order_id );
+	$revision = is_array( $stored ) ? (int) ( $stored['revision'] ?? 0 ) : 0;
+	$items = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
+	$saved_lines = is_array( $stored['lines'] ?? null ) ? $stored['lines'] : array();
+	$lines = array();
+	foreach ( $items as $i => $item ) {
+		$saved = is_array( $saved_lines[ $i ] ?? null ) ? $saved_lines[ $i ] : null;
+		$same_identity = is_array( $saved )
+			&& (int) ( $saved['product_id'] ?? -1 ) === (int) ( $item['product_id'] ?? -1 )
+			&& (int) ( $saved['variation_id'] ?? -1 ) === (int) ( $item['variation_id'] ?? -1 );
+		$saved_price  = ( $same_identity && is_int( $saved['price'] ?? null ) && $saved['price'] > 0 ) ? (int) $saved['price'] : null;
+		$saved_source = $same_identity ? (string) ( $saved['price_source'] ?? 'manual' ) : 'pending';
+		$keep_manual  = 'manual' === $saved_source && null !== $saved_price;
+		$price = $keep_manual ? $saved_price : fpw_price_suggestion_for_line( $item );
+		$lines[] = array(
+			'index'        => $i,
+			'product_id'   => (int) ( $item['product_id'] ?? 0 ),
+			'variation_id' => (int) ( $item['variation_id'] ?? 0 ),
+			'quantity'     => $same_identity ? max( 1, (int) ( $saved['quantity'] ?? ( $item['quantity'] ?? 1 ) ) ) : max( 1, (int) ( $item['quantity'] ?? 1 ) ),
+			'price'        => $price,
+			'price_source' => null === $price ? 'pending' : ( $keep_manual ? 'manual' : 'suggested' ),
+		);
+	}
+	$dispatch_amount = ( is_array( $stored ) && is_int( $stored['dispatch_amount'] ?? null ) && $stored['dispatch_amount'] > 0 ) ? (int) $stored['dispatch_amount'] : null;
+	$next = array(
+		'schema'              => 1,
+		'order_id'            => $order_id,
+		'revision'            => $revision + 1,
+		'updated_at'          => time(),
+		'updated_by'          => $user_id,
+		'lines'               => $lines,
+		'destination'         => is_array( $stored ) ? (string) ( $stored['destination'] ?? '' ) : '',
+		'dispatch_amount'     => $dispatch_amount,
+		'dispatch_conditions' => is_array( $stored['dispatch_conditions'] ?? null ) ? $stored['dispatch_conditions'] : null,
+	);
+	$written = null === $raw
+		? fpw_insert_options_row( fpw_draft_work_row_name( $order_id ), wp_json_encode( $next ) )
+		: fpw_cas_draft_work_row( $order_id, $raw, $next );
+	if ( ! $written ) {
+		return array( 'state' => 'conflict', 'work' => fpw_read_draft_work( $order_id ), 'stored_revision' => $revision );
+	}
+	return array( 'state' => 'saved', 'work' => $next, 'refresh' => true );
+}
+
+/**
  * Whether the saved dispatch amount no longer matches the conditions it was
  * entered for (destination changed, quantities changed, or its row lost the
  * conditions). True only for an actually saved amount — a pending dispatch is
@@ -416,18 +510,27 @@ function fpw_handle_draft_save_request( $order, array $draft ): void {
 }
 
 /**
- * The save front door, ahead of wp-admin's own header render: authorization
- * first (the capability — never the nonce — grants access), then CSRF, then
- * the guarded save. Requests without a resolved draft edit nothing; the
- * screen answers them honestly.
+ * The save/refresh front door, ahead of wp-admin's own header render:
+ * authorization first (the capability — never the nonce — grants access), then
+ * CSRF for whichever action the form carried, then the guarded write. Requests
+ * without a resolved draft edit nothing; the screen answers them honestly.
  */
 function fpw_handle_draft_save(): void {
 	fpw_pending_draft_save( null );   // a fresh request starts with no outcome
-	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) || empty( $_POST['fpw_work_save'] ) ) { return; }
+	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) || ( empty( $_POST['fpw_work_save'] ) && empty( $_POST['fpw_price_refresh'] ) ) ) { return; }
 	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
 	$order = fpw_draft_screen_order();
 	$draft = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	if ( ! $draft ) { return; }
+	$order_id = (int) $order->get_id();
+	if ( empty( $_POST['fpw_work_save'] ) ) {
+		// Issue #52: the explicit price refresh — its own nonce, its own guarded save.
+		if ( ! wp_verify_nonce( (string) ( $_POST['fpw_refresh_nonce'] ?? '' ), fpw_draft_refresh_action( $order_id ) ) ) {
+			wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo. Nada se refrescó.', '', array( 'response' => 403 ) );
+		}
+		fpw_pending_draft_save( array( 'order_id' => $order_id, 'result' => fpw_refresh_draft_prices( $order_id, $draft, get_current_user_id() ) ) );
+		return;
+	}
 	fpw_handle_draft_save_request( $order, $draft );
 }
 add_action( 'admin_init', 'fpw_handle_draft_save' );
@@ -435,9 +538,20 @@ add_action( 'admin_init', 'fpw_handle_draft_save' );
 /** The save outcome's screen notice, in the screen's own language. */
 function fpw_draft_save_notice( array $result ): array {
 	if ( 'saved' === $result['state'] ) {
+		$revision = (int) ( $result['work']['revision'] ?? 0 );
+		if ( ! empty( $result['refresh'] ) ) {
+			return array(
+				'class' => 'ok',
+				'title' => 'Precios refrescados desde el mantenedor (revisión ' . $revision . ').',
+				'lines' => array(
+					'Los precios ingresados manualmente se conservaron; las líneas sin precio elegido tomaron la sugerencia vigente de la lista, o quedaron pendientes si no la tienen.',
+					'Este refresco es un cambio comercial: los formularios abiertos con la revisión anterior quedaron desactualizados.',
+				),
+			);
+		}
 		return array(
 			'class' => 'ok',
-			'title' => 'Cambios guardados (revisión ' . (int) ( $result['work']['revision'] ?? 0 ) . ').',
+			'title' => 'Cambios guardados (revisión ' . $revision . ').',
 			'lines' => array( 'Al volver a este borrador recuperarás estos valores. Guardar no aprueba ni envía ninguna cotización.' ),
 		);
 	}
@@ -554,7 +668,7 @@ function fpw_draft_submitted_details_html( $details ): string {
 	return '<details style="margin-top:10px"><summary>Datos originales recibidos</summary><pre>' . esc_html( (string) wp_json_encode( $details, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) ) . '</pre></details>';
 }
 
-/** The saved-work values the screen shows for one draft: the owner's saved adjustments over the receipt snapshot's defaults (identity-checked per line). */
+/** The saved-work values the screen shows for one draft: the owner's saved adjustments over the receipt snapshot's defaults (identity-checked per line), with each line's current Price List suggestion (issue #52). */
 function fpw_draft_work_values( array $draft, ?array $work ): array {
 	$with_dispatch = fpw_draft_requests_dispatch( $draft );
 	$address       = (string) ( is_array( $draft['destination'] ?? null ) ? ( $draft['destination']['address'] ?? '' ) : '' );
@@ -565,7 +679,12 @@ function fpw_draft_work_values( array $draft, ?array $work ): array {
 	);
 	$items = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
 	foreach ( $items as $i => $line ) {
-		$values['lines'][ $i ] = array( 'quantity' => max( 1, (int) ( $line['quantity'] ?? 1 ) ), 'price' => null );
+		$values['lines'][ $i ] = array(
+			'quantity'     => max( 1, (int) ( $line['quantity'] ?? 1 ) ),
+			'price'        => null,
+			'price_source' => 'pending',
+			'suggested'    => fpw_price_suggestion_for_line( $line ),
+		);
 	}
 	if ( ! is_array( $work ) ) { return $values; }
 	$saved_lines = is_array( $work['lines'] ?? null ) ? $work['lines'] : array();
@@ -577,7 +696,10 @@ function fpw_draft_work_values( array $draft, ?array $work ): array {
 		if ( ! $same_identity ) { continue; }
 		$values['lines'][ $i ]['quantity'] = max( 1, (int) ( $saved['quantity'] ?? $default['quantity'] ) );
 		$price = $saved['price'] ?? null;
-		if ( is_int( $price ) && $price > 0 ) { $values['lines'][ $i ]['price'] = $price; }
+		if ( is_int( $price ) && $price > 0 ) {
+			$values['lines'][ $i ]['price'] = $price;
+			$values['lines'][ $i ]['price_source'] = (string) ( $saved['price_source'] ?? 'manual' );
+		}
 	}
 	if ( $with_dispatch ) {
 		$values['destination'] = (string) ( $work['destination'] ?? $values['destination'] );
@@ -603,6 +725,23 @@ function fpw_draft_amount_value_html( ?int $amount, string $pending_note = '' ):
 	return '<span>' . esc_html( number_format( $amount, 0, ',', '.' ) ) . ' CLP neto · ingreso manual</span>';
 }
 
+/**
+ * One line's price display (issue #52): the chosen amount carries its origin
+ * (the owner's manual choice vs a price adopted from the mantenedor's
+ * suggestion); with nothing chosen yet, the current suggestion is named as a
+ * suggestion, and with neither, the line stays pending — never zero.
+ */
+function fpw_draft_line_price_html( ?int $chosen, ?int $suggested, string $source ): string {
+	if ( null !== $chosen ) {
+		$origin = 'suggested' === $source ? 'sugerido por el mantenedor' : 'ingreso manual';
+		return '<span>' . esc_html( number_format( $chosen, 0, ',', '.' ) ) . ' CLP neto · ' . $origin . '</span>';
+	}
+	if ( null !== $suggested ) {
+		return '<span>' . esc_html( number_format( $suggested, 0, ',', '.' ) ) . ' CLP neto · sugerido por el mantenedor (aún sin guardar)</span>';
+	}
+	return fpw_draft_pending_html();
+}
+
 /** The requested lines: name, chosen options behind their native labels, the ORIGINAL quantity kept apart from the working inputs — never a fabricated price. */
 function fpw_draft_items_html( array $items, array $values ): string {
 	$html = '';
@@ -611,15 +750,21 @@ function fpw_draft_items_html( array $items, array $values ): string {
 		foreach ( ( is_array( $line['options'] ?? null ) ? $line['options'] : array() ) as $option ) {
 			$options .= '<span class="fpw-draft__option">' . esc_html( wc_attribute_label( (string) $option['key'] ) . ': ' . (string) $option['value'] ) . '</span> ';
 		}
-		$quantity   = max( 0, (int) ( $line['quantity'] ?? 0 ) );
-		$work_qty   = (int) ( $values['lines'][ $i ]['quantity'] ?? $quantity );
-		$work_price = $values['lines'][ $i ]['price'] ?? null;
+		$quantity    = max( 0, (int) ( $line['quantity'] ?? 0 ) );
+		$work_qty    = (int) ( $values['lines'][ $i ]['quantity'] ?? $quantity );
+		$work_price  = $values['lines'][ $i ]['price'] ?? null;
+		$suggested   = $values['lines'][ $i ]['suggested'] ?? null;
+		$source      = (string) ( $values['lines'][ $i ]['price_source'] ?? 'pending' );
+		$input_value = null !== $work_price ? $work_price : $suggested;
 		$html .= '<li><strong>' . esc_html( (string) ( $line['name'] ?? '' ) ) . '</strong>'
 			. ( '' !== $options ? '<div>' . trim( $options ) . '</div>' : '' )
-			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">Pedido: ' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . fpw_draft_amount_value_html( $work_price ) . '</span></div>'
+			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">Pedido: ' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . fpw_draft_line_price_html( $work_price, $suggested, $source ) . '</span></div>'
+			. ( null !== $work_price && null !== $suggested && $work_price !== $suggested
+				? '<em class="fpw-draft__suggest">La lista sugiere hoy: ' . esc_html( number_format( $suggested, 0, ',', '.' ) ) . ' CLP neto</em>' : '' )
 			. '<div class="fpw-draft__edit">'
 			. '<label>Cantidad de trabajo' . fpw_draft_quantity_input_html( 'fpw_work[lines][' . $i . '][quantity]', $work_qty ) . '</label>'
-			. '<label>Precio neto unitario (CLP)' . fpw_draft_amount_input_html( 'fpw_work[lines][' . $i . '][price]', $work_price ) . '</label>'
+			. '<label>Precio neto unitario (CLP)' . fpw_draft_amount_input_html( 'fpw_work[lines][' . $i . '][price]', $input_value ) . '</label>'
+			. ( null === $work_price && null !== $suggested ? '<span class="fpw-draft__origin">Prellenado con la sugerencia del mantenedor de precios; ajústalo libremente para esta oferta.</span>' : '' )
 			. '<span class="fpw-draft__origin">Ajuste manual del dueño: afecta solo a este borrador.</span>'
 			. '</div></li>';
 	}
@@ -682,6 +827,7 @@ function fpw_draft_screen_shell( string $inner ): string {
 		. '.fpw-draft__field,.fpw-draft__edit label{display:grid;gap:4px;font-size:13px;font-weight:600;color:#60626d}'
 		. '.fpw-draft__edit input,.fpw-draft__field input,.fpw-draft__field textarea{font-size:16px;padding:8px 10px;border:1px solid #c3c4c7;border-radius:4px;width:100%;max-width:24rem;box-sizing:border-box;background:#fff;font-family:inherit}'
 		. '.fpw-draft__origin{font-size:12px;font-weight:400;color:#60626d}'
+		. '.fpw-draft__suggest{display:block;font-size:13px;font-weight:600;color:#8a6d1a;font-style:normal}'
 		. '.fpw-draft__stale{display:block;margin-top:6px;font-weight:600;color:#8a1d1d;font-style:normal}'
 		. '.fpw-draft__save{display:grid;gap:8px;justify-items:start}'
 		. '.fpw-draft__save button{font-size:16px;font-weight:600;padding:10px 18px;border-radius:6px;background:#1f2a44;color:#fff;border:0;cursor:pointer}'
@@ -781,8 +927,17 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$dispatch_stale  = fpw_draft_dispatch_stale( $work );
 	$dispatch_amount = $values['dispatch_amount'];
 	$order_id        = (int) ( $draft['order_id'] ?? 0 );
-	$all_priced      = ! empty( $values['lines'] );
-	foreach ( $values['lines'] as $work_line ) { if ( null === ( $work_line['price'] ?? null ) ) { $all_priced = false; } }
+	// Issue #52: the prices status names the completion honestly — every saved
+	// amount carries its origin, so a price tracking the list is never
+	// presented as the owner's own decision.
+	$saved_prices    = 0; $suggested_count = 0; $manual_count = 0;
+	foreach ( $values['lines'] as $work_line ) {
+		if ( null !== ( $work_line['price'] ?? null ) ) {
+			$saved_prices++;
+			if ( 'suggested' === ( $work_line['price_source'] ?? '' ) ) { $suggested_count++; } else { $manual_count++; }
+		}
+	}
+	$all_priced = ! empty( $values['lines'] ) && $saved_prices === count( $values['lines'] );
 
 	$heading = '<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
 		. '<h1>Borrador de cotización</h1>'
@@ -794,14 +949,17 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$form_open = '<form method="post" action="' . esc_url( fpw_draft_screen_url( $order_id ) ) . '">'
 		. '<input type="hidden" name="fpw_work_save" value="1" />'
 		. '<input type="hidden" name="fpw_work_revision" value="' . $revision . '" />'
-		. wp_nonce_field( fpw_draft_save_action( $order_id ), 'fpw_draft_nonce', true, false );
-	$save_section = '<section class="fpw-draft__save"><h2>Guardar trabajo</h2><button type="submit">Guardar cambios del borrador</button>'
+		. wp_nonce_field( fpw_draft_save_action( $order_id ), 'fpw_draft_nonce', true, false )
+		. wp_nonce_field( fpw_draft_refresh_action( $order_id ), 'fpw_refresh_nonce', true, false );
+	$save_section = '<section class="fpw-draft__save"><h2>Guardar trabajo</h2>'
+		. '<button type="submit">Guardar cambios del borrador</button> '
+		. '<button type="submit" name="fpw_price_refresh" value="1">Refrescar precios desde el mantenedor</button>'
+		. '<p class="fpw-draft__aside-note">Refrescar toma las sugerencias vigentes del mantenedor para las líneas sin precio elegido y conserva tus ingresos manuales: es un cambio comercial que desactualiza los formularios abiertos de la revisión anterior.</p>'
 		. '<p class="fpw-draft__aside-note">Guardar solo conserva tu trabajo: no aprueba ni envía ninguna cotización al comprador. Cada valor que ingresas es un ajuste manual que afecta solo a este borrador, nunca a una lista general ni a otro cliente.</p></section>';
 
 	$sections = fpw_draft_notice_html( $notice )
 		. '<div style="display:grid;gap:16px;min-width:0">'
-		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
-		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
+		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
 		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale ) . '</section>'
@@ -809,7 +967,11 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. '</form>'
 		. '</div>';
 
-	$prices_state = $all_priced ? 'Ingresados manualmente por el dueño' : fpw_draft_pending_html();
+	$prices_state = ! $all_priced
+		? fpw_draft_pending_html()
+		: ( $suggested_count > 0
+			? 'Guardados · ' . $suggested_count . ' ' . ( 1 === $suggested_count ? 'sugerido' : 'sugeridos' ) . ' por el mantenedor · ' . $manual_count . ' ' . ( 1 === $manual_count ? 'ingresado' : 'ingresados' ) . ' manualmente'
+			: 'Ingresados manualmente por el dueño' );
 	$dispatch_state = ! $with_dispatch
 		? 'No requerida (sin despacho)'
 		: ( null !== $dispatch_amount ? ( $dispatch_stale ? 'Requiere revisión' : 'Ingresada manualmente' ) : fpw_draft_pending_html() );
@@ -820,7 +982,8 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. fpw_draft_fact_raw_html( 'Precios', $prices_state )
 		. fpw_draft_pending_fact_html( 'Historial' )
 		. fpw_draft_fact_raw_html( 'Estimación de despacho', $dispatch_state )
-		. '</dl><p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
+		. '</dl><p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_price_screen_url() ) . '">Mantenedor de precios</a></p>'
+		. '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
 		. '</aside>';
 
 	return fpw_draft_screen_shell(

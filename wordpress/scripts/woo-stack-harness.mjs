@@ -1057,6 +1057,237 @@ register_shutdown_function( static function () {
       check(afterCancel.sales === 4 && !afterCancel.pending, 'a cancelled preview leaves the register untouched');
       const stale = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_nonce': staleConfirmNonce, 'fpw_sales_token': staleToken }) });
       check(stale.status === 200 && (await stale.text()).includes('ya no está disponible'), 'confirming a cancelled batch answers the explicit stale result, never an apply');
+
+      /* 5f. Issue #52 (cut 3 of #49): the private Price List (Mantenedor de precios) and the
+         drafts it prefills. The owner maintains net CLP prices per NATIVE product/variation
+         identity; a new request's draft prefills the available suggestions (distinct per option
+         of the same product) and leaves the rest pending; changing the list conserves saved
+         work and shows the new suggestions beside the manual choices; the explicit refresh
+         adopts suggestions without touching manual entries; ventas/visitors stay out; nothing
+         public leaks the maintained amounts. */
+      {
+        const priceUrl = '/wp-admin/admin.php?page=fpw-price-list';
+        const mailCountNow = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+        const wpEval = (code) => sh(PHP, [WPCLI, 'eval', code, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+        const mint52 = async (fetcher, action) => {
+          const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: action }).toString() });
+          const p = await minted.json();
+          return p && p.success ? String(p.data.nonce) : null;
+        };
+
+        /* Deterministic reset of the run-owned price row on the persistent disposable DB. */
+        wpEval(`global $wpdb; $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_price_list'");`);
+
+        const catalog52 = JSON.parse(wpEval(`
+          $simple = get_page_by_path('caja-cosechera-3-4', OBJECT, 'product');
+          $variable = get_page_by_path('caja-universal-cerrada-color', OBJECT, 'product');
+          $vp = wc_get_product($variable->ID);
+          echo wp_json_encode(array(
+            'simple' => (int) $simple->ID,
+            'variable' => (int) $variable->ID,
+            'variations' => array_values(array_map('intval', $vp->get_children())),
+            'simple_permalink' => get_permalink($simple->ID),
+            'variable_permalink' => get_permalink($variable->ID),
+          ));
+        `).split('\n').pop());
+        const [varA, varB] = catalog52.variations;
+        check(varA > 0 && varB > 0 && varA !== varB, `the variable fixture exposes two distinct variations (got ${catalog52.variations.join(', ')})`);
+
+        /* Negative controls first: ventas' valid session is denied the screen and the save
+           (even with a VALID nonce), a visitor goes to the login, a forged nonce is 403. */
+        const ventasPrice = await ventas(priceUrl);
+        check(ventasPrice.status === 403, `a valid ventas session must be DENIED the mantenedor (got ${ventasPrice.status})`);
+        const ventasPriceNonce = await mint52(ventas, 'fpw_price_save');
+        const ventasPricePost = await ventas(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': ventasPriceNonce, [`fpw_prices[p:${catalog52.simple}]`]: '1' }).toString() });
+        check(ventasPricePost.status === 403, `a ventas save with a VALID nonce is denied as a permission (got ${ventasPricePost.status})`);
+        const visitorPrice = await visitor(priceUrl);
+        check(visitorPrice.status === 302 && String(visitorPrice.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the mantenedor link is sent to the login, never shown prices');
+        const forgedPrice = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'fpw_price_save=1&fpw_price_nonce=forged' });
+        check(forgedPrice.status === 403, `a mantenedor save without a valid nonce is refused 403 (got ${forgedPrice.status})`);
+
+        /* Product fingerprint: the price save must not mutate product data. */
+        const productFingerprint = () => JSON.parse(wpEval(`
+          $out = array();
+          foreach (array(${catalog52.simple}, ${catalog52.variable}, ${varA}, ${varB}) as $id) {
+            $p = wc_get_product($id);
+            $out[$id] = array('price' => (string) $p->get_price('edit'), 'meta' => md5(wp_json_encode($p->get_meta_data())), 'status' => get_post_status($id));
+          }
+          echo wp_json_encode($out);
+        `).split('\n').pop());
+        const fpBefore = productFingerprint();
+
+        /* The owner saves the list over the real screen: the simple product plus two
+           options of the SAME product, each with its own price. */
+        const formNonceIn = (html, marker) => {
+          for (const f of (html.match(/<form\b[\s\S]*?<\/form>/g) || [])) {
+            if (f.includes(marker)) { return (f.match(/name="fpw_price_nonce" value="([0-9a-f]+)"/) || [])[1] || null; }
+          }
+          return null;
+        };
+        const pricePage = await (await owner(priceUrl)).text();
+        check(pricePage.includes('Mantenedor de precios') && pricePage.includes(`fpw_prices[v:${varA}]`), 'the owner opens the mantenedor with an input per native identity');
+        const saveNonce = formNonceIn(pricePage, 'fpw_price_save');
+        check(Boolean(saveNonce), 'the mantenedor save form carries a minted nonce');
+        const amounts52 = { simple: '14971', varA: '21973', varB: '23979' };
+        const mailsBeforePriceSave = mailCountNow();
+        const savedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': saveNonce, [`fpw_prices[p:${catalog52.simple}]`]: amounts52.simple, [`fpw_prices[v:${varA}]`]: amounts52.varA, [`fpw_prices[v:${varB}]`]: amounts52.varB }).toString() });
+        check(savedPrices.status === 200, `the price save must answer 200 (got ${savedPrices.status})`);
+        check((await savedPrices.text()).includes('Lista de precios guardada: 3 precios mantenidos'), 'the save banner reports its explicit outcome');
+        const priceRow52 = JSON.parse(wpEval(`
+          global $wpdb;
+          $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_price_list'));
+          echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
+        `).split('\n').pop());
+        check(priceRow52 && priceRow52.prices[`p:${catalog52.simple}`] === 14971 && priceRow52.prices[`v:${varA}`] === 21973 && priceRow52.prices[`v:${varB}`] === 23979, 'the maintained prices persist by native product/variation identity');
+        check(JSON.stringify(productFingerprint()) === JSON.stringify(fpBefore), 'saving prices mutated no product data: prices, meta and status all stand');
+        check(mailCountNow() === mailsBeforePriceSave, 'saving prices sends no notification');
+        const priceReopened = await (await owner(priceUrl)).text();
+        check(new RegExp(`name="fpw_prices\\[v:${varA}\\]"[^>]*value="21973"`).test(priceReopened), 'the mantenedor recovers its saved values on reopening (persistence)');
+
+        /* Nothing public leaks the maintained amounts: catalog routes, cart, checkout,
+           the request confirmation and the native Store API all stay price-free. */
+        const leakPaths = ['/tienda/', '/cotizacion/', '/datos-y-envio/', '/?s=caja', new URL(catalog52.simple_permalink).pathname, new URL(catalog52.variable_permalink).pathname];
+        for (const leakPath of leakPaths) {
+          const html = await fetchBody(leakPath);
+          const text = serverRenderedText(html);
+          for (const amount of Object.values(amounts52)) {
+            check(!text.includes(amount) && !new RegExp(`value="${amount}"`).test(html), `no maintained amount (${amount}) leaks on public ${leakPath}`);
+          }
+        }
+        const storeJson = await (await fetch(SITE_URL + '/wp-json/wc/store/v1/products', { signal: AbortSignal.timeout(60_000) })).text();
+        for (const amount of Object.values(amounts52)) {
+          check(!storeJson.includes(`"${amount}"`) && !storeJson.includes(`:${amount}`), `no maintained amount (${amount}) leaks through the native Store API`);
+        }
+
+        /* The prefill journey over a REAL checkout: the simple product plus two options
+           of the same variable product. The simple line rides the classic wc-ajax add;
+           the option lines ride the Store API (the route the race journey proves), since
+           a wc-ajax add that posts a VARIATION id trips the quotes extension's
+           quotable-conflict emptying (variations carry no qwc_enable_quotes meta). */
+        const jar52 = makeCookieFetch();
+        const addAjax52 = (params) => jar52('/?wc-ajax=add_to_cart', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString() });
+        check((await addAjax52({ product_id: String(catalog52.simple), quantity: '3' })).status === 200, 'the price-journey simple add must answer 200');
+        const storeCart52 = await jar52('/wp-json/wc/store/v1/cart');
+        check(storeCart52.status === 200, `the Store API cart must answer 200 (got ${storeCart52.status})`);
+        const storeNonce52 = storeCart52.headers.get('nonce');
+        const storeCartData52 = await storeCart52.json();
+        check(storeCartData52.items.length === 1 && Number(storeCartData52.items[0].id) === catalog52.simple, `the simple line stands before the option adds (got ${JSON.stringify(storeCartData52.items && storeCartData52.items.map((i) => i.id))})`);
+        const color52 = JSON.parse(wpEval(`
+          $out = array();
+          foreach (array(${varA}, ${varB}) as $vid) { $v = wc_get_product($vid); $out[$vid] = array_values($v->get_attributes()); }
+          echo wp_json_encode($out);
+        `).split('\n').pop());
+        for (const [vid, qty] of [[varA, '2'], [varB, '1']]) {
+          const added = await jar52('/wp-json/wc/store/v1/cart/add-item', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...(storeNonce52 ? { nonce: storeNonce52 } : {}) },
+            body: JSON.stringify({ id: String(vid), quantity: qty, variation: [{ attribute: 'attribute_color', value: String((color52[vid] || [])[0]) }] }),
+          });
+          check(added.status === 200 || added.status === 201, `the option add must answer 2xx (got ${added.status})`);
+        }
+        const cartBeforeCheckout = await (await jar52('/wp-json/wc/store/v1/cart')).json();
+        check(cartBeforeCheckout.items.length === 3, `the cart holds three lines before checkout (got ${cartBeforeCheckout.items.length})`);
+        const page52 = await (await jar52('/datos-y-envio/')).text();
+        const hidden52 = {};
+        for (const match of page52.matchAll(/<input[^>]*type="hidden"[^>]*>/g)) {
+          const name = (match[0].match(/name="([^"]+)"/) || [])[1];
+          if (!name || name in hidden52) { continue; }
+          hidden52[name] = (match[0].match(/value="([^"]*)"/) || [])[1] ?? '';
+        }
+        check(hidden52['woocommerce-process-checkout-nonce'] && hidden52['fpw_attempt'], 'the price-journey checkout form carries its identity');
+        const posted52 = { ...hidden52,
+          billing_first_name: 'PRUEBA LOCAL PRECIOS', billing_phone: '+56 9 1234 5678',
+          billing_email: 'precios-52@example.invalid', billing_company: 'PRUEBA NO COMERCIAL',
+          billing_fp_rut: '76.876.543-4', billing_fp_giro: 'Prueba local',
+          payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
+          billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal' };
+        const response52 = await jar52('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted52).toString() });
+        const payload52 = await response52.json();
+        check(payload52 && payload52.result === 'success' && /\/order-received\/(\d+)/.test(String(payload52.redirect || '')), `the price-journey request lands natively (got ${JSON.stringify(payload52).slice(0, 140)})`);
+        const order52 = Number((String(payload52.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
+        const draftRow52 = () => JSON.parse(wpEval(`
+          global $wpdb;
+          $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_' . ${order52}));
+          echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
+        `).split('\n').pop());
+        const draft52 = draftRow52();
+        check(draft52 && draft52.items.length === 3, `the price-journey draft keeps its three lines (got ${draft52 && draft52.items.length})`);
+
+        const draftUrl52 = `/wp-admin/admin.php?page=fpw-quote-draft&request=${order52}`;
+        const postDraft52 = (fetcher, fields) => fetcher(draftUrl52, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
+        const draft52Html = await (await owner(draftUrl52)).text();
+        check(new RegExp('name="fpw_work\\[lines\\]\\[0\\]\\[price\\]" value="14971"').test(draft52Html), 'the simple line prefills its maintained price');
+        check(new RegExp('name="fpw_work\\[lines\\]\\[1\\]\\[price\\]" value="21973"').test(draft52Html) && new RegExp('name="fpw_work\\[lines\\]\\[2\\]\\[price\\]" value="23979"').test(draft52Html), 'the two options of the same product prefill their OWN different prices');
+        check(draft52Html.includes('sugerido por el mantenedor') && draft52Html.includes('Prellenado con la sugerencia del mantenedor'), 'the prefill reads as a suggestion, never a chosen price');
+        check(draft52Html.includes('Mantenedor de precios'), 'the draft links the mantenedor');
+
+        /* The owner saves: two suggestions adopted, one deliberate manual override. */
+        const lineFields52 = (priceFor) => {
+          const fields = {};
+          draft52.items.forEach((line, index) => {
+            fields[`fpw_work[lines][${index}][quantity]`] = String(line.quantity);
+            const price = priceFor(index, line);
+            fields[`fpw_work[lines][${index}][price]`] = price === null ? '' : String(price);
+          });
+          return fields;
+        };
+        const saved52 = await postDraft52(owner, {
+          'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint52(owner, `fpw-draft-save-${order52}`),
+          ...lineFields52((i) => (i === 1 ? 17500 : [14971, 21973, 23979][i])),
+          'fpw_work[destination]': 'Camino de precios 123, Mostazal', 'fpw_work[dispatch_amount]': '39990',
+        });
+        check((await saved52.text()).includes('Cambios guardados (revisión 1)'), 'the draft save with adopted + manual prices lands');
+        const workRow52 = () => JSON.parse(wpEval(`
+          global $wpdb;
+          $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_work_' . ${order52}));
+          echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
+        `).split('\n').pop());
+        const workBeforeListChange = workRow52();
+        check(workBeforeListChange && workBeforeListChange.revision === 1 && workBeforeListChange.lines[1].price === 17500 && workBeforeListChange.lines[1].price_source === 'manual', 'the saved work keeps the manual override');
+        check(workBeforeListChange.lines[0].price === 14971 && workBeforeListChange.lines[0].price_source === 'suggested' && workBeforeListChange.lines[2].price === 23979 && workBeforeListChange.lines[2].price_source === 'suggested', 'the adopted suggestions are stored with their suggested origin');
+        const reopened52 = await (await owner(draftUrl52)).text();
+        check(reopened52.includes('17.500 CLP neto · ingreso manual'), 'the manual override renders as the owner\'s choice');
+        check((reopened52.match(/sugerido por el mantenedor/g) || []).length >= 2, 'the adopted suggestions render named as suggestions');
+
+        /* The list changes: the saved draft keeps its amounts, the new suggestions show
+           beside them, nothing is silently rewritten. */
+        const changedPage = await (await owner(priceUrl)).text();
+        const changedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': formNonceIn(changedPage, 'fpw_price_save'), [`fpw_prices[p:${catalog52.simple}]`]: '15980', [`fpw_prices[v:${varA}]`]: '22976', [`fpw_prices[v:${varB}]`]: '24978' }).toString() });
+        check((await changedPrices.text()).includes('Lista de precios guardada'), 'the list change saves');
+        const workAfterListChange = workRow52();
+        check(JSON.stringify(workAfterListChange) === JSON.stringify(workBeforeListChange) && workAfterListChange.lines[0].price === 14971 && workAfterListChange.lines[1].price === 17500, 'changing the list never rewrites the saved draft');
+        const stable52 = await (await owner(draftUrl52)).text();
+        check(new RegExp('name="fpw_work\\[lines\\]\\[0\\]\\[price\\]" value="14971"').test(stable52), 'the conserved amount still fills its input after the list moved');
+        check(stable52.includes('La lista sugiere hoy: 15.980 CLP neto') && stable52.includes('La lista sugiere hoy: 22.976 CLP neto'), 'the new suggestions render beside the conserved values');
+
+        /* The explicit refresh: tracking lines adopt the new list, the manual choice survives. */
+        const refreshed52 = await (await postDraft52(owner, { 'fpw_price_refresh': '1', 'fpw_refresh_nonce': await mint52(owner, `fpw-draft-refresh-${order52}`) })).text();
+        check(refreshed52.includes('Precios refrescados desde el mantenedor (revisión 2)'), 'the explicit refresh lands as a new revision');
+        const workAfterRefresh = workRow52();
+        check(workAfterRefresh.revision === 2 && workAfterRefresh.lines[0].price === 15980 && workAfterRefresh.lines[0].price_source === 'suggested', 'the tracking line adopts the new list value');
+        check(workAfterRefresh.lines[1].price === 17500 && workAfterRefresh.lines[1].price_source === 'manual', 'the manual choice survives the refresh');
+        check(workAfterRefresh.lines[2].price === 24978 && workAfterRefresh.lines[2].price_source === 'suggested', 'the second option adopts its own new price');
+        check(workAfterRefresh.dispatch_amount === 39990 && workAfterRefresh.destination === 'Camino de precios 123, Mostazal', 'the refresh touches only prices: destination and dispatch stay as saved');
+
+        /* A form rendered from the pre-refresh revision is now stale. */
+        const stale52 = await postDraft52(owner, {
+          'fpw_work_save': '1', 'fpw_work_revision': '1', 'fpw_draft_nonce': await mint52(owner, `fpw-draft-save-${order52}`),
+          ...lineFields52(() => 1), 'fpw_work[destination]': 'Sobrescritura', 'fpw_work[dispatch_amount]': '1',
+        });
+        check((await stale52.text()).includes('no se guardó'), 'a pre-refresh form is refused as stale instead of overwriting');
+
+        /* The refresh boundary: ventas' valid session with a valid nonce is denied. */
+        const ventasRefresh = await postDraft52(ventas, { 'fpw_price_refresh': '1', 'fpw_refresh_nonce': await mint52(ventas, `fpw-draft-refresh-${order52}`) });
+        check(ventasRefresh.status === 403, `a valid ventas session with a valid nonce must be DENIED the refresh (got ${ventasRefresh.status})`);
+
+        /* The journey adds exactly one request's notifications, never more. */
+        check(mailCountNow() === mailsBeforePriceSave + 2, `the price journey added exactly one request's notifications (${mailsBeforePriceSave} → ${mailCountNow()})`);
+        const receivedPath52 = String(payload52.redirect).replace(SITE_URL, '');
+        const receivedText = serverRenderedText(await fetchBody(receivedPath52));
+        for (const amount of [...Object.values(amounts52), '15980', '22976', '24978', '17500']) {
+          check(!receivedText.includes(amount), `no maintained or suggested amount (${amount}) leaks on the request confirmation`);
+        }
+      }
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -1142,6 +1373,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey) on ${SITE_URL}`);
   return checks;
 }
