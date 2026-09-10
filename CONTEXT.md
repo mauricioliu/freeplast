@@ -48,6 +48,10 @@ _Avoid_: Order status, fulfillment status
 A priced commercial document prepared by Freeplast in response to a Quote Request, called **Cotización** in Spanish. A request may eventually lead to one or more separately versioned Quotations, but creating and delivering them is outside the first release.
 _Avoid_: Quote Request, order, invoice
 
+**Quotation Draft**:
+The single private initial draft Freeplast creates when a Quote Request is received durably, called **Borrador de cotización** in Spanish. It snapshots the request's native record — products, options, quantities, identity, destination and Submitted Details — and names what the record does not carry yet (prices, purchase history, dispatch estimate) as pending, never as zero. It is not a Quotation, issues nothing, and is readable only by the owner.
+_Avoid_: Draft order, quote, prefill, documento
+
 **Delivery Address**:
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
@@ -79,3 +83,5 @@ _Avoid_: New production site, replacement site
 ## Implementation decision
 
 [ADR-0001](docs/adr/0001-woocommerce-quote-only.md) records the approved mapping to WooCommerce. Its Products are the editable Catalog Source, its Cart holds Productos a Cotizar, and its Orders administration holds Quote Requests, not commercial purchases. The initial Woo release uses request intake and native order notes; it does not reproduce the former six-state commercial workflow. Historical statuses and submitted records remain preserved.
+
+[ADR-0004](docs/adr/0004-quote-draft-durable-relationship.md) records the Quotation Draft's durable relationship (issue #50): one unique options row born at the checkout receipt, read by the owner only, announced through the existing owner email.

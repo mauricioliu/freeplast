@@ -110,6 +110,8 @@ console.log(run(php,[path.join(root,'scripts/catalog-native-frame-test.php')]));
 console.log(run(php,[path.join(root,'scripts/product-sheet-test.php')]));
 console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
+// Issue #50 (cut 1 of #49): one private quotation draft per durably received request.
+console.log(run(php,[path.join(root,'scripts/quote-draft-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));

@@ -56,6 +56,34 @@ async function fetchBody(path) {
   }
 }
 
+/* A fetch bound to its own cookie jar (auth sessions for the draft journey).
+ * Same cookie discipline as the public-journey block below, factored out. */
+function makeCookieFetch() {
+  const jar = new Map();
+  return async (path, opts = {}) => {
+    const headers = { ...(opts.headers || {}) };
+    if (jar.size > 0) { headers.cookie = [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; '); }
+    const response = await fetch(SITE_URL + path, { ...opts, headers, redirect: 'manual', signal: AbortSignal.timeout(60_000) });
+    for (const raw of (response.headers.getSetCookie ? response.headers.getSetCookie() : [])) {
+      const pair = raw.split(';')[0];
+      const eq = pair.indexOf('=');
+      if (eq > 0) { jar.set(pair.slice(0, eq), pair.slice(eq + 1)); }
+    }
+    return response;
+  };
+}
+
+/* A real wp-login.php session for one user; returns the login status. */
+async function wpLogin(fetcher, user, pass) {
+  await fetcher('/wp-login.php');
+  const posted = await fetcher('/wp-login.php', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ log: user, pwd: pass, 'wp-submit': 'Log In', redirect_to: `${SITE_URL}/wp-admin/`, testcookie: '1' }).toString(),
+  });
+  return posted.status;
+}
+
 // Class order is presentation, not the search contract. The theme may put
 // product-card before Woo's product token; parse tokens rather than prefixes.
 export function countProductCards(html) {
@@ -102,8 +130,11 @@ export async function runStackHarness() {
   /* 1b. Mail containment + notification-event log for this run (issue #31):
      the disposable stack must never deliver anything, and every mail ATTEMPT
      is the observable record-notification event the acceptance criteria
-     count. The mu-plugin is written straight into the disposable install and
-     never exists in the repository's wp-content. */
+     count. Since issue #50 the log also extracts, from the intercepted body,
+     the private draft link's request id — the observable that proves the
+     owner notice points at the corresponding draft. The mu-plugin is written
+     straight into the disposable install and never exists in the repository's
+     wp-content. */
   const mailLog = join(WORDPRESS_DIR, '.build', 'mail-log.jsonl');
   rmSync(mailLog, { force: true });
   mkdirSync(join(WP_DIR, 'wp-content', 'mu-plugins'), { recursive: true });
@@ -112,10 +143,15 @@ export async function runStackHarness() {
     `<?php
 /** Disposable-stack only (written by woo-stack-harness.mjs): block every mail
  * attempt and record it — the offline substitute for the receipt-notification
- * events. Counts subjects only; no bodies, no recipients. */
+ * events. Counts subjects only, plus the draft request id the body names; no
+ * bodies, no recipients. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
-	$entry = wp_json_encode( array( 'subject' => (string) ( $atts['subject'] ?? '' ) ) );
+	$draft_request = null;
+	if ( preg_match( '/page=fpw-quote-draft&(?:amp;|#038;)?request=(\\d+)/', (string) ( $atts['message'] ?? '' ), $m ) ) {
+		$draft_request = (int) $m[1];
+	}
+	$entry = wp_json_encode( array( 'subject' => (string) ( $atts['subject'] ?? '' ), 'draft_request' => $draft_request ) );
 	if ( is_string( $entry ) ) { file_put_contents( dirname( ABSPATH ) . '/mail-log.jsonl', $entry . "\\n", FILE_APPEND ); }
 	return true; // blocked: the disposable stack never delivers mail.
 }, PHP_INT_MAX, 2 );
@@ -557,6 +593,118 @@ register_shutdown_function( static function () {
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
 
+    /* 5b. Issue #50: the owner notice rides the EXISTING admin email — no new
+       notification surface. Each new request's intercepted owner mail links
+       its OWN draft exactly once; no customer acknowledgement ever does. */
+    const scenarioIds = Object.values(outcomes.scenario_orders).map(Number);
+    const draftMails = mails.map((line) => JSON.parse(line)).filter((m) => m.draft_request !== null);
+    check(draftMails.length === outcomes.new_request_count, `exactly one owner notice with a draft link per new request (${outcomes.new_request_count}), got ${draftMails.length}`);
+    for (const id of scenarioIds) {
+      check(draftMails.filter((m) => m.draft_request === id).length === 1, `request ${id}'s owner notice must link its own draft exactly once`);
+    }
+
+    /* 5c. Issue #50 journey: solicitud real → registro → aviso interceptado →
+       lectura privada. Every scenario request keeps exactly ONE durable draft
+       built from its own native record (reference, attempt identity, items,
+       identity, Submitted Details, explicit pendings); a record that never
+       went through the checkout receipt carries none; the private screen
+       reads for an authorized owner session, DENIES a valid ventas session
+       (permission, not CSRF), sends a visitor to the login, and invents
+       nothing for missing records. */
+    const idsList = scenarioIds.join(',');
+    const draftState = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+      global $wpdb;
+      $out = array('drafts' => array(), 'records' => array());
+      foreach (array(${idsList}) as $id) {
+        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_' . $id));
+        $order = wc_get_order($id);
+        $lines = array();
+        foreach ($order->get_items() as $item) { $lines[] = array('name' => $item->get_name(), 'quantity' => (int) $item->get_quantity()); }
+        $out['drafts'][$id] = is_string($raw) ? json_decode($raw, true) : null;
+        $out['records'][$id] = array(
+          'reference' => (string) $order->get_order_number(),
+          'attempt' => (string) $order->get_meta('_fpw_attempt'),
+          'email' => (string) $order->get_billing_email(),
+          'company' => (string) $order->get_billing_company(),
+          'lines' => $lines,
+          'details' => is_array($order->get_meta('_fp_submitted_details')) ? count($order->get_meta('_fp_submitted_details')) : 0,
+        );
+      }
+      $manual = new WC_Order();
+      $manual->set_created_via('admin');
+      $manual->set_status('pending');
+      $manual->save();
+      $out['manual_order'] = $manual->get_id();
+      $out['manual_has_draft'] = (bool) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_' . $manual->get_id()));
+      echo wp_json_encode($out);
+    `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+    for (const id of scenarioIds) {
+      const draft = draftState.drafts[id];
+      const record = draftState.records[id];
+      check(draft && draft.order_id === id, `request ${id} keeps its durable initial draft`);
+      check(draft.reference === record.reference && String(record.reference).startsWith('FP-'), `request ${id}'s draft carries the native request reference`);
+      check(draft.attempt === record.attempt && draft.attempt.length === 64, `request ${id}'s draft binds its own attempt identity`);
+      check(JSON.stringify((draft.items || []).map((l) => [l.name, l.quantity])) === JSON.stringify(record.lines.map((l) => [l.name, l.quantity])), `request ${id}'s draft lines come from the record, not a later basket`);
+      check(draft.identity && draft.identity.email === record.email && draft.identity.company === record.company, `request ${id}'s draft identity comes from the record`);
+      check(draft.destination && 'dispatch' in draft.destination, `request ${id}'s draft carries the recorded destination`);
+      check(draft.enrichment && draft.enrichment.prices === 'pending' && draft.enrichment.history === 'pending' && draft.enrichment.dispatch === 'pending', `request ${id}'s draft names prices/history/dispatch pending, never zero`);
+      check(draft.submitted_details && Object.keys(draft.submitted_details).length === record.details, `request ${id}'s draft preserves its Submitted Details`);
+      check(draft.schema === 1, `request ${id}'s draft uses the run's single schema`);
+    }
+    check(draftState.manual_has_draft === false, `a record created without a checkout receipt gets no draft (order ${draftState.manual_order})`);
+
+    /* The private reading over real HTTP: owner opens the intercepted
+       notice's destination from a fresh authenticated session. */
+    const draftOwner = 'fp-draft-owner';
+    const draftOwnerPass = `owner-${randomUUID().replace(/-/g, '').slice(0, 18)}`;
+    const draftVentas = 'fp-draft-ventas';
+    const draftVentasPass = `ventas-${randomUUID().replace(/-/g, '').slice(0, 18)}`;
+    const draftWpArgs = [`--path=${WP_DIR}`, `--url=${SITE_URL}`];
+    try {
+      sh(PHP, [WPCLI, 'user', 'create', draftOwner, `${draftOwner}@example.invalid`, '--role=administrator', `--user_pass=${draftOwnerPass}`, ...draftWpArgs, '--quiet']);
+      sh(PHP, [WPCLI, 'user', 'create', draftVentas, `${draftVentas}@example.invalid`, '--role=ventas_freeplast', `--user_pass=${draftVentasPass}`, ...draftWpArgs, '--quiet']);
+
+      const owner = makeCookieFetch();
+      const ownerLogin = await wpLogin(owner, draftOwner, draftOwnerPass);
+      check(ownerLogin === 302, `the owner session must log in over real HTTP (got ${ownerLogin})`);
+      const draftUrl = `/wp-admin/admin.php?page=fpw-quote-draft&request=${raceOrder}`;
+      const screen = await owner(draftUrl);
+      check(screen.status === 200, `the private draft must open for the authorized owner session (got ${screen.status})`);
+      const screenHtml = await screen.text();
+      const raceRecord = draftState.records[raceOrder];
+      check(screenHtml.includes(raceRecord.reference), 'the private reading shows the request reference');
+      for (const line of raceRecord.lines) { check(screenHtml.includes(String(line.quantity)) && screenHtml.includes(line.name), `the private reading shows the stored line ${line.name} × ${line.quantity}`); }
+      check(screenHtml.includes(raceRecord.company) && screenHtml.includes(raceRecord.email), 'the private reading shows the stored identity');
+      check((screenHtml.match(/Pendiente/g) || []).length >= 3, 'prices, history and dispatch estimate read as pending on the screen');
+      check(!screenHtml.replace(/<script[\s\S]*?<\/script>/g, '').includes('$'), 'no price amount renders on the private draft');
+      check(!screenHtml.includes('Sin historial'), 'the screen never presents missing history as a customer verdict');
+      const reread = await (await owner(draftUrl)).text();
+      const region = (html) => { const start = html.indexOf('<div class="wrap fpw-draft">'); const end = html.indexOf('<!-- fpw-draft:end -->'); return start >= 0 && end > start ? html.slice(start, end) : null; };
+      check(region(reread) !== null && region(reread) === region(screenHtml), 'the private read is stable: the draft screen markup changes nothing');
+
+      /* Negative permission with a VALID session (no nonce applies to a GET
+         read): ventas' exact approved caps never open the private draft. */
+      const ventas = makeCookieFetch();
+      const ventasLogin = await wpLogin(ventas, draftVentas, draftVentasPass);
+      check(ventasLogin === 302, `the ventas session must log in over real HTTP (got ${ventasLogin})`);
+      const denied = await ventas(draftUrl);
+      check(denied.status === 403, `a valid ventas session must be DENIED the private draft (got ${denied.status})`);
+
+      /* A visitor with the direct link is sent to the login — knowing the
+         link grants nothing. */
+      const anon = await makeCookieFetch()(draftUrl);
+      check(anon.status === 302 && String(anon.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the direct link is sent to the login, never shown data');
+
+      /* A request without a draft reads honestly; bogus ids invent nothing. */
+      const manualScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${draftState.manual_order}`)).text();
+      check(manualScreen.includes('Sin borrador') && !manualScreen.includes('Borrador inicial'), 'a record without a draft reads honestly, without inventing one');
+      const bogus = await owner('/wp-admin/admin.php?page=fpw-quote-draft&request=99999999');
+      check(bogus.status === 200 && (await bogus.text()).includes('no encontrada'), 'an unknown request id answers an honest empty state');
+    } finally {
+      spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
+      spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
+    }
+
     /* 6. Issue #33: the restricted ventas session over real HTTP. Every protected
        operation is attempted with a VALID session and a VALID nonce (minted for
        the restricted user by the disposable mu-plugin above) and each denial
@@ -637,6 +785,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + restricted-ventas record boundary) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + restricted-ventas record boundary) on ${SITE_URL}`);
   return checks;
 }
