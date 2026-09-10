@@ -116,6 +116,8 @@ console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-draft-test.php')]));
 // Issue #52 (cut 3 of #49): the private Price List (Mantenedor de precios) and the drafts it prefills.
 console.log(run(php,[path.join(root,'scripts/price-list-test.php')]));
+// Issue #53 (cut 4 of #49): the reviewed price-sheet import onto the mantenedor.
+console.log(run(php,[path.join(root,'scripts/price-import-test.php')]));
 // Issue #60 (cut 11 of #49): dispatch-distance consultation from the private draft.
 console.log(run(php,[path.join(root,'scripts/dispatch-distance-test.php')]));
 // Issue #54 (cut 5 of #49): manual Sales Register import + Purchase History by normalized RUT.

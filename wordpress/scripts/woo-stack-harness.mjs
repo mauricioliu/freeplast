@@ -1584,6 +1584,262 @@ register_shutdown_function( static function () {
       check(record5f.email === draftState.records[correctOrder].email, 'the native record keeps its identity');
     }
 
+    /* 5f. Issue #53 (cut 4 of #49): the reviewed price-sheet import onto the
+       mantenedor. The owner uploads a synthetic CSV (contract v1: explicit
+       native product/variation ids + integer CLP price), previews without
+       changing the list, cancels one error-laden batch harmlessly, confirms
+       the reviewed batch exactly once (bounded merge), repeats it with zero
+       fabricated changes, refuses a stale preview and a replaced workbook,
+       and a NEW request's draft prefills the confirmed values. ventas and
+       visitors stay out; products, drafts, sales and public surfaces stay
+       untouched; the definitive contract stays blocked on the real sample. */
+    {
+      const importUrl53 = '/wp-admin/admin.php?page=fpw-price-import';
+      const priceUrl53 = '/wp-admin/admin.php?page=fpw-price-list';
+      const mailCount53 = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+      const mint53 = async (fetcher, forAction) => {
+        const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: forAction }).toString() });
+        const payload = await minted.json();
+        return payload && payload.success ? String(payload.data.nonce) : null;
+      };
+      const formNonce53 = (html, action) => {
+        for (const f of (html.match(/<form\b[\s\S]*?<\/form>/g) || [])) {
+          if (f.includes(`name="fpw_price_import_action" value="${action}"`)) {
+            return (f.match(/name="fpw_price_import_nonce" value="([0-9a-f]+)"/) || [])[1] || null;
+          }
+        }
+        return null;
+      };
+      const uploadCsv53 = async (csv, filename) => {
+        const page = await (await owner(importUrl53)).text();
+        const uploadNonce = formNonce53(page, 'upload');
+        check(Boolean(uploadNonce), 'the price-import upload form carries a minted nonce');
+        const form = new FormData();
+        form.set('fpw_price_import_action', 'upload');
+        form.set('fpw_price_import_nonce', uploadNonce);
+        form.set('fpw_price_import_file', new Blob([csv], { type: 'text/csv' }), filename);
+        const posted = await owner(importUrl53, { method: 'POST', body: form });
+        check(posted.status === 200, `the price-import upload must answer 200 (got ${posted.status})`);
+        return posted.text();
+      };
+      const priceRow53 = () => JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        $raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'fpw_price_list'");
+        $list = is_string($raw) ? json_decode($raw, true) : null;
+        echo wp_json_encode(array(
+          'prices' => is_array($list) && isset($list['prices']) ? $list['prices'] : array(),
+          'raw' => is_string($raw) ? $raw : '',
+        ));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const receiptCount53 = () => Number(sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        echo (string) (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_price_import_receipt_%'");
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const guardedRows53 = () => JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        echo wp_json_encode(array(
+          'drafts' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_draft%'"),
+          'sales' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_sales%'"),
+        ));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+
+      /* Deterministic reset of the run-owned rows on the persistent disposable DB:
+         only the importer's and the list's own rows — requests, drafts and sales stay. */
+      sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_price_list'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_price_import_batch'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'fpw_price_import_receipt_%'");
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+
+      const catalog53 = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $simple = get_page_by_path('caja-cosechera-3-4', OBJECT, 'product');
+        $variable = get_page_by_path('caja-universal-cerrada-color', OBJECT, 'product');
+        $vp = wc_get_product($variable->ID);
+        echo wp_json_encode(array(
+          'simple' => (int) $simple->ID,
+          'variable' => (int) $variable->ID,
+          'variations' => array_values(array_map('intval', $vp->get_children())),
+          'simple_permalink' => get_permalink($simple->ID),
+          'variable_permalink' => get_permalink($variable->ID),
+        ));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const [varA53, varB53] = catalog53.variations;
+      check(varA53 > 0 && varB53 > 0 && varA53 !== varB53, 'the import-journey fixture exposes two distinct variations');
+      const seedPrices53 = { [`p:${catalog53.simple}`]: 31111, [`v:${varA53}`]: 32222 };
+
+      /* The owner screens cross-link and the importer names its standing blocker. */
+      const importHome53 = await (await owner(importUrl53)).text();
+      check(importHome53.includes('Importar precios') && importHome53.includes('id_producto') && importHome53.includes('muestra real'), 'the importer renders its contract and names the real-sample blocker');
+      check(importHome53.includes('page=fpw-price-list'), 'the importer links the mantenedor it updates');
+      const priceHome53 = await (await owner(priceUrl53)).text();
+      check(priceHome53.includes('page=fpw-price-import'), 'the mantenedor links the bulk importer beside its direct editing');
+
+      /* Negative controls first: ventas' valid session is denied the screen and
+         its upload (even with a VALID nonce), a visitor goes to the login, a
+         forged confirm nonce is an explicit 403. */
+      const ventasImport53 = await ventas(importUrl53);
+      check(ventasImport53.status === 403, `a valid ventas session must be DENIED the price import (got ${ventasImport53.status})`);
+      const ventasImportPost53 = await ventas(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'upload', 'fpw_price_import_nonce': await mint53(ventas, 'fpw_price_import_upload') }).toString() });
+      check(ventasImportPost53.status === 403, `a ventas upload with a VALID nonce is denied as a permission (got ${ventasImportPost53.status})`);
+      const visitorImport53 = await visitor(importUrl53);
+      check(visitorImport53.status === 302 && String(visitorImport53.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the import link is sent to the login, never shown the importer');
+      const forgedImport53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'fpw_price_import_action=confirm&fpw_price_import_token=x&fpw_price_import_nonce=forged' });
+      check(forgedImport53.status === 403, `a price-import confirm without a valid nonce is refused 403 (got ${forgedImport53.status})`);
+
+      /* A ZIP workbook (the .xlsx container) is refused outright: no macro,
+         formula or remote reference is ever read, parsed or executed. */
+      const zip53 = await uploadCsv53('PK\u0003\u0004 synthetic workbook bytes', 'planilla-precios.xlsx');
+      check(zip53.includes('libro de Excel comprimido'), 'a ZIP workbook is refused with the explicit CSV-only message');
+      check(priceRow53().raw === '', 'the refused workbook staged nothing');
+
+      /* Product fingerprint: the import must not mutate product data. */
+      const productFingerprint53 = () => JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $out = array();
+        foreach (array(${catalog53.simple}, ${catalog53.variable}, ${varA53}, ${varB53}) as $id) {
+          $p = wc_get_product($id);
+          $out[$id] = array('price' => (string) $p->get_price('edit'), 'meta' => md5(wp_json_encode($p->get_meta_data())), 'status' => get_post_status($id));
+        }
+        echo wp_json_encode($out);
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      const fingerprintBefore53 = productFingerprint53();
+      const guardedBefore53 = guardedRows53();
+
+      /* Seed a standing list THROUGH the importer: two nuevos, confirmed once. */
+      const seedCsv53 = `id_producto,id_variacion,precio\n${catalog53.simple},,31111\n${catalog53.variable},${varA53},32222\n`;
+      let importHtml53 = await uploadCsv53(seedCsv53, 'semilla.csv');
+      check(importHtml53.includes('la lista de precios NO cambió'), 'the upload banner states the list did not change');
+      check(importHtml53.includes('semilla.csv') && importHtml53.includes('2 filas aplicables') && importHtml53.includes('2 nuevos'), 'the preview names its source file and the proposed new prices');
+      check(priceRow53().raw === '', 'upload/preview stage a proposal only: the price row does not even exist until confirmation');
+      const seedConfirm53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      check((await seedConfirm53.text()).includes('Importación aplicada: 2 precios nuevos'), 'the seeded confirmation reports its explicit result');
+      const seeded = priceRow53().prices;
+      check(seeded[`p:${catalog53.simple}`] === 31111 && seeded[`v:${varA53}`] === 32222, 'the confirmed seed prices persist by native identity');
+      check(receiptCount53() === 1, 'the applied seed batch left one consultable receipt');
+
+      /* An error-laden batch is reviewed honestly and CANCELLED: nothing changes. */
+      const messyCsv53 = [
+        'id_producto,id_variacion,precio',
+        `${catalog53.simple},,41111`,
+        `${catalog53.simple},,42222`,
+        `${catalog53.simple},${varA53},43333`,
+        `${catalog53.variable},,0`,
+        `${catalog53.variable},,=1+1`,
+        '999999,,44444',
+      ].join('\n');
+      importHtml53 = await uploadCsv53(messyCsv53, 'con-errores.csv');
+      check(importHtml53.includes('0 filas aplicables') && importHtml53.includes('6 filas con error'), 'the messy batch previews zero applicable rows and names every error');
+      check(importHtml53.includes('identidad duplicada') && importHtml53.includes('asociación ambigua') && importHtml53.includes('producto desconocido') && importHtml53.includes('precio 0') && importHtml53.includes('nunca se evalúan'), 'the review names the conflict, the ambiguity, the unknown product, the zero sentinel and the inert formula');
+      const cancelToken53 = (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1];
+      const cancelled53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'cancel', 'fpw_price_import_nonce': formNonce53(importHtml53, 'cancel'), 'fpw_price_import_token': cancelToken53 }).toString() });
+      check((await cancelled53.text()).includes('sin efectos'), 'the cancellation answers its harmlessness explicitly');
+      check(JSON.stringify(priceRow53().prices) === JSON.stringify(seeded), 'the cancelled batch left the list exactly as it was');
+
+      /* The reviewed batch: one cambio, one idéntico, one nuevo, plus a named
+         unknown-product error that never blocks the valid rows. */
+      const reviewedCsv53 = [
+        'id_producto,id_variacion,precio',
+        `${catalog53.simple},,33333`,
+        `${catalog53.variable},${varA53},32222`,
+        `${catalog53.variable},${varB53},34444`,
+        '999999,,45555',
+      ].join('\n');
+      importHtml53 = await uploadCsv53(reviewedCsv53, 'lote-revisado.csv');
+      check(importHtml53.includes('3 filas aplicables · 1 nuevos · 1 cambios · 1 idénticos · 1 fila con error'), 'the reviewed preview counts its nuevo, cambio, idéntico and error rows');
+      check(importHtml53.includes('>Cambio<') && importHtml53.includes('>Idéntico<') && importHtml53.includes('>Nuevo<') && importHtml53.includes('31.111 CLP') && importHtml53.includes('32.222 CLP'), 'each proposed row renders its classification beside the current list value');
+      const reviewed53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      check((await reviewed53.text()).includes('Importación aplicada: 1 precio nuevo, 1 precio actualizado, 1 valor idéntico (sin cambios), 1 fila con error.'), 'the confirmation reports the exact reviewed outcome with counts');
+      const afterReview53 = priceRow53().prices;
+      check(afterReview53[`p:${catalog53.simple}`] === 33333 && afterReview53[`v:${varB53}`] === 34444 && afterReview53[`v:${varA53}`] === 32222, 'the cambio and the nuevo landed; the idéntico kept its value');
+      check(receiptCount53() === 2 && !existsSync(join(WP_DIR, 'wp-content', 'lote-revisado.csv')), 'the applied batch receipt exists and the uploaded file was never retained');
+
+      /* Repetition: the same reviewed file now yields only identical values —
+         zero fabricated commercial changes, the list row byte-identical. */
+      const rawBeforeRepeat53 = priceRow53().raw;
+      importHtml53 = await uploadCsv53(reviewedCsv53, 'lote-repetido.csv');
+      const repeated53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      check((await repeated53.text()).includes('Importación aplicada: 0 precios nuevos, 0 precios actualizados, 3 valores idénticos (sin cambios)'), 'the repeated import applies nothing and reports the identical rows');
+      check(priceRow53().raw === rawBeforeRepeat53, 'the list row is byte-identical after the repeat: repetition fabricates no commercial change');
+
+      /* A stale preview (replaced by a later upload) demands re-review instead
+         of applying; the replacement is cancelled harmlessly. */
+      importHtml53 = await uploadCsv53(`id_producto,id_variacion,precio\n${catalog53.simple},,35555\n`, 'reemplazada.csv');
+      const staleToken53 = (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1];
+      const staleNonce53 = formNonce53(importHtml53, 'confirm');
+      importHtml53 = await uploadCsv53(`id_producto,id_variacion,precio\n${catalog53.simple},,36666\n`, 'vigente.csv');
+      const stale53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': staleNonce53, 'fpw_price_import_token': staleToken53 }).toString() });
+      check((await stale53.text()).includes('ya no está disponible'), 'confirming the replaced (stale) preview is refused explicitly');
+      check(priceRow53().prices[`p:${catalog53.simple}`] === 33333, 'the stale confirm applied nothing');
+      const cancelVigente53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'cancel', 'fpw_price_import_nonce': formNonce53(importHtml53, 'cancel'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      check((await cancelVigente53.text()).includes('sin efectos'), 'the replacement is cancelled without effects');
+
+      /* The import mutated no products, no drafts, no sales: the guarded rows stand. */
+      check(JSON.stringify(productFingerprint53()) === JSON.stringify(fingerprintBefore53), 'importing prices mutated no product data: prices, meta and status all stand');
+      check(JSON.stringify(guardedRows53()) === JSON.stringify(guardedBefore53), 'the import wrote no draft or sales rows: the modules stay independent');
+
+      /* Nothing public leaks the imported amounts: catalog route + Store API. */
+      const leakPaths53 = ['/tienda/', '/?s=caja', new URL(catalog53.simple_permalink).pathname, new URL(catalog53.variable_permalink).pathname];
+      for (const leakPath of leakPaths53) {
+        const html = await fetchBody(leakPath);
+        const text = serverRenderedText(html);
+        for (const amount of ['33333', '32222', '34444']) {
+          check(!text.includes(amount) && !new RegExp(`value="${amount}"`).test(html), `no imported amount (${amount}) leaks on public ${leakPath}`);
+        }
+      }
+      const storeJson53 = await (await fetch(SITE_URL + '/wp-json/wc/store/v1/products', { signal: AbortSignal.timeout(60_000) })).text();
+      for (const amount of ['33333', '32222', '34444']) {
+        check(!storeJson53.includes(`"${amount}"`) && !storeJson53.includes(`:${amount}`), `no imported amount (${amount}) leaks through the native Store API`);
+      }
+
+      /* A NEW request's draft reflects the confirmed list: a real checkout of
+         the same three identities prefills exactly the confirmed prices. */
+      const mailsBefore53 = mailCount53();
+      const jar53 = makeCookieFetch();
+      check((await jar53('/?wc-ajax=add_to_cart', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ product_id: String(catalog53.simple), quantity: '5' }).toString() })).status === 200, 'the import-journey simple add must answer 200');
+      const storeCart53 = await jar53('/wp-json/wc/store/v1/cart');
+      const storeNonce53 = storeCart53.headers.get('nonce');
+      check(storeCart53.status === 200, `the Store API cart must answer 200 (got ${storeCart53.status})`);
+      const color53 = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $out = array();
+        foreach (array(${varA53}, ${varB53}) as $vid) { $v = wc_get_product($vid); $out[$vid] = array_values($v->get_attributes()); }
+        echo wp_json_encode($out);
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      for (const [vid, qty] of [[varA53, '2'], [varB53, '1']]) {
+        const added = await jar53('/wp-json/wc/store/v1/cart/add-item', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(storeNonce53 ? { nonce: storeNonce53 } : {}) },
+          body: JSON.stringify({ id: String(vid), quantity: qty, variation: [{ attribute: 'attribute_color', value: String((color53[vid] || [])[0]) }] }),
+        });
+        check(added.status === 200 || added.status === 201, `the import-journey option add must answer 2xx (got ${added.status})`);
+      }
+      const page53 = await (await jar53('/datos-y-envio/')).text();
+      const hidden53 = {};
+      for (const match of page53.matchAll(/<input[^>]*type="hidden"[^>]*>/g)) {
+        const name = (match[0].match(/name="([^"]+)"/) || [])[1];
+        if (!name || name in hidden53) { continue; }
+        hidden53[name] = (match[0].match(/value="([^"]*)"/) || [])[1] ?? '';
+      }
+      check(hidden53['woocommerce-process-checkout-nonce'] && hidden53['fpw_attempt'], 'the import-journey checkout form carries its identity');
+      const posted53 = { ...hidden53,
+        billing_first_name: 'PRUEBA LOCAL IMPORT', billing_phone: '+56 9 1234 5678',
+        billing_email: 'import-53@example.invalid', billing_company: 'PRUEBA NO COMERCIAL IMPORT',
+        billing_fp_rut: '77.111.222-3', billing_fp_giro: 'Prueba local',
+        payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
+        billing_fp_dispatch: 'si', billing_fp_address: 'Camino importado 53, Mostazal' };
+      const response53 = await jar53('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted53).toString() });
+      const payload53 = await response53.json();
+      check(payload53 && payload53.result === 'success' && /\/order-received\/(\d+)/.test(String(payload53.redirect || '')), `the import-journey request lands natively (got ${JSON.stringify(payload53).slice(0, 140)})`);
+      const order53 = Number((String(payload53.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
+      const draftHtml53 = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${order53}`)).text();
+      check(new RegExp('name="fpw_work\\[lines\\]\\[0\\]\\[price\\]" value="33333"').test(draftHtml53), 'the new draft prefills the CHANGED price from the confirmed list');
+      check(new RegExp('name="fpw_work\\[lines\\]\\[1\\]\\[price\\]" value="32222"').test(draftHtml53), 'the new draft prefills the IDENTICAL price the review kept');
+      check(new RegExp('name="fpw_work\\[lines\\]\\[2\\]\\[price\\]" value="34444"').test(draftHtml53), 'the new draft prefills the NEW price the import landed');
+      check(draftHtml53.includes('sugerido por el mantenedor'), 'the confirmed prefills read as suggestions, never chosen prices');
+
+      /* The journey adds exactly one request's notifications, never more. */
+      check(mailCount53() === mailsBefore53 + 2, `the import journey added exactly one request's notifications (${mailsBefore53} → ${mailCount53()})`);
+    }
+
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -1669,6 +1925,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval + the reviewed price-sheet import onto the mantenedor) on ${SITE_URL}`);
   return checks;
 }

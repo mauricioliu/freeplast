@@ -96,6 +96,10 @@ _Avoid_: Quote Requests, Price List
 The bounded, consultable record of one applied Sales Register import — acting owner, time, source file name, batch token and per-outcome counts — from which the freshness and provenance of the available Purchase History is read beside every Quotation Draft. It is not permission to retain the uploaded workbook, and it is not a commercial document.
 _Avoid_: Upload log, file backup, invoice
 
+**Price Import Receipt**:
+The bounded, consultable record of one applied Price List import — acting owner, time, source file name, batch token and per-outcome counts (new, changed, identical, rejected rows). The reviewed batch is the only thing it vouches for: identities the file never named stand untouched, and the receipt is never permission to retain the uploaded spreadsheet.
+_Avoid_: Upload log, price history, Price List
+
 **Delivery Address**:
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
@@ -165,3 +169,5 @@ _Avoid_: New production site, replacement site
 [ADR-0009](docs/adr/0009-quotation-projection-shared-calculation.md) records the totals-and-validity review decision (issue #55): one deterministic server-side Quotation Projection shared by preview and future issuance, a fiscal policy absent by default (no invented IVA rate), a seven-day editable Quotation Validity, and a Quotation Preview bound to the reviewed revision and made obsolete by any later commercial save — previewing issues nothing.
 
 [ADR-0010](docs/adr/0010-dispatch-distance-consultation.md) records the dispatch-distance consultation decision (issue #60): one bounded Routes `computeRoutes` call per explicit owner action from the private draft screen behind an absent-by-default server-credential seam, the permitted destination identification served only while it matches the working text, honest states for every failure or ambiguity, and nothing stored — the result is the current consultation only, and the manual dispatch price path always survives.
+
+[ADR-0011](docs/adr/0011-price-import-reviewed-batch.md) records the reviewed price-sheet import decision (issue #53): a versioned CSV contract v1 carried by explicit native product/variation identities (never name inference, never invented codes), upload and preview that never change the Price List, an explicit confirmation applying exactly the reviewed batch as a bounded merge with identical values writing nothing, stale previews and catalog drift demanding re-review, and bounded provenance receipts — the definitive column set remains blocked on the real sample.

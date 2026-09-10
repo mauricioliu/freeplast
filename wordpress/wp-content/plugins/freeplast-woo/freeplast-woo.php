@@ -1416,6 +1416,9 @@ add_action('template_redirect', static function () {
 // Mantenedor de precios (issue #52, corte 3 de #49): the owner's private, native-identity Price List — the authority that PREFILLS the drafts' suggestions. Loads before the draft so its suggestions are available to the editing form.
 require_once __DIR__ . '/price-list.php';
 
+// Importación de precios por planilla (issue #53, corte 4 de #49): the owner's manual CSV price-sheet import (upload → preview → confirm/cancel, receipts, owner-only screen) that applies a reviewed batch onto the private Price List. Loads after the list so it can read and write it.
+require_once __DIR__ . '/price-import.php';
+
 // Registro de ventas importado (issue #54, corte 5 de #49): the owner's manual CSV import (preview → confirm/cancel, receipts, owner-only screen) and the Purchase History lookups the drafts render. Loads before the draft so its screen can read the history.
 require_once __DIR__ . '/sales-register.php';
 

@@ -185,8 +185,9 @@ function fpw_price_parse_input( array $catalog, array $posted ): array {
 		}
 		if ( null !== $amount ) { $entries[ $key ] = $amount; }
 	}
-	if ( count( $entries ) > FPW_PRICE_MAX_ENTRIES ) {
-		$errors[] = 'El lote supera el máximo de ' . FPW_PRICE_MAX_ENTRIES . ' precios mantenidos.';
+	$cap = (int) apply_filters( 'fpw_price_max_entries', FPW_PRICE_MAX_ENTRIES );
+	if ( count( $entries ) > $cap ) {
+		$errors[] = 'El lote supera el máximo de ' . $cap . ' precios mantenidos.';
 	}
 	return array( 'errors' => $errors, 'entries' => $entries );
 }
@@ -306,6 +307,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		. '<li>Los precios técnicos 0 del catálogo son centinelas, no precios comerciales: este mantenedor nunca los publica ni los convierte en ofertas.</li>'
 		. '<li>Cambiar esta lista <strong>no reescribe</strong> los borradores ya guardados ni los documentos emitidos: cada borrador conserva sus importes hasta que el dueño refresque sus precios de forma explícita, y sus ajustes manuales se conservan siempre.</li>'
 		. '<li>Guardar aquí solo cambia esta lista privada: no toca productos, fotos, solicitudes, historial de ventas ni nada público.</li>'
+		. '<li>¿Actualización masiva? <a href="' . esc_url( fpw_price_import_screen_url() ) . '">Importar una planilla de precios (CSV)</a>: carga, vista previa y confirmación explícita; solo la confirmación aplica el lote revisado a esta lista.</li>'
 		. '</ul></section>';
 
 	if ( empty( $catalog ) ) {
