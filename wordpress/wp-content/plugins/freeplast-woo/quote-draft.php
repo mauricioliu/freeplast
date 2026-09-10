@@ -756,6 +756,10 @@ function fpw_render_quote_draft_screen(): void {
 			$work = $result['work'];
 		}
 	}
+	if ( $order && $draft && isset( $_POST['fpw_distance_consult'] ) && null === fpw_pending_distance_consult() ) {
+		// No admin_init pass on this request: run the same read-only process here.
+		fpw_handle_distance_consult_request( $order, $draft );
+	}
 	echo fpw_quote_draft_markup( $order, $draft, $work, $notice );
 }
 
@@ -1385,6 +1389,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. '<p class="fpw-draft__origin">Los precios ofrecidos valen por estos días a contar de la aprobación de la oferta. La vigencia por defecto es de ' . fpw_quotation_default_validity_days() . ' días.</p></section>'
 		. $save_section
 		. '</form>'
+		. ( $with_dispatch ? fpw_draft_distance_section_html( $draft, $work ) : '' )
 		. fpw_draft_preview_html( $draft, $work, $preview )
 		. '</div>';
 

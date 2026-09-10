@@ -11,11 +11,9 @@ $registered_actions = array();
 $registered_filters = array();
 function add_action( ...$args ) { global $registered_actions; $registered_actions[ $args[0] ][] = $args[1] ?? null; }
 function add_filter( ...$args ) { global $registered_filters; $registered_filters[ $args[0] ][] = $args[1]; }
-/* Configuration seams (Places, tax policy, default validity) deliver through filters; run the registered callbacks like the real thing. */
-function apply_filters( $tag, $value ) {
-	foreach ( $GLOBALS['registered_filters'][ $tag ] ?? array() as $callback ) { $value = $callback( $value ); }
-	return $value;
-}
+/* Configuration seams (Places, tax policy, default validity, distance credentials) deliver through filters; run the registered callbacks like the real thing, extra arguments passed through (issue #60). */
+/* Issue #60: the distance section reads its configuration through apply_filters. */
+function apply_filters( $tag, $value, ...$args ) { global $registered_filters; foreach ( $registered_filters[ $tag ] ?? array() as $callback ) { $value = $callback( $value, ...$args ); } return $value; }
 function register_activation_hook( ...$args ) {}
 function wp_json_encode( $data, $flags = 0 ) { return json_encode( $data, $flags ); }
 function absint( $value ) { return abs( (int) $value ); }

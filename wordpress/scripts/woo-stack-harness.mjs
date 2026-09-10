@@ -193,6 +193,39 @@ add_filter( 'fpw_quotation_tax_config', static function () {
 `,
   );
 
+  writeFileSync(
+    join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-routes.php'),
+    `<?php
+/** Disposable-stack only (written by woo-stack-harness.mjs, issue #60): a fake
+ * PRIVATE server Routes credential plus Google SIMULATED AT THE TRANSPORT —
+ * pre_http_request short-circuits before any real HTTP, so no network exists.
+ * Each call is probed to routes-probe.jsonl (url, body, field mask only); the
+ * scenario option selects the simulated outcome. Never shipped in the
+ * repository's wp-content; this mints no real credentials and verifies no
+ * real distance. */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+add_filter( 'fpw_dispatch_distance_config', static function () {
+	return array( 'key' => 'stack-simulated-server-key' );
+} );
+add_filter( 'pre_http_request', static function ( $preempt, $parsed_args, $url ) {
+	if ( ! is_string( $url ) || ! str_starts_with( $url, 'https://routes.googleapis.com/' ) ) { return $preempt; }
+	$entry = wp_json_encode( array(
+		'url' => $url,
+		'body' => (string) ( $parsed_args['body'] ?? '' ),
+		'fieldmask' => (string) ( $parsed_args['headers']['X-Goog-FieldMask'] ?? '' ),
+	) );
+	if ( is_string( $entry ) ) { file_put_contents( dirname( ABSPATH ) . '/routes-probe.jsonl', $entry . "\\n", FILE_APPEND ); }
+	$scenario = (string) get_option( 'fpw_stack_routes_scenario', 'ok' );
+	if ( 'noroute' === $scenario ) { return array( 'response' => array( 'code' => 200, 'message' => 'OK' ), 'body' => wp_json_encode( array( 'routes' => array() ) ) ); }
+	if ( 'cuota' === $scenario ) { return array( 'response' => array( 'code' => 429, 'message' => 'Too Many Requests' ), 'body' => 'quota exhausted' ); }
+	if ( 'timeout' === $scenario ) { return new WP_Error( 'http_request_timeout', 'cURL error 28: Operation timed out' ); }
+	$body = json_decode( (string) ( $parsed_args['body'] ?? '' ), true );
+	$meters = isset( $body['destination']['placeId'] ) ? 27450 : 61200;   // distinct per endpoint kind: the probe proves which one was sent
+	return array( 'response' => array( 'code' => 200, 'message' => 'OK' ), 'body' => wp_json_encode( array( 'routes' => array( array( 'distanceMeters' => $meters ) ) ) ) );
+}, 10, 3 );
+`,
+  );
+
   /* 2. Serve (multi-worker so two checkout POSTs can genuinely overlap). The
      spawn is detached so the whole process GROUP (master + every worker) can
      be signalled: a plain master SIGTERM has been observed to leave workers
@@ -802,6 +835,15 @@ register_shutdown_function( static function () {
       const bogus = await owner('/wp-admin/admin.php?page=fpw-quote-draft&request=99999999');
       check(bogus.status === 200 && (await bogus.text()).includes('no encontrada'), 'an unknown request id answers an honest empty state');
 
+      /* Draft-journey helpers shared by the 5d/5e/5f blocks. */
+      const editUrl = (requestId) => `/wp-admin/admin.php?page=fpw-quote-draft&request=${requestId}`;
+      const mailCount = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+      const mint = async (fetcher, forAction) => {
+        const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: forAction }).toString() });
+        const payload = await minted.json();
+        return payload && payload.success ? String(payload.data.nonce) : null;
+      };
+
       /* 5d. Issue #51 journey: the owner completes and adjusts drafts
          manually over real HTTP — real edit → save → reopen with recovered
          values, pending-not-zero, no-dispatch contracts, destination/quantity
@@ -811,13 +853,6 @@ register_shutdown_function( static function () {
          stay untouched. Fixture-driven: the race request has dispatch=no,
          the corrected request dispatch=si, the stale request two lines. */
       {
-        const editUrl = (requestId) => `/wp-admin/admin.php?page=fpw-quote-draft&request=${requestId}`;
-        const mailCount = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
-        const mint = async (fetcher, forAction) => {
-          const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: forAction }).toString() });
-          const payload = await minted.json();
-          return payload && payload.success ? String(payload.data.nonce) : null;
-        };
         const postForm = (fetcher, requestId, fields) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
         const lineFields = (record, priceFor, quantityFor) => {
           const fields = {};
@@ -1306,6 +1341,102 @@ register_shutdown_function( static function () {
         }
       }
 
+      /* 5f. Issue #60 (cut 11 of #49): the owner consults the dispatch distance
+         from the private draft — one bounded computeRoutes call per explicit
+         action with Google simulated at the transport, the working destination
+         (typed text or the recorded Place ID) as the endpoint, honest states
+         for failure/ambiguity, permission + CSRF boundaries, and NOTHING
+         stored: the result is the current consultation only. */
+      {
+        const probeFile = join(WORDPRESS_DIR, '.build', 'routes-probe.jsonl');
+        const probes = () => (existsSync(probeFile) ? readFileSync(probeFile, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : []);
+        const setScenario = (scenario) => sh(PHP, [WPCLI, 'option', 'update', 'fpw_stack_routes_scenario', scenario, '--user=1', ...draftWpArgs, '--quiet']);
+        const consultNonce = (requestId, fetcher) => mint(fetcher, `fpw-draft-distance-${requestId}`);
+        const consultPost = (fetcher, requestId, nonce) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_distance_consult': '1', 'fpw_distance_nonce': nonce }).toString() });
+        const mailsBefore5f = mailCount();
+        setScenario('ok');
+        rmSync(probeFile, { force: true });
+
+        /* The configured screen shows origin + working destination and the
+           recalculation action; no distance is invented before any consult. */
+        const distanceUrl = editUrl(correctOrder);
+        const beforeConsult = await (await owner(distanceUrl)).text();
+        check(beforeConsult.includes('Distancia de despacho (referencia)'), 'the dispatch draft renders the distance consultation section (issue #60)');
+        check(beforeConsult.includes('Camino El Arrayán 52, San Francisco de Mostazal') && beforeConsult.includes('Camino rural 9, Colchane'), 'the section names the documented warehouse origin and the saved working destination');
+        check(!/\d+,\d km/.test(beforeConsult), 'no distance is invented before any consultation');
+        const consultNonceHtml = (beforeConsult.match(/name="fpw_distance_nonce" value="([0-9a-f]+)"/) || [])[1];
+        check(Boolean(consultNonceHtml), 'the consult form carries its own minted CSRF nonce');
+
+        /* The consultation: 61,2 km as a driving reference for the typed
+           destination, with the honest disclaimer — and exactly ONE probe. */
+        const consulted = await consultPost(owner, correctOrder, await consultNonce(correctOrder, owner));
+        check(consulted.status === 200, `the consult must answer 200 (got ${consulted.status})`);
+        const consultedHtml = await consulted.text();
+        check(consultedHtml.includes('61,2 km') && consultedHtml.includes('61.200 m'), 'the consultation renders its reference distance with the exact meters beside it');
+        check(consultedHtml.includes('no certifica el acceso de un camión') && consultedHtml.includes('no se guarda'), 'the consultation renders the honest reference and nothing-stored disclaimers');
+        check(consultedHtml.includes('Destino escrito a mano'), 'a typed destination is named as such');
+        const probeList = probes();
+        check(probeList.length === 1, `exactly one provider call per consult (got ${probeList.length})`);
+        const probe = probeList[0] || {};
+        check(probe.url === 'https://routes.googleapis.com/directions/v2:computeRoutes', 'the consult hits exactly the documented computeRoutes endpoint');
+        check(probe.fieldmask === 'routes.distanceMeters', 'the field mask asks for the distance alone (bounded call; no duration ever requested)');
+        const probeBody = JSON.parse(probe.body || '{}');
+        check((probeBody.origin?.address?.addressLines || [])[0] === 'Camino El Arrayán 52, San Francisco de Mostazal', 'the route origin is the documented warehouse');
+        check((probeBody.destination?.address?.addressLines || [])[0] === 'Camino rural 9, Colchane' && !probeBody.destination?.placeId, 'the edited working destination travels as typed text, with no stale place association');
+        check(probeBody.travelMode === 'DRIVE' && probeBody.routingPreference === 'TRAFFIC_UNAWARE', 'the route is the bounded driving reference, not a truck itinerary');
+        check(!String(probe.body).includes('@'), 'no identity, RUT, email, history or products travel to the provider');
+
+        /* Persistence inspection: nothing durable carries the consultation. */
+        const storedDistance = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+          global $wpdb;
+          $rows = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_distance%' OR option_value LIKE '%distanceMeters%' OR option_value LIKE '%61.200%'");
+          echo (string) $rows;
+        `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+        check(storedDistance === 0, `no durable row stores the consultation or its kilometers (got ${storedDistance})`);
+        const rereadAfterConsult = await (await owner(distanceUrl)).text();
+        check(!rereadAfterConsult.includes('61,2 km') && rereadAfterConsult.includes('name="fpw_distance_consult" value="1"'), 'the distance is not persisted: a fresh read shows no result and the action stays available');
+
+        /* Failure and ambiguity: no route and quota stop read as what they
+           are — never a distance, never a zero. */
+        setScenario('noroute');
+        const noRoute = await consultPost(owner, correctOrder, await consultNonce(correctOrder, owner));
+        check((await noRoute.text()).includes('no devolvió ninguna ruta'), 'a missing route reads as an explicit no-route state');
+        setScenario('cuota');
+        const quota = await consultPost(owner, correctOrder, await consultNonce(correctOrder, owner));
+        check((await quota.text()).includes('cuota configurada'), 'a quota stop reads as the quota state, named as such');
+        check(probes().length === 3, 'each consult is exactly one provider call (3 so far)');
+        setScenario('ok');
+
+        /* The recorded Place ID path: an assisted destination still matching
+           its recorded text consults WITH its place identification. */
+        const assistedConsult = await consultPost(owner, placesJourneyIds.asistida, await consultNonce(placesJourneyIds.asistida, owner));
+        const assistedHtml = await assistedConsult.text();
+        check(assistedHtml.includes('27,5 km') && assistedHtml.includes('coincidencia exacta'), 'the assisted destination consults with its recorded identification and precision');
+        const assistedProbe = JSON.parse((probes()[probes().length - 1] || {}).body || '{}');
+        check(assistedProbe.destination?.placeId === 'ChIJfreesideQ9fXhZplaces-fixture' && !assistedProbe.destination?.address, 'the recorded Place ID is the route endpoint, never a re-typed guess');
+
+        /* Permissions and CSRF: ventas with a VALID nonce is denied as a
+           permission (403); a forged nonce is refused 403; a visitor goes to
+           the login. No denied request ever reaches the provider. */
+        const probesBeforeDenied = probes().length;
+        const ventasConsult = await consultPost(ventas, correctOrder, await consultNonce(correctOrder, ventas));
+        check(ventasConsult.status === 403, `a valid ventas session with a valid nonce must be DENIED the consult (got ${ventasConsult.status})`);
+        const forgedConsult = await consultPost(owner, correctOrder, 'forged-nonce');
+        check(forgedConsult.status === 403, `a consult with an invalid nonce is refused 403 (got ${forgedConsult.status})`);
+        const visitorConsult = await consultPost(visitor, correctOrder, 'irrelevant-nonce');
+        check(visitorConsult.status === 302 && String(visitorConsult.headers.get('location') || '').includes('wp-login.php'), 'a visitor consult is sent to the login');
+        check(probes().length === probesBeforeDenied, 'no denied consult reached the provider');
+
+        /* «Sin despacho»: no action rendered, and a crafted POST never calls
+           the provider. Saving/consulting notify nothing. */
+        const noDispatchHtml = await (await owner(editUrl(raceOrder))).text();
+        check(!noDispatchHtml.includes('fpw_distance_consult') && !noDispatchHtml.includes('Distancia de despacho'), 'a no-dispatch draft offers no distance consultation at all');
+        const craftedNoDispatch = await consultPost(owner, raceOrder, await consultNonce(raceOrder, owner));
+        check(craftedNoDispatch.status === 200, `the crafted no-dispatch consult answers honestly (got ${craftedNoDispatch.status})`);
+        check(probes().length === probesBeforeDenied, 'a no-dispatch consult makes NO provider call');
+        check(mailCount() === mailsBefore5f, `consulting and its denials must not send any notification (${mailsBefore5f} → ${mailCount()})`);
+      }
+
     /* 5f. Issue #55 (cut 6 of #49): totals and validity reviewed BEFORE any
        approval. The owner previews the buyer-facing projection — the ONE
        shared server-side calculation, stored bound to the reviewed revision,
@@ -1452,6 +1583,7 @@ register_shutdown_function( static function () {
       check(JSON.stringify(record5f.quantities) === JSON.stringify(correctRecord5f.lines.map((l) => l.quantity)), 'the native record keeps its requested quantities');
       check(record5f.email === draftState.records[correctOrder].email, 'the native record keeps its identity');
     }
+
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -1537,6 +1669,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
   return checks;
 }
