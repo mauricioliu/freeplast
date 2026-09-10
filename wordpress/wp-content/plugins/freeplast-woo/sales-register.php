@@ -183,29 +183,20 @@ function fpw_sales_register(): array {
 	return $row;
 }
 
-function fpw_sales_write_register( array $register ): void {
+/** Upsert one JSON options row — INSERT when absent, UPDATE when present. The register and the pending slot are both written this way. */
+function fpw_sales_write_row( string $name, array $payload ): void {
 	global $wpdb;
-	$json = (string) wp_json_encode( $register );
-	if ( null === fpw_sales_read_row( FPW_SALES_REGISTER_ROW ) ) {
-		$wpdb->query( $wpdb->prepare( "INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )", FPW_SALES_REGISTER_ROW, $json ) );
+	$json = (string) wp_json_encode( $payload );
+	if ( null === fpw_sales_read_row( $name ) ) {
+		$wpdb->query( $wpdb->prepare( "INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )", $name, $json ) );
 		return;
 	}
-	$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $json, FPW_SALES_REGISTER_ROW ) );
+	$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $json, $name ) );
 }
 
 /** The ONE pending batch slot: a new upload replaces it, so a stale reviewed batch can never silently apply. */
 function fpw_sales_pending_batch(): ?array {
 	return fpw_sales_read_row( FPW_SALES_PENDING_ROW );
-}
-
-function fpw_sales_stage_batch( array $batch ): void {
-	global $wpdb;
-	$json = (string) wp_json_encode( $batch );
-	if ( null === fpw_sales_read_row( FPW_SALES_PENDING_ROW ) ) {
-		$wpdb->query( $wpdb->prepare( "INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )", FPW_SALES_PENDING_ROW, $json ) );
-		return;
-	}
-	$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $json, FPW_SALES_PENDING_ROW ) );
 }
 
 function fpw_sales_clear_pending(): void {
@@ -271,7 +262,7 @@ function fpw_sales_process_upload_string( string $content, string $filename ): a
 	$batch['filename'] = mb_substr( sanitize_text_field( $filename ), 0, 200 );
 	$batch['actor']    = fpw_sales_actor();
 	$batch['at']       = time();
-	fpw_sales_stage_batch( $batch );
+	fpw_sales_write_row( FPW_SALES_PENDING_ROW, $batch );
 	return array( 'ok' => true, 'message' => 'Carga recibida y previsualizada: el historial de compras NO cambió. Revisa la vista previa y confirma para aplicarla, o cancela sin efectos.' );
 }
 
@@ -339,7 +330,7 @@ function fpw_sales_confirm( string $token ): array {
 			'imported_at' => $now,
 		);
 	}
-	fpw_sales_write_register( $register );
+	fpw_sales_write_row( FPW_SALES_REGISTER_ROW, $register );
 	fpw_sales_clear_pending();
 	fpw_sales_sweep_receipts();
 	$message = 'Importación aplicada: ' . $aplicadas . ' ventas nuevas, ' . $ya . ' ya importadas (sin duplicar), '
@@ -372,10 +363,10 @@ function fpw_sales_history_for_rut( string $rut_norm ): ?array {
 		if ( is_array( $sale ) && (string) ( $sale['rut'] ?? '' ) === $rut_norm ) { $sales[] = $sale; }
 	}
 	usort( $sales, static fn( $a, $b ) => array( (string) ( $b['date'] ?? '' ), (string) ( $b['id'] ?? '' ) ) <=> array( (string) ( $a['date'] ?? '' ), (string) ( $a['id'] ?? '' ) ) );
-	$freshness = null;
-	foreach ( fpw_sales_receipts( 1 ) as $receipt ) {
-		$freshness = array( 'at' => (int) ( $receipt['at'] ?? 0 ), 'actor' => (string) ( $receipt['actor'] ?? '' ), 'filename' => (string) ( $receipt['filename'] ?? '' ) );
-	}
+	$latest = fpw_sales_receipts( 1 )[0] ?? null;
+	$freshness = is_array( $latest )
+		? array( 'at' => (int) ( $latest['at'] ?? 0 ), 'actor' => (string) ( $latest['actor'] ?? '' ), 'filename' => (string) ( $latest['filename'] ?? '' ) )
+		: null;
 	return array( 'sales' => $sales, 'freshness' => $freshness );
 }
 
@@ -414,37 +405,51 @@ function fpw_render_sales_import_screen(): void {
 	echo fpw_sales_import_markup( $banner );
 }
 
-/** Route the three POST actions; each carries its own nonce (CSRF) under the owner capability (authorization). Runs once per request (at admin_init, see fpw_sales_maybe_handle_actions); a later call just returns the stored result. A nonce failure is an EXPLICIT 403 — never the default 200 nonce-ays page — so every denial stays attributable and machine-checkable. */
+/**
+ * Route the three POST actions; each carries its own nonce (CSRF) under the
+ * owner capability (authorization). Both boundaries are re-checked on every
+ * call; the processing itself runs once per request (at admin_init, see
+ * fpw_sales_maybe_handle_actions) and a later call just returns the stored
+ * result. A nonce failure is an EXPLICIT 403 — never the default 200
+ * nonce-ays page — so every denial stays attributable and machine-checkable.
+ */
 function fpw_sales_handle_actions(): array {
-	static $result = array();
+	static $result  = array();
 	static $handled = false;
-	if ( $handled ) { return $result; }
-	$handled = true;
 	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_sales_import_forbidden(); }
 	$action = isset( $_POST['fpw_sales_action'] ) ? (string) wp_unslash( $_POST['fpw_sales_action'] ) : '';
-	if ( 'upload' === $action ) {
-		fpw_sales_verify_nonce( FPW_SALES_NONCE_UPLOAD );
-		$result = fpw_sales_handle_upload();
-		return $result;
-	}
-	if ( 'confirm' === $action || 'cancel' === $action ) {
-		$token = isset( $_POST['fpw_sales_token'] ) ? (string) wp_unslash( $_POST['fpw_sales_token'] ) : '';
-		if ( 'confirm' === $action ) {
-			fpw_sales_verify_nonce( FPW_SALES_NONCE_CONFIRM );
-			$result = fpw_sales_confirm( $token );
-			return $result;
-		}
-		fpw_sales_verify_nonce( FPW_SALES_NONCE_CANCEL );
-		$result = fpw_sales_cancel( $token );
-		return $result;
+	fpw_sales_verify_nonce( $action );
+	if ( $handled ) { return $result; }
+	$handled = true;
+	switch ( $action ) {
+		case 'upload':
+			$result = fpw_sales_handle_upload();
+			break;
+		case 'confirm':
+			$result = fpw_sales_confirm( fpw_sales_posted_token() );
+			break;
+		case 'cancel':
+			$result = fpw_sales_cancel( fpw_sales_posted_token() );
+			break;
 	}
 	return $result;
 }
 
-/** The CSRF boundary of every importer action: verified server-side, denied 403 with its own message. */
+/** The reviewed batch token as POSTed, '' when absent. */
+function fpw_sales_posted_token(): string {
+	return isset( $_POST['fpw_sales_token'] ) ? (string) wp_unslash( $_POST['fpw_sales_token'] ) : '';
+}
+
+/** The CSRF boundary of every importer action — each action's own nonce, verified server-side, denied 403 with its own message. */
 function fpw_sales_verify_nonce( string $action ): void {
+	$nonce_action = array(
+		'upload'  => FPW_SALES_NONCE_UPLOAD,
+		'confirm' => FPW_SALES_NONCE_CONFIRM,
+		'cancel'  => FPW_SALES_NONCE_CANCEL,
+	)[ $action ] ?? null;
+	if ( null === $nonce_action ) { return; }
 	$nonce = isset( $_REQUEST['fpw_sales_nonce'] ) ? (string) wp_unslash( $_REQUEST['fpw_sales_nonce'] ) : '';
-	if ( '' === $nonce || ! wp_verify_nonce( $nonce, $action ) ) {
+	if ( '' === $nonce || ! wp_verify_nonce( $nonce, $nonce_action ) ) {
 		wp_die( 'La acción no pudo verificarse (nonce inválido o vencido). Vuelve a la pantalla del importador y vuelve a intentarlo: nada se aplicó.', '', array( 'response' => 403 ) );
 	}
 }
@@ -494,16 +499,88 @@ function fpw_sales_screen_shell( string $inner ): string {
 		. '</style>' . $inner . '<!-- fpw-sales:end -->';
 }
 
+/** The action-result banner: the explicit outcome message, success or error. */
+function fpw_sales_banner_html( array $banner ): string {
+	if ( ! isset( $banner['message'] ) ) { return ''; }
+	$class = ! empty( $banner['ok'] ) ? 'notice-success' : 'notice-error';
+	return '<div class="notice ' . $class . '"><p>' . esc_html( (string) $banner['message'] ) . '</p></div>';
+}
+
+/**
+ * The pending review: staged candidate rows, per-row errors and unresolved
+ * associations, with the confirm/cancel actions — each behind its own nonce.
+ */
+function fpw_sales_pending_preview_html(): string {
+	$pending = fpw_sales_pending_batch();
+	if ( ! is_array( $pending ) ) { return ''; }
+	$url           = fpw_sales_import_screen_url();
+	$nonce_confirm = wp_nonce_field( FPW_SALES_NONCE_CONFIRM, 'fpw_sales_nonce', true, false );
+	$nonce_cancel  = wp_nonce_field( FPW_SALES_NONCE_CANCEL, 'fpw_sales_nonce', true, false );
+
+	$rows = is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array();
+	$preview = '';
+	foreach ( array_slice( $rows, 0, FPW_SALES_PREVIEW_ROWS ) as $row ) {
+		$rut  = (string) ( $row['rut'] ?? '' );
+		$norm = (string) ( $row['rut_norm'] ?? '' );
+		$preview .= '<tr><td>' . (int) ( $row['line'] ?? 0 ) . '</td><td><code>' . esc_html( (string) ( $row['id'] ?? '' ) ) . '</code></td><td>' . esc_html( (string) ( $row['date'] ?? '' ) ) . '</td><td>' . esc_html( $rut )
+			. ( '' !== $norm && $norm !== $rut ? '<br><code>' . esc_html( $norm ) . '</code>' : '' ) . '</td><td>' . esc_html( fpw_sales_format_clp( $row['total'] ?? null ) ) . '</td></tr>';
+	}
+	$errores_html = '';
+	foreach ( ( is_array( $pending['errores'] ?? null ) ? $pending['errores'] : array() ) as $e ) {
+		$errores_html .= '<tr><td>' . ( (int) ( $e['line'] ?? 0 ) > 0 ? (int) $e['line'] : '—' ) . '</td><td>' . esc_html( (string) ( $e['reason'] ?? '' ) ) . '</td></tr>';
+	}
+	$sin_html = '';
+	foreach ( ( is_array( $pending['sin_asociacion'] ?? null ) ? $pending['sin_asociacion'] : array() ) as $s ) {
+		$sin_html .= '<li>Línea ' . (int) ( $s['line'] ?? 0 ) . ': RUT «' . esc_html( (string) ( $s['rut'] ?? '' ) ) . '» sin asociación resuelta.</li>';
+	}
+
+	$token     = (string) ( $pending['token'] ?? '' );
+	$sin_total = (int) ( $pending['sin_asociacion_total'] ?? 0 );
+	$html = '<section><h2>Vista previa pendiente</h2>'
+		. '<p><strong>' . esc_html( (string) ( $pending['filename'] ?? '' ) ) . '</strong> · subida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $pending['at'] ?? 0 ) ) ) . ' por ' . esc_html( (string) ( $pending['actor'] ?? '' ) ) . '</p>'
+		. '<p>' . count( $rows ) . ' filas candidatas · ' . (int) ( $pending['errores_total'] ?? 0 ) . ' filas con error · ' . $sin_total . ' ' . esc_html( 1 === $sin_total ? 'asociación sin resolver' : 'asociaciones sin resolver' )
+		. ( ! empty( $pending['ignored_columns'] ) ? ' · columnas ignoradas: ' . esc_html( implode( ', ', (array) $pending['ignored_columns'] ) ) : '' ) . '</p>';
+	if ( '' !== $preview ) {
+		$html .= '<table><thead><tr><th scope="col">Línea</th><th scope="col">id_venta</th><th scope="col">Fecha</th><th scope="col">RUT</th><th scope="col">Total</th></tr></thead><tbody>' . $preview . '</tbody></table>';
+		if ( count( $rows ) > FPW_SALES_PREVIEW_ROWS ) {
+			$html .= '<p class="fpw-sales__note">Mostrando las primeras ' . FPW_SALES_PREVIEW_ROWS . ' de ' . count( $rows ) . ' filas.</p>';
+		}
+	}
+	if ( '' !== $errores_html ) {
+		$html .= '<h3 style="font-size:14px">Filas con error (no se importan)</h3><table><tbody>' . $errores_html . '</tbody></table>';
+	}
+	if ( '' !== $sin_html ) {
+		$html .= '<h3 style="font-size:14px">Asociaciones sin resolver</h3><ul style="margin:4px 0 0 18px">' . $sin_html . '</ul><p class="fpw-sales__note">Estas ventas se importan sin cliente asociado: ningún borrador las mostrará hasta que la asociación se resuelva con datos reales.</p>';
+	}
+	$html .= '<div class="fpw-sales__actions">'
+		. '<form action="' . esc_url( $url ) . '" method="post" style="margin:0"><input type="hidden" name="fpw_sales_action" value="confirm"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $token ) . '">' . $nonce_confirm
+		. '<button type="submit" class="button button-primary">Confirmar e importar</button></form>'
+		. '<form action="' . esc_url( $url ) . '" method="post" style="margin:0"><input type="hidden" name="fpw_sales_action" value="cancel"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $token ) . '">' . $nonce_cancel
+		. '<button type="submit" class="button">Cancelar sin efectos</button></form>'
+		. '</div></section>';
+	return $html;
+}
+
+/** The applied receipts: the consultable provenance of the history. */
+function fpw_sales_receipts_html(): string {
+	$receipts = fpw_sales_receipts( 10 );
+	if ( empty( $receipts ) ) { return ''; }
+	$receipt_rows = '';
+	foreach ( $receipts as $receipt ) {
+		$conflictos = (int) ( $receipt['conflictos_total'] ?? 0 );
+		$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td><td>' . esc_html( (string) ( $receipt['filename'] ?? '' ) ) . '</td>'
+			. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
+			. '<td><code>' . esc_html( (string) ( $receipt['token'] ?? '' ) ) . '</code></td></tr>';
+	}
+	return '<section><h2>Importaciones aplicadas</h2>'
+		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Archivo</th><th scope="col">Nuevas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th><th scope="col">Lote</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
+		. '<p class="fpw-sales__note">Cada lote aplicado deja este recibo de procedencia: es la frescura que verás junto al historial en cada borrador.</p></section>';
+}
+
 /** The screen markup: contract, upload, pending preview, applied receipts. */
 function fpw_sales_import_markup( array $banner = array() ): string {
-	$url             = fpw_sales_import_screen_url();
-	$nonce_upload    = wp_nonce_field( FPW_SALES_NONCE_UPLOAD, 'fpw_sales_nonce', true, false );
-	$nonce_confirm   = wp_nonce_field( FPW_SALES_NONCE_CONFIRM, 'fpw_sales_nonce', true, false );
-	$nonce_cancel    = wp_nonce_field( FPW_SALES_NONCE_CANCEL, 'fpw_sales_nonce', true, false );
-	$banner_html = '';
-	if ( isset( $banner['message'] ) ) {
-		$banner_html = '<div class="notice ' . ( ! empty( $banner['ok'] ) ? 'notice-success' : 'notice-error' ) . '"><p>' . esc_html( (string) $banner['message'] ) . '</p></div>';
-	}
+	$url          = fpw_sales_import_screen_url();
+	$nonce_upload = wp_nonce_field( FPW_SALES_NONCE_UPLOAD, 'fpw_sales_nonce', true, false );
 
 	$contract = '<section><h2>Contrato de importación (v1)</h2>'
 		. '<p>Una fila por venta completada, en CSV de texto UTF-8 (hasta 2 MB, ' . FPW_SALES_MAX_ROWS . ' filas). Columnas exactas:</p>'
@@ -520,65 +597,12 @@ function fpw_sales_import_markup( array $banner = array() ): string {
 		. '<p><button type="submit" class="button button-primary">Previsualizar carga</button></p></form>'
 		. '<p class="fpw-sales__note">Subir y previsualizar NO cambia el historial: solo la confirmación aplica el lote revisado.</p></section>';
 
-	$pending_html = '';
-	$pending = fpw_sales_pending_batch();
-	if ( is_array( $pending ) ) {
-		$rows = is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array();
-		$preview = '';
-		foreach ( array_slice( $rows, 0, FPW_SALES_PREVIEW_ROWS ) as $row ) {
-			$rut = (string) ( $row['rut'] ?? '' );
-			$norm = (string) ( $row['rut_norm'] ?? '' );
-			$preview .= '<tr><td>' . (int) ( $row['line'] ?? 0 ) . '</td><td><code>' . esc_html( (string) ( $row['id'] ?? '' ) ) . '</code></td><td>' . esc_html( (string) ( $row['date'] ?? '' ) ) . '</td><td>' . esc_html( $rut )
-				. ( '' !== $norm && $norm !== $rut ? '<br><code>' . esc_html( $norm ) . '</code>' : '' ) . '</td><td>' . esc_html( fpw_sales_format_clp( $row['total'] ?? null ) ) . '</td></tr>';
-		}
-		$errores_html = '';
-		foreach ( ( is_array( $pending['errores'] ?? null ) ? $pending['errores'] : array() ) as $e ) {
-			$errores_html .= '<tr><td>' . ( (int) ( $e['line'] ?? 0 ) > 0 ? (int) $e['line'] : '—' ) . '</td><td>' . esc_html( (string) ( $e['reason'] ?? '' ) ) . '</td></tr>';
-		}
-		$sin_html = '';
-		foreach ( ( is_array( $pending['sin_asociacion'] ?? null ) ? $pending['sin_asociacion'] : array() ) as $s ) {
-			$sin_html .= '<li>Línea ' . (int) ( $s['line'] ?? 0 ) . ': RUT «' . esc_html( (string) ( $s['rut'] ?? '' ) ) . '» sin asociación resuelta.</li>';
-		}
-		$token = (string) ( $pending['token'] ?? '' );
-		$rows_for_count = is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array();
-		$sin_total      = (int) ( $pending['sin_asociacion_total'] ?? 0 );
-		$pending_html = '<section><h2>Vista previa pendiente</h2>'
-			. '<p><strong>' . esc_html( (string) ( $pending['filename'] ?? '' ) ) . '</strong> · subida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $pending['at'] ?? 0 ) ) ) . ' por ' . esc_html( (string) ( $pending['actor'] ?? '' ) ) . '</p>'
-			. '<p>' . count( $rows_for_count ) . ' filas candidatas · ' . (int) ( $pending['errores_total'] ?? 0 ) . ' filas con error · ' . $sin_total . ' ' . esc_html( 1 === $sin_total ? 'asociación sin resolver' : 'asociaciones sin resolver' )
-			. ( ! empty( $pending['ignored_columns'] ) ? ' · columnas ignoradas: ' . esc_html( implode( ', ', (array) $pending['ignored_columns'] ) ) : '' ) . '</p>'
-			. ( '' !== $preview ? '<table><thead><tr><th scope="col">Línea</th><th scope="col">id_venta</th><th scope="col">Fecha</th><th scope="col">RUT</th><th scope="col">Total</th></tr></thead><tbody>' . $preview . '</tbody></table>'
-				. ( count( $rows ) > FPW_SALES_PREVIEW_ROWS ? '<p class="fpw-sales__note">Mostrando las primeras ' . FPW_SALES_PREVIEW_ROWS . ' de ' . count( $rows ) . ' filas.</p>' : '' ) : '' )
-			. ( '' !== $errores_html ? '<h3 style="font-size:14px">Filas con error (no se importan)</h3><table><tbody>' . $errores_html . '</tbody></table>' : '' )
-			. ( '' !== $sin_html ? '<h3 style="font-size:14px">Asociaciones sin resolver</h3><ul style="margin:4px 0 0 18px">' . $sin_html . '</ul><p class="fpw-sales__note">Estas ventas se importan sin cliente asociado: ningún borrador las mostrará hasta que la asociación se resuelva con datos reales.</p>' : '' )
-			. '<div class="fpw-sales__actions">'
-			. '<form action="' . esc_url( $url ) . '" method="post" style="margin:0"><input type="hidden" name="fpw_sales_action" value="confirm"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $token ) . '">' . $nonce_confirm
-			. '<button type="submit" class="button button-primary">Confirmar e importar</button></form>'
-			. '<form action="' . esc_url( $url ) . '" method="post" style="margin:0"><input type="hidden" name="fpw_sales_action" value="cancel"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $token ) . '">' . $nonce_cancel
-			. '<button type="submit" class="button">Cancelar sin efectos</button></form>'
-			. '</div></section>';
-	}
-
-	$receipts_html = '';
-	$receipts = fpw_sales_receipts( 10 );
-	if ( ! empty( $receipts ) ) {
-		$receipt_rows = '';
-		foreach ( $receipts as $receipt ) {
-			$conflictos = (int) ( $receipt['conflictos_total'] ?? 0 );
-			$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td><td>' . esc_html( (string) ( $receipt['filename'] ?? '' ) ) . '</td>'
-				. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
-				. '<td><code>' . esc_html( (string) ( $receipt['token'] ?? '' ) ) . '</code></td></tr>';
-		}
-		$receipts_html = '<section><h2>Importaciones aplicadas</h2>'
-			. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Archivo</th><th scope="col">Nuevas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th><th scope="col">Lote</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
-			. '<p class="fpw-sales__note">Cada lote aplicado deja este recibo de procedencia: es la frescura que verás junto al historial en cada borrador.</p></section>';
-	}
-
 	return fpw_sales_screen_shell(
 		'<h1>Importar ventas</h1>'
 		. '<p class="fpw-sales__kicker">Registro de ventas · historial de compras por RUT de empresa</p>'
-		. $banner_html
+		. fpw_sales_banner_html( $banner )
 		. '<div class="fpw-sales__grid">' . $contract . $upload . '</div>'
-		. $pending_html
-		. $receipts_html
+		. fpw_sales_pending_preview_html()
+		. fpw_sales_receipts_html()
 	);
 }

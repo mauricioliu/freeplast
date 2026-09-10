@@ -289,24 +289,23 @@ function fpw_draft_no_draft_html( $order ): string {
  */
 function fpw_draft_history_section( array $draft ): string {
 	if ( ! function_exists( 'fpw_sales_history_for_rut' ) ) { return '<section><h2>Historial de compras</h2><p>' . fpw_draft_pending_html() . '</p></section>'; }
-	$identity   = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
-	$rut        = (string) ( $identity['rut'] ?? '' );
-	$normalized = fpw_sales_normalize_rut( $rut );
-	$history    = fpw_sales_history_for_rut( $normalized );
-	$import_url = '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_sales_import_screen_url() ) . '">Importar ventas</a></p>';
+	$identity    = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
+	$rut         = (string) ( $identity['rut'] ?? '' );
+	$normalized  = fpw_sales_normalize_rut( $rut );
+	$history     = fpw_sales_history_for_rut( $normalized );
+	$import_link = '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_sales_import_screen_url() ) . '">Importar ventas</a></p>';
+	$heading     = '<section><h2>Historial de compras</h2><p><strong class="fpw-draft__no-history">Sin historial asociado</strong></p>';
 	if ( null === $history ) {
-		return '<section><h2>Historial de compras</h2><p><strong class="fpw-draft__no-history">Sin historial asociado</strong></p>'
-			. '<p class="fpw-draft__aside-note">La solicitud no trae un RUT de empresa utilizable, así que ninguna compra importada puede asociarse. Eso no indica que el cliente sea nuevo ni conocido.</p>'
-			. $import_url . '</section>';
+		return $heading . '<p class="fpw-draft__aside-note">La solicitud no trae un RUT de empresa utilizable, así que ninguna compra importada puede asociarse. Eso no indica que el cliente sea nuevo ni conocido.</p>'
+			. $import_link . '</section>';
 	}
 	if ( empty( $history['sales'] ) ) {
-		return '<section><h2>Historial de compras</h2><p><strong class="fpw-draft__no-history">Sin historial asociado</strong></p>'
-			. '<p class="fpw-draft__aside-note">Ninguna venta importada coincide con el RUT ' . esc_html( $rut ) . '. No se inventó ninguna asociación: esto no indica que el cliente sea nuevo.</p>'
-			. $import_url . '</section>';
+		return $heading . '<p class="fpw-draft__aside-note">Ninguna venta importada coincide con el RUT ' . esc_html( $rut ) . '. No se inventó ninguna asociación: esto no indica que el cliente sea nuevo.</p>'
+			. $import_link . '</section>';
 	}
 	$lines = '';
 	foreach ( $history['sales'] as $sale ) {
-		$total = null === ( $sale['total'] ?? null ) ? '—' : number_format( (int) $sale['total'], 0, ',', '.' ) . ' CLP';
+		$total = fpw_sales_format_clp( $sale['total'] ?? null );
 		$lines .= '<li><span class="fpw-draft__sale-date">' . esc_html( (string) ( $sale['date'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-id">' . esc_html( (string) ( $sale['id'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-total">' . esc_html( $total ) . '</span></li>';
 	}
 	$fresh      = $history['freshness'];
@@ -317,7 +316,7 @@ function fpw_draft_history_section( array $draft ): string {
 		. '<p>' . count( $history['sales'] ) . ' ' . esc_html( 1 === count( $history['sales'] ) ? 'venta importada' : 'ventas importadas' ) . ' para el RUT ' . esc_html( $rut ) . ':</p>'
 		. '<ul class="fpw-draft__history">' . $lines . '</ul>'
 		. '<p class="fpw-draft__aside-note">Fuente: importaciones del Registro de ventas. ' . $fresh_note . 'El detalle por producto no está disponible en la fuente importada.</p>'
-		. $import_url . '</section>';
+		. $import_link . '</section>';
 }
 
 /**

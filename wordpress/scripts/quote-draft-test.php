@@ -194,7 +194,7 @@ check( str_contains( $html, 'Caja Cosechera 3/4' ) && str_contains( $html, '140'
 check( str_contains( $html, 'Caja Universal Cerrada Color' ) && str_contains( $html, '25' ), 'the variant line renders with its stored quantity' );
 check( str_contains( $html, 'Color: Azul' ), 'the chosen option renders through the native label' );
 check( ! str_contains( $html, 'pa_color' ) && ! str_contains( $html, '_reduced_stock' ), 'raw keys and internal meta never render' );
-check( ( substr_count( $html, 'Pendiente' ) ) >= 3, 'prices and the dispatch estimate read as pending; history carries its own live state (issue #54)' );
+check( substr_count( $html, 'Pendiente' ) >= 3, 'prices and the dispatch estimate read as pending; history carries its own live state (issue #54)' );
 check( ! str_contains( $html, '$' ), 'no price amounts anywhere on the draft' );
 check( str_contains( $html, 'Sin historial asociado' ) && ! str_contains( $html, 'Cliente nuevo' ), 'with the importer live (issue #54), no matched history reads as unresolved — never as a customer verdict' );
 check( str_contains( $html, 'cotización emitida' ), 'the draft states it is not an issued quotation' );

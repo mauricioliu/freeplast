@@ -171,7 +171,7 @@ $badRows = "id_venta,fecha,rut,total\n"
 	. "V-3,2026-13-01,76123456-7,100\n"
 	. "V-4,2026-01-02,76123456-7,mucho\n"
 	. "V-5,2026-01-03,76.1.23.456-7 X,100\n"
-	. str_repeat( 'V-6,2026-01-04,76123456-7,100', 1 ) . ",,\n";
+	. "V-6,2026-01-04,76123456-7,100,,\n";
 $parsed = fpw_sales_parse_csv( $badRows );
 check( $parsed['ok'] === true && count( $parsed['batch']['rows'] ) === 2, 'only well-formed rows become importable candidates (an unreadable RUT still imports, unassociated)' );
 $reasons = implode( ' | ', array_column( $parsed['batch']['errores'], 'reason' ) );
@@ -305,7 +305,21 @@ try {
 } catch ( FPWS_Die $e ) {
 	check( $e->getMessage() === '403', 'the CSRF boundary refuses a nonce-less confirm before any state change' );
 }
+
+/* The applied-batch banner: a confirm POST routed through the screen renders
+ * the explicit result with its counts and source — and really consumes the
+ * batch (this is the first POST the screen processes). */
 $_POST = array();
+fpw_sales_process_upload_string( "id_venta,fecha,rut,total\nH-3,2026-03-03,76.543.210-K,111\n", 'banner.csv' );
+$_POST = array( 'fpw_sales_action' => 'confirm', 'fpw_sales_token' => fpw_sales_pending_batch()['token'], 'fpw_sales_nonce' => 'good-' . FPW_SALES_NONCE_CONFIRM );
+$_REQUEST = $_POST;
+ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
+$_POST = array();
+$_REQUEST = array();
+check( str_contains( $page, 'Importación aplicada: 1 ventas nuevas' ) && str_contains( $page, 'banner.csv' ), 'a confirmed POST renders the explicit result with its counts and source' );
+check( fpw_sales_pending_batch() === null, 'the POSTed confirm consumed the pending slot' );
+
+/* The owner's screen: contract, CSRF-carrying forms, pending review, receipts. */
 fpw_sales_process_upload_string( "id_venta,fecha,rut,total\nP-1,2026-09-01,76123456-7,5000\n", 'pendiente.csv' );
 ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Importar ventas' ) && str_contains( $page, 'id_venta' ), 'the owner renders the import screen with its contract' );
@@ -315,15 +329,5 @@ check( str_contains( $page, 'pendiente.csv' ) && str_contains( $page, 'Confirmar
 check( str_contains( $page, $applied['receipt']['token'] ), 'the applied receipts are consultable on the screen with their token' );
 check( str_contains( $page, '@media (min-width: 782px)' ), 'the screen is authored mobile-first with a desktop enhancement' );
 check( str_contains( $page, 'muestra real' ), 'the screen names the standing external blocker: the definitive contract awaits the real Sales Register sample' );
-
-/* The applied-batch banner: explicit result counts after a confirm POST. */
-fpw_sales_cancel( fpw_sales_pending_batch()['token'] );
-fpw_sales_process_upload_string( "id_venta,fecha,rut,total\nH-3,2026-03-03,76.543.210-K,111\n", 'banner.csv' );
-$_POST = array( 'fpw_sales_action' => 'confirm', 'fpw_sales_token' => fpw_sales_pending_batch()['token'], 'fpw_sales_nonce' => 'good-' . FPW_SALES_NONCE_CONFIRM );
-$_REQUEST = $_POST;
-ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
-$_POST = array();
-$_REQUEST = array();
-check( str_contains( $page, 'aplicadas' ) && str_contains( $page, 'banner.csv' ), 'a confirmed POST renders the explicit result with its counts and source' );
 
 echo "sales register: $assertions offline checks passed (issue #54)\n";
