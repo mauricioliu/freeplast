@@ -4,11 +4,11 @@
  *
  * Boot the disposable WordPress + SQLite + WooCommerce installation from
  * scripts/bootstrap.mjs, serve it with the PHP built-in server (multi-worker,
- * loopback only), drive scripts/woo-checkout-race.py through the Home
+ * bound to the configured local host), drive scripts/woo-checkout-race.py through the Home
  * featured-grid contract (WA-04), the catalog search contract (post_type +
  * wc_query hook) and the concurrent-checkout attempt claim (WA-01). WordPress order state is re-checked through WP-CLI afterwards.
  *
- * Everything targets http://127.0.0.1:<port> — no staging, no external host,
+ * Everything targets the disposable local host — no staging or remote site,
  * no mail configured. The first run pays the one-off bootstrap cost; later
  * runs re-sync wp-content only. FREEPLAST_SKIP_STACK=1 skips this harness
  * (documented escape hatch).
@@ -25,7 +25,7 @@ const WORDPRESS_DIR = dirname(HERE);
 const PHP = join(WORDPRESS_DIR, '.tools', 'php', 'php');
 const WPCLI = join(WORDPRESS_DIR, '.tools', 'cache', 'wp-cli.phar');
 const WP_DIR = join(WORDPRESS_DIR, '.build', 'wp');
-const SITE_URL = process.env.FREEPLAST_TEST_URL || 'http://127.0.0.1:8091';
+const SITE_URL = process.env.FREEPLAST_TEST_URL || 'http://mliu:8091';
 const PORT = Number(new URL(SITE_URL).port) || 80;
 
 function sh(cmd, args, opts = {}) {
@@ -267,7 +267,7 @@ register_shutdown_function( static function () {
      drains a pipe then — once the 64KB pipe buffer filled, every worker
      blocked on its access-log write and the whole stack stalled mid-suite. */
   const serverLogFd = openSync(serverLogFile, 'a');
-  const server = spawn(PHP, ['-d', 'max_execution_time=10', '-d', `auto_prepend_file=${join(WORDPRESS_DIR, '.build', 'fpw-trace-prepend.php')}`, '-S', `127.0.0.1:${PORT}`, join(HERE, 'router.php')], {
+  const server = spawn(PHP, ['-d', 'max_execution_time=10', '-d', `auto_prepend_file=${join(WORDPRESS_DIR, '.build', 'fpw-trace-prepend.php')}`, '-S', `${new URL(SITE_URL).hostname}:${PORT}`, join(HERE, 'router.php')], {
     cwd: WORDPRESS_DIR,
     env: { ...process.env, PHP_CLI_SERVER_WORKERS: '8' },
     stdio: ['ignore', serverLogFd, serverLogFd],
