@@ -84,6 +84,10 @@ _Avoid_: Quote Requests, Price List
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
 
+**Address Provenance**:
+The recorded origin of the Delivery Address: confirmed with the official address assistant (keeping its place identification and match scope — exact place or broad road/commune-level match) or typed manually. A selection identifies a place; it neither certifies deliverability nor precise access, and the browser-reported identification is a claim recorded for private review, never verified evidence. Editing the address text or requesting no dispatch invalidates the association.
+_Avoid_: Geocoded address, verified address, coordinates
+
 **Dispatch Distance**:
 The road distance from the Freeplast Warehouse to the Delivery Address, used by sales to estimate a dispatch price without waiting for the Carrier's charge. It is a pricing reference, not a guarantee of the journey the Carrier will travel.
 _Avoid_: Straight-line distance, shipping price
@@ -133,3 +137,5 @@ _Avoid_: New production site, replacement site
 [ADR-0001](docs/adr/0001-woocommerce-quote-only.md) records the approved mapping to WooCommerce. Its Products are the editable Catalog Source, its Cart holds Productos a Cotizar, and its Orders administration holds Quote Requests, not commercial purchases. The initial Woo release uses request intake and native order notes; it does not reproduce the former six-state commercial workflow. Historical statuses and submitted records remain preserved.
 
 [ADR-0004](docs/adr/0004-quote-draft-durable-relationship.md) records the Quotation Draft's durable relationship (issue #50): one unique options row born at the checkout receipt, read by the owner only, announced through the existing owner email.
+
+[ADR-0005](docs/adr/0005-dispatch-address-assistance.md) records the dispatch-address assistance decision (issue #59): the official Places widget beside the native textarea behind an absent-by-default configuration seam, provenance kept as a reviewable claim, and manual entry always valid without Google.

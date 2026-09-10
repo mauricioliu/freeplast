@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.7.0
+ * Version: 1.8.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -181,6 +181,12 @@ function fpw_checkout_fields( $fields ) {
 	// by the adapter at woocommerce_after_order_notes: the SUBMITTED token is
 	// the identity, and normalization carries it.
 	$fields['fpw']['fpw_attempt'] = array( 'label' => '', 'required' => false, 'type' => 'text' );
+	// Issue #59: the dispatch-address provenance carriers. Registered so Woo's
+	// own checkout normalization keeps them (the same verified mechanism as
+	// fpw_attempt above); the adapter hook renders them EMPTY — the browser may
+	// fill them, and only fpw_address_provenance() decides what the record keeps.
+	$fields['fpw']['fpw_place_id'] = array( 'label' => '', 'required' => false, 'type' => 'text' );
+	$fields['fpw']['fpw_place_scope'] = array( 'label' => '', 'required' => false, 'type' => 'text' );
 	return $fields;
 }
 add_filter( 'woocommerce_checkout_fields', 'fpw_checkout_fields', 20000 );
@@ -206,7 +212,67 @@ add_action( 'woocommerce_checkout_create_order', static function ( $order, $data
 		$order->update_meta_data( '_billing_fp_'.$field, sanitize_textarea_field( $value ) );
 	}
 	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch')) ) + array('billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
+	// Issue #59: the address provenance the record may keep — see
+	// fpw_address_provenance(). Only the confirmed address plus its allowed
+	// identification persist; never coordinates, never raw provider responses,
+	// and nothing at all when the request does not ask for dispatch.
+	$provenance = fpw_address_provenance( $data );
+	if ( '' !== $provenance['source'] ) { $order->update_meta_data( '_billing_fp_address_source', $provenance['source'] ); }
+	if ( 'asistida' === $provenance['source'] ) {
+		$order->update_meta_data( '_billing_fp_place_id', $provenance['place_id'] );
+		$order->update_meta_data( '_billing_fp_place_scope', $provenance['scope'] );
+	}
 }, 20, 2 );
+
+/** The match scopes the enhancement reports: an exact place vs a road/commune-level broad match. */
+const FPW_PLACE_SCOPES = array( 'exacta', 'amplia' );
+
+/** Google Place IDs: letters, digits, underscore and hyphen, 8–255 chars — anything else is not one. */
+function fpw_is_place_id( string $value ): bool {
+	return (bool) preg_match( '/^[A-Za-z0-9_-]{8,255}$/', $value );
+}
+
+/**
+ * The Delivery Address provenance the record may keep (issue #59): with
+ * despacho requested, an assistant-confirmed address keeps the place
+ * identification the browser reported — a CLAIM recorded for the private
+ * review, never verified evidence. Every malformed, contradictory or missing
+ * piece (and any arbitrary hidden field beyond the two registered carriers)
+ * degrades to a plainly manual address instead of rejecting an otherwise
+ * valid request; «Sin despacho» excludes the destination AND every place
+ * association.
+ *
+ * @return array{source:string, place_id:string, scope:string}
+ */
+function fpw_address_provenance( array $data ): array {
+	if ( 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { return array( 'source' => '', 'place_id' => '', 'scope' => '' ); }
+	$place_id = trim( (string) ( $data['fpw_place_id'] ?? '' ) );
+	$scope    = (string) ( $data['fpw_place_scope'] ?? '' );
+	$address  = trim( (string) ( $data['billing_fp_address'] ?? '' ) );
+	if ( '' !== $address && in_array( $scope, FPW_PLACE_SCOPES, true ) && fpw_is_place_id( $place_id ) ) {
+		return array( 'source' => 'asistida', 'place_id' => $place_id, 'scope' => $scope );
+	}
+	return array( 'source' => 'manual', 'place_id' => '', 'scope' => '' );
+}
+
+/**
+ * Places configuration seam (issue #59): the official widget loads ONLY with a
+ * deliberate configuration delivered through this filter — a browser key with
+ * HTTP-referrer restrictions, quotas and terms arranged SEPARATELY from the
+ * code (external prerequisite still pending; ADR-0005). Absent configuration
+ * means the assistant never loads and manual entry serves alone.
+ *
+ * @return array{key:string, region:string, version:string}
+ */
+function fpw_places_config(): array {
+	$config = apply_filters( 'fpw_places_config', array() );
+	if ( ! is_array( $config ) || ! isset( $config['key'] ) || ! is_string( $config['key'] ) || '' === trim( $config['key'] ) ) { return array(); }
+	return array(
+		'key'     => trim( $config['key'] ),
+		'region'  => isset( $config['region'] ) && is_string( $config['region'] ) ? strtoupper( trim( $config['region'] ) ) : 'CL',
+		'version' => isset( $config['version'] ) && is_string( $config['version'] ) ? trim( $config['version'] ) : 'weekly',
+	);
+}
 add_filter( 'woocommerce_order_number', static function ( $number, $order ) {
 	$legacy = $order->get_meta( '_fpq_reference' );
 	return $legacy ?: ( 'yes' === $order->get_meta('_fp_request') ? 'FP-'.($order->get_date_created() ? $order->get_date_created()->date('Y') : gmdate('Y')).'-'.sprintf('%06d',$order->get_id()) : $number );
@@ -230,6 +296,13 @@ add_action( 'woocommerce_cart_emptied', static function () {
 add_action( 'wp_enqueue_scripts', static function () {
 	if ( function_exists('is_checkout') && is_checkout() && ! is_order_received_page() ) {
 		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.4', true);
+		// Issue #59: the dispatch-address assistant loads only with a delivered
+		// Places configuration; without it the script never ships and manual
+		// entry serves alone (the server keeps the same provenance contract).
+		if ( fpw_places_config() ) {
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.0.0', true);
+			wp_localize_script('fpw-places', 'FPW_PLACES', fpw_places_config());
+		}
 	}
 } );
 
@@ -797,6 +870,11 @@ add_action( 'woocommerce_after_order_notes', static function () {
 	$token = fpw_open_attempt_token();
 	if ( '' === $token ) { return; }
 	echo '<input type="hidden" name="fpw_attempt" value="' . esc_attr( $token ) . '" />';
+	// Issue #59: the provenance carriers ship empty — the Places enhancement
+	// fills them only for a confirmed selection; the server never echoes posted
+	// provenance back and never treats the fields as verified evidence.
+	echo '<input type="hidden" name="fpw_place_id" value="" />';
+	echo '<input type="hidden" name="fpw_place_scope" value="" />';
 } );
 
 /**

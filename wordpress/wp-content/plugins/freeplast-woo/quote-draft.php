@@ -72,7 +72,7 @@ function fpw_build_request_draft_payload( $order ): array {
 		);
 	}
 	return array(
-		'schema'            => 1,
+		'schema'            => 2,
 		'order_id'          => (int) $order->get_id(),
 		'reference'         => (string) $order->get_order_number(),
 		'received_at'       => $created ? (int) $created->getTimestamp() : time(),
@@ -88,6 +88,9 @@ function fpw_build_request_draft_payload( $order ): array {
 		'destination'       => array(
 			'dispatch' => (string) $order->get_meta( '_billing_fp_dispatch' ),
 			'address'  => (string) $order->get_meta( '_billing_fp_address' ),
+			'source'   => (string) $order->get_meta( '_billing_fp_address_source' ),
+			'place_id' => (string) $order->get_meta( '_billing_fp_place_id' ),
+			'scope'    => (string) $order->get_meta( '_billing_fp_place_scope' ),
 		),
 		'items'             => $items,
 		'submitted_details' => $order->get_meta( '_fp_submitted_details' ),
@@ -211,6 +214,21 @@ function fpw_draft_facts_html( array $identity, array $destination, bool $with_d
 	return $html;
 }
 
+/** The delivery-address provenance facts, honestly naming what the record carries (issue #59): an assistant selection is a recorded claim for review — never a certified delivery point; a manual entry is plainly manual; a record older than the feature carries no invented provenance. */
+function fpw_draft_provenance_facts_html( array $destination ): string {
+	$source = (string) ( $destination['source'] ?? '' );
+	if ( '' === $source ) { return fpw_draft_fact_html( 'Procedencia de la dirección', 'Sin registro' ); }
+	if ( 'asistida' === $source ) {
+		$scope = 'amplia' === ( $destination['scope'] ?? '' )
+			? 'Coincidencia amplia — revisar número y comuna'
+			: 'Coincidencia exacta';
+		return fpw_draft_fact_html( 'Procedencia de la dirección', 'Confirmada con el asistente de direcciones' )
+			. fpw_draft_fact_html( 'Alcance de la coincidencia', $scope )
+			. fpw_draft_fact_html( 'Identificación del lugar (Place ID)', (string) ( $destination['place_id'] ?? '' ) );
+	}
+	return fpw_draft_fact_html( 'Procedencia de la dirección', 'Ingresada manualmente' );
+}
+
 /** The Submitted Details, preserved verbatim behind a collapsible; empty when the record carried none. */
 function fpw_draft_submitted_details_html( $details ): string {
 	if ( ! is_array( $details ) || empty( $details ) ) { return ''; }
@@ -305,7 +323,7 @@ function fpw_quote_draft_markup( $order, ?array $draft ): string {
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items ) . '</ul></section>'
 		. '<section><h2>Despacho</h2>'
 		. ( $with_dispatch
-			? '<dl>' . fpw_draft_fact_html( 'Destino', (string) ( $destination['address'] ?? '' ) ) . fpw_draft_pending_fact_html( 'Estimación de despacho' ) . '</dl>'
+			? '<dl>' . fpw_draft_fact_html( 'Destino', (string) ( $destination['address'] ?? '' ) ) . fpw_draft_provenance_facts_html( $destination ) . fpw_draft_pending_fact_html( 'Estimación de despacho' ) . '</dl>'
 			: '<p>La solicitud no pide despacho; los detalles originales se conservan.</p>' )
 		. '</section>'
 		. '</div>';

@@ -142,7 +142,7 @@ check( $payload['items'][0] === array( 'name' => 'Caja Cosechera 3/4', 'product_
 check( $payload['items'][1]['quantity'] === 25 && $payload['items'][1]['variation_id'] === 310, 'the variant line keeps its own identity and quantity' );
 check( $payload['items'][1]['options'] === array( array( 'key' => 'pa_color', 'value' => 'Azul' ) ), 'the chosen option comes from the record; internal meta stays out' );
 check( $payload['identity'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'rut' => '76.543.210-K', 'giro' => 'Producción agrícola', 'phone' => '+56 9 1234 5678', 'email' => 'compras@prueba.invalid' ), 'identity comes from the persisted record' );
-check( $payload['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal' ), 'the destination comes from the record' );
+check( $payload['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'source' => '', 'place_id' => '', 'scope' => '' ), 'the destination comes from the record; a record without provenance carries no invented one (issue #59)' );
 check( $payload['submitted_details'] === $order68->get_meta( '_fp_submitted_details' ), 'Submitted Details are preserved verbatim' );
 check( $payload['enrichment'] === array( 'prices' => 'pending', 'history' => 'pending', 'dispatch' => 'pending' ), 'missing enrichment is an explicit pending — never a zero price, never a customer verdict' );
 foreach ( $payload['items'] as $line ) { check( ! array_key_exists( 'price', $line ) && ! array_key_exists( 'total', $line ), 'no line carries a fabricated amount' ); }
