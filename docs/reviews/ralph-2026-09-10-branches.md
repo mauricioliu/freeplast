@@ -71,6 +71,6 @@ Repo `mauricioliu/ralph`, commit **`01e2f01bf39a0fe2ab4bfa2e8331a26ab0ee7834`** 
 - Construido y probado en worktree limpio: **1452 tests / 52 archivos**, typecheck y build correctos. Los 1464 de la sesión anterior incluían pruebas del WIP previo, deliberadamente excluido de la publicación.
 - `lint-staged` ejecutado en el commit.
 - Cambios ajenos de credenciales, defaults/modelos y demás WIP permanecen locales y sin publicar. Al avanzar el `main` de trabajo, 32 archivos se comprobaron byte a byte sin cambios.
-- El push a `main` activa los workflows propios de GitHub; no se ordenó un release npm ni deploy del sitio.
+- El repo define workflows para push a `main`; la consulta posterior a GitHub no devolvió ejecuciones ni PRs. No se declara CI remoto verde y no se ordenó un release npm ni deploy del sitio.
 
 En Freeplast se versionan únicamente el diagnóstico, revisión/reproductor, este inventario y los cuatro archivos fuente modificados del workflow. Los demás archivos de trabajo ajenos y `.ralph/.env`, logs, recibos de estado y configuración privada quedan fuera del commit.
