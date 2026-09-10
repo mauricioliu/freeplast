@@ -282,6 +282,7 @@ register_shutdown_function( static function () {
        prototype tooling reaches the served site. A tiny cookie jar carries
        the WooCommerce session cookie across the requests — the exact
        persistence the journey must survive. */
+    let placesJourneyIds = null;   // filled inside the block below (issue #59)
     {
       const jarFetch = makeCookieFetch();
       const headerCount = (html) => Number((html.match(/fpw-basket-count">\s*(\d+)\s*</) || [])[1]);
@@ -411,6 +412,9 @@ register_shutdown_function( static function () {
       check(/01<\/span> Contacto/.test(detailsHtml) && /02<\/span> Empresa/.test(detailsHtml) && /03<\/span> Despacho/.test(detailsHtml) && /04<\/span> Algo más que debamos saber/.test(detailsHtml), 'the four A groups render');
       check(/woocommerce-checkout-review-order-table/.test(detailsHtml) && detailsHtml.includes('Editar productos'), 'the summary holds the native review table and Editar productos');
       check(/name="fpw_attempt"/.test(detailsHtml), 'the hidden submitted-attempt identity is present');
+      check(/name="fpw_place_id"/.test(detailsHtml) && /name="fpw_place_scope"/.test(detailsHtml), 'the address-provenance carriers render empty in the served form (issue #59)');
+      check(/name="fpw_place_id" value=""/.test(detailsHtml), 'the provenance carriers ship empty: the server never echoes posted provenance (issue #59)');
+      check(!/places\.js\?ver=/.test(detailsHtml) && !/maps\.googleapis\.com/.test(detailsHtml), 'without an authorized Places configuration the assistant never loads and no Google contact ships (issue #59)');
       check(/name="woocommerce_checkout_place_order"/.test(detailsHtml), 'the native place-order trigger is preserved');
       check(/checkout-form\.js\?ver=/.test(detailsHtml), 'the A checkout enhancement ships');
       check(/fields\.js\?ver=1\.0\.4/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
@@ -440,6 +444,46 @@ register_shutdown_function( static function () {
       check(removed.status === 200, `the native remove-item must answer 200 (got ${removed.status})`);
       const zeroPage = await (await jarFetch('/')).text();
       check(headerCount(zeroPage) === 0, `the empty selection server-renders the zero state (got ${headerCount(zeroPage)})`);
+
+      /* Issue #59 journey: the dispatch-address assistance over the REAL native
+         POST. An assisted confirmation keeps ONLY its recorded claim, a payload
+         with a malformed place id degrades to a plainly manual address, and
+         «Sin despacho» excludes the destination AND every place association.
+         No Google exists on this stack: the server's provenance contract is
+         what's under test, exactly as the criteria require. */
+      const placesAddress = 'Camino El Arrayán 52, San Francisco de Mostazal';
+      const hiddenValues = (html) => {
+        const values = {};
+        for (const match of html.matchAll(/<input[^>]*type="hidden"[^>]*>/g)) {
+          const name = (match[0].match(/name="([^"]+)"/) || [])[1];
+          if (!name || name in values) { continue; }
+          values[name] = (match[0].match(/value="([^"]*)"/) || [])[1] ?? '';
+        }
+        return values;
+      };
+      const placesJourney = async (fields, label) => {
+        const jar = makeCookieFetch();
+        const add = await jar('/?wc-ajax=add_to_cart', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'product_id=' + journeyId + '&quantity=2' });
+        check(add.status === 200, `places journey ${label}: the add must answer 200 (got ${add.status})`);
+        const page = await (await jar('/datos-y-envio/')).text();
+        const hidden = hiddenValues(page);
+        check(hidden['woocommerce-process-checkout-nonce'] && hidden['fpw_attempt'] && hidden['fpw_place_id'] === '', `places journey ${label}: the native form carries its identity with empty carriers`);
+        const posted = { ...hidden,
+          billing_first_name: 'PRUEBA LOCAL DESPACHO', billing_phone: '+56 9 1234 5678',
+          billing_email: `despacho-${label}@example.invalid`, billing_company: 'PRUEBA NO COMERCIAL',
+          billing_fp_rut: '76.123.456-7', billing_fp_giro: 'Prueba local',
+          payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
+          ...fields };
+        const response = await jar('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted).toString() });
+        const payload = await response.json();
+        check(payload && payload.result === 'success' && /\/order-received\/(\d+)/.test(String(payload.redirect || '')), `places journey ${label}: a valid request lands natively (got ${JSON.stringify(payload).slice(0, 140)})`);
+        return Number((String(payload.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
+      };
+      placesJourneyIds = {
+        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
+        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Camino rural sin asistente, Mostazal', fpw_place_id: 'no space allowed', fpw_place_scope: 'exacta' }, 'degradada'),
+        sindespacho: await placesJourney({ billing_fp_dispatch: 'no', billing_fp_address: '', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'amplia' }, 'sin-despacho'),
+      };
 
       /* The controlled reference fixture: all 17 products, categories, and the
          two 5-color variable products — synthetic run-owned data only. */
@@ -575,10 +619,11 @@ register_shutdown_function( static function () {
     /* 5. Notification events: exactly one sales + one customer notification
        per NEW request — DERIVED from the scenario ledger (3 race rounds +
        correct + renew + lost + lostmulti A + lostmulti B + inflight + stale
-       + isolate = 11), never duplicated for folds, replays, recoveries or
-       identity-gate rejections. */
+       + isolate = 11) PLUS the three issue-#59 dispatch journeys, never
+       duplicated for folds, replays, recoveries or identity-gate rejections. */
     const mails = existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean) : [];
-    check(mails.length === 2 * outcomes.new_request_count, `expected exactly ${2 * outcomes.new_request_count} notification events (2 per new request × ${outcomes.new_request_count}), got ${mails.length}:\n${mails.join('\n')}`);
+    const newRequestTotal = outcomes.new_request_count + 3;   // the ledger PLUS the three issue-#59 dispatch journeys
+    check(mails.length === 2 * newRequestTotal, `expected exactly ${2 * newRequestTotal} notification events (2 per new request × ${newRequestTotal}), got ${mails.length}:\n${mails.join('\n')}`);
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
 
@@ -586,9 +631,10 @@ register_shutdown_function( static function () {
        notification surface. Each new request's intercepted owner mail links
        its OWN draft exactly once; no customer acknowledgement ever does. */
     const scenarioIds = Object.values(outcomes.scenario_orders).map(Number);
+    const allRequestIds = [...scenarioIds, placesJourneyIds.asistida, placesJourneyIds.degradada, placesJourneyIds.sindespacho];
     const draftMails = mails.map((line) => JSON.parse(line)).filter((m) => m.draft_request !== null);
-    check(draftMails.length === outcomes.new_request_count, `exactly one owner notice with a draft link per new request (${outcomes.new_request_count}), got ${draftMails.length}`);
-    for (const id of scenarioIds) {
+    check(draftMails.length === newRequestTotal, `exactly one owner notice with a draft link per new request (${newRequestTotal}), got ${draftMails.length}`);
+    for (const id of allRequestIds) {
       check(draftMails.filter((m) => m.draft_request === id).length === 1, `request ${id}'s owner notice must link its own draft exactly once`);
     }
 
@@ -600,7 +646,7 @@ register_shutdown_function( static function () {
        reads for an authorized owner session, DENIES a valid ventas session
        (permission, not CSRF), sends a visitor to the login, and invents
        nothing for missing records. */
-    const idsList = scenarioIds.join(',');
+    const idsList = allRequestIds.join(',');
     const draftState = JSON.parse(sh(PHP, [WPCLI, 'eval', `
       global $wpdb;
       $out = array('drafts' => array(), 'records' => array());
@@ -638,9 +684,50 @@ register_shutdown_function( static function () {
       check(draft.destination && 'dispatch' in draft.destination, `request ${id}'s draft carries the recorded destination`);
       check(draft.enrichment && draft.enrichment.prices === 'pending' && draft.enrichment.history === 'pending' && draft.enrichment.dispatch === 'pending', `request ${id}'s draft names prices/history/dispatch pending, never zero`);
       check(draft.submitted_details && Object.keys(draft.submitted_details).length === record.details, `request ${id}'s draft preserves its Submitted Details`);
-      check(draft.schema === 1, `request ${id}'s draft uses the run's single schema`);
+      check(draft.schema === 2, `request ${id}'s draft uses the run's single schema (issue #59 destination-provenance shape)`);
     }
     check(draftState.manual_has_draft === false, `a record created without a checkout receipt gets no draft (order ${draftState.manual_order})`);
+
+    /* 5d. Issue #59: the recorded destination provenance over real records —
+       only the confirmed address plus its allowed identification persists;
+       a malformed payload degrades to plainly manual; «Sin despacho» keeps
+       no destination and no place association at all. */
+    const placesState = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+      global $wpdb;
+      $out = array();
+      foreach (array('asistida' => ${placesJourneyIds.asistida}, 'degradada' => ${placesJourneyIds.degradada}, 'sindespacho' => ${placesJourneyIds.sindespacho}) as $key => $id) {
+        $order = wc_get_order($id);
+        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_' . $id));
+        $out[$key] = array(
+          'id' => $id,
+          'dispatch' => (string) $order->get_meta('_billing_fp_dispatch'),
+          'address' => (string) $order->get_meta('_billing_fp_address'),
+          'source' => (string) $order->get_meta('_billing_fp_address_source'),
+          'place_id' => (string) $order->get_meta('_billing_fp_place_id'),
+          'scope' => (string) $order->get_meta('_billing_fp_place_scope'),
+          'all_meta' => wp_json_encode($order->get_meta_data()),
+          'draft_destination' => is_string($raw) ? (json_decode($raw, true)['destination'] ?? null) : null,
+        );
+      }
+      echo wp_json_encode($out);
+    `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+    {
+      const assisted = placesState.asistida;
+      check(assisted.dispatch === 'si' && assisted.address === 'Camino El Arrayán 52, San Francisco de Mostazal', `the assisted record keeps the confirmed address (got ${assisted.address})`);
+      check(assisted.source === 'asistida' && assisted.place_id === 'ChIJfreesideQ9fXhZplaces-fixture' && assisted.scope === 'exacta', `the assisted record keeps exactly its claim (got ${JSON.stringify([assisted.source, assisted.place_id, assisted.scope])})`);
+      check(!assisted.all_meta.includes('coordinates') && !/-33\./.test(assisted.all_meta), 'no coordinate ever persists');
+      check(assisted.draft_destination && assisted.draft_destination.source === 'asistida' && assisted.draft_destination.place_id === 'ChIJfreesideQ9fXhZplaces-fixture', 'the draft snapshot carries the recorded provenance');
+      const degraded = placesState.degradada;
+      check(degraded.source === 'manual' && degraded.place_id === '' && degraded.scope === '', `a malformed place id degrades to a plainly manual record (got ${JSON.stringify([degraded.source, degraded.place_id, degraded.scope])})`);
+      check(degraded.address === 'Camino rural sin asistente, Mostazal', 'the degraded record keeps the valid manual address: the request was never lost');
+      check(!degraded.all_meta.includes('no space allowed'), 'the malformed value never reaches the record');
+      check(degraded.draft_destination && degraded.draft_destination.source === 'manual' && degraded.draft_destination.place_id === '', 'the degraded draft names the manual provenance');
+      const none = placesState.sindespacho;
+      check(none.dispatch === 'no' && none.address === '', '«Sin despacho» keeps no destination (existing rule intact over the real POST)');
+      check(none.source === '' && none.place_id === '' && none.scope === '', '«Sin despacho» keeps no place association, even with stale place fields posted');
+      check(!none.all_meta.includes('ChIJ'), 'no place identification of any shape survives a no-dispatch request');
+      check(none.draft_destination && none.draft_destination.dispatch === 'no' && none.draft_destination.source === '', 'the no-dispatch draft carries no invented provenance');
+    }
 
     /* The private reading over real HTTP: owner opens the intercepted
        notice's destination from a fresh authenticated session. */
@@ -670,6 +757,15 @@ register_shutdown_function( static function () {
       const reread = await (await owner(draftUrl)).text();
       const region = (html) => { const start = html.indexOf('<div class="wrap fpw-draft">'); const end = html.indexOf('<!-- fpw-draft:end -->'); return start >= 0 && end > start ? html.slice(start, end) : null; };
       check(region(reread) !== null && region(reread) === region(screenHtml), 'the private read is stable: the draft screen markup changes nothing');
+
+      /* Issue #59: the private review reads the destination provenance — the
+         assisted claim named for what it is, the degraded request plainly
+         manual, and the dispatch estimate still pending (no routes here). */
+      const assistedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.asistida}`)).text();
+      check(assistedScreen.includes('Procedencia de la dirección') && assistedScreen.includes('Confirmada con el asistente de direcciones'), 'the private reading names the assisted provenance (issue #59)');
+      check(assistedScreen.includes('Coincidencia exacta') && assistedScreen.includes('ChIJfreesideQ9fXhZplaces-fixture'), 'the private reading shows the claim and its scope');
+      const degradedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.degradada}`)).text();
+      check(degradedScreen.includes('Ingresada manualmente') && !degradedScreen.includes('Place ID'), 'the degraded request reads as plainly manual, with no invented place row (issue #59)');
 
       /* Negative permission with a VALID session (no nonce applies to a GET
          read): ventas' exact approved caps never open the private draft. */
@@ -1046,6 +1142,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + restricted-ventas record boundary + ventas import and RUT purchase history) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history) on ${SITE_URL}`);
   return checks;
 }

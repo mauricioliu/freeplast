@@ -92,6 +92,10 @@ _Avoid_: Upload log, file backup, invoice
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
 
+**Address Provenance**:
+The recorded origin of the Delivery Address: confirmed with the official address assistant (keeping its place identification and match scope — exact place or broad road/commune-level match) or typed manually. A selection identifies a place; it neither certifies deliverability nor precise access, and the browser-reported identification is a claim recorded for private review, never verified evidence. Editing the address text or requesting no dispatch invalidates the association.
+_Avoid_: Geocoded address, verified address, coordinates
+
 **Dispatch Distance**:
 The road distance from the Freeplast Warehouse to the Delivery Address, used by sales to estimate a dispatch price without waiting for the Carrier's charge. It is a pricing reference, not a guarantee of the journey the Carrier will travel.
 _Avoid_: Straight-line distance, shipping price
@@ -142,4 +146,8 @@ _Avoid_: New production site, replacement site
 
 [ADR-0004](docs/adr/0004-quote-draft-durable-relationship.md) records the Quotation Draft's durable relationship (issue #50): one unique options row born at the checkout receipt, read by the owner only, announced through the existing owner email.
 
-[ADR-0005](docs/adr/0005-sales-register-import-contract.md) records the Sales Register import contract (issue #54): an explicit source-id sale identity (never the RUT alone or date+amount), preview/confirm/cancel with exactly-once receipts, matching by normalized company RUT, and a purchase history computed at read time beside each draft — the definitive column set and update-vs-append semantics remain blocked on the real sample.
+[ADR-0005](docs/adr/0005-draft-working-state-optimistic-concurrency.md) records the Draft Working State decision (issue #51): the owner's manual completion of a Quotation Draft lives in its own durable row with optimistic revision control, separate from the immutable receipt snapshot.
+
+[ADR-0006](docs/adr/0006-sales-register-import-contract.md) records the Sales Register import contract (issue #54): an explicit source-id sale identity (never the RUT alone or date+amount), preview/confirm/cancel with exactly-once receipts, matching by normalized company RUT, and a purchase history computed at read time beside each draft — the definitive column set and update-vs-append semantics remain blocked on the real sample.
+
+[ADR-0007](docs/adr/0007-dispatch-address-assistance.md) records the dispatch-address assistance decision (issue #59): the official Places widget beside the native textarea behind an absent-by-default configuration seam, provenance kept as a reviewable claim, and manual entry always valid without Google.

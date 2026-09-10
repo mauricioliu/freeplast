@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.18
+Version: 1.0.19
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -3465,6 +3465,30 @@ body.fpw-has-dock.fpw-has-selection {
 
 .fp-checkout-page .fp-address-slot .form-row[hidden] {
   display: none;
+}
+
+/* Dispatch-address assistance (issue #59): the official Places widget sits
+   above the native textarea inside the same slot cell; the status line names
+   the provenance honestly. Composition A untouched — same column, same rhythm. */
+.fp-checkout-page .fpw-places-host[hidden],
+.fp-checkout-page .fpw-places-status[hidden] {
+  display: none;
+}
+
+.fp-checkout-page .fpw-places-host {
+  margin: 0 0 12px;
+}
+
+.fp-checkout-page .fpw-places-host gmp-place-autocomplete {
+  display: block;
+  width: 100%;
+}
+
+.fp-checkout-page .fpw-places-status {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fp-chrome-muted);
+  margin: 7px 0 0;
 }
 
 /* Error treatment: the linked summary replaces Woo's list visually once

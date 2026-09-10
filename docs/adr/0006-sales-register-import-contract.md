@@ -1,4 +1,4 @@
-# 0005 — El Registro de ventas importado: contrato CSV v1 con identidad explícita de venta
+# 0006 — El Registro de ventas importado: contrato CSV v1 con identidad explícita de venta
 
 **Estado:** decisión técnica del corte 5 de la #49 (issue #54), registrada por el agente dentro del alcance autorizado de documentar «cualquier decisión arquitectónica consecuente». **No aprueba el contrato definitivo ni despeja el bloqueo externo de la #49:** la muestra real del Registro de ventas sigue sin examinarse, y la aceptación operativa de esta importación sigue bloqueada por ella. No autoriza despliegue.
 **Contexto:** [ADR-0001](0001-woocommerce-quote-only.md) · [ADR-0004](0004-quote-draft-durable-relationship.md) · issue #54 · PRD #49 (historias 12–20 y 25–33).

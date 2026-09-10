@@ -926,7 +926,7 @@ $render_callback=null;
 foreach($registered_actions['woocommerce_after_order_notes']??array() as $callback) { if(is_object($callback)) { $render_callback=$callback; break; } }
 check(is_object($render_callback),'The checkout form renders the attempt identity field');
 ob_start(); $render_callback(); $field_html=ob_get_clean();
-check((bool)preg_match('/^<input type="hidden" name="fpw_attempt" value="'.$rotated_token.'" \/>$/',$field_html),'The form carries exactly one hidden attempt-identity field with the open token');
+check((bool)preg_match('/^<input type="hidden" name="fpw_attempt" value="'.$rotated_token.'" \/><input type="hidden" name="fpw_place_id" value="" \/><input type="hidden" name="fpw_place_scope" value="" \/>$/',$field_html),'The form carries the attempt-identity field with the open token plus the EMPTY provenance carriers (issue #59): the server never echoes posted provenance back');
 $GLOBALS['fpw_woo']->session=null;  // no session available
 ob_start(); $render_callback(); check(ob_get_clean()==='','Without a session no identity field is rendered and the claim stays out of the way');
 $GLOBALS['fpw_woo']->session=new FPW_Fake_Session();
@@ -1247,7 +1247,7 @@ check(is_int($plain_post_position) && is_int($plain_before_position) && $plain_b
 check(str_contains($race_source,'plain_snapshot_before == stale_before'),'The pre-POST snapshot is asserted equal to the known two-line selection — the baseline is not self-derived (native structural check)');
 check(str_contains($race_source,'scenario_ids_unique') && str_contains($race_source,"'new_request_count'") && str_contains($race_source,'NEW_REQUEST_COUNT = 11'),'The native regression derives its new-request total from a distinct scenario-id ledger (11 planned), not a hand-typed mail count');
 $stack_harness_source=(string)file_get_contents(__DIR__.'/woo-stack-harness.mjs');
-check(str_contains($stack_harness_source,'mails.length === 2 * outcomes.new_request_count'),'The notification-event expectation is derived from the scenario ledger, never hand-typed (native structural check)');
+check(str_contains($stack_harness_source,'newRequestTotal = outcomes.new_request_count + 3') && str_contains($stack_harness_source,'mails.length === 2 * newRequestTotal'),'The notification-event expectation is derived from the scenario ledger plus the three issue-#59 journeys, never hand-typed (native structural check)');
 check(str_contains($stack_harness_source,'totalUnits(parsed.lostmulti_a) === 70') && str_contains($stack_harness_source,'totalUnits(parsed.lostmulti_b) === 6') && str_contains($stack_harness_source,'totalUnits(parsed.stale) === 7'),'The WP-CLI state block verifies the lostmulti/stale ORIGINALS by their own quantities (A: 70 units, B: 6, stale: 7)');
 check(str_contains($stack_harness_source,'lookup_row_a') && str_contains($stack_harness_source,'exactly one original A'),'The WP-CLI state block proves exactly one original A through A\'s own durable lookup row resolving to the record the retry returned');
 

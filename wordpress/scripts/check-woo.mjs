@@ -97,6 +97,8 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 // honest ambiguous transport wording, busy submit semantics.
 { const {runCheckoutFormTests}=await import('./checkout-form-js-test.mjs');
   checks+=await runCheckoutFormTests(); }
+{ const {runCheckoutPlacesTests}=await import('./checkout-places-js-test.mjs');
+  checks+=await runCheckoutPlacesTests(); }
 { const {runNativeCheckoutTests}=await import('./checkout-native-test.mjs');
   checks+=await runNativeCheckoutTests(); }
 { const {runEvidenceFingerprintTests}=await import('./evidence-fingerprint-test.mjs');
@@ -114,6 +116,8 @@ console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-draft-test.php')]));
 // Issue #54 (cut 5 of #49): manual Sales Register import + Purchase History by normalized RUT.
 console.log(run(php,[path.join(root,'scripts/sales-register-test.php')]));
+// Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
+console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));
