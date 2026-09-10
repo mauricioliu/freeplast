@@ -46,8 +46,8 @@ function boot({ config = { key: 'browser-key-fixture', region: 'CL', version: 'w
   w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   w.FPW_PLACES = config;
   const created = [];
-  if (google === 'quota' || google === 'absent-library') {
-    w.google = { maps: { importLibrary: () => Promise.reject(new Error(google === 'quota' ? 'quota exceeded' : 'Request denied')) } };
+  if (google === 'quota') {
+    w.google = { maps: { importLibrary: () => Promise.reject(new Error('quota exceeded')) } };
   } else if (google === 'script-error') {
     /* neither google nor a loader: the injected maps script must be observed */
   } else if (google) {

@@ -23,12 +23,15 @@ class WP_Error {
 	public function add( $code, $message, $data = null ) { $this->codes[] = $code; }
 }
 /* A minimal WC() session so the adapter's attempt-token hook actually renders. */
-class FPWP_Fake_Session {	public array $data = array();
+class FPWP_Fake_Session {
+	public array $data = array();
 	public function get( $key, $default = '' ) { return array_key_exists( $key, $this->data ) ? $this->data[ $key ] : $default; }
 	public function set( $key, $value ) { $this->data[ $key ] = $value; }
 	public function __unset( $key ) { unset( $this->data[ $key ] ); }
 }
-class FPWP_Fake_WC {	public $session; public $cart = null; }
+class FPWP_Fake_WC {
+	public $session; public $cart = null;
+}
 if ( ! function_exists( 'WC' ) ) { $GLOBALS['fpwp_woo'] = new FPWP_Fake_WC(); $GLOBALS['fpwp_woo']->session = new FPWP_Fake_Session(); function WC() { return $GLOBALS['fpwp_woo']; } }
 require __DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php';
 
@@ -117,11 +120,11 @@ class FPWP_Fake_Order {
 	public function update_meta_data( $key, $value ) { $this->meta[ $key ] = $value; }
 	public function get_id(): int { return 91; }
 }
+function is_closure( $candidate ): bool { return is_object( $candidate ) && $candidate instanceof Closure; }
 $create_callbacks = array();
-foreach ( ( $GLOBALS['registered_actions']['woocommerce_checkout_create_order'] ?? array() ) as $index => $callback ) {
+foreach ( ( $GLOBALS['registered_actions']['woocommerce_checkout_create_order'] ?? array() ) as $callback ) {
 	if ( is_closure( $callback ) ) { $create_callbacks[] = $callback; }
 }
-function is_closure( $candidate ): bool { return is_object( $candidate ) && $candidate instanceof Closure; }
 function fpwp_create( array $data ): FPWP_Fake_Order {
 	global $create_callbacks;
 	$order = new FPWP_Fake_Order();

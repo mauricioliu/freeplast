@@ -299,9 +299,10 @@ add_action( 'wp_enqueue_scripts', static function () {
 		// Issue #59: the dispatch-address assistant loads only with a delivered
 		// Places configuration; without it the script never ships and manual
 		// entry serves alone (the server keeps the same provenance contract).
-		if ( fpw_places_config() ) {
+		$places = fpw_places_config();
+		if ( $places ) {
 			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.0.0', true);
-			wp_localize_script('fpw-places', 'FPW_PLACES', fpw_places_config());
+			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}
 } );

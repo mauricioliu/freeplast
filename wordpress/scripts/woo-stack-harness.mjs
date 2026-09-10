@@ -623,7 +623,7 @@ register_shutdown_function( static function () {
        duplicated for folds, replays, recoveries or identity-gate rejections. */
     const mails = existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean) : [];
     const newRequestTotal = outcomes.new_request_count + 3;   // the ledger PLUS the three issue-#59 dispatch journeys
-    check(mails.length === 2 * (outcomes.new_request_count + 3), `expected exactly ${2 * newRequestTotal} notification events (2 per new request × ${newRequestTotal}), got ${mails.length}:\n${mails.join('\n')}`);
+    check(mails.length === 2 * newRequestTotal, `expected exactly ${2 * newRequestTotal} notification events (2 per new request × ${newRequestTotal}), got ${mails.length}:\n${mails.join('\n')}`);
     const subjects = mails.map((line) => { try { return JSON.parse(line).subject ?? ''; } catch { return '?'; } });
     check(subjects.every((s) => s.length > 0), 'every notification event carries a subject');
 

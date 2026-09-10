@@ -184,7 +184,4 @@
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
   }
-  if (typeof module === 'object' && module.exports) {
-    module.exports = { TEXTS: TEXTS };
-  }
 })();
