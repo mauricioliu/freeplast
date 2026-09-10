@@ -61,17 +61,6 @@ function fpw_read_request_draft( int $order_id ): ?array {
  */
 function fpw_build_request_draft_payload( $order ): array {
 	$created = $order->get_date_created();
-	$options = static function ( $item ): array {
-		$collected = array();
-		foreach ( $item->get_meta_data() as $meta ) {
-			$data = ( is_object( $meta ) && method_exists( $meta, 'get_data' ) ) ? $meta->get_data() : array();
-			$key   = (string) ( $data['key'] ?? '' );
-			$value = $data['value'] ?? null;
-			if ( '' === $key || str_starts_with( $key, '_' ) || ! is_scalar( $value ) ) { continue; }
-			$collected[] = array( 'key' => $key, 'value' => (string) $value );
-		}
-		return $collected;
-	};
 	$items = array();
 	foreach ( $order->get_items() as $item ) {
 		$items[] = array(
@@ -79,7 +68,7 @@ function fpw_build_request_draft_payload( $order ): array {
 			'product_id'   => (int) $item->get_product_id(),
 			'variation_id' => (int) $item->get_variation_id(),
 			'quantity'     => (int) $item->get_quantity(),
-			'options'      => $options( $item ),
+			'options'      => fpw_draft_line_options( $item ),
 		);
 	}
 	return array(
@@ -104,6 +93,19 @@ function fpw_build_request_draft_payload( $order ): array {
 		'submitted_details' => $order->get_meta( '_fp_submitted_details' ),
 		'enrichment'        => array( 'prices' => 'pending', 'history' => 'pending', 'dispatch' => 'pending' ),
 	);
+}
+
+/** The line's chosen options as the record persisted them: public meta only — internal keys and non-scalar values stay out of the snapshot. */
+function fpw_draft_line_options( $item ): array {
+	$collected = array();
+	foreach ( $item->get_meta_data() as $meta ) {
+		$data = ( is_object( $meta ) && method_exists( $meta, 'get_data' ) ) ? $meta->get_data() : array();
+		$key   = (string) ( $data['key'] ?? '' );
+		$value = $data['value'] ?? null;
+		if ( '' === $key || str_starts_with( $key, '_' ) || ! is_scalar( $value ) ) { continue; }
+		$collected[] = array( 'key' => $key, 'value' => (string) $value );
+	}
+	return $collected;
 }
 
 /**
@@ -175,6 +177,101 @@ function fpw_draft_request_admin_url( int $order_id ): string {
 	return admin_url( 'post.php?post=' . $order_id . '&action=edit' );
 }
 
+/** The pending badge — the honest marker for what the record does not carry yet. */
+function fpw_draft_pending_html(): string {
+	return '<em class="fpw-draft__pending">Pendiente</em>';
+}
+
+/** One fact row of the draft's <dl>s: a fixed label beside record data. */
+function fpw_draft_fact_html( string $label, string $value ): string {
+	return '<div class="fpw-draft__fact"><dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd></div>';
+}
+
+/** One fact row whose value is the pending badge itself. */
+function fpw_draft_pending_fact_html( string $label ): string {
+	return '<div class="fpw-draft__fact"><dt>' . esc_html( $label ) . '</dt><dd>' . fpw_draft_pending_html() . '</dd></div>';
+}
+
+/** The identity and destination facts; each renders only when the record carried it. */
+function fpw_draft_facts_html( array $identity, array $destination, bool $with_dispatch ): string {
+	$facts = array(
+		array( 'Contacto', (string) ( $identity['name'] ?? '' ) ),
+		array( 'Empresa', (string) ( $identity['company'] ?? '' ) ),
+		array( 'RUT empresa', (string) ( $identity['rut'] ?? '' ) ),
+		array( 'Giro', (string) ( $identity['giro'] ?? '' ) ),
+		array( 'Teléfono', (string) ( $identity['phone'] ?? '' ) ),
+		array( 'Correo', (string) ( $identity['email'] ?? '' ) ),
+		array( 'Despacho', $with_dispatch ? 'Con despacho' : 'Sin despacho' ),
+	);
+	if ( $with_dispatch ) { $facts[] = array( 'Dirección de despacho', (string) ( $destination['address'] ?? '' ) ); }
+	$html = '';
+	foreach ( $facts as [ $label, $value ] ) {
+		if ( '' !== $value ) { $html .= fpw_draft_fact_html( $label, $value ); }
+	}
+	return $html;
+}
+
+/** The Submitted Details, preserved verbatim behind a collapsible; empty when the record carried none. */
+function fpw_draft_submitted_details_html( $details ): string {
+	if ( ! is_array( $details ) || empty( $details ) ) { return ''; }
+	return '<details style="margin-top:10px"><summary>Datos originales recibidos</summary><pre>' . esc_html( (string) wp_json_encode( $details, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) ) . '</pre></details>';
+}
+
+/** The requested lines: name, chosen options behind their native labels, quantity — never a price. */
+function fpw_draft_items_html( array $items ): string {
+	$html = '';
+	foreach ( $items as $line ) {
+		$options = '';
+		foreach ( ( is_array( $line['options'] ?? null ) ? $line['options'] : array() ) as $option ) {
+			$options .= '<span class="fpw-draft__option">' . esc_html( wc_attribute_label( (string) $option['key'] ) . ': ' . (string) $option['value'] ) . '</span> ';
+		}
+		$quantity = max( 0, (int) ( $line['quantity'] ?? 0 ) );
+		$html .= '<li><strong>' . esc_html( (string) ( $line['name'] ?? '' ) ) . '</strong>'
+			. ( '' !== $options ? '<div>' . trim( $options ) . '</div>' : '' )
+			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . fpw_draft_pending_html() . '</span></div></li>';
+	}
+	return $html;
+}
+
+/** The screen shell: the mobile-first styles and the stable region the read-stability check measures. */
+function fpw_draft_screen_shell( string $inner ): string {
+	return '<div class="wrap fpw-draft"><style>'
+		. '.fpw-draft{max-width:960px;font-size:16px;line-height:1.5}'
+		. '.fpw-draft h1{font-size:24px;line-height:1.2;margin:4px 0 4px}'
+		. '.fpw-draft__kicker{color:#60626d;margin:12px 0 0}'
+		. '.fpw-draft__status{display:inline-block;margin:8px 0 0;padding:2px 10px;border-radius:999px;background:#f0e6d2;color:#5f4b1d;font-weight:600;font-size:13px}'
+		. '.fpw-draft__summary{margin:10px 0 0;color:#3c4356}'
+		. '.fpw-draft__guard{margin:10px 0 0;padding:10px 12px;border-left:3px solid #b7893c;background:#fdf8ee}'
+		. '.fpw-draft__grid{display:grid;gap:16px;grid-template-columns:1fr;margin-top:16px}'
+		. '.fpw-draft section{border:1px solid #dcdcde;border-radius:8px;padding:14px 16px;background:#fff;margin:0;min-width:0}'
+		. '.fpw-draft h2{font-size:16px;margin:0 0 10px}'
+		. '.fpw-draft dl{display:grid;grid-template-columns:1fr;gap:6px;margin:0}'
+		. '.fpw-draft dt{font-weight:600;font-size:13px;color:#60626d}'
+		. '.fpw-draft dd{margin:0;overflow-wrap:anywhere}'
+		. '.fpw-draft__items{list-style:none;margin:0;padding:0;display:grid;gap:10px}'
+		. '.fpw-draft__items li{border:1px solid #e4e4e8;border-radius:6px;padding:10px 12px;display:grid;gap:4px}'
+		. '.fpw-draft__items .fpw-draft__option{color:#60626d}'
+		. '.fpw-draft__line{display:flex;justify-content:space-between;gap:12px;align-items:baseline}'
+		. '.fpw-draft__qty{font-weight:700;white-space:nowrap}'
+		. '.fpw-draft__pending{font-weight:600;color:#8a6d1a;font-style:normal}'
+		. '.fpw-draft__aside-note{color:#60626d;font-size:14px;margin:6px 0 0}'
+		. '.fpw-draft pre{white-space:pre-wrap;overflow-wrap:anywhere}'
+		. '@media (min-width: 782px){.fpw-draft__grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.fpw-draft aside{display:grid;gap:16px;align-content:start}.fpw-draft dl{grid-template-columns:auto 1fr}.fpw-draft dl dt{padding-right:12px}}'
+		. '</style>' . $inner . '<!-- fpw-draft:end --></div>';
+}
+
+/** The honest no-draft state: the record exists, the initial draft does not — nothing is invented. */
+function fpw_draft_no_draft_html( $order ): string {
+	$order_id  = (int) $order->get_id();
+	$reference = is_string( $order->get_order_number() ) ? $order->get_order_number() : '';
+	return fpw_draft_screen_shell(
+		'<h1>Borrador de cotización</h1>'
+		. '<p class="fpw-draft__kicker">Solicitud ' . esc_html( $reference ) . '</p>'
+		. '<section><h2>Sin borrador</h2><p>Esta solicitud no tiene borrador inicial guardado: se creó antes de este registro automático o su creación falló. La solicitud sigue intacta y legible en su registro nativo; no se inventa ningún dato.</p>'
+		. '<p><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
+	);
+}
+
 /**
  * The draft screen markup. Mobile-first: the base layout is the ~412px phone
  * the owner reads on; the desktop grid is the enhancement. Everything shown
@@ -184,44 +281,11 @@ function fpw_draft_request_admin_url( int $order_id ): string {
  * @param array|null  $draft The stored initial draft, when one exists.
  */
 function fpw_quote_draft_markup( $order, ?array $draft ): string {
-	$shell = static function ( string $inner ): string {
-		return '<div class="wrap fpw-draft"><style>'
-			. '.fpw-draft{max-width:960px;font-size:16px;line-height:1.5}'
-			. '.fpw-draft h1{font-size:24px;line-height:1.2;margin:4px 0 4px}'
-			. '.fpw-draft__kicker{color:#60626d;margin:12px 0 0}'
-			. '.fpw-draft__status{display:inline-block;margin:8px 0 0;padding:2px 10px;border-radius:999px;background:#f0e6d2;color:#5f4b1d;font-weight:600;font-size:13px}'
-			. '.fpw-draft__summary{margin:10px 0 0;color:#3c4356}'
-			. '.fpw-draft__guard{margin:10px 0 0;padding:10px 12px;border-left:3px solid #b7893c;background:#fdf8ee}'
-			. '.fpw-draft__grid{display:grid;gap:16px;grid-template-columns:1fr;margin-top:16px}'
-			. '.fpw-draft section{border:1px solid #dcdcde;border-radius:8px;padding:14px 16px;background:#fff;margin:0;min-width:0}'
-			. '.fpw-draft h2{font-size:16px;margin:0 0 10px}'
-			. '.fpw-draft dl{display:grid;grid-template-columns:1fr;gap:6px;margin:0}'
-			. '.fpw-draft dt{font-weight:600;font-size:13px;color:#60626d}'
-			. '.fpw-draft dd{margin:0;overflow-wrap:anywhere}'
-			. '.fpw-draft__items{list-style:none;margin:0;padding:0;display:grid;gap:10px}'
-			. '.fpw-draft__items li{border:1px solid #e4e4e8;border-radius:6px;padding:10px 12px;display:grid;gap:4px}'
-			. '.fpw-draft__items .fpw-draft__option{color:#60626d}'
-			. '.fpw-draft__line{display:flex;justify-content:space-between;gap:12px;align-items:baseline}'
-			. '.fpw-draft__qty{font-weight:700;white-space:nowrap}'
-			. '.fpw-draft__pending{font-weight:600;color:#8a6d1a;font-style:normal}'
-			. '.fpw-draft__aside-note{color:#60626d;font-size:14px;margin:6px 0 0}'
-			. '.fpw-draft pre{white-space:pre-wrap;overflow-wrap:anywhere}'
-			. '@media (min-width: 782px){.fpw-draft__grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.fpw-draft aside{display:grid;gap:16px;align-content:start}.fpw-draft dl{grid-template-columns:auto 1fr}.fpw-draft dl dt{padding-right:12px}}'
-			. '</style>' . $inner . '<!-- fpw-draft:end --></div>';
-	};
-	$pending = static fn(): string => '<em class="fpw-draft__pending">Pendiente</em>';
 	if ( ! $draft ) {
 		if ( ! $order || ! method_exists( $order, 'get_id' ) ) {
-			return $shell( '<h1>Borrador de cotización</h1><p><strong>Solicitud no encontrada.</strong> El enlace está incompleto o la solicitud no existe. Ningún dato se muestra sin su registro nativo.</p>' );
+			return fpw_draft_screen_shell( '<h1>Borrador de cotización</h1><p><strong>Solicitud no encontrada.</strong> El enlace está incompleto o la solicitud no existe. Ningún dato se muestra sin su registro nativo.</p>' );
 		}
-		$order_id = (int) $order->get_id();
-		$reference = is_string( $order->get_order_number() ) ? $order->get_order_number() : '';
-		return $shell(
-			'<h1>Borrador de cotización</h1>'
-			. '<p class="fpw-draft__kicker">Solicitud ' . esc_html( $reference ) . '</p>'
-			. '<section><h2>Sin borrador</h2><p>Esta solicitud no tiene borrador inicial guardado: se creó antes de este registro automático o su creación falló. La solicitud sigue intacta y legible en su registro nativo; no se inventa ningún dato.</p>'
-			. '<p><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
-		);
+		return fpw_draft_no_draft_html( $order );
 	}
 	$identity    = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
 	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
@@ -229,57 +293,37 @@ function fpw_quote_draft_markup( $order, ?array $draft ): string {
 	$units       = 0;
 	foreach ( $items as $line ) { $units += max( 0, (int) ( $line['quantity'] ?? 0 ) ); }
 	$with_dispatch = 'si' === ( $destination['dispatch'] ?? '' );
-	$facts = '';
-	$fact  = static function ( string $label, string $value ) use ( &$facts ): void {
-		if ( '' === $value ) { return; }
-		$facts .= '<div class="fpw-draft__fact"><dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd></div>';
-	};
-	$fact( 'Contacto', (string) ( $identity['name'] ?? '' ) );
-	$fact( 'Empresa', (string) ( $identity['company'] ?? '' ) );
-	$fact( 'RUT empresa', (string) ( $identity['rut'] ?? '' ) );
-	$fact( 'Giro', (string) ( $identity['giro'] ?? '' ) );
-	$fact( 'Teléfono', (string) ( $identity['phone'] ?? '' ) );
-	$fact( 'Correo', (string) ( $identity['email'] ?? '' ) );
-	$fact( 'Despacho', $with_dispatch ? 'Con despacho' : 'Sin despacho' );
-	if ( $with_dispatch ) { $fact( 'Dirección de despacho', (string) ( $destination['address'] ?? '' ) ); }
-	$lines = '';
-	foreach ( $items as $line ) {
-		$options = '';
-		foreach ( ( is_array( $line['options'] ?? null ) ? $line['options'] : array() ) as $option ) {
-			$options .= '<span class="fpw-draft__option">' . esc_html( wc_attribute_label( (string) $option['key'] ) . ': ' . (string) $option['value'] ) . '</span> ';
-		}
-		$quantity = max( 0, (int) ( $line['quantity'] ?? 0 ) );
-		$lines .= '<li><strong>' . esc_html( (string) ( $line['name'] ?? '' ) ) . '</strong>'
-			. ( '' !== $options ? '<div>' . trim( $options ) . '</div>' : '' )
-			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . $pending() . '</span></div></li>';
-	}
-	$details = $draft['submitted_details'] ?? '';
-	return $shell(
-		'<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
+
+	$heading = '<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
 		. '<h1>Borrador de cotización</h1>'
 		. '<span class="fpw-draft__status">Borrador inicial · pendiente de completar</span>'
 		. '<p class="fpw-draft__summary">' . count( $items ) . ' ' . esc_html( 1 === count( $items ) ? 'producto' : 'productos' ) . ' · ' . $units . ' ' . esc_html( 1 === $units ? 'unidad' : 'unidades' ) . ' · ' . ( $with_dispatch ? 'con despacho' : 'sin despacho' ) . '</p>'
-		. '<p class="fpw-draft__guard">Este borrador es privado y aún no constituye una cotización emitida: el comprador no ha recibido precios ni documentos.</p>'
-		. '<div class="fpw-draft__grid">'
-		. '<div style="display:grid;gap:16px;min-width:0">'
-		. '<section><h2>Solicitud original</h2><dl>' . $facts . '</dl>'
-		. ( is_array( $details ) && ! empty( $details ) ? '<details style="margin-top:10px"><summary>Datos originales recibidos</summary><pre>' . esc_html( (string) wp_json_encode( $details, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) ) . '</pre></details>' : '' )
-		. '</section>'
-		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . $lines . '</ul></section>'
+		. '<p class="fpw-draft__guard">Este borrador es privado y aún no constituye una cotización emitida: el comprador no ha recibido precios ni documentos.</p>';
+
+	$sections = '<div style="display:grid;gap:16px;min-width:0">'
+		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
+		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items ) . '</ul></section>'
 		. '<section><h2>Despacho</h2>'
 		. ( $with_dispatch
-			? '<dl><div class="fpw-draft__fact"><dt>Destino</dt><dd>' . esc_html( (string) ( $destination['address'] ?? '' ) ) . '</dd></div><div class="fpw-draft__fact"><dt>Estimación de despacho</dt><dd>' . $pending() . '</dd></div></dl>'
+			? '<dl>' . fpw_draft_fact_html( 'Destino', (string) ( $destination['address'] ?? '' ) ) . fpw_draft_pending_fact_html( 'Estimación de despacho' ) . '</dl>'
 			: '<p>La solicitud no pide despacho; los detalles originales se conservan.</p>' )
 		. '</section>'
-		. '</div>'
-		. '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
-		. '<section><h2>Historial de compras</h2><p>' . $pending() . '</p><p class="fpw-draft__aside-note">Aún no hay historial disponible para este borrador. Eso no indica que el cliente sea nuevo ni conocido.</p></section>'
+		. '</div>';
+
+	$aside = '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
+		. '<section><h2>Historial de compras</h2><p>' . fpw_draft_pending_html() . '</p><p class="fpw-draft__aside-note">Aún no hay historial disponible para este borrador. Eso no indica que el cliente sea nuevo ni conocido.</p></section>'
 		. '<section><h2>Estado del borrador</h2><dl>'
-		. '<div class="fpw-draft__fact"><dt>Precios</dt><dd>' . $pending() . '</dd></div>'
-		. '<div class="fpw-draft__fact"><dt>Historial</dt><dd>' . $pending() . '</dd></div>'
-		. '<div class="fpw-draft__fact"><dt>Estimación de despacho</dt><dd>' . $pending() . '</dd></div>'
+		. fpw_draft_pending_fact_html( 'Precios' )
+		. fpw_draft_pending_fact_html( 'Historial' )
+		. fpw_draft_pending_fact_html( 'Estimación de despacho' )
 		. '</dl><p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_draft_request_admin_url( (int) ( $draft['order_id'] ?? 0 ) ) ) . '">Ver solicitud completa</a></p></section>'
-		. '</aside>'
+		. '</aside>';
+
+	return fpw_draft_screen_shell(
+		$heading
+		. '<div class="fpw-draft__grid">'
+		. $sections
+		. $aside
 		. '</div>'
 	);
 }

@@ -56,8 +56,9 @@ async function fetchBody(path) {
   }
 }
 
-/* A fetch bound to its own cookie jar (auth sessions for the draft journey).
- * Same cookie discipline as the public-journey block below, factored out. */
+/* A fetch bound to its own cookie jar: each journey that must hold a session
+ * (the public chrome journey, an owner or ventas draft reading) gets its own
+ * jar, kept current from every Set-Cookie response. */
 function makeCookieFetch() {
   const jar = new Map();
   return async (path, opts = {}) => {
@@ -282,19 +283,7 @@ register_shutdown_function( static function () {
        the WooCommerce session cookie across the requests — the exact
        persistence the journey must survive. */
     {
-      const jar = new Map();
-      const cookieHeader = () => [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
-      const jarFetch = async (path, opts = {}) => {
-        const headers = { ...(opts.headers || {}) };
-        if (jar.size > 0) { headers.cookie = cookieHeader(); }
-        const response = await fetch(SITE_URL + path, { ...opts, headers, redirect: 'manual', signal: AbortSignal.timeout(60_000) });
-        for (const raw of (response.headers.getSetCookie ? response.headers.getSetCookie() : [])) {
-          const pair = raw.split(';')[0];
-          const eq = pair.indexOf('=');
-          if (eq > 0) { jar.set(pair.slice(0, eq), pair.slice(eq + 1)); }
-        }
-        return response;
-      };
+      const jarFetch = makeCookieFetch();
       const headerCount = (html) => Number((html.match(/fpw-basket-count">\s*(\d+)\s*</) || [])[1]);
 
       const homeChrome = await fetchBody('/');
@@ -692,7 +681,8 @@ register_shutdown_function( static function () {
 
       /* A visitor with the direct link is sent to the login — knowing the
          link grants nothing. */
-      const anon = await makeCookieFetch()(draftUrl);
+      const visitor = makeCookieFetch();
+      const anon = await visitor(draftUrl);
       check(anon.status === 302 && String(anon.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the direct link is sent to the login, never shown data');
 
       /* A request without a draft reads honestly; bogus ids invent nothing. */
