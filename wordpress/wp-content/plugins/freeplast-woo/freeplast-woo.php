@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.8.0
+ * Version: 1.9.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1418,6 +1418,9 @@ require_once __DIR__ . '/sales-register.php';
 
 // Borrador privado de cotización (issue #50, corte 1 de #49): one durable initial draft per received request + the owner-only screen that reads it.
 require_once __DIR__ . '/quote-draft.php';
+
+// Consulta de distancia de despacho (issue #60, corte 11 de #49): the owner's bounded Routes consultation from the private draft screen — read-only, nothing stored.
+require_once __DIR__ . '/dispatch-distance.php';
 
 // No price/rating sorting for an unpriced request-only catalog.
 add_filter('woocommerce_catalog_orderby', static fn($options) => array_intersect_key($options, array_flip(array('menu_order','date'))));

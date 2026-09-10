@@ -483,6 +483,10 @@ function fpw_render_quote_draft_screen(): void {
 			$work = $result['work'];
 		}
 	}
+	if ( $order && $draft && isset( $_POST['fpw_distance_consult'] ) && null === fpw_pending_distance_consult() ) {
+		// No admin_init pass on this request: run the same read-only process here.
+		fpw_handle_distance_consult_request( $order, $draft );
+	}
 	echo fpw_quote_draft_markup( $order, $draft, $work, $notice );
 }
 
@@ -800,13 +804,13 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 
 	$sections = fpw_draft_notice_html( $notice )
 		. '<div style="display:grid;gap:16px;min-width:0">'
-		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
 		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale ) . '</section>'
 		. $save_section
 		. '</form>'
+		. ( $with_dispatch ? fpw_draft_distance_section_html( $draft, $work ) : '' )
 		. '</div>';
 
 	$prices_state = $all_priced ? 'Ingresados manualmente por el dueño' : fpw_draft_pending_html();
