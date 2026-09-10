@@ -664,9 +664,9 @@ register_shutdown_function( static function () {
       check(screenHtml.includes(raceRecord.reference), 'the private reading shows the request reference');
       for (const line of raceRecord.lines) { check(screenHtml.includes(String(line.quantity)) && screenHtml.includes(line.name), `the private reading shows the stored line ${line.name} × ${line.quantity}`); }
       check(screenHtml.includes(raceRecord.company) && screenHtml.includes(raceRecord.email), 'the private reading shows the stored identity');
-      check((screenHtml.match(/Pendiente/g) || []).length >= 3, 'prices, history and dispatch estimate read as pending on the screen');
+      check((screenHtml.match(/Pendiente/g) || []).length >= 3, 'prices and the dispatch estimate read as pending on the screen (history carries its own live state since #54)');
       check(!screenHtml.replace(/<script[\s\S]*?<\/script>/g, '').includes('$'), 'no price amount renders on the private draft');
-      check(!screenHtml.includes('Sin historial'), 'the screen never presents missing history as a customer verdict');
+      check(screenHtml.includes('Cliente nuevo') === false, 'missing history is never presented as a customer verdict (the exact unresolved wording is pinned after the deterministic import reset below)');
       const reread = await (await owner(draftUrl)).text();
       const region = (html) => { const start = html.indexOf('<div class="wrap fpw-draft">'); const end = html.indexOf('<!-- fpw-draft:end -->'); return start >= 0 && end > start ? html.slice(start, end) : null; };
       check(region(reread) !== null && region(reread) === region(screenHtml), 'the private read is stable: the draft screen markup changes nothing');
@@ -840,6 +840,127 @@ register_shutdown_function( static function () {
           check(record.email === draftState.records[id].email, `record ${id} keeps its identity`);
         }
       }
+
+      /* 5e. Issue #54 (cut 5 of #49): ventas import → solicitud con RUT → historial
+         privado. The owner imports a SYNTHETIC Sales Register file (explicit
+         source-id identity), previews without changing history, confirms, and
+         each affected request's private draft renders its OWN history —
+         matched by normalized RUT across formatting variants — with provenance.
+         Ventas and visitors stay out; repetition never duplicates; a cancelled
+         or stale batch answers explicitly and changes nothing. */
+      const importUrl = '/wp-admin/admin.php?page=fpw-sales-import';
+      /* The disposable DB persists across runs: reset the run-owned import state so the journey below is deterministic. Only the importer's own rows are removed — requests, records, drafts and notes stay untouched. */
+      sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_sales_register'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_sales_batch'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'fpw_sales_receipt_%'");
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+      const draftBeforeAnyImport = await (await owner(draftUrl)).text();
+      check(draftBeforeAnyImport.includes('Sin historial asociado') && !draftBeforeAnyImport.includes('Cliente nuevo'), 'with a clean register, history reads as unresolved («Sin historial asociado»), never a customer verdict');
+      const formNonce = (html, action) => {
+        for (const f of (html.match(/<form\b[\s\S]*?<\/form>/g) || [])) {
+          if (f.includes(`name="fpw_sales_action" value="${action}"`)) {
+            return (f.match(/name="fpw_sales_nonce" value="([0-9a-f]+)"/) || [])[1] || null;
+          }
+        }
+        return null;
+      };
+      const salesState = () => JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        $raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'fpw_sales_register'");
+        $reg = is_string($raw) ? json_decode($raw, true) : null;
+        $receipts = 0;
+        foreach ( (array) $wpdb->get_col("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'fpw_sales_receipt_%'") as $name ) {
+          if ( str_starts_with( (string) $name, 'fpw_sales_receipt_' ) ) { $receipts++; }
+        }
+        echo wp_json_encode(array(
+          'sales' => ( $reg && isset( $reg['sales'] ) ) ? count( $reg['sales'] ) : 0,
+          'ids' => ( $reg && isset( $reg['sales'] ) ) ? array_values( array_column( $reg['sales'], 'id' ) ) : array(),
+          'receipts' => $receipts,
+          'pending' => (bool) $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'fpw_sales_batch'"),
+        ));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+
+      const ventasDeniedImport = await ventas(importUrl);
+      check(ventasDeniedImport.status === 403, `a valid ventas session must be DENIED the sales import (got ${ventasDeniedImport.status})`);
+      const ventasUpload = await ventas(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'upload' }) });
+      check(ventasUpload.status === 403, `a ventas POST to the importer must be refused as a PERMISSION denial (got ${ventasUpload.status})`);
+      const visitorImport = await visitor(importUrl);
+      check(visitorImport.status === 302 && String(visitorImport.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the import link is sent to the login, never shown the importer');
+      const csrfProbe = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_token': 'x' }) });
+      check(csrfProbe.status === 403, `a confirm POST without a valid nonce must hit the CSRF boundary (got ${csrfProbe.status})`);
+
+      const beforeImport = await salesState();
+      check(beforeImport.sales === 0 && !beforeImport.pending && beforeImport.receipts === 0, 'the import surface starts empty on the disposable run');
+      const syntheticCsv = [
+        'id_venta,fecha,rut,total',
+        'FPW-TEST-0001,2026-03-15,76123456-7,1250000',
+        'FPW-TEST-0002,2026-05-02,"76.123.456-7",890000',
+        'FPW-TEST-0003,2026-06-11,,450000',
+        'FPW-TEST-0004,2026-06-20,"76.999.999-9",320000',
+        'FPW-TEST-0005,15/06/2026,76123456-7,100000',
+        'FPW-TEST-0006,2026-07-01,76123456-7,ilegible',
+      ].join('\n');
+      const uploadCsv = async (csv, filename) => {
+        const page = await (await owner(importUrl)).text();
+        const uploadNonce = formNonce(page, 'upload');
+        check(Boolean(uploadNonce), 'the upload form carries a minted nonce');
+        const form = new FormData();
+        form.set('fpw_sales_action', 'upload');
+        form.set('fpw_sales_nonce', uploadNonce);
+        form.set('fpw_sales_file', new Blob([csv], { type: 'text/csv' }), filename);
+        const posted = await owner(importUrl, { method: 'POST', body: form });
+        check(posted.status === 200, `the upload must answer 200 (got ${posted.status})`);
+        return posted.text();
+      };
+      let importHtml = await uploadCsv(syntheticCsv, 'ventas-sinteticas.csv');
+      check(importHtml.includes('NO cambió'), 'the upload banner states the history did not change');
+      check(importHtml.includes('ventas-sinteticas.csv') && importHtml.includes('4 filas candidatas') && importHtml.includes('2 filas con error') && importHtml.includes('1 asociación sin resolver'), 'the preview names its source file and its explicit per-row outcomes');
+      const afterUpload = await salesState();
+      check(afterUpload.sales === 0 && afterUpload.pending === true, 'upload/preview stage a proposal only: the register stays empty until confirmation');
+      const draftAfterUpload = await (await owner(draftUrl)).text();
+      check(draftAfterUpload.includes('Sin historial asociado'), 'history reads unchanged right after upload/preview');
+
+      const confirmNonce = formNonce(importHtml, 'confirm');
+      const confirmToken = (importHtml.match(/name="fpw_sales_token" value="([0-9a-f]+)"/) || [])[1];
+      check(Boolean(confirmNonce) && Boolean(confirmToken), 'the confirm action carries its own nonce and the reviewed batch token');
+      const confirmed = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_nonce': confirmNonce, 'fpw_sales_token': confirmToken }) });
+      check(confirmed.status === 200, `the confirm must answer 200 (got ${confirmed.status})`);
+      importHtml = await confirmed.text();
+      check(importHtml.includes('Importación aplicada: 4 ventas nuevas'), 'the confirmation reports its explicit result with counts');
+      const afterConfirm = await salesState();
+      check(afterConfirm.sales === 4 && afterConfirm.ids.includes('FPW-TEST-0001') && afterConfirm.receipts === 1 && !afterConfirm.pending, 'the applied batch lands once, with a consultable receipt and no pending slot');
+
+      const draftWithHistory = await (await owner(draftUrl)).text();
+      check(draftWithHistory.includes('FPW-TEST-0001') && draftWithHistory.includes('2026-03-15') && draftWithHistory.includes('1.250.000 CLP'), 'the race draft renders its imported history (date, source id, amount)');
+      check(draftWithHistory.includes('FPW-TEST-0002') && !draftWithHistory.includes('FPW-TEST-0003'), 'both RUT formats match one customer; the unassociated sale belongs to nobody');
+      check(draftWithHistory.includes('ventas-sinteticas.csv'), 'the history names its provenance (which import supplies it)');
+      check(!draftWithHistory.replace(/<script[\s\S]*?<\/script>/g, '').includes('$'), 'history totals never render as draft prices');
+      const isolateDraft = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${isolateOrder}`)).text();
+      check(isolateDraft.includes('FPW-TEST-0004') && isolateDraft.includes('320.000 CLP') && !isolateDraft.includes('FPW-TEST-0001'), 'a different RUT sees only its own history — customer scoping holds');
+
+      importHtml = await uploadCsv(syntheticCsv, 'ventas-sinteticas.csv');
+      const repeatNonce = formNonce(importHtml, 'confirm');
+      const repeatToken = (importHtml.match(/name="fpw_sales_token" value="([0-9a-f]+)"/) || [])[1];
+      const repeated = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_nonce': repeatNonce, 'fpw_sales_token': repeatToken }) });
+      check(repeated.status === 200, `the repeated confirm must answer 200 (got ${repeated.status})`);
+      const repeatedHtml = await repeated.text();
+      check(repeatedHtml.includes('0 ventas nuevas') && repeatedHtml.includes('4 ya importadas'), 'the repeated reviewed import applies nothing and reports the skips');
+      const afterRepeat = await salesState();
+      check(afterRepeat.sales === 4 && afterRepeat.receipts === 2, 'repetition never duplicates purchases (register intact, second receipt recorded)');
+
+      importHtml = await uploadCsv(syntheticCsv.replace(/FPW-TEST-/g, 'FPW-CXL-'), 'por-cancelar.csv');
+      const staleToken = (importHtml.match(/name="fpw_sales_token" value="([0-9a-f]+)"/) || [])[1];
+      const staleConfirmNonce = formNonce(importHtml, 'confirm');
+      check(Boolean(staleConfirmNonce), 'the pending preview mints its confirm nonce');
+      const cancelNonce = formNonce(importHtml, 'cancel');
+      const cancelled = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'cancel', 'fpw_sales_nonce': cancelNonce, 'fpw_sales_token': staleToken }) });
+      check(cancelled.status === 200 && (await cancelled.text()).includes('sin efectos'), 'the cancellation answers its harmlessness explicitly');
+      const afterCancel = await salesState();
+      check(afterCancel.sales === 4 && !afterCancel.pending, 'a cancelled preview leaves the register untouched');
+      const stale = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_nonce': staleConfirmNonce, 'fpw_sales_token': staleToken }) });
+      check(stale.status === 200 && (await stale.text()).includes('ya no está disponible'), 'confirming a cancelled batch answers the explicit stale result, never an apply');
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -925,6 +1046,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + restricted-ventas record boundary) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + restricted-ventas record boundary + ventas import and RUT purchase history) on ${SITE_URL}`);
   return checks;
 }
