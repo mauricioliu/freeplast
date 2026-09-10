@@ -134,27 +134,41 @@ function fpw_rule_parse_input( array $posted ): array {
 	);
 }
 
+/** The shape's linear term — cargo fijo + CLP/km × started kilometers: the one arithmetic every render shares. */
+function fpw_rule_linear_amount( array $rule, int $km ): int {
+	return $rule['base_fee'] + $rule['per_km'] * $km;
+}
+
 /**
- * The rule's suggestion for one consulted distance (issue #61): the ONE
- * approved shape — cargo fijo + CLP/km × started whole kilometers, never
- * below the cobro mínimo — in exact integer CLP, never a float. It answers
- * for the distance of the CURRENT consultation only: no stored distance
- * exists to feed it (issue #60 stores nothing), and it writes nothing.
+ * The ONE shape's arithmetic on one maintained rule and one consulted
+ * distance: cargo fijo + CLP/km × started whole kilometers, never below the
+ * cobro mínimo — in exact integer CLP, never a float. A non-positive distance
+ * is no route reference at all: nothing is suggested.
  *
+ * @param array $rule The maintained shape's three parameters: base_fee, per_km, minimum.
  * @return array{state:'sin_regla'}|array{state:'ok',amount:int,km:int,minimum_applied:bool}
  */
-function fpw_rule_suggestion( int $distance_meters ): array {
-	$rule = fpw_rule_read();
-	if ( null === $rule || $distance_meters < 1 ) { return array( 'state' => 'sin_regla' ); }
+function fpw_rule_suggestion_for( array $rule, int $distance_meters ): array {
+	if ( $distance_meters < 1 ) { return array( 'state' => 'sin_regla' ); }
 	$km              = intdiv( $distance_meters + 999, 1000 );   // each started kilometer counts complete
-	$linear          = $rule['rule']['base_fee'] + $rule['rule']['per_km'] * $km;
-	$minimum_applied = $rule['rule']['minimum'] > $linear;
+	$linear          = fpw_rule_linear_amount( $rule, $km );
+	$minimum_applied = $rule['minimum'] > $linear;
 	return array(
 		'state'           => 'ok',
-		'amount'          => $minimum_applied ? $rule['rule']['minimum'] : $linear,
+		'amount'          => $minimum_applied ? $rule['minimum'] : $linear,
 		'km'              => $km,
 		'minimum_applied' => $minimum_applied,
 	);
+}
+
+/**
+ * The maintained rule's suggestion for one consulted distance (issue #61).
+ * It answers for the distance of the CURRENT consultation only: no stored
+ * distance exists to feed it (issue #60 stores nothing), and it writes nothing.
+ */
+function fpw_rule_suggestion( int $distance_meters ): array {
+	$rule = fpw_rule_read();
+	return null === $rule ? array( 'state' => 'sin_regla' ) : fpw_rule_suggestion_for( $rule['rule'], $distance_meters );
 }
 
 /** One exact integer CLP amount as the rule speaks it — deterministic grouped text. */
@@ -172,17 +186,19 @@ function fpw_rule_clp( int $amount ): string {
  * reconstruction of any approved historical breakdown.
  */
 function fpw_rule_suggestion_html( int $distance_meters ): string {
-	$suggestion = fpw_rule_suggestion( $distance_meters );
+	$maintained = fpw_rule_read();
+	$suggestion = null === $maintained ? array( 'state' => 'sin_regla' ) : fpw_rule_suggestion_for( $maintained['rule'], $distance_meters );
 	if ( 'sin_regla' === $suggestion['state'] ) {
 		return '<p>La regla de despacho no está configurada en este sitio: ninguna distancia se convierte en monto y el despacho se define manualmente — queda pendiente o fijas tú el importe en el formulario de despacho. <a href="' . esc_url( fpw_rule_screen_url() ) . '">Mantenedor de la regla de despacho</a></p>';
 	}
-	$rule    = fpw_rule_read()['rule'];
-	$linear  = $rule['base_fee'] + $rule['per_km'] * $suggestion['km'];
+	$rule = $maintained['rule'];
+	$minimum_note = $suggestion['minimum_applied']
+		? '; el cálculo no alcanza el cobro mínimo, así que se aplica el mínimo de ' . fpw_rule_clp( $rule['minimum'] ) . ' CLP neto.'
+		: '; el cobro mínimo de ' . fpw_rule_clp( $rule['minimum'] ) . ' CLP no se aplica porque el cálculo ya lo supera.';
+	$linear    = fpw_rule_linear_amount( $rule, $suggestion['km'] );
 	$breakdown = 'Desglose interno: cargo fijo ' . fpw_rule_clp( $rule['base_fee'] )
 		. ' + ' . fpw_rule_clp( $rule['per_km'] ) . ' CLP/km × ' . $suggestion['km'] . ' km (kilómetros de ruta iniciados) = ' . fpw_rule_clp( $linear ) . ' CLP neto'
-		. ( $suggestion['minimum_applied']
-			? '; el cálculo no alcanza el cobro mínimo, así que se aplica el mínimo de ' . fpw_rule_clp( $rule['minimum'] ) . ' CLP neto.'
-			: '; el cobro mínimo de ' . fpw_rule_clp( $rule['minimum'] ) . ' CLP no se aplica porque el cálculo ya lo supera.' );
+		. $minimum_note;
 	return '<p><strong>Sugerencia de la regla: ' . esc_html( fpw_rule_clp( $suggestion['amount'] ) ) . ' CLP neto</strong> — es una referencia interna para tu decisión: no es el monto elegido ni algo que el comprador vea. Para ofrecerlo, fíjalo tú en el campo de monto de despacho; ningún recálculo ni cambio de regla reemplaza tu ingreso manual.</p>'
 		. '<p>' . esc_html( $breakdown ) . '</p>'
 		. '<p>Limitaciones de la referencia: la ruta es de conducción para vehículo menor — no certifica el acceso de un camión, no incluye peajes, retorno ni el cobro real del transportista, y el desglose de una nueva consulta puede diferir del anterior.</p>';
@@ -282,13 +298,27 @@ function fpw_rule_screen_shell( string $inner ): string {
 }
 
 /**
+ * The worked example of the maintained rule's effect: one consultation at
+ * 29.400 m of route — computed by the shape's own arithmetic, never a
+ * separate formula that could drift from it.
+ */
+function fpw_rule_worked_example_html( array $rule ): string {
+	$worked = fpw_rule_suggestion_for( $rule, 29400 );   // 29.400 m → 30 started kilometers
+	return '<div class="fpw-rule__example"><strong>Efecto con estos valores:</strong> un destino consultado a 29.400 m de ruta (30 kilómetros iniciados) sugeriría '
+		. esc_html( fpw_rule_clp( $rule['base_fee'] ) ) . ' + ' . esc_html( fpw_rule_clp( $rule['per_km'] ) ) . ' × ' . $worked['km'] . ' = <strong>' . esc_html( fpw_rule_clp( $worked['amount'] ) ) . ' CLP neto</strong>'
+		. ( $worked['minimum_applied'] ? ' (se aplica el cobro mínimo).' : '.' )
+		. ' La sugerencia real aparece junto a cada consulta de distancia y usa los kilómetros consultados de ese momento.</div>';
+}
+
+/**
  * The mantenedor screen markup: the contract (what the rule is and is not,
  * its external calibration prerequisite, its privacy and mutation boundary),
  * then the three-parameter form and the worked example of its current effect.
  */
 function fpw_rule_screen_markup( array $banner = array() ): string {
-	$rule  = fpw_rule_read();
-	$nonce = wp_nonce_field( FPW_RULE_NONCE_SAVE, 'fpw_rule_nonce', true, false );
+	$stored = fpw_rule_read();
+	$saved  = null === $stored ? null : $stored['rule'];   // the shape's three parameters, when a rule is maintained
+	$nonce  = wp_nonce_field( FPW_RULE_NONCE_SAVE, 'fpw_rule_nonce', true, false );
 
 	$contract = '<section><h2>Cómo funciona esta regla</h2><ul>'
 		. '<li>La regla produce <strong>solo una sugerencia interna para ti</strong>, junto a la consulta de distancia de un borrador: nunca calcula el despacho por sí sola, nunca llena el monto elegido y jamás llega al comprador — el comprador ve únicamente el monto comercial que fijas.</li>'
@@ -298,21 +328,13 @@ function fpw_rule_screen_markup( array $banner = array() ): string {
 		. '<li>Guardar aquí solo cambia esta regla privada: no toca productos, solicitudes, borradores ni nada público, y no envía ninguna notificación.</li>'
 		. '</ul></section>';
 
-	$status = is_array( $rule )
-		? 'Regla vigente desde el ' . esc_html( date_i18n( get_option( 'date_format' ), $rule['updated_at'] ) ) . ' por ' . esc_html( $rule['updated_by'] ) . '.'
+	$status = null !== $saved
+		? 'Regla vigente desde el ' . esc_html( date_i18n( get_option( 'date_format' ), $stored['updated_at'] ) ) . ' por ' . esc_html( $stored['updated_by'] ) . '.'
 		: 'Sin regla configurada: las consultas de distancia no sugieren ningún monto y el despacho se define manualmente.';
 
-	if ( is_array( $rule ) ) {
-		$example_linear = $rule['rule']['base_fee'] + $rule['rule']['per_km'] * 30;
-		$example_min    = $rule['rule']['minimum'] > $example_linear;
-		$example_amount = $example_min ? $rule['rule']['minimum'] : $example_linear;
-		$example        = '<div class="fpw-rule__example"><strong>Efecto con estos valores:</strong> un destino consultado a 29.400 m de ruta (30 kilómetros iniciados) sugeriría '
-			. esc_html( fpw_rule_clp( $rule['rule']['base_fee'] ) ) . ' + ' . esc_html( fpw_rule_clp( $rule['rule']['per_km'] ) ) . ' × 30 = <strong>' . esc_html( fpw_rule_clp( $example_amount ) ) . ' CLP neto</strong>'
-			. ( $example_min ? ' (se aplica el cobro mínimo).' : '.' )
-			. ' La sugerencia real aparece junto a cada consulta de distancia y usa los kilómetros consultados de ese momento.</div>';
-	} else {
-		$example = '<div class="fpw-rule__example">Sin valores no hay ejemplo que mostrar: ningún coeficiente se inventa aquí.</div>';
-	}
+	$example = null !== $saved
+		? fpw_rule_worked_example_html( $saved )
+		: '<div class="fpw-rule__example">Sin valores no hay ejemplo que mostrar: ningún coeficiente se inventa aquí.</div>';
 
 	return fpw_rule_screen_shell(
 		'<h1>Regla de despacho</h1>'
@@ -324,9 +346,9 @@ function fpw_rule_screen_markup( array $banner = array() ): string {
 		. '<input type="hidden" name="fpw_rule_save" value="1" />'
 		. $nonce
 		. '<div class="fpw-rule__grid">'
-		. fpw_rule_input_html( 'base_fee', 'Cargo fijo (CLP)', is_array( $rule ) ? $rule['rule']['base_fee'] : null )
-		. fpw_rule_input_html( 'per_km', 'Monto por kilómetro (CLP/km)', is_array( $rule ) ? $rule['rule']['per_km'] : null )
-		. fpw_rule_input_html( 'minimum', 'Cobro mínimo (CLP)', is_array( $rule ) ? $rule['rule']['minimum'] : null )
+		. fpw_rule_input_html( 'base_fee', 'Cargo fijo (CLP)', $saved['base_fee'] ?? null )
+		. fpw_rule_input_html( 'per_km', 'Monto por kilómetro (CLP/km)', $saved['per_km'] ?? null )
+		. fpw_rule_input_html( 'minimum', 'Cobro mínimo (CLP)', $saved['minimum'] ?? null )
 		. '</div>'
 		. '<p><button type="submit" class="button button-primary">Guardar regla de despacho</button></p>'
 		. '<p class="fpw-rule__note">Los tres parámetros se guardan juntos: un valor faltante o inválido no guarda nada. Dejar los tres vacíos quita la regla (las consultas dejan de sugerir montos). Un 0 no se acepta: ningún componente gratuito está aprobado.</p>'

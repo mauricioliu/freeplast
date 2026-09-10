@@ -843,6 +843,12 @@ register_shutdown_function( static function () {
         const payload = await minted.json();
         return payload && payload.success ? String(payload.data.nonce) : null;
       };
+      const previewSectionOf = (html) => {
+        const start = html.indexOf('<section class="fpw-draft__preview">');
+        if (start < 0) { return ''; }
+        const end = html.indexOf('</section>', start);
+        return end > start ? html.slice(start, end + 10) : '';
+      };
 
       /* 5d. Issue #51 journey: the owner completes and adjusts drafts
          manually over real HTTP — real edit → save → reopen with recovered
@@ -1452,12 +1458,6 @@ register_shutdown_function( static function () {
         return payload && payload.success ? String(payload.data.nonce) : null;
       };
       const postForm5f = (fetcher, requestId, fields) => fetcher(editUrl5f(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
-      const previewSectionOf = (html) => {
-        const start = html.indexOf('<section class="fpw-draft__preview">');
-        if (start < 0) { return ''; }
-        const end = html.indexOf('</section>', start);
-        return end > start ? html.slice(start, end + 10) : '';
-      };
       const clp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
       const lineFields5f = (record, priceFor) => {
         const fields = {};
@@ -1607,12 +1607,6 @@ register_shutdown_function( static function () {
         global $wpdb;
         echo (string) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_dispatch_rule'));
       `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop();
-      const previewSectionOf61 = (html) => {
-        const start = html.indexOf('<section class="fpw-draft__preview">');
-        if (start < 0) { return ''; }
-        const end = html.indexOf('</section>', start);
-        return end > start ? html.slice(start, end + 10) : '';
-      };
 
       /* Deterministic reset of the run-owned rule row on the persistent disposable DB. */
       sh(PHP, [WPCLI, 'eval', `global $wpdb; $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_dispatch_rule'");`, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1', '--quiet']);
@@ -1685,7 +1679,7 @@ register_shutdown_function( static function () {
       check(consult2.includes('Sugerencia de la regla: 201.000 CLP neto'), 'the recalibrated rule suggests its new amount on a fresh consultation (15.000 + 3.000 × 62)');
       check(consult2.includes('30.000 CLP neto · ingreso manual'), 'the manual amount survives the rule change and the recalculation');
       check(previewRaw() === previewBeforeRule, 'changing the rule and consulting never rewrites the stored buyer-facing preview');
-      check(previewSectionOf61(await (await owner(editUrl(correctOrder))).text()).includes('Vista previa obsoleta'), 'the revision-6 save marks the reviewed preview obsolete through the existing invariant');
+      check(previewSectionOf(await (await owner(editUrl(correctOrder))).text()).includes('Vista previa obsoleta'), 'the revision-6 save marks the reviewed preview obsolete through the existing invariant');
 
       /* Removing the rule: the explicit empty save deactivates suggestions. */
       const removed = await (await postRule(owner, ruleFields('', '', ''), ruleNonceFrom(await (await owner(ruleUrl)).text()))).text();

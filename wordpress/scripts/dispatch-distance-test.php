@@ -360,7 +360,7 @@ check( str_contains( $html, 'la consulta se hizo para' ) && str_contains( $html,
  * its internal breakdown — distinguishable from the chosen amount, never
  * stored; without a maintained rule no amount is suggested at all. */
 check( str_contains( $html, 'no está configurada' ) && ! str_contains( $html, 'Sugerencia de la regla' ), 'without a maintained rule a successful consult suggests no amount and names the manual path' );
-check( str_contains( $html, 'name="fpw_rule_save"' ) === false && str_contains( $html, 'fpw-dispatch-rule' ), 'the draft screen links the rule mantenedor instead of inlining a rule editor' );
+check( ! str_contains( $html, 'name="fpw_rule_save"' ) && str_contains( $html, 'fpw-dispatch-rule' ), 'the draft screen links the rule mantenedor instead of inlining a rule editor' );
 $GLOBALS['fpwd_table']['fpw_dispatch_rule'] = wp_json_encode( array( 'schema' => 1, 'updated_at' => time(), 'updated_by' => 'dueña', 'rule' => array( 'base_fee' => 15000, 'per_km' => 2500, 'minimum' => 20000 ) ) );
 ob_start();
 fpw_render_quote_draft_screen();
