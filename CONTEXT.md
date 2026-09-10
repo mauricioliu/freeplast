@@ -53,8 +53,16 @@ The single private initial draft Freeplast creates when a Quote Request is recei
 _Avoid_: Draft order, quote, Quote Request, documento, issued Quotation, confirmed sale
 
 **Draft Working State**:
-The owner's saved manual completion of a Quotation Draft — working quantities, net CLP prices, working destination and dispatch amount — kept in its own durable storage, separate from the immutable receipt snapshot, with the revision it supersedes so stale or concurrent saves are detected and refused instead of silently overwriting newer work. Its amounts are the owner's manual decisions scoped to that one draft; saving never approves, sends or notifies anything.
+The owner's saved manual completion of a Quotation Draft — working quantities, net CLP prices, working destination, dispatch amount and offer validity — kept in its own durable storage, separate from the immutable receipt snapshot, with the revision it supersedes so stale or concurrent saves are detected and refused instead of silently overwriting newer work. Its amounts are the owner's manual decisions scoped to that one draft; saving never approves, sends or notifies anything.
 _Avoid_: Rewritten receipt, draft order, quotation, autosave
+
+**Quotation Projection**:
+The one server-side, deterministic calculation of the buyer-facing offer — products and options, quantities, net prices, subtotal, dispatch, IVA and total — computed from a draft's Draft Working State. It is shared by the Quotation Preview and any later issuance, never recalculated per screen; whatever it cannot compute (a missing price, an unresolved dispatch, an unconfirmed tax policy) is a named pending, never a zero.
+_Avoid_: Parallel screen math, prototype reducer, estimated order total
+
+**Quotation Preview**:
+The stored, buyer-facing rendering of a Quotation Projection that the owner reviews before any approval — bound to the Draft Working State revision the owner actually saw. Any later commercial save makes it obsolete: it can never serve as permission to issue values different from those reviewed. It identifies missing data, excludes Purchase History, internal notes, carrier costs and the dispatch-estimate breakdown, and issues nothing: no approved version, no PDF, no mail.
+_Avoid_: Issued Quotation, Quotation Version, PDF draft, sent offer
 
 **Quotation Version**:
 The fixed customer-facing prices and conditions of a Quotation approved and issued by the owner. Later changes require a new version rather than alteration of what was already sent.
@@ -151,3 +159,5 @@ _Avoid_: New production site, replacement site
 [ADR-0006](docs/adr/0006-sales-register-import-contract.md) records the Sales Register import contract (issue #54): an explicit source-id sale identity (never the RUT alone or date+amount), preview/confirm/cancel with exactly-once receipts, matching by normalized company RUT, and a purchase history computed at read time beside each draft — the definitive column set and update-vs-append semantics remain blocked on the real sample.
 
 [ADR-0007](docs/adr/0007-dispatch-address-assistance.md) records the dispatch-address assistance decision (issue #59): the official Places widget beside the native textarea behind an absent-by-default configuration seam, provenance kept as a reviewable claim, and manual entry always valid without Google.
+
+[ADR-0008](docs/adr/0008-quotation-projection-shared-calculation.md) records the totals-and-validity review decision (issue #55): one deterministic server-side Quotation Projection shared by preview and future issuance, a fiscal policy absent by default (no invented IVA rate), a seven-day editable Quotation Validity, and a Quotation Preview bound to the reviewed revision and made obsolete by any later commercial save — previewing issues nothing.

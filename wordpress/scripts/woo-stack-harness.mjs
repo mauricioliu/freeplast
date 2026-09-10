@@ -177,6 +177,21 @@ add_action( 'wp_ajax_fpw_test_nonce', static function () {
 } );
 `,
   );
+  writeFileSync(
+    join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-taxconfig.php'),
+    `<?php
+/** Disposable-stack only (written by woo-stack-harness.mjs, issue #55): the
+ * fiscal policy the private quotation review computes with — an EXPLICIT test
+ * configuration delivered through the adapter's configuration seam, exactly as
+ * an owner-confirmed rate would be delivered. The 19‰ fixture is this run's
+ * declared input, never shipped code; without it the IVA and total stay
+ * pending. Never in the repository's wp-content. */
+if ( ! defined( 'ABSPATH' ) ) { exit; }
+add_filter( 'fpw_quotation_tax_config', static function () {
+	return array( 'rate_permille' => 190, 'applies_to_dispatch' => false );
+} );
+`,
+  );
 
   /* 2. Serve (multi-worker so two checkout POSTs can genuinely overlap). The
      spawn is detached so the whole process GROUP (master + every worker) can
@@ -944,6 +959,7 @@ register_shutdown_function( static function () {
          matched by normalized RUT across formatting variants — with provenance.
          Ventas and visitors stay out; repetition never duplicates; a cancelled
          or stale batch answers explicitly and changes nothing. */
+      {
       const importUrl = '/wp-admin/admin.php?page=fpw-sales-import';
       /* The disposable DB persists across runs: reset the run-owned import state so the journey below is deterministic. Only the importer's own rows are removed — requests, records, drafts and notes stay untouched. */
       sh(PHP, [WPCLI, 'eval', `
@@ -1057,7 +1073,155 @@ register_shutdown_function( static function () {
       check(afterCancel.sales === 4 && !afterCancel.pending, 'a cancelled preview leaves the register untouched');
       const stale = await owner(importUrl, { method: 'POST', body: new URLSearchParams({ 'fpw_sales_action': 'confirm', 'fpw_sales_nonce': staleConfirmNonce, 'fpw_sales_token': staleToken }) });
       check(stale.status === 200 && (await stale.text()).includes('ya no está disponible'), 'confirming a cancelled batch answers the explicit stale result, never an apply');
-    } finally {
+      }
+
+    /* 5f. Issue #55 (cut 6 of #49): totals and validity reviewed BEFORE any
+       approval. The owner previews the buyer-facing projection — the ONE
+       shared server-side calculation, stored bound to the reviewed revision,
+       marked obsolete by any later commercial save, issuing no version, no
+       PDF and no mail. The fiscal policy rides the explicit test mu-plugin
+       above; without it the IVA and total would stay pending. */
+    {
+      const editUrl5f = (requestId) => `/wp-admin/admin.php?page=fpw-quote-draft&request=${requestId}`;
+      const mailCount5f = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+      const mint5f = async (fetcher, forAction) => {
+        const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: forAction }).toString() });
+        const payload = await minted.json();
+        return payload && payload.success ? String(payload.data.nonce) : null;
+      };
+      const postForm5f = (fetcher, requestId, fields) => fetcher(editUrl5f(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
+      const previewSectionOf = (html) => {
+        const start = html.indexOf('<section class="fpw-draft__preview">');
+        if (start < 0) { return ''; }
+        const end = html.indexOf('</section>', start);
+        return end > start ? html.slice(start, end + 10) : '';
+      };
+      const clp = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      const lineFields5f = (record, priceFor) => {
+        const fields = {};
+        record.lines.forEach((line, index) => {
+          fields[`fpw_work[lines][${index}][quantity]`] = String(line.quantity);
+          const price = priceFor(index, line);
+          fields[`fpw_work[lines][${index}][price]`] = price === null ? '' : String(price);
+        });
+        return fields;
+      };
+      const correctRecord5f = draftState.records[correctOrder];
+      const mailBefore5f = mailCount5f();
+
+      /* The draft is still incomplete from cut 5's journey: the dispatch
+         amount was entered for other conditions. The preview names the
+         faltante instead of passing the stale amount off as an offer. */
+      const incompletePreview = await (await postForm5f(owner, correctOrder, {
+        'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
+      })).text();
+      check(incompletePreview.includes('Vista previa generada (revisión 3)'), 'the owner generates a preview of the draft as it stands');
+      check(incompletePreview.includes('identifica faltantes que bloquean la oferta completa'), 'the incomplete preview names its faltantes explicitly');
+      check(incompletePreview.includes('requiere revisión'), 'the stale dispatch amount is a named faltante, never silently offered');
+
+      /* A two-line no-dispatch fixture with one line still unpriced: the
+         pending line is a named faltante too — never a zero. */
+      const twoLinePreview = await (await postForm5f(owner, staleOrder, {
+        'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${staleOrder}`),
+      })).text();
+      check(twoLinePreview.includes('Vista previa generada (revisión 1)'), 'the two-line draft previews its saved work');
+      check(twoLinePreview.includes('Falta el precio neto'), 'the pending line price is a named faltante, distinguished from zero');
+
+      /* Complete the commercial work: the line priced, the dispatch amount
+         re-entered for the current conditions, ten days of validity. */
+      const completingSave = await postForm5f(owner, correctOrder, {
+        'fpw_work_save': '1', 'fpw_work_revision': '3', 'fpw_draft_nonce': await mint5f(owner, `fpw-draft-save-${correctOrder}`),
+        ...lineFields5f(correctRecord5f, () => 1490),
+        'fpw_work[destination]': 'Plaza revisada 55, Mostazal',
+        'fpw_work[dispatch_amount]': '25000',
+        'fpw_work[validity_days]': '10',
+      });
+      const completingHtml = await completingSave.text();
+      check(completingSave.status === 200 && completingHtml.includes('Cambios guardados (revisión 4)'), 'the completing save stores revision 4');
+
+      /* The reviewed preview: subtotal, dispatch, IVA and total from the ONE
+         shared calculation, plus the editable validity. */
+      const subtotal = correctRecord5f.lines.reduce((acc, line) => acc + line.quantity * 1490, 0);
+      const tax = Math.floor((subtotal * 190 + 500) / 1000);
+      const total = subtotal + 25000 + tax;
+      const previewResponse = await postForm5f(owner, correctOrder, {
+        'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
+      });
+      const previewHtml = await previewResponse.text();
+      check(previewResponse.status === 200 && previewHtml.includes('Vista previa generada (revisión 4)'), 'the authorized preview confirms the revision it reviewed');
+      check(previewHtml.includes('no aprueba ni envía nada al comprador'), 'previewing states it issues nothing to the buyer');
+      const previewSection = previewSectionOf(previewHtml);
+      check(previewSection.includes('Vista previa para el comprador') && previewSection.includes('revisión 4'), 'the screen renders the stored buyer-facing preview of revision 4');
+      check(previewSection.includes('× ' + clp(1490) + ' CLP'), 'the preview line carries the working quantity and net price');
+      check(previewSection.includes('Subtotal (neto)') && previewSection.includes(clp(subtotal) + ' CLP'), `the preview shows the exact subtotal (${clp(subtotal)} CLP)`);
+      check(previewSection.includes('25.000 CLP'), 'the preview shows the offered dispatch amount');
+      check(previewSection.includes('IVA (19%)') && previewSection.includes(clp(tax) + ' CLP'), `the preview shows the IVA at the delivered policy's rate`);
+      check(previewSection.includes('Total') && previewSection.includes(clp(total) + ' CLP'), `the preview shows the exact total (${clp(total)} CLP)`);
+      check(previewSection.includes('Vigencia de la oferta: 10 días') && previewSection.includes('a contar de su aprobación'), 'the preview expresses the reviewed validity without inventing deadlines');
+      check(previewSection.includes('Destino de la oferta: Plaza revisada 55, Mostazal'), 'the preview names the working destination the offer quotes');
+      check(previewSection.includes('no incluye historial de compras') && !previewSection.includes('FPW-TEST') && !previewSection.includes('Historial de compras'), 'the buyer-facing preview carries no purchase history or internal review data');
+
+      /* The stored preview IS the shared projection: recalculating server-side
+         yields exactly what was reviewed — and no issuance row exists. */
+      const previewState = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        $id = ${correctOrder};
+        $get = static fn( $name ) => $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) );
+        $preview = json_decode( (string) $get( 'fpw_draft_preview_' . $id ), true );
+        $draft = json_decode( (string) $get( 'fpw_draft_' . $id ), true );
+        $work = json_decode( (string) $get( 'fpw_draft_work_' . $id ), true );
+        $rows = array_values( array_filter( (array) $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'fpw_draft%'" ), static fn( $n ) => str_ends_with( (string) $n, '_' . $id ) ) );
+        echo wp_json_encode( array(
+          'stored' => $preview['projection'] ?? null,
+          'fresh' => fpw_quotation_projection( $draft, $work ),
+          'revision' => $preview['revision'] ?? null,
+          'work_revision' => is_array( $work ) ? (int) ( $work['revision'] ?? 0 ) : 0,
+          'fpw_rows' => $rows,
+          'issuance_rows' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_quotation%'" ),
+        ) );
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      check(JSON.stringify(previewState.stored) === JSON.stringify(previewState.fresh), 'the stored preview is the shared projection, recalculated identically server-side');
+      check(previewState.revision === 4 && previewState.work_revision === 4, 'the preview is bound to the revision the owner actually reviewed');
+      check(JSON.stringify([...previewState.fpw_rows].sort()) === JSON.stringify([`fpw_draft_${correctOrder}`, `fpw_draft_preview_${correctOrder}`, `fpw_draft_work_${correctOrder}`].sort()), `previewing creates exactly the draft rows, no issued version (${JSON.stringify(previewState.fpw_rows)})`);
+      check(previewState.issuance_rows === 0, 'no approved-version row exists anywhere after the review journey');
+
+      /* A later commercial save obsoletes the reviewed preview; regenerating
+         re-binds it. Saving and previewing never mail the buyer. */
+      const obsoleteSave = await (await postForm5f(owner, correctOrder, {
+        'fpw_work_save': '1', 'fpw_work_revision': '4', 'fpw_draft_nonce': await mint5f(owner, `fpw-draft-save-${correctOrder}`),
+        ...lineFields5f(correctRecord5f, () => 1500),
+        'fpw_work[destination]': 'Plaza revisada 55, Mostazal',
+        'fpw_work[dispatch_amount]': '25000',
+        'fpw_work[validity_days]': '10',
+      })).text();
+      check(obsoleteSave.includes('Cambios guardados (revisión 5)'), 'the later commercial save lands (revision 5)');
+      check(obsoleteSave.includes('Vista previa obsoleta') && obsoleteSave.includes('Ninguna aprobación futura puede usar esta vista previa'), 'the screen marks the reviewed preview obsolete: it can never authorize different values');
+      const refreshed = await (await postForm5f(owner, correctOrder, {
+        'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
+      })).text();
+      check(refreshed.includes('Vista previa generada (revisión 5)') && !refreshed.includes('Vista previa obsoleta'), 'a regenerated preview re-binds to the new revision');
+
+      /* Boundaries: permission first, then CSRF — on the preview action too. */
+      const ventasPreviewStatus = (await postForm5f(ventas, correctOrder, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(ventas, `fpw-draft-preview-${correctOrder}`) })).status;
+      check(ventasPreviewStatus === 403, `a valid ventas session with a valid preview nonce is DENIED the review (got ${ventasPreviewStatus})`);
+      const forgedPreviewStatus = (await postForm5f(owner, correctOrder, { 'fpw_work_preview': '1', 'fpw_preview_nonce': 'forged' })).status;
+      check(forgedPreviewStatus === 403, `a preview with an invalid nonce is refused 403 (got ${forgedPreviewStatus})`);
+      const visitorPreview = await postForm5f(visitor, correctOrder, { 'fpw_work_preview': '1', 'fpw_preview_nonce': 'forged' });
+      check(visitorPreview.status === 302 && String(visitorPreview.headers.get('location') || '').includes('wp-login.php'), 'a visitor preview is sent to the login, never shown data');
+
+      /* The whole review journey approved nothing and mailed nobody. */
+      check(mailCount5f() === mailBefore5f, `saving and previewing sent no notification (${mailBefore5f} → ${mailCount5f()})`);
+      const record5f = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $order = wc_get_order(${correctOrder});
+        $quantities = array();
+        foreach ( $order->get_items() as $item ) { $quantities[] = (int) $item->get_quantity(); }
+        echo wp_json_encode( array( 'status' => $order->get_status(), 'qwc' => (string) $order->get_meta('_qwc_quote'), 'quantities' => $quantities, 'email' => $order->get_billing_email() ) );
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+      check(record5f.status === 'pending' && record5f.qwc === '1', 'the review journey approves nothing on the native record');
+      check(JSON.stringify(record5f.quantities) === JSON.stringify(correctRecord5f.lines.map((l) => l.quantity)), 'the native record keeps its requested quantities');
+      check(record5f.email === draftState.records[correctOrder].email, 'the native record keeps its identity');
+    }
+  } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
     }
@@ -1142,6 +1306,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + restricted-ventas record boundary + ventas import and RUT purchase history + totals-and-validity review before approval) on ${SITE_URL}`);
   return checks;
 }
