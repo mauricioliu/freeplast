@@ -63,34 +63,24 @@ function fpw_distance_nonce_action( int $order_id ): string {
 }
 
 /**
- * The working destination the consultation serves: the owner's saved work
- * destination over the receipt snapshot's recorded address — the same
- * precedence the editing form renders (a saved blank stays blank). Empty when
- * the draft asks no dispatch or carries no usable destination at all.
- */
-function fpw_distance_working_destination( array $draft, ?array $work ): string {
-	if ( ! fpw_draft_requests_dispatch( $draft ) ) { return ''; }
-	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
-	$address = (string) ( $destination['address'] ?? '' );
-	if ( is_array( $work ) ) { $address = (string) ( $work['destination'] ?? $address ); }
-	return trim( $address );
-}
-
-/**
  * The permitted destination identification for one consultation: the working
- * address text, plus the recorded Place ID ONLY while the working text still
- * matches the recorded address — editing the destination invalidates the
- * previous association (a stale Place ID must never route a different
- * journey). A malformed recorded identification is never sent; a manual or
- * unknown provenance is plainly typed text.
+ * address text — the owner's saved work destination over the receipt
+ * snapshot's recorded address, the same precedence the editing form renders
+ * (a saved blank stays blank) — plus the recorded Place ID ONLY while the
+ * working text still matches the recorded address. Editing the destination
+ * invalidates the previous association (a stale Place ID must never route a
+ * different journey); a malformed recorded identification is never sent; a
+ * manual or unknown provenance is plainly typed text.
  *
  * @return ?array{address:string, place_id:string, precision:'exacta'|'amplia'|'escrita'} Null only for a no-dispatch draft; a dispatch draft always resolves the shape, with an empty address when nothing usable is saved.
  */
 function fpw_distance_destination_for( array $draft, ?array $work ): ?array {
 	if ( ! fpw_draft_requests_dispatch( $draft ) ) { return null; }
-	$address = fpw_distance_working_destination( $draft, $work );
-	$record = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
-	$place_id = '';
+	$record  = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
+	$address = (string) ( $record['address'] ?? '' );
+	if ( is_array( $work ) ) { $address = (string) ( $work['destination'] ?? $address ); }
+	$address = trim( $address );
+	$place_id  = '';
 	$precision = 'escrita';
 	$record_address = trim( (string) ( $record['address'] ?? '' ) );
 	if ( 'asistida' === (string) ( $record['source'] ?? '' ) && $address === $record_address ) {
@@ -144,7 +134,7 @@ function fpw_distance_classify_response( $response ): array {
  * Run one distance consultation for a draft. No durable write anywhere: the
  * answer describes THIS consultation only.
  *
- * @return array{state:string, distance_meters?:int, origin?:string, destination?:array, precision?:string}
+ * @return array{state:string, origin?:string, destination?:array{address:string,place_id:string,precision:string}, distance_meters?:int} Origin and destination appear only in the states that reached them; the distance only in 'ok'.
  */
 function fpw_distance_consult( array $draft, ?array $work ): array {
 	if ( ! fpw_draft_requests_dispatch( $draft ) ) {
@@ -296,28 +286,30 @@ function fpw_distance_result_html( array $result, string $current_destination ):
  * @param array|null $work  The owner's saved work, when any exists.
  */
 function fpw_draft_distance_section_html( array $draft, ?array $work ): string {
-	$config     = fpw_dispatch_distance_config();
-	$order_id   = (int) ( $draft['order_id'] ?? 0 );
-	$consult    = fpw_pending_distance_consult();
-	if ( is_array( $consult ) && (int) ( $consult['order_id'] ?? 0 ) !== $order_id ) { $consult = null; }
-	$destination = fpw_distance_destination_for( $draft, $work );
-	$disclaimer  = '<p class="fpw-draft__aside-note">' . esc_html( fpw_distance_disclaimer_html() ) . '</p>';
-
+	$config = fpw_dispatch_distance_config();
+	$disclaimer = '<p class="fpw-draft__aside-note">' . esc_html( fpw_distance_disclaimer_html() ) . '</p>';
 	if ( empty( $config ) ) {
 		return '<section><h2>Distancia de despacho (referencia)</h2>'
-			. '<p>' . esc_html( fpw_distance_state_html( array( 'state' => 'sin_configuracion' ) ) ) . '</p>'
+			. fpw_distance_result_html( array( 'state' => 'sin_configuracion' ), '' )
 			. $disclaimer . '</section>';
 	}
 
-	$destination_note = '';
+	$order_id = (int) ( $draft['order_id'] ?? 0 );
+	$consult  = fpw_pending_distance_consult();
+	if ( is_array( $consult ) && (int) ( $consult['order_id'] ?? 0 ) !== $order_id ) { $consult = null; }
+	$destination = fpw_distance_destination_for( $draft, $work );
+
 	$destination_text = '';
+	$destination_note = '';
 	if ( is_array( $destination ) ) {
 		$destination_text = (string) $destination['address'];
-		$destination_note = '' !== $destination['place_id']
-			? ( 'exacta' === $destination['precision']
+		if ( '' !== $destination['place_id'] ) {
+			$destination_note = 'exacta' === $destination['precision']
 				? ' — con Place ID del asistente (coincidencia exacta)'
-				: ' — con Place ID del asistente (coincidencia amplia: revisar número y comuna)' )
-			: ' — texto escrito';
+				: ' — con Place ID del asistente (coincidencia amplia: revisar número y comuna)';
+		} else {
+			$destination_note = ' — texto escrito';
+		}
 	}
 
 	$state_line = is_array( $consult )

@@ -1103,7 +1103,7 @@ register_shutdown_function( static function () {
         const probeFile = join(WORDPRESS_DIR, '.build', 'routes-probe.jsonl');
         const probes = () => (existsSync(probeFile) ? readFileSync(probeFile, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : []);
         const setScenario = (scenario) => sh(PHP, [WPCLI, 'option', 'update', 'fpw_stack_routes_scenario', scenario, '--user=1', ...draftWpArgs, '--quiet']);
-        const consultNonce = async (requestId, fetcher) => await mint(fetcher, `fpw-draft-distance-${requestId}`);
+        const consultNonce = (requestId, fetcher) => mint(fetcher, `fpw-draft-distance-${requestId}`);
         const consultPost = (fetcher, requestId, nonce) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_distance_consult': '1', 'fpw_distance_nonce': nonce }).toString() });
         const mailsBefore5f = mailCount();
         setScenario('ok');
@@ -1187,7 +1187,6 @@ register_shutdown_function( static function () {
         check(craftedNoDispatch.status === 200, `the crafted no-dispatch consult answers honestly (got ${craftedNoDispatch.status})`);
         check(probes().length === probesBeforeDenied, 'a no-dispatch consult makes NO provider call');
         check(mailCount() === mailsBefore5f, `consulting and its denials must not send any notification (${mailsBefore5f} → ${mailCount()})`);
-        setScenario('ok');
       }
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
