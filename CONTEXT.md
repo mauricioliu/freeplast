@@ -80,6 +80,10 @@ _Avoid_: Request history, quotation history
 The spreadsheet in which Freeplast records its completed sales and which supplies the Purchase History available for quotation review.
 _Avoid_: Quote Requests, Price List
 
+**Import Receipt**:
+The bounded, consultable record of one applied Sales Register import — acting owner, time, source file name, batch token and per-outcome counts — from which the freshness and provenance of the available Purchase History is read beside every Quotation Draft. It is not permission to retain the uploaded workbook, and it is not a commercial document.
+_Avoid_: Upload log, file backup, invoice
+
 **Delivery Address**:
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
@@ -133,3 +137,5 @@ _Avoid_: New production site, replacement site
 [ADR-0001](docs/adr/0001-woocommerce-quote-only.md) records the approved mapping to WooCommerce. Its Products are the editable Catalog Source, its Cart holds Productos a Cotizar, and its Orders administration holds Quote Requests, not commercial purchases. The initial Woo release uses request intake and native order notes; it does not reproduce the former six-state commercial workflow. Historical statuses and submitted records remain preserved.
 
 [ADR-0004](docs/adr/0004-quote-draft-durable-relationship.md) records the Quotation Draft's durable relationship (issue #50): one unique options row born at the checkout receipt, read by the owner only, announced through the existing owner email.
+
+[ADR-0005](docs/adr/0005-sales-register-import-contract.md) records the Sales Register import contract (issue #54): an explicit source-id sale identity (never the RUT alone or date+amount), preview/confirm/cancel with exactly-once receipts, matching by normalized company RUT, and a purchase history computed at read time beside each draft — the definitive column set and update-vs-append semantics remain blocked on the real sample.

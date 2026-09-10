@@ -254,6 +254,11 @@ function fpw_draft_screen_shell( string $inner ): string {
 		. '.fpw-draft__line{display:flex;justify-content:space-between;gap:12px;align-items:baseline}'
 		. '.fpw-draft__qty{font-weight:700;white-space:nowrap}'
 		. '.fpw-draft__pending{font-weight:600;color:#8a6d1a;font-style:normal}'
+		. '.fpw-draft__no-history{font-weight:700}'
+		. '.fpw-draft__history{list-style:none;margin:0;padding:0;display:grid;gap:6px}'
+		. '.fpw-draft__history li{border:1px solid #e4e4e8;border-radius:6px;padding:8px 10px;overflow-wrap:anywhere}'
+		. '.fpw-draft__sale-date{font-weight:600;white-space:nowrap}'
+		. '.fpw-draft__sale-total{font-weight:700;white-space:nowrap}'
 		. '.fpw-draft__aside-note{color:#60626d;font-size:14px;margin:6px 0 0}'
 		. '.fpw-draft pre{white-space:pre-wrap;overflow-wrap:anywhere}'
 		. '@media (min-width: 782px){.fpw-draft__grid{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}.fpw-draft aside{display:grid;gap:16px;align-content:start}.fpw-draft dl{grid-template-columns:auto 1fr}.fpw-draft dl dt{padding-right:12px}}'
@@ -270,6 +275,49 @@ function fpw_draft_no_draft_html( $order ): string {
 		. '<section><h2>Sin borrador</h2><p>Esta solicitud no tiene borrador inicial guardado: se creó antes de este registro automático o su creación falló. La solicitud sigue intacta y legible en su registro nativo; no se inventa ningún dato.</p>'
 		. '<p><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
 	);
+}
+
+/**
+ * The live Purchase History beside the draft (issue #54, corte 5 de #49):
+ * computed at READ time from the imported Sales Register — the stored receipt
+ * snapshot is never rewritten — and matched primarily by the normalized
+ * company RUT. Shows only the fields the import contract supplies (date,
+ * source id, optional total) plus the provenance/freshness of its supplying
+ * import. A missing, invalid or unmatched RUT stays unresolved: «Sin
+ * historial asociado», never the customer verdict «Cliente nuevo». Per-product
+ * detail is not supported by the source and is never promised.
+ */
+function fpw_draft_history_section( array $draft ): string {
+	if ( ! function_exists( 'fpw_sales_history_for_rut' ) ) { return '<section><h2>Historial de compras</h2><p>' . fpw_draft_pending_html() . '</p></section>'; }
+	$identity   = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
+	$rut        = (string) ( $identity['rut'] ?? '' );
+	$normalized = fpw_sales_normalize_rut( $rut );
+	$history    = fpw_sales_history_for_rut( $normalized );
+	$import_url = '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_sales_import_screen_url() ) . '">Importar ventas</a></p>';
+	if ( null === $history ) {
+		return '<section><h2>Historial de compras</h2><p><strong class="fpw-draft__no-history">Sin historial asociado</strong></p>'
+			. '<p class="fpw-draft__aside-note">La solicitud no trae un RUT de empresa utilizable, así que ninguna compra importada puede asociarse. Eso no indica que el cliente sea nuevo ni conocido.</p>'
+			. $import_url . '</section>';
+	}
+	if ( empty( $history['sales'] ) ) {
+		return '<section><h2>Historial de compras</h2><p><strong class="fpw-draft__no-history">Sin historial asociado</strong></p>'
+			. '<p class="fpw-draft__aside-note">Ninguna venta importada coincide con el RUT ' . esc_html( $rut ) . '. No se inventó ninguna asociación: esto no indica que el cliente sea nuevo.</p>'
+			. $import_url . '</section>';
+	}
+	$lines = '';
+	foreach ( $history['sales'] as $sale ) {
+		$total = null === ( $sale['total'] ?? null ) ? '—' : number_format( (int) $sale['total'], 0, ',', '.' ) . ' CLP';
+		$lines .= '<li><span class="fpw-draft__sale-date">' . esc_html( (string) ( $sale['date'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-id">' . esc_html( (string) ( $sale['id'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-total">' . esc_html( $total ) . '</span></li>';
+	}
+	$fresh      = $history['freshness'];
+	$fresh_note = is_array( $fresh )
+		? 'Última carga aplicada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) $fresh['at'] ) ) . ' por ' . esc_html( $fresh['actor'] ) . ' (' . esc_html( $fresh['filename'] ) . '). '
+		: '';
+	return '<section><h2>Historial de compras</h2>'
+		. '<p>' . count( $history['sales'] ) . ' ' . esc_html( 1 === count( $history['sales'] ) ? 'venta importada' : 'ventas importadas' ) . ' para el RUT ' . esc_html( $rut ) . ':</p>'
+		. '<ul class="fpw-draft__history">' . $lines . '</ul>'
+		. '<p class="fpw-draft__aside-note">Fuente: importaciones del Registro de ventas. ' . $fresh_note . 'El detalle por producto no está disponible en la fuente importada.</p>'
+		. $import_url . '</section>';
 }
 
 /**
@@ -311,7 +359,7 @@ function fpw_quote_draft_markup( $order, ?array $draft ): string {
 		. '</div>';
 
 	$aside = '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
-		. '<section><h2>Historial de compras</h2><p>' . fpw_draft_pending_html() . '</p><p class="fpw-draft__aside-note">Aún no hay historial disponible para este borrador. Eso no indica que el cliente sea nuevo ni conocido.</p></section>'
+		. fpw_draft_history_section( $draft )
 		. '<section><h2>Estado del borrador</h2><dl>'
 		. fpw_draft_pending_fact_html( 'Precios' )
 		. fpw_draft_pending_fact_html( 'Historial' )

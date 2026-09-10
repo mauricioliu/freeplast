@@ -112,6 +112,8 @@ console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 // Issue #50 (cut 1 of #49): one private quotation draft per durably received request.
 console.log(run(php,[path.join(root,'scripts/quote-draft-test.php')]));
+// Issue #54 (cut 5 of #49): manual Sales Register import + Purchase History by normalized RUT.
+console.log(run(php,[path.join(root,'scripts/sales-register-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));

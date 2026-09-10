@@ -73,6 +73,16 @@ class FPWD_Fake_wpdb {
 		}
 		return null;
 	}
+	public function get_col( $sql ) {
+		if ( preg_match( "/SELECT option_name FROM \{?\w*options\}? WHERE option_name LIKE '(.+)'$/", $sql, $m ) ) {
+			$like = str_replace( array( '\\%', '\\_' ), array( '%', '_' ), $m[1] );
+			$prefix = ( $pos = strpos( $like, '%' ) ) !== false ? substr( $like, 0, $pos ) : $like;
+			$out = array();
+			foreach ( array_keys( $GLOBALS['fpwd_table'] ) as $name ) { if ( str_starts_with( $name, $prefix ) ) { $out[] = $name; } }
+			return $out;
+		}
+		return array();
+	}
 }
 $GLOBALS['fpwd_table'] = array();
 $GLOBALS['wpdb'] = new FPWD_Fake_wpdb();
@@ -184,9 +194,9 @@ check( str_contains( $html, 'Caja Cosechera 3/4' ) && str_contains( $html, '140'
 check( str_contains( $html, 'Caja Universal Cerrada Color' ) && str_contains( $html, '25' ), 'the variant line renders with its stored quantity' );
 check( str_contains( $html, 'Color: Azul' ), 'the chosen option renders through the native label' );
 check( ! str_contains( $html, 'pa_color' ) && ! str_contains( $html, '_reduced_stock' ), 'raw keys and internal meta never render' );
-check( substr_count( $html, 'Pendiente' ) >= 3, 'prices, history and dispatch estimate read as pending' );
+check( ( substr_count( $html, 'Pendiente' ) ) >= 3, 'prices and the dispatch estimate read as pending; history carries its own live state (issue #54)' );
 check( ! str_contains( $html, '$' ), 'no price amounts anywhere on the draft' );
-check( ! str_contains( $html, 'Sin historial' ), 'missing history is never presented as a customer verdict' );
+check( str_contains( $html, 'Sin historial asociado' ) && ! str_contains( $html, 'Cliente nuevo' ), 'with the importer live (issue #54), no matched history reads as unresolved — never as a customer verdict' );
 check( str_contains( $html, 'cotización emitida' ), 'the draft states it is not an issued quotation' );
 check( str_contains( $html, 'Camino de prueba 123, Mostazal' ), 'the stored destination renders' );
 check( str_contains( $html, 'compras@prueba.invalid' ), 'the stored identity renders' );
