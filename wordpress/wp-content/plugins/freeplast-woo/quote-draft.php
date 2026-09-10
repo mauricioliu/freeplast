@@ -67,6 +67,14 @@
  * its own row, fpw_draft_preview_<order_id>; any later commercial save makes
  * that preview obsolete — no future approval may use it to issue different
  * values. Previewing issues nothing: no approved version, no PDF, no mail.
+ *
+ * Cut 7 (issue #56) adds «Aprobar y enviar» (quotation-approval.php): the
+ * explicit owner action over the reviewed draft — a current, complete stored
+ * preview is mandatory and the issued version must be exactly its stored
+ * projection. The first version is one durable row created by a plain INSERT
+ * whose loser answers with the standing version; the PDF is generated from
+ * the frozen values and mailed to the buyer, with the document and mail
+ * stages named separately and never retried automatically.
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
@@ -624,11 +632,12 @@ function fpw_handle_draft_preview_request( $order, array $draft ): void {
 	fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => $written ? 'previewed' : 'preview-failed', 'preview' => $payload ) ) );
 }
 
-/** The posted screen action, when any: a draft save, a preview generation or the explicit price refresh. */
+/** The posted screen action, when any: a draft save, a preview generation, the explicit price refresh or the approval. */
 function fpw_draft_posted_action(): ?string {
 	if ( ! empty( $_POST['fpw_work_save'] ) ) { return 'save'; }
 	if ( ! empty( $_POST['fpw_work_preview'] ) ) { return 'preview'; }
 	if ( ! empty( $_POST['fpw_price_refresh'] ) ) { return 'refresh'; }
+	if ( ! empty( $_POST['fpw_work_approve'] ) ) { return 'approve'; }
 	return null;
 }
 
@@ -636,6 +645,7 @@ function fpw_draft_posted_action(): ?string {
 function fpw_handle_draft_action_request( $order, array $draft, string $action ): void {
 	if ( 'preview' === $action ) { fpw_handle_draft_preview_request( $order, $draft ); return; }
 	if ( 'refresh' === $action ) { fpw_handle_draft_refresh_request( (int) $order->get_id(), $draft ); return; }
+	if ( 'approve' === $action ) { fpw_handle_draft_approve_request( (int) $order->get_id(), $draft ); return; }
 	if ( ! wp_verify_nonce( (string) ( $_POST['fpw_draft_nonce'] ?? '' ), fpw_draft_save_action( (int) $order->get_id() ) ) ) {
 		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo.', '', array( 'response' => 403 ) );
 	}
@@ -672,9 +682,11 @@ function fpw_handle_draft_posted_action(): void {
 }
 add_action( 'admin_init', 'fpw_handle_draft_posted_action' );
 
-/** The handled action's outcome notice, in the screen's own language. */
+/** The handled action's outcome notice, in the screen's own language. Approval outcomes are named by their own module (quotation-approval.php). */
 function fpw_draft_outcome_notice( array $result ): array {
-	if ( 'saved' === $result['state'] ) {
+	$state = is_string( $result['state'] ?? null ) ? $result['state'] : '';
+	if ( str_starts_with( $state, 'approval-' ) ) { return fpw_approval_outcome_notice( $result ); }
+	if ( 'saved' === $state ) {
 		$revision = (int) ( $result['work']['revision'] ?? 0 );
 		if ( ! empty( $result['refresh'] ) ) {
 			return array(
@@ -692,7 +704,7 @@ function fpw_draft_outcome_notice( array $result ): array {
 			'lines' => array( 'Al volver a este borrador recuperarás estos valores. Guardar no aprueba ni envía ninguna cotización.' ),
 		);
 	}
-	if ( 'conflict' === $result['state'] ) {
+	if ( 'conflict' === $state ) {
 		$stored = (int) ( $result['stored_revision'] ?? 0 );
 		return array(
 			'class' => 'warn',
@@ -700,7 +712,7 @@ function fpw_draft_outcome_notice( array $result ): array {
 			'lines' => array( 'Los valores que se muestran son los ya guardados y quedan conservados; nada fue sobrescrito. Revísalos y vuelve a guardar si corresponde.' ),
 		);
 	}
-	if ( 'previewed' === $result['state'] ) {
+	if ( 'previewed' === $state ) {
 		$projection = is_array( $result['preview']['projection'] ?? null ) ? $result['preview']['projection'] : array();
 		return array(
 			'class' => 'ok',
@@ -713,7 +725,7 @@ function fpw_draft_outcome_notice( array $result ): array {
 			),
 		);
 	}
-	if ( 'preview-failed' === $result['state'] ) {
+	if ( 'preview-failed' === $state ) {
 		return array(
 			'class' => 'error',
 			'title' => 'No se pudo guardar la vista previa: inténtalo de nuevo.',
@@ -1320,6 +1332,9 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 	$html .= '<p class="fpw-draft__preview-validity"><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 	$html .= '<p class="fpw-draft__aside-note">Esta vista previa no incluye historial de compras, notas internas, costos de transportista ni el desglose interno de la estimación de despacho. No es un documento emitido: nada fue aprobado ni enviado al comprador.</p>'
 		. fpw_draft_preview_generate_html( $order_id )
+		. ( $obsolete || empty( $projection['complete'] ) || is_array( fpw_read_quotation_version( $order_id ) )
+			? ''
+			: fpw_draft_approve_html( $order_id ) )
 		. '</section>';
 	return $html;
 }
@@ -1359,6 +1374,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$all_priced      = ! empty( $values['lines'] );
 	foreach ( $values['lines'] as $work_line ) { if ( null === ( $work_line['price'] ?? null ) ) { $all_priced = false; } }
 	$preview         = fpw_read_draft_preview( $order_id );
+	$version_row     = fpw_read_quotation_version( $order_id );
 	$validity_days   = fpw_draft_validity_days( $work );
 
 	$heading = '<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
@@ -1391,6 +1407,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. '</form>'
 		. ( $with_dispatch ? fpw_draft_distance_section_html( $draft, $work ) : '' )
 		. fpw_draft_preview_html( $draft, $work, $preview )
+		. fpw_quotation_version_section_html( $version_row )
 		. '</div>';
 
 	$dispatch_state = ! $with_dispatch
@@ -1412,6 +1429,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. fpw_draft_fact_raw_html( 'Estimación de despacho', $dispatch_state )
 		. fpw_draft_fact_html( 'Vigencia de la oferta', $validity_days . ' días' )
 		. fpw_draft_fact_raw_html( 'Vista previa', $preview_state )
+		. fpw_draft_fact_raw_html( 'Versión aprobada', $version_row ? fpw_quotation_version_state_html( $version_row ) : fpw_draft_pending_html() )
 		. '</dl><p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_price_screen_url() ) . '">Mantenedor de precios</a></p>'
 		. '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
 		. '</aside>';

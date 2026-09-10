@@ -144,18 +144,38 @@ export async function runStackHarness() {
     `<?php
 /** Disposable-stack only (written by woo-stack-harness.mjs): block every mail
  * attempt and record it — the offline substitute for the receipt-notification
- * events. Counts subjects only, plus the draft request id the body names; no
- * bodies, no recipients. */
+ * events. Counts subjects plus the draft request id the body names, the
+ * attachment names of a delivered quotation (issue #56) and the recipient
+ * address (every address in this stack is run-owned synthetic data; the log
+ * never enters the repository). The fpw_stack_delivery_scenario option
+ * simulates the transport outcomes the approval journey must distinguish:
+ * 'ok' (accepted and blocked), 'rejected' (the transport refuses) and
+ * 'unknown' (the result is lost mid-send); 'pdf-fail' feeds the quotation
+ * document seam unusable bytes so the document stage must refuse them. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
+	$scenario = (string) get_option( 'fpw_stack_delivery_scenario', 'ok' );
+	if ( 'rejected' === $scenario ) { return false; } // the transport refuses: wp_mail answers false
+	if ( 'unknown' === $scenario ) { throw new RuntimeException( 'simulated unknown transport outcome' ); }
 	$draft_request = null;
 	if ( preg_match( '/page=fpw-quote-draft&(?:amp;|#038;)?request=(\\d+)/', (string) ( $atts['message'] ?? '' ), $m ) ) {
 		$draft_request = (int) $m[1];
 	}
-	$entry = wp_json_encode( array( 'subject' => (string) ( $atts['subject'] ?? '' ), 'draft_request' => $draft_request ) );
+	$attachments = array();
+	foreach ( (array) ( $atts['attachments'] ?? array() ) as $path ) { $attachments[] = basename( (string) $path ); }
+	$entry = wp_json_encode( array(
+		'subject' => (string) ( $atts['subject'] ?? '' ),
+		'draft_request' => $draft_request,
+		'to' => (string) ( $atts['to'] ?? '' ),
+		'attachments' => $attachments,
+	) );
 	if ( is_string( $entry ) ) { file_put_contents( dirname( ABSPATH ) . '/mail-log.jsonl', $entry . "\\n", FILE_APPEND ); }
 	return true; // blocked: the disposable stack never delivers mail.
 }, PHP_INT_MAX, 2 );
+add_filter( 'fpw_quotation_document_bytes', static function ( $bytes ) {
+	if ( 'pdf-fail' === (string) get_option( 'fpw_stack_delivery_scenario', 'ok' ) ) { return 'esto no es un documento pdf'; }
+	return $bytes;
+}, 10, 1 );
 `,
   );
   writeFileSync(
@@ -1444,6 +1464,8 @@ register_shutdown_function( static function () {
        PDF and no mail. The fiscal policy rides the explicit test mu-plugin
        above; without it the IVA and total would stay pending. */
     {
+      /* Deterministic reset of run-owned quotation rows on the persistent disposable DB (issue #56): the zero-issuance invariant below is global, and a previously interrupted run must not poison it. */
+      sh(PHP, [WPCLI, 'eval', `global $wpdb; $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'fpw_quotation%'");`, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
       const editUrl5f = (requestId) => `/wp-admin/admin.php?page=fpw-quote-draft&request=${requestId}`;
       const mailCount5f = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
       const mint5f = async (fetcher, forAction) => {
@@ -1584,6 +1606,213 @@ register_shutdown_function( static function () {
       check(record5f.email === draftState.records[correctOrder].email, 'the native record keeps its identity');
     }
 
+    /* 5f. Issue #56 (cut 7 of #49): «Aprobar y enviar» over real HTTP — the
+       approval bound to the reviewed preview, ONE durable frozen version, a
+       real PDF carrying the same values, the intercepted mail carrying those
+       bytes, dedup resolved at the durable operation level, every stage's
+       failure named and its approved version preserved, permission + CSRF
+       boundaries, and no purchase, payment, stock or record mutation. The
+       mail mu-plugin above both intercepts (never delivers) and simulates
+       the transport outcomes; the document seam simulates a broken renderer. */
+    {
+      const wpEval56 = (code) => sh(PHP, [WPCLI, 'eval', code, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+      const setDeliveryScenario = (scenario) => wpEval56(`update_option( 'fpw_stack_delivery_scenario', ${JSON.stringify(scenario)} );`);
+      const mailLines56 = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line)) : []);
+      const mailCount56 = () => mailLines56().length;
+      const versionRow56 = (requestId) => JSON.parse(wpEval56(`
+        global $wpdb;
+        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_quotation_' . ${requestId}));
+        echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
+      `).split('\n').pop());
+      const postForm56 = (fetcher, requestId, fields) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
+      const approvePost56 = (fetcher, requestId, nonce) => postForm56(fetcher, requestId, { 'fpw_work_approve': '1', 'fpw_approve_nonce': nonce });
+      const lineFields56 = (record, priceFor) => {
+        const fields = {};
+        record.lines.forEach((line, index) => {
+          fields[`fpw_work[lines][${index}][quantity]`] = String(line.quantity);
+          const price = priceFor(index, line);
+          fields[`fpw_work[lines][${index}][price]`] = price === null ? '' : String(price);
+        });
+        return fields;
+      };
+      const clp56 = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      const mails56Before = mailCount56();
+      setDeliveryScenario('ok');
+
+      /* The #55 journey left correctOrder at revision 5 with a current,
+         complete preview: exactly there the screen offers Aprobar y enviar. */
+      const screen56 = await (await owner(editUrl(correctOrder))).text();
+      check(screen56.includes('Aprobar y enviar') && screen56.includes('name="fpw_approve_nonce"'), 'the screen offers Aprobar y enviar over the current complete review');
+
+      /* The approval: one durable version, one real PDF, one intercepted
+         buyer mail accepted by the simulated transport. */
+      const approved56 = await approvePost56(owner, correctOrder, await mint(owner, `fpw-draft-approve-${correctOrder}`));
+      check(approved56.status === 200, `the approval must answer 200 (got ${approved56.status})`);
+      const approvedHtml56 = await approved56.text();
+      check(approvedHtml56.includes('Cotización aprobada y enviada (Versión 1)'), 'the approval confirms the issued first version');
+      check(approvedHtml56.includes('no prueba la recepción del comprador'), 'the confirmation states transport acceptance is not buyer receipt');
+      check(mailCount56() === mails56Before + 1, `exactly one buyer mail was intercepted (${mails56Before} → ${mailCount56()})`);
+      const buyerMail56 = mailLines56()[mailLines56().length - 1];
+      check(buyerMail56.to === draftState.records[correctOrder].email, 'the intercepted mail addresses the frozen buyer identity');
+      check(buyerMail56.subject.includes('Cotización') && buyerMail56.subject.includes('versión 1'), 'the mail subject names the quotation and its version');
+      check((buyerMail56.attachments || []).length === 1 && buyerMail56.attachments[0].includes('cotizacion-FP-'), 'the mail carries exactly one document named after the version');
+
+      /* The durable version: the reviewed projection frozen verbatim, a real
+         PDF with the exact same values, delivery states recorded. */
+      const correctRecord56 = draftState.records[correctOrder];
+      const expectedSubtotal56 = correctRecord56.lines.reduce((acc, line) => acc + line.quantity * 1500, 0);
+      const expectedTax56 = Math.floor((expectedSubtotal56 * 190 + 500) / 1000);
+      const expectedTotal56 = expectedSubtotal56 + 25000 + expectedTax56;
+      const totalLabel56 = clp56(expectedTotal56);
+      const versionState56 = JSON.parse(wpEval56(`
+        global $wpdb;
+        $id = ${correctOrder};
+        $get = static fn( $name ) => $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) );
+        $version = json_decode( (string) $get( 'fpw_quotation_' . $id ), true );
+        $preview = json_decode( (string) $get( 'fpw_draft_preview_' . $id ), true );
+        $pdf = base64_decode( (string) ( $version['pdf_base64'] ?? '' ), true );
+        $mail_html = function_exists( 'fpw_quotation_email_html' ) ? fpw_quotation_email_html( $version ) : '';
+        echo wp_json_encode( array(
+          'reference' => $version['reference'] ?? null,
+          'attempt' => (string) ( $version['attempt'] ?? '' ),
+          'version' => $version['version'] ?? null,
+          'work_revision' => $version['work_revision'] ?? null,
+          'buyer' => $version['buyer'] ?? null,
+          'document' => $version['document'] ?? null,
+          'delivery' => $version['delivery']['state'] ?? null,
+          'projection_matches_preview' => ( $version['projection'] ?? null ) === ( $preview['projection'] ?? null ),
+          'pdf_header' => substr( (string) $pdf, 0, 8 ),
+          'pdf_tail' => substr( (string) $pdf, -5 ),
+          'pdf_has_reference' => is_string( $pdf ) && str_contains( $pdf, (string) ( $version['reference'] ?? '' ) ),
+          'pdf_has_total' => is_string( $pdf ) && str_contains( $pdf, '${totalLabel56} CLP' ),
+          'pdf_has_validity' => is_string( $pdf ) && str_contains( $pdf, 'Vigencia de la oferta: 10' ),
+          'pdf_clean' => is_string( $pdf ) && ! str_contains( $pdf, 'Historial' ) && ! str_contains( $pdf, 'sugerido' ) && ! str_contains( $pdf, 'ingreso manual' ),
+          'mail_clean' => ! str_contains( $mail_html, 'Historial' ) && ! str_contains( $mail_html, 'sugerido' ) && ! str_contains( $mail_html, 'ingreso manual' ),
+          'mail_shows_total' => str_contains( $mail_html, '${totalLabel56} CLP' ),
+          'issuance_rows' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_quotation%'" ),
+        ) );
+      `).split('\n').pop());
+      check(versionState56.version === 1 && versionState56.reference === draftState.records[correctOrder].reference, 'the durable first version carries the request reference');
+      check(versionState56.attempt.length === 64 && versionState56.work_revision === 5, 'the version binds the attempt identity and the reviewed revision');
+      check(versionState56.buyer && versionState56.buyer.email === draftState.records[correctOrder].email, 'the version freezes the buyer identity for delivery');
+      check(versionState56.projection_matches_preview === true, 'the frozen version IS the projection the owner reviewed');
+      check(versionState56.document === 'ready' && versionState56.delivery === 'accepted', 'document ready and mail accepted are recorded on the version');
+      check(versionState56.pdf_header === '%PDF-1.4' && versionState56.pdf_tail === '%%EOF', 'the frozen document is a real PDF file');
+      check(versionState56.pdf_has_reference && versionState56.pdf_has_total && versionState56.pdf_has_validity, `the PDF carries the reference, the exact total (${totalLabel56} CLP) and the reviewed validity`);
+      check(versionState56.pdf_clean && versionState56.mail_clean && versionState56.mail_shows_total, 'the buyer document and mail exclude history and internal origins while showing the approved values');
+      check(versionState56.issuance_rows === 1, 'exactly one issuance row exists after the approval');
+
+      /* Doble click / concurrency / retries of the SAME approval: resolved at
+         the durable operation — no extra version, no duplicate send. */
+      const rowBeforeDedup56 = JSON.stringify(versionRow56(correctOrder));
+      const [dblA56, dblB56] = await Promise.all([
+        approvePost56(owner, correctOrder, await mint(owner, `fpw-draft-approve-${correctOrder}`)),
+        approvePost56(owner, correctOrder, await mint(owner, `fpw-draft-approve-${correctOrder}`)),
+      ]);
+      check(dblA56.status === 200 && dblB56.status === 200, `both double-click submissions answer honestly (got ${dblA56.status}/${dblB56.status})`);
+      const dblHtml56 = (await dblA56.text()) + (await dblB56.text());
+      check(!dblHtml56.includes('Cotización aprobada y enviada'), 'neither double-click submission issued a new version');
+      check(dblHtml56.includes('ya tiene su primera versión aprobada'), 'the repeated approvals answer with the standing version');
+      check(mailCount56() === mails56Before + 1, 'the double click created no duplicate send');
+      check(JSON.stringify(versionRow56(correctOrder)) === rowBeforeDedup56, 'the double click created no extra version');
+
+      /* Permission and CSRF boundaries on an order without a version yet:
+         ventas' valid session + valid nonce is a permission denial, a forged
+         nonce is 403, a visitor goes to the login — nothing is created. */
+      const ventasApprove56 = await approvePost56(ventas, placesJourneyIds.asistida, await mint(ventas, `fpw-draft-approve-${placesJourneyIds.asistida}`));
+      check(ventasApprove56.status === 403, `a valid ventas session with a valid nonce must be DENIED the approval (got ${ventasApprove56.status})`);
+      const forgedApprove56 = await approvePost56(owner, placesJourneyIds.asistida, 'forged-nonce');
+      check(forgedApprove56.status === 403, `an approval with an invalid nonce is refused 403 (got ${forgedApprove56.status})`);
+      const visitorApprove56 = await approvePost56(visitor, placesJourneyIds.asistida, 'forged-nonce');
+      check(visitorApprove56.status === 302 && String(visitorApprove56.headers.get('location') || '').includes('wp-login.php'), 'a visitor approval is sent to the login');
+      check(versionRow56(placesJourneyIds.asistida) === null, 'the denied approvals created no version');
+      check(mailCount56() === mails56Before + 1, 'the denied approvals mailed nobody');
+
+      /* An incomplete offer can never be approved: the faltante is named. */
+      const refusedApprove56 = await approvePost56(owner, staleOrder, await mint(owner, `fpw-draft-approve-${staleOrder}`));
+      const refusedHtml56 = await refusedApprove56.text();
+      check(refusedHtml56.includes('Nada se aprobó') && refusedHtml56.includes('Falta el precio neto'), 'an incomplete offer cannot be approved and names its faltante');
+      check(versionRow56(staleOrder) === null && mailCount56() === mails56Before + 1, 'the refused approval created nothing and mailed nobody');
+
+      /* The document stage fails: the version stands approved with a pending
+         document and NO mail is attempted — no incomplete offer ever ships. */
+      const asistidaRecord56 = draftState.records[placesJourneyIds.asistida];
+      const asistidaSave56 = await postForm56(owner, placesJourneyIds.asistida, {
+        'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${placesJourneyIds.asistida}`),
+        ...lineFields56(asistidaRecord56, () => 1490),
+        'fpw_work[destination]': 'Camino El Arrayán 52, San Francisco de Mostazal',
+        'fpw_work[dispatch_amount]': '20000',
+        'fpw_work[validity_days]': '15',
+      });
+      check((await asistidaSave56.text()).includes('Cambios guardados (revisión 1)'), 'the asistida draft completes its commercial work');
+      await postForm56(owner, placesJourneyIds.asistida, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.asistida}`) });
+      setDeliveryScenario('pdf-fail');
+      const pdfFail56 = await approvePost56(owner, placesJourneyIds.asistida, await mint(owner, `fpw-draft-approve-${placesJourneyIds.asistida}`));
+      const pdfFailHtml56 = await pdfFail56.text();
+      check(pdfFailHtml56.includes('el documento no se pudo generar') && pdfFailHtml56.includes('No se intentó enviar'), 'a broken document approves the version but never mails an incomplete offer');
+      const asistidaVersion56 = versionRow56(placesJourneyIds.asistida);
+      check(asistidaVersion56 && asistidaVersion56.version === 1 && asistidaVersion56.document === 'pending' && asistidaVersion56.delivery.state === null && asistidaVersion56.pdf_base64 === undefined, 'the approved version stands preserved with a pending document');
+      check(mailCount56() === mails56Before + 1, 'the document failure mailed nobody');
+
+      /* A rejected transport is named as rejected, with the version preserved. */
+      const sinRecord56 = draftState.records[placesJourneyIds.sindespacho];
+      const sinSave56 = await postForm56(owner, placesJourneyIds.sindespacho, {
+        'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${placesJourneyIds.sindespacho}`),
+        ...lineFields56(sinRecord56, () => 1490),
+        'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '',
+      });
+      check((await sinSave56.text()).includes('Cambios guardados (revisión 1)'), 'the no-dispatch draft completes its work');
+      await postForm56(owner, placesJourneyIds.sindespacho, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.sindespacho}`) });
+      setDeliveryScenario('rejected');
+      const rejected56 = await approvePost56(owner, placesJourneyIds.sindespacho, await mint(owner, `fpw-draft-approve-${placesJourneyIds.sindespacho}`));
+      check((await rejected56.text()).includes('el correo fue rechazado por el transporte'), 'a rejected mail is named as rejected, never as a delivery');
+      const sinVersion56 = versionRow56(placesJourneyIds.sindespacho);
+      check(sinVersion56.document === 'ready' && sinVersion56.delivery.state === 'rejected', 'the version preserves its document with the rejected delivery state');
+      check(mailCount56() === mails56Before + 1, 'a rejected transport never becomes an accepted delivery event');
+
+      /* An unknown transport result is named, preserved, never auto-retried. */
+      const degRecord56 = draftState.records[placesJourneyIds.degradada];
+      const degSave56 = await postForm56(owner, placesJourneyIds.degradada, {
+        'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${placesJourneyIds.degradada}`),
+        ...lineFields56(degRecord56, () => 1490),
+        'fpw_work[destination]': 'Camino rural sin asistente, Mostazal',
+        'fpw_work[dispatch_amount]': '18000',
+        'fpw_work[validity_days]': '7',
+      });
+      check((await degSave56.text()).includes('Cambios guardados (revisión 1)'), 'the degraded-address draft completes its work');
+      await postForm56(owner, placesJourneyIds.degradada, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.degradada}`) });
+      setDeliveryScenario('unknown');
+      const unknown56 = await approvePost56(owner, placesJourneyIds.degradada, await mint(owner, `fpw-draft-approve-${placesJourneyIds.degradada}`));
+      const unknownHtml56 = await unknown56.text();
+      check(unknownHtml56.includes('el resultado del correo es desconocido') && unknownHtml56.includes('no se reintenta automáticamente'), 'an unknown transport result is named and never auto-retried');
+      const degVersion56 = versionRow56(placesJourneyIds.degradada);
+      check(degVersion56.document === 'ready' && degVersion56.delivery.state === 'unknown', 'the version preserves its document with the unknown delivery state');
+      setDeliveryScenario('ok');
+      const noRetryRead56 = await (await owner(editUrl(placesJourneyIds.degradada))).text();
+      check(noRetryRead56.includes('Resultado desconocido') && mailCount56() === mails56Before + 1, 'rereading the draft never retries the unknown send');
+
+      /* The screen after approval: the standing version with its states, no
+         second approval offered, and the native record untouched. */
+      const afterApproval56 = await (await owner(editUrl(correctOrder))).text();
+      check(afterApproval56.includes('Versión aprobada') && afterApproval56.includes('documento listo') && afterApproval56.includes('correo aceptado'), 'the screen shows the standing version with its document and mail states');
+      check(!afterApproval56.includes('Aprobar y enviar'), 'with a version standing, no second approval is offered');
+      const rows56 = JSON.parse(wpEval56(`
+        global $wpdb;
+        $rows = array_values( array_filter( (array) $wpdb->get_col( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE 'fpw_%'" ), static fn( $n ) => str_ends_with( (string) $n, '_${correctOrder}' ) ) );
+        echo wp_json_encode( $rows );
+      `).split('\n').pop());
+      const expectedRows56 = [`fpw_draft_${correctOrder}`, `fpw_draft_preview_${correctOrder}`, `fpw_draft_work_${correctOrder}`, `fpw_quotation_${correctOrder}`].sort();
+      check(JSON.stringify([...rows56].sort()) === JSON.stringify(expectedRows56), `the approval added exactly the version row (${JSON.stringify(rows56)})`);
+      const record56 = JSON.parse(wpEval56(`
+        $order = wc_get_order(${correctOrder});
+        $quantities = array();
+        foreach ( $order->get_items() as $item ) { $quantities[] = (int) $item->get_quantity(); }
+        echo wp_json_encode( array( 'status' => $order->get_status(), 'qwc' => (string) $order->get_meta('_qwc_quote'), 'quantities' => $quantities, 'email' => $order->get_billing_email() ) );
+      `).split('\n').pop());
+      check(record56.status === 'pending' && record56.qwc === '1', 'approving creates no purchase, payment or status change on the record');
+      check(JSON.stringify(record56.quantities) === JSON.stringify(correctRecord56.lines.map((l) => l.quantity)) && record56.email === draftState.records[correctOrder].email, 'the record keeps its quantities and identity: issuing is not a sale');
+    }
+
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -1669,6 +1898,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval + the quotation approval and first-version issuance) on ${SITE_URL}`);
   return checks;
 }

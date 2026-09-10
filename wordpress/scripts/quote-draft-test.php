@@ -57,6 +57,19 @@ function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $ech
 }
 function wp_verify_nonce( $nonce, $action = -1 ) { return $GLOBALS['fpwd_nonce_ok'] && 'offline-nonce' === (string) $nonce ? 1 : false; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
+/* Issue #56: the buyer mail rides wp_mail; the stub names its transport outcome, records each call and reads the staged attachments exactly as a transport would. */
+$GLOBALS['fpwd_mail_mode'] = 'ok';
+$GLOBALS['fpwd_mail_calls'] = array();
+function wp_mail( $to, $subject, $message, $headers = array(), $attachments = array() ) {
+	$GLOBALS['fpwd_mail_calls'][] = array(
+		'to' => $to, 'subject' => $subject, 'message' => $message, 'headers' => $headers,
+		'attachments' => $attachments,
+		'attachment_bytes' => array_map( 'file_get_contents', array_values( (array) $attachments ) ),
+	);
+	if ( 'reject' === $GLOBALS['fpwd_mail_mode'] ) { return false; }
+	if ( 'throw' === $GLOBALS['fpwd_mail_mode'] ) { throw new RuntimeException( 'smtp connection lost mid-DATA' ); }
+	return true;
+}
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
@@ -729,4 +742,232 @@ check( ! preg_match( '/[^.\d]0 CLP/', $html ), 'no pending amount ever renders a
 check( str_contains( $html, 'Vigencia de la oferta</dt><dd>7 días' ), 'the status board shows the effective validity' );
 check( str_contains( $html, 'Vista previa' ) && str_contains( $html, 'placeholder="7 (por defecto)"' ), 'the validity input names its default without inventing a value' );
 
-echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55)\n";
+/* ===== Issue #56 — corte 7 de #49: aprobar y enviar la primera versión =====
+ * Approval is an explicit owner action over the REVIEWED draft: a current,
+ * complete stored preview is mandatory and the issued version must be exactly
+ * its stored projection. The first version is ONE durable row whose plain
+ * INSERT decides the race — double clicks, concurrency and known retries of
+ * the same approval answer with the standing version and never mail anything.
+ * The PDF carries the same values; a failed document never mails; mail states
+ * (accepted / rejected / unknown) are named separately and never auto-retried. */
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+
+/* The guards refuse, by name, anything that was not actually reviewed. */
+check( fpw_quotation_approval_check( $payload91, null, null ) === array( 'state' => 'sin-trabajo' ), 'without saved work there is nothing to approve' );
+check( fpw_quotation_approval_check( $payload91, $work91, null )['state'] === 'sin-vista-previa', 'without a stored preview there is no reviewed content to approve' );
+check( fpw_quotation_approval_check( $payload91, $work91, fpw_read_draft_preview( 91 ) )['state'] === 'vista-previa-obsoleta', 'a preview left behind by a later save cannot approve anything' );
+$incomplete_projection = fpw_quotation_projection( $payload91, null );
+check( fpw_quotation_approval_check( $payload91, $work91, array( 'revision' => 3, 'projection' => $incomplete_projection ) ) === array( 'state' => 'oferta-incompleta', 'missing' => $incomplete_projection['missing'] ), 'an incomplete projection is refused with its faltantes' );
+$fresh_projection = fpw_quotation_projection( $payload91, $work91 );
+$tampered_projection = $fresh_projection;
+$tampered_projection['total'] = 1;
+check( fpw_quotation_approval_check( $payload91, $work91, array( 'revision' => 3, 'projection' => $tampered_projection ) )['state'] === 'proyeccion-divergente', 'a projection that diverges from the shared calculation cannot be issued' );
+
+/* Through the screen front door: every refusal is an honest state — nothing is created and nobody is mailed. */
+function fpwd_approve_and_render( int $request_id, string $nonce = 'offline-nonce' ): string {
+	$_GET = array( 'page' => 'fpw-quote-draft', 'request' => (string) $request_id );
+	$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+	$_POST = array( 'fpw_work_approve' => '1', 'fpw_approve_nonce' => $nonce );
+	fpw_handle_draft_posted_action();
+	ob_start();
+	fpw_render_quote_draft_screen();
+	return (string) ob_get_clean();
+}
+$mail_calls = 0;
+$page = fpwd_approve_and_render( 91 );
+check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'obsoleta' ), 'the screen refuses approval over an obsolete preview' );
+check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_91'] ) && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the refused approval created no version and mailed nobody' );
+$page = fpwd_approve_and_render( 92 );
+check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'no tiene una vista previa guardada' ), 'approval without any stored preview is refused' );
+$order93 = new FPWD_Order( 93, array( new FPWD_Item( 'Caja Cosechera 3/4', 4, 22, 0 ) ), array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+$GLOBALS['fpwd_orders'][93] = $order93;
+check( fpw_create_request_draft( $order93 ) === true, 'the mail-rejected journey draft is created' );
+$payload93 = fpw_read_request_draft( 93 );
+$page = fpwd_approve_and_render( 93 );
+check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'no tiene trabajo guardado' ), 'approval without saved work is refused' );
+
+/* An incomplete offer is never offered the button, and a posted approval over it is refused with its named faltante. */
+$save56a = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '3',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '3', 'price' => '340' ), array( 'quantity' => '1', 'price' => '' ) ),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '',
+	),
+), 1 );
+check( ( $save56a['state'] ?? '' ) === 'saved' && 4 === (int) $save56a['work']['revision'], 'the incomplete save stores revision 4' );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '91' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Vista previa generada (revisión 4)' ) && ! str_contains( $page, 'Aprobar y enviar' ), 'an incomplete offer is never offered the approval button' );
+$page = fpwd_approve_and_render( 91 );
+check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'Falta el precio neto' ), 'an incomplete offer is refused with its named faltante' );
+check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_91'] ) && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the incomplete refusal created nothing and mailed nobody' );
+
+/* Complete the work again: the current review offers Aprobar y enviar with its own action and nonce. */
+$save56b = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '4',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '3', 'price' => '340' ), array( 'quantity' => '1', 'price' => '2190' ) ),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '',
+	),
+), 1 );
+check( ( $save56b['state'] ?? '' ) === 'saved' && 5 === (int) $save56b['work']['revision'], 'the completing save stores revision 5' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Vista previa generada (revisión 5)' ) && str_contains( $page, 'Aprobar y enviar' ) && str_contains( $page, 'name="fpw_approve_nonce"' ), 'a current complete review offers Aprobar y enviar with its own nonce' );
+
+/* The real approval: the version is frozen, the document is real, the mail rides the stub transport. */
+$GLOBALS['fpwd_mail_mode'] = 'ok';
+$page = fpwd_approve_and_render( 91 );
+check( str_contains( $page, 'Cotización aprobada y enviada (Versión 1)' ), 'the approved and sent version is confirmed by name' );
+check( str_contains( $page, 'no prueba la recepción del comprador' ), 'the confirmation names transport acceptance as not buyer receipt' );
+$version = fpw_read_quotation_version( 91 );
+check( is_array( $version ) && 1 === (int) $version['version'] && 'FP-2026-000091' === $version['reference'], 'the first version is durable with the request reference' );
+check( 64 === strlen( (string) ( $version['attempt'] ?? '' ) ) && 5 === (int) $version['work_revision'], 'the version binds the request attempt identity and the reviewed revision' );
+check( $version['projection'] === fpw_read_draft_preview( 91 )['projection'], 'the frozen version IS the stored reviewed projection' );
+check( $version['buyer'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'email' => 'compras@prueba.invalid' ), 'the version freezes the buyer identity for delivery' );
+check( 'ready' === $version['document'] && 'accepted' === ( $version['delivery']['state'] ?? '' ) && is_int( $version['delivery']['at'] ?? null ), 'document ready and mail accepted are recorded on the version' );
+check( 1 === (int) ( $version['approved_by'] ?? 0 ) && ( $version['approved_at'] ?? 0 ) > 0, 'the approval records its actor and time' );
+
+/* The document: a real PDF with exactly the approved values and nothing internal. */
+$pdf = base64_decode( (string) ( $version['pdf_base64'] ?? '' ), true );
+check( is_string( $pdf ) && str_starts_with( $pdf, '%PDF-1.4' ) && str_ends_with( $pdf, '%%EOF' ), 'the frozen document is a real PDF file' );
+$xref_at = (int) trim( preg_replace( '/^startxref\s+/', '', (string) substr( $pdf, (int) strrpos( $pdf, 'startxref' ) ) ) );
+check( $xref_at > 0 && str_starts_with( (string) substr( $pdf, $xref_at ), 'xref' ), 'the PDF xref table sits exactly at its declared offset' );
+check( str_contains( $pdf, 'FP-2026-000091' ), 'the PDF names the request reference and its version' );
+check( str_contains( $pdf, '3.210 CLP' ) && str_contains( $pdf, '1.000 CLP' ) && str_contains( $pdf, '610 CLP' ) && str_contains( $pdf, '4.820 CLP' ), 'the PDF shows the exact approved amounts (3.210 + 1.000 + 610 = 4.820)' );
+/* The document's fixed grid stays on the page: every Courier line fits the usable width. */
+$fpwd_overflow = 0;
+foreach ( preg_split( '/\n/', $pdf ) as $fpwd_line ) {
+	if ( ! preg_match( '/^BT \\/(F\\d) (\\d+) Tf 1 0 0 1 ([\\d.]+) ([\\d.]+) Tm \\((.*)\\) Tj ET$/', $fpwd_line, $fpwd_m ) ) { continue; }
+	if ( 'F2' !== $fpwd_m[1] ) { continue; }
+	$fpwd_chars = strlen( $fpwd_m[5] ) - substr_count( $fpwd_m[5], '\\' );
+	if ( (float) $fpwd_m[3] + 0.6 * (int) $fpwd_m[2] * $fpwd_chars > 556.0 ) { $fpwd_overflow++; }
+}
+check( 0 === $fpwd_overflow, 'every fixed-grid document line fits the usable page width' );
+check( str_contains( $pdf, 'IVA \\(19%' ), 'the PDF names the confirmed rate it applied' );
+check( str_contains( $pdf, 'Vigencia de la oferta: 7' ), 'the PDF freezes the effective validity (the default seven days here)' );
+check( ! str_contains( $pdf, 'Historial' ) && ! str_contains( $pdf, 'sugerido' ) && ! str_contains( $pdf, 'ingreso manual' ), 'the buyer document carries no history or internal price origins' );
+
+/* The buyer mail: addressed to the frozen identity, carrying exactly the frozen bytes. */
+$mail = $GLOBALS['fpwd_mail_calls'][ count( $GLOBALS['fpwd_mail_calls'] ) - 1 ];
+check( 'compras@prueba.invalid' === $mail['to'], 'the buyer mail addresses the frozen buyer identity' );
+check( str_contains( $mail['subject'], 'Cotización FP-2026-000091' ) && str_contains( $mail['subject'], 'versión 1' ), 'the mail subject names the quotation and its version' );
+check( 1 === count( $mail['attachments'] ) && str_contains( basename( (string) $mail['attachments'][0] ), 'FP-2026-000091' ), 'the mail carries exactly one document named after the version' );
+check( ( $mail['attachment_bytes'][0] ?? null ) === $pdf, 'the attached file is byte-for-byte the frozen document' );
+check( ! file_exists( (string) $mail['attachments'][0] ), 'the staging temp file never survives the send' );
+check( ! str_contains( $mail['message'], 'Historial' ) && ! str_contains( $mail['message'], 'sugerido' ) && ! str_contains( $mail['message'], 'ingreso manual' ), 'the buyer mail excludes history and internal price origins' );
+check( str_contains( $mail['message'], '4.820 CLP' ) && str_contains( $mail['message'], 'Vigencia de la oferta: 7' ), 'the buyer mail shows the approved values' );
+$mail_calls = count( $GLOBALS['fpwd_mail_calls'] );
+
+/* Doble click / retry of the SAME approval: the standing version answers, nothing is created, nobody is mailed again. */
+$row56 = $GLOBALS['fpwd_table']['fpw_quotation_91'];
+$page = fpwd_approve_and_render( 91 );
+check( str_contains( $page, 'ya tiene su primera versión aprobada' ) && ! str_contains( $page, 'Cotización aprobada y enviada' ), 'a repeated approval of the same draft answers with the standing version' );
+check( $GLOBALS['fpwd_table']['fpw_quotation_91'] === $row56 && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the repeated approval stored nothing new and mailed nobody' );
+
+/* A failed document approves the version but never mails an incomplete offer. */
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array( fn() => 'esto no es un documento' );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '92' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Vista previa generada (revisión 1)' ), 'the no-dispatch draft previews its complete work' );
+$page = fpwd_approve_and_render( 92 );
+check( str_contains( $page, 'el documento no se pudo generar' ) && str_contains( $page, 'No se intentó enviar' ), 'a failed document approves the version but never mails an incomplete offer' );
+$version92 = fpw_read_quotation_version( 92 );
+check( is_array( $version92 ) && 'pending' === $version92['document'] && null === ( $version92['delivery']['state'] ?? null ) && ! isset( $version92['pdf_base64'] ), 'the approved version stands preserved with a pending document' );
+check( $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the document failure mailed nobody' );
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array();
+
+/* A rejected mail is named as rejected, with the version preserved. */
+$save93 = fpw_save_draft_work( 93, $payload93, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '4', 'price' => '890' ) ), 'destination' => 'x', 'dispatch_amount' => '5' ),
+), 1 );
+check( ( $save93['state'] ?? '' ) === 'saved', 'the mail-rejected journey saves its complete work' );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '93' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
+$GLOBALS['fpwd_mail_mode'] = 'reject';
+$page = fpwd_approve_and_render( 93 );
+check( str_contains( $page, 'el correo fue rechazado por el transporte' ), 'a rejected mail is named as rejected, never as a delivery' );
+$version93 = fpw_read_quotation_version( 93 );
+check( is_array( $version93 ) && 'ready' === $version93['document'] && 'rejected' === ( $version93['delivery']['state'] ?? '' ), 'the version preserves its document with the rejected delivery state' );
+$mail_calls = count( $GLOBALS['fpwd_mail_calls'] );
+
+/* An unknown transport result is named and never auto-retried. */
+$order94 = new FPWD_Order( 94, array( new FPWD_Item( 'Caja Universal Cerrada Color', 2, 25, 310, array( 'pa_color' => 'Rojo' ) ) ), array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+$GLOBALS['fpwd_orders'][94] = $order94;
+check( fpw_create_request_draft( $order94 ) === true, 'the mail-unknown journey draft is created' );
+$payload94 = fpw_read_request_draft( 94 );
+check( ( fpw_save_draft_work( 94, $payload94, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '2', 'price' => '2400' ) ), 'destination' => 'x', 'dispatch_amount' => '5' ),
+), 1 )['state'] ?? '' ) === 'saved', 'the mail-unknown journey saves its complete work' );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '94' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
+$GLOBALS['fpwd_mail_mode'] = 'throw';
+$page = fpwd_approve_and_render( 94 );
+check( str_contains( $page, 'el resultado del correo es desconocido' ) && str_contains( $page, 'no se reintenta automáticamente' ), 'an unknown transport result is named and never auto-retried' );
+$version94 = fpw_read_quotation_version( 94 );
+check( is_array( $version94 ) && 'ready' === $version94['document'] && 'unknown' === ( $version94['delivery']['state'] ?? '' ), 'the version preserves its document with the unknown delivery state' );
+$GLOBALS['fpwd_mail_mode'] = 'ok';
+$mail_calls = count( $GLOBALS['fpwd_mail_calls'] );
+
+/* The screen shows the standing version with its states, and offers no second approval. */
+$html = fpw_quote_draft_markup( $order91, $payload91, fpw_read_draft_work( 91 ) );
+check( str_contains( $html, 'Versión aprobada' ) && str_contains( $html, 'documento listo' ) && str_contains( $html, 'correo aceptado' ), 'the screen shows the standing version with its document and mail states' );
+check( str_contains( $html, 'Versión 1 · documento listo · correo aceptado' ), 'the status board names the standing version in one line' );
+check( ! str_contains( $html, 'Aprobar y enviar' ), 'with a version standing, no second approval is offered' );
+check( str_contains( $html, 'La versión quedó congelada' ), 'the version section states the freeze and the explicit recovery path' );
+
+/* The frozen version is never rewritten by later commercial saves. */
+$row56 = $GLOBALS['fpwd_table']['fpw_quotation_91'];
+check( ( fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '5',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '3', 'price' => '350' ), array( 'quantity' => '1', 'price' => '2190' ) ),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '12',
+	),
+), 1 )['state'] ?? '' ) === 'saved', 'a later commercial save lands (revision 6)' );
+check( $GLOBALS['fpwd_table']['fpw_quotation_91'] === $row56, 'the later commercial save never rewrites the frozen version' );
+
+/* Boundaries: permission first, then CSRF — denials create nothing and mail nobody. */
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '68' );
+$GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
+$_POST = array( 'fpw_work_approve' => '1', 'fpw_approve_nonce' => 'offline-nonce' );
+try {
+	fpw_handle_draft_posted_action();
+	check( false, 'ventas must be denied the approval' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'a valid ventas session with a valid nonce is denied the approval as a permission' );
+}
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+$GLOBALS['fpwd_nonce_ok'] = false;
+try {
+	fpw_handle_draft_posted_action();
+	check( false, 'an approval with an invalid nonce must be refused' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'an approval failing the CSRF check is refused 403 before anything is issued' );
+}
+$GLOBALS['fpwd_nonce_ok'] = true;
+check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_68'] ) && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the denied approvals created no version and mailed nobody' );
+
+/* The whole cut issued exactly the four journey versions — nothing else anywhere. */
+$quotation_rows = array_values( array_filter( array_keys( $GLOBALS['fpwd_table'] ), static fn( $name ) => str_starts_with( $name, 'fpw_quotation_' ) ) );
+sort( $quotation_rows );
+check( array( 'fpw_quotation_91', 'fpw_quotation_92', 'fpw_quotation_93', 'fpw_quotation_94' ) === $quotation_rows, 'exactly the four journey versions exist, never a fifth (' . implode( ', ', $quotation_rows ) . ')' );
+
+echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56)\n";
