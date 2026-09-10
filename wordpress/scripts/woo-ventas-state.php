@@ -11,9 +11,14 @@ function fpw_verification_value( $value ) {
 	if ( ! is_array( $value ) ) { return $value; }
 	$out = array();
 	foreach ( $value as $key => $entry ) {
-		// Core editor presence changes these on reads. No other metadata is ignored.
+		// Core editor presence changes these on reads. No other metadata is ignored
+		// — except WooCommerce's internal place-order debug-log bookkeeping
+		// (`_debug_log_source*`), which a background OrderLogsDeletionProcessor
+		// batch removes at an unpredictable moment after checkout: it is logging
+		// plumbing, never record data, and waiting for its removal would race.
+		$volatile = array( '_edit_lock', '_edit_last', '_debug_log_source', '_debug_log_source_pending_deletion' );
 		if ( is_object( $entry ) && method_exists( $entry, 'get_data' ) ) { $entry = $entry->get_data(); }
-		if ( is_array( $entry ) && in_array( $entry['key'] ?? '', array( '_edit_lock', '_edit_last' ), true ) ) { continue; }
+		if ( is_array( $entry ) && in_array( $entry['key'] ?? '', $volatile, true ) ) { continue; }
 		$out[$key] = fpw_verification_value( $entry );
 	}
 	ksort( $out );

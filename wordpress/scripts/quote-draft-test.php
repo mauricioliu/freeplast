@@ -11,6 +11,11 @@ $registered_actions = array();
 $registered_filters = array();
 function add_action( ...$args ) { global $registered_actions; $registered_actions[ $args[0] ][] = $args[1] ?? null; }
 function add_filter( ...$args ) { global $registered_filters; $registered_filters[ $args[0] ][] = $args[1]; }
+/* Configuration seams (Places, tax policy, default validity) deliver through filters; run the registered callbacks like the real thing. */
+function apply_filters( $tag, $value ) {
+	foreach ( $GLOBALS['registered_filters'][ $tag ] ?? array() as $callback ) { $value = $callback( $value ); }
+	return $value;
+}
 function register_activation_hook( ...$args ) {}
 function wp_json_encode( $data, $flags = 0 ) { return json_encode( $data, $flags ); }
 function absint( $value ) { return abs( (int) $value ); }
@@ -23,6 +28,18 @@ require __DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php';
 
 $assertions = 0;
 function check( $ok, $message ) { global $assertions; $assertions++; if ( ! $ok ) { throw new RuntimeException( $message ); } }
+/** Whether any list element carries the needle — for faltantes lists. */
+function array_contains_string( array $haystack, string $needle ): bool {
+	foreach ( $haystack as $item ) { if ( str_contains( (string) $item, $needle ) ) { return true; } }
+	return false;
+}
+/** The rendered preview section of a draft screen, isolated for exclusion checks. */
+function fpwd_draft_preview_section_of( string $html ): string {
+	$start = strpos( $html, '<section class="fpw-draft__preview">' );
+	if ( false === $start ) { return ''; }
+	$end = strpos( $html, '</section>', $start );
+	return false === $end ? '' : substr( $html, $start, $end - $start + 10 );
+}
 
 /* --- WordPress runtime stubs the feature needs beyond plugin load --- */
 class FPWD_Die extends RuntimeException {}
@@ -78,6 +95,10 @@ class FPWD_Fake_wpdb {
 		}
 		if ( preg_match( "/^UPDATE \{?\w*options\}? SET option_value = '(.*)' WHERE option_name = '(.+?)' AND option_value = '(.*)'$/s", $sql, $m ) ) {
 			if ( ! array_key_exists( $m[2], $GLOBALS['fpwd_table'] ) || $GLOBALS['fpwd_table'][ $m[2] ] !== $m[3] ) { return 0; }
+			$GLOBALS['fpwd_table'][ $m[2] ] = $m[1]; return 1;
+		}
+		if ( preg_match( "/^UPDATE \{?\w*options\}? SET option_value = '(.*)' WHERE option_name = '(.+?)'$/s", $sql, $m ) ) {
+			if ( ! array_key_exists( $m[2], $GLOBALS['fpwd_table'] ) ) { return 0; }
 			$GLOBALS['fpwd_table'][ $m[2] ] = $m[1]; return 1;
 		}
 		return 0;
@@ -457,7 +478,7 @@ check( str_contains( $html92, 'no incluye destino de entrega ni flete' ), 'the n
 check( str_contains( $html92, 'No requerida (sin despacho)' ), 'the dispatch estimate reads as not required, distinct from pending' );
 
 /* The POST path: authorization first, then CSRF — neither substitutes the other.
- * Every case drives fpw_handle_draft_save() first, exactly as a real request
+ * Every case drives fpw_handle_draft_posted_action() first, exactly as a real request
  * meets admin_init, then the screen callback renders the outcome. */
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '68' );
 $save_post = array(
@@ -469,7 +490,7 @@ $save_post = array(
 $GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
 $_POST = $save_post;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
 	check( false, 'ventas must be denied the draft save' );
 } catch ( FPWD_Die $e ) {
@@ -479,7 +500,7 @@ check( fpw_read_draft_work( 68 ) === $work68, 'the denied save changed nothing' 
 $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 $GLOBALS['fpwd_nonce_ok'] = false;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
 	check( false, 'a save with an invalid nonce must be refused' );
 } catch ( FPWD_Die $e ) {
@@ -487,7 +508,7 @@ try {
 }
 check( fpw_read_draft_work( 68 ) === $work68, 'the refused save changed nothing' );
 $GLOBALS['fpwd_nonce_ok'] = true;
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Cambios guardados (revisión 6)' ) && str_contains( $page, 'value="111"' ), 'the authorized save persists and confirms its revision' );
 check( str_contains( $page, 'no aprueba ni envía' ), 'even a successful save states it approves nothing' );
@@ -498,7 +519,7 @@ $stale_post = $save_post;
 $stale_post['fpw_work_revision'] = '0';
 $stale_post['fpw_work']['destination'] = 'Sobrescritura';
 $_POST = $stale_post;
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'no se guardó' ) && str_contains( $page, 'revisión más reciente' ), 'a stale save through the screen gets the conflict message' );
 check( str_contains( $page, 'Destino guardado 1, Mostazal' ) && str_contains( $page, 'value="111"' ), 'the conflict screen shows the preserved accepted edit' );
@@ -510,4 +531,204 @@ $manual2 = new FPWD_Order( 79, array( new FPWD_Item( 'X', 1, 1, 0 ) ), array( '_
 $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 check( ! str_contains( fpw_quote_draft_markup( $manual2, null ), 'fpw_work' ), 'a record without a draft offers no editing form' );
 
-echo "quote draft: $assertions offline checks passed (issues #50 + #51)\n";
+/* ===== Issue #55 — corte 6 de #49: revisar totales y vigencia antes de aprobar =====
+ * ONE shared server-side projection (deterministic integer CLP arithmetic), a
+ * fiscal policy that is ABSENT by default (the prototype's 19% is no fiscal
+ * approval), a seven-day editable validity, and a stored preview bound to the
+ * revision the owner actually reviewed — obsolete after any later commercial
+ * save, issuing no version, no PDF and no mail. */
+
+/* Fiscal policy and default validity: configuration seams, absent by default. */
+check( fpw_quotation_tax_config() === array(), 'without a delivered configuration there is no fiscal policy: no IVA rate is invented' );
+check( fpw_quotation_default_validity_days() === 7, 'the offer validity defaults to seven days' );
+$GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 'junk' );
+check( fpw_quotation_default_validity_days() === 7, 'a malformed default-validity delivery falls back to seven' );
+$GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 10 );
+check( fpw_quotation_default_validity_days() === 10, 'the default validity is configurable through its filter' );
+$GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array();
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => '19' ) );
+check( fpw_quotation_tax_config() === array(), 'a non-integer rate delivery degrades to absent instead of becoming authority' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 99999 ) );
+check( fpw_quotation_tax_config() === array(), 'an out-of-range rate delivery degrades to absent' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 0 ) );
+check( fpw_quotation_tax_config() === array( 'rate_permille' => 0, 'applies_to_dispatch' => false ), 'a confirmed 0‰ policy is representable and distinct from absent' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => true ) );
+check( fpw_quotation_tax_config() === array( 'rate_permille' => 190, 'applies_to_dispatch' => true ), 'a delivered policy is validated and carried with the dispatch treatment' );
+
+/* The deterministic tax kernel: exact integer arithmetic, nearest half-up — never a float. */
+check( fpw_quotation_tax_amount( 3195, 190 ) === 607, '3.195 × 19% = 607.05 rounds to 607' );
+check( fpw_quotation_tax_amount( 1050, 190 ) === 200, '199.5 rounds half-up to 200' );
+check( fpw_quotation_tax_amount( 1058, 190 ) === 201, '201.02 rounds down to 201' );
+check( fpw_quotation_tax_amount( 0, 190 ) === 0 && fpw_quotation_tax_amount( 3195, 0 ) === 0, 'a zero base or a confirmed 0‰ policy yields a true zero tax' );
+check( fpw_quotation_tax_amount( 99999999 * 1000000, 5000 ) === 499999995000000, 'the kernel stays exact at the accepted input limits (no float, no overflow)' );
+
+/* The shared projection over a completed manual draft: exact deterministic amounts. */
+$save91 = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '3', 'price' => '335' ),
+			array( 'quantity' => '1', 'price' => '2190' ),
+		),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '10',
+	),
+), 1 );
+check( ( $save91['state'] ?? '' ) === 'saved', 'the complete manual save for the projection journey is accepted' );
+$work91 = fpw_read_draft_work( 91 );
+check( 2 === (int) $work91['schema'] && 10 === (int) $work91['validity_days'], 'the working row stores the offer validity (schema 2)' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+$projection = fpw_quotation_projection( $payload91, $work91 );
+check( $projection['lines'][0] === array( 'index' => 0, 'name' => 'Caja Cosechera 3/4', 'options' => array(), 'quantity' => 3, 'price' => 335, 'line_total' => 1005 ), 'line amounts are the exact integer product of quantity × price' );
+check( 2190 === $projection['lines'][1]['line_total'] && 3195 === $projection['subtotal'], 'the subtotal is the exact sum of the line amounts' );
+check( $projection['dispatch_requested'] === true && 1000 === $projection['dispatch'], 'the offered dispatch is the saved amount, separate from the subtotal' );
+check( 190 === $projection['tax_rate_permille'] && 3195 === $projection['taxable_base'] && 607 === $projection['tax'] && 4802 === $projection['total'], 'IVA and total come from the delivered policy: 3.195 + 1.000 + 607 = 4.802' );
+check( is_int( $projection['subtotal'] ) && is_int( $projection['tax'] ) && is_int( $projection['total'] ), 'every projected amount is an integer, never a float' );
+check( $projection['destination'] === 'Destino oferta 12, Mostazal', 'the projection carries the working destination' );
+check( 10 === $projection['validity_days'] && $projection['complete'] === true && array() === $projection['missing'], 'a fully completed draft with a delivered policy projects a complete offer' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => true ) );
+$projected_with_dispatch_tax = fpw_quotation_projection( $payload91, $work91 );
+check( 4195 === $projected_with_dispatch_tax['taxable_base'] && 797 === $projected_with_dispatch_tax['tax'] && 4992 === $projected_with_dispatch_tax['total'], 'the delivered fiscal treatment decides whether dispatch joins the taxable base' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
+$projected_no_policy = fpw_quotation_projection( $payload91, $work91 );
+check( null === $projected_no_policy['tax'] && null === $projected_no_policy['total'] && 3195 === $projected_no_policy['subtotal'], 'without a confirmed policy the IVA and total stay pending while the net amounts stand' );
+check( array_contains_string( $projected_no_policy['missing'], 'política fiscal' ) && $projected_no_policy['complete'] === false, 'the missing policy is an explicit faltante that blocks the complete offer' );
+
+/* Faltantes are named and distinguished from zero — history and Maps never block. */
+$projected_fresh = fpw_quotation_projection( $payload91, null );
+check( 2 === count( preg_grep( '/Falta el precio neto/', $projected_fresh['missing'] ) ), 'each unpriced line is a named faltante, never a zero' );
+check( array_contains_string( $projected_fresh['missing'], 'monto de despacho' ), 'a requested dispatch without an amount is a named faltante' );
+check( null === $projected_fresh['subtotal'] && null === $projected_fresh['dispatch'] && $projected_fresh['validity_days'] === 7, 'an untouched working state projects pendings with the default validity' );
+$stale_work = $work91;
+$stale_work['destination'] = 'Otro destino 9, Colchane';
+$projected_stale = fpw_quotation_projection( $payload91, $stale_work );
+check( array_contains_string( $projected_stale['missing'], 'requiere revisión' ) && null === $projected_stale['dispatch'] && null === $projected_stale['total'], 'a dispatch amount entered for other conditions is a faltante, not an offer' );
+$no_destination = $work91;
+$no_destination['destination'] = '';
+$projected_no_dest = fpw_quotation_projection( $payload91, $no_destination );
+check( array_contains_string( $projected_no_dest['missing'], 'destino de entrega' ), 'a dispatch offer without a working destination is blocked' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+$projected92 = fpw_quotation_projection( $payload92, fpw_read_draft_work( 92 ) );
+check( $projected92['dispatch_requested'] === false && null === $projected92['dispatch'] && $projected92['complete'] === true, 'a no-dispatch draft with every line priced projects a complete offer without freight' );
+check( ! array_contains_string( $projected92['missing'], 'despacho' ) && ! array_contains_string( $projected92['missing'], 'historial' ), 'missing history never blocks, and a no-dispatch offer owes no freight faltante' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
+
+/* The preview action: ONE stored projection bound to the revision reviewed. */
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '91' );
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Vista previa generada (revisión 1)' ), 'an authorized preview confirms the revision it reviewed' );
+check( str_contains( $page, 'no aprueba ni envía nada al comprador' ), 'previewing states it issues nothing to the buyer' );
+$stored = fpw_read_draft_preview( 91 );
+check( is_array( $stored ) && 1 === (int) $stored['revision'] && 1 === (int) $stored['created_by'], 'the stored preview is bound to the work revision the owner reviewed' );
+check( $stored['projection'] === fpw_quotation_projection( $payload91, fpw_read_draft_work( 91 ) ), 'the stored preview IS the shared projection: no parallel screen math' );
+$preview_section = fpwd_draft_preview_section_of( $page );
+check( str_contains( $preview_section, 'Vista previa para el comprador' ) && str_contains( $preview_section, 'revisión 1' ), 'the screen renders the stored buyer-facing preview' );
+check( str_contains( $preview_section, 'Subtotal (neto)' ) && str_contains( $preview_section, '3.195 CLP' ) && str_contains( $preview_section, '1.000 CLP' ) && str_contains( $preview_section, '607 CLP' ) && str_contains( $preview_section, '4.802 CLP' ), 'the preview shows subtotal, dispatch, IVA and total as exact amounts' );
+check( str_contains( $preview_section, 'IVA (19%)' ), 'the IVA row names the confirmed rate it applied' );
+check( str_contains( $preview_section, 'Vigencia de la oferta: 10 días' ) && str_contains( $preview_section, 'a contar de su aprobación' ), 'the preview expresses the validity as days from approval, without invented deadlines' );
+check( str_contains( $preview_section, 'no incluye historial de compras' ) && ! str_contains( $preview_section, 'Historial de compras' ), 'the preview excludes purchase history, internal notes and the estimate breakdown' );
+check( str_contains( $preview_section, 'Destino de la oferta: Destino oferta 12, Mostazal' ), 'the preview names the working destination the offer quotes' );
+check( str_contains( $preview_section, 'name="fpw_work_preview"' ) && str_contains( $preview_section, 'name="fpw_preview_nonce"' ), 'the preview regeneration carries its own action and nonce' );
+
+/* A later commercial save obsoletes the reviewed preview — frozen, never recomputed. */
+$raw_preview_before = $GLOBALS['fpwd_table']['fpw_draft_preview_91'];
+$save91b = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '1',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '3', 'price' => '340' ),
+			array( 'quantity' => '1', 'price' => '2190' ),
+		),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '10',
+	),
+), 1 );
+check( ( $save91b['state'] ?? '' ) === 'saved', 'the later commercial save lands (revision 2)' );
+check( $GLOBALS['fpwd_table']['fpw_draft_preview_91'] === $raw_preview_before, 'the reviewed preview is frozen: the later save never rewrites what was seen' );
+$html = fpw_quote_draft_markup( $order91, $payload91, $save91b['work'] );
+check( str_contains( $html, 'Vista previa obsoleta' ) && str_contains( $html, 'Ninguna aprobación futura puede usar esta vista previa' ), 'the screen marks the reviewed preview obsolete after the commercial change' );
+check( str_contains( $html, 'esta revisó la 1' ) && str_contains( $html, 'revisión 2' ), 'the obsolete marker names both revisions honestly' );
+check( str_contains( $html, '3.195 CLP' ), 'the frozen preview still shows exactly the amounts that were reviewed' );
+check( str_contains( $html, 'Obsoleta — el trabajo cambió después de la revisión 1' ), 'the aside names the revision the stale preview reviewed' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Vista previa generada (revisión 2)' ), 'a new preview re-binds to the new revision' );
+$stored = fpw_read_draft_preview( 91 );
+check( 2 === (int) $stored['revision'] && 1020 === $stored['projection']['lines'][0]['line_total'] && 4820 === $stored['projection']['total'], 'the replacement preview carries the newly reviewed amounts (3.210 + 1.000 + 610 = 4.820)' );
+$html = fpw_quote_draft_markup( $order91, $payload91, fpw_read_draft_work( 91 ) );
+check( ! str_contains( $html, 'Vista previa obsoleta' ), 'the regenerated preview is current again' );
+
+/* Preview boundaries: permission first, then CSRF — and nothing is ever issued. */
+$GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+try {
+	fpw_handle_draft_posted_action();
+	check( false, 'ventas must be denied the preview generation' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'a valid ventas session with a valid preview nonce is denied as a permission' );
+}
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+$GLOBALS['fpwd_nonce_ok'] = false;
+try {
+	fpw_handle_draft_posted_action();
+	check( false, 'a preview with an invalid nonce must be refused' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'a preview failing the CSRF check is refused 403' );
+}
+$GLOBALS['fpwd_nonce_ok'] = true;
+$stored_after = fpw_read_draft_preview( 91 );
+check( $stored_after === $stored, 'the denied previews changed nothing' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
+foreach ( array_keys( $GLOBALS['fpwd_table'] ) as $row_name ) {
+	check( ! str_contains( $row_name, 'version' ) && ! str_contains( $row_name, 'pdf' ), "saving and previewing issue no approved version or document row ($row_name)" );
+}
+
+/* The validity field: editable in the draft, bounded, defaulting when empty. */
+$html = fpw_quote_draft_markup( $order91, $payload91, fpw_read_draft_work( 91 ) );
+check( str_contains( $html, 'name="fpw_work[validity_days]"' ) && str_contains( $html, 'value="10"' ), 'the saved validity recovers into the editing form' );
+$bad_validity = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '2',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '3', 'price' => '340' ), array( 'quantity' => '1', 'price' => '2190' ) ),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '366',
+	),
+), 1 );
+check( ( $bad_validity['state'] ?? '' ) === 'invalid' && array_contains_string( $bad_validity['errors'], 'vigencia' ), 'an out-of-range validity refuses the whole save, like any other field' );
+foreach ( array( '0', '-3', 'x', '1000' ) as $bad_days ) {
+	check( 'invalid' === fpw_parse_draft_validity( $bad_days ), "a validity of '$bad_days' is refused" );
+}
+check( null === fpw_parse_draft_validity( '' ) && 30 === fpw_parse_draft_validity( '30' ), 'an empty validity takes the default; a valid one parses' );
+$empty_validity = fpw_save_draft_work( 91, $payload91, array(
+	'fpw_work_revision' => '2',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '3', 'price' => '340' ), array( 'quantity' => '1', 'price' => '2190' ) ),
+		'destination' => 'Destino oferta 12, Mostazal',
+		'dispatch_amount' => '1000',
+		'validity_days' => '',
+	),
+), 1 );
+check( ( $empty_validity['state'] ?? '' ) === 'saved' && null === $empty_validity['work']['validity_days'], 'a left-empty validity saves as the default' );
+$work91 = fpw_read_draft_work( 91 );
+$GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 10 );
+check( 3 === (int) $work91['revision'] && 10 === fpw_draft_validity_days( null ) && 10 === fpw_quotation_projection( $payload91, $work91 )['validity_days'], 'the effective validity falls back to the configured default (10 by filter here)' );
+$GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array();
+check( 7 === fpw_quotation_projection( $payload91, $work91 )['validity_days'], 'with the filter removed the default returns to seven days' );
+
+/* The status board and the honest pendings on a fresh draft. */
+$html = fpw_quote_draft_markup( $order91, $payload91, null );
+check( substr_count( $html, 'Pendiente' ) >= 4, 'a fresh draft reads prices, dispatch, preview and history as pending — never zero' );
+check( ! preg_match( '/[^.\d]0 CLP/', $html ), 'no pending amount ever renders as 0 CLP, preview included' );
+check( str_contains( $html, 'Vigencia de la oferta</dt><dd>7 días' ), 'the status board shows the effective validity' );
+check( str_contains( $html, 'Vista previa' ) && str_contains( $html, 'placeholder="7 (por defecto)"' ), 'the validity input names its default without inventing a value' );
+
+echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55)\n";

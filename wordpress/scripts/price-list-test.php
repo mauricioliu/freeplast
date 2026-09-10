@@ -432,7 +432,7 @@ $refresh_post = array( 'fpw_price_refresh' => '1', 'fpw_refresh_nonce' => 'offli
 $GLOBALS['fppw_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
 $_POST = $refresh_post;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
 	check( false, 'ventas must be denied the refresh' );
 } catch ( FPPW_Die $e ) {
@@ -442,14 +442,14 @@ check( fpw_read_draft_work( 68 ) === $save3['work'], 'the denied refresh changed
 $GLOBALS['fppw_caps'] = array( 'manage_woocommerce' => true );
 $GLOBALS['fppw_nonce_ok'] = false;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	check( false, 'a refresh failing the CSRF check must be refused' );
 } catch ( FPPW_Die $e ) {
 	check( $e->getMessage() === '403', 'a refresh nonce failure is an explicit 403' );
 }
 check( fpw_read_draft_work( 68 ) === $save3['work'], 'the refused refresh changed nothing' );
 $GLOBALS['fppw_nonce_ok'] = true;
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Precios refrescados desde el mantenedor (revisión 4)' ), 'the authorized refresh confirms its revision' );
 check( str_contains( $page, 'se conservaron' ), 'the refresh notice states the manual choices were conserved' );
