@@ -49,16 +49,64 @@ A priced commercial document prepared by Freeplast in response to a Quote Reques
 _Avoid_: Quote Request, order, invoice
 
 **Quotation Draft**:
-The single private initial draft Freeplast creates when a Quote Request is received durably, called **Borrador de cotización** in Spanish. It snapshots the request's native record — products, options, quantities, identity, destination and Submitted Details — and names what the record does not carry yet (prices, purchase history, dispatch estimate) as pending, never as zero. It is not a Quotation, issues nothing, and is readable only by the owner.
-_Avoid_: Draft order, quote, prefill, documento
+The single private initial draft Freeplast creates when a Quote Request is received durably, called **Borrador de cotización** in Spanish. It snapshots the request's native record — products, options, quantities, identity, destination and Submitted Details — and names what the record does not carry yet (prices, purchase history, dispatch estimate) as pending, never as zero. Later cuts enrich it into an internal, editable proposal for the owner's review, prefilled with available customer information, requested quantities and Price List prices; those prices remain unchanged by later Price List updates unless explicitly refreshed. It is not a customer-issued Quotation, issues nothing, requires the owner's final decision, and is readable only by the owner.
+_Avoid_: Draft order, quote, Quote Request, documento, issued Quotation, confirmed sale
+
+**Quotation Version**:
+The fixed customer-facing prices and conditions of a Quotation approved and issued by the owner. Later changes require a new version rather than alteration of what was already sent.
+_Avoid_: Live Price List, editable sent quote
+
+**Quotation Validity**:
+The period set by the owner during which the prices offered in a Quotation Version remain valid for its stated destination, quantities and conditions.
+_Avoid_: Delivery deadline, permanent price guarantee
+
+**Customer**:
+The purchasing company identified primarily by its normalized company RUT when associating Purchase History with a Quote Request. Similar names alone do not establish that two records represent the same Customer.
+_Avoid_: Contact email, similar company name
+
+**Price List**:
+The maintained source of current net product prices in Chilean pesos used to prefill a Quotation Draft, referred to by Freeplast as the **Mantenedor de precios**. Its suggested prices are distinct from historical sale prices and do not replace the owner's final pricing decision.
+_Avoid_: Product Catalog, final Quotation, last sale price
+
+**Price Adjustment**:
+An explicit change the owner makes to a suggested product price while reviewing a Quotation Draft. Volume discounts are initially decided by the owner, not applied automatically.
+_Avoid_: Automatic volume discount, Price List update
+
+**Purchase History**:
+The record of a customer's actual past purchases from the Sales Register, used by the owner when reviewing a Quotation Draft. Past Quote Requests and Quotations alone do not establish that a purchase occurred; absence of a matched purchase record does not prove the customer is new.
+_Avoid_: Request history, quotation history
+
+**Sales Register**:
+The spreadsheet in which Freeplast records its completed sales and which supplies the Purchase History available for quotation review.
+_Avoid_: Quote Requests, Price List
 
 **Delivery Address**:
 The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
 _Avoid_: Billing address, company address
 
 **Dispatch Distance**:
-The road distance from the Freeplast Warehouse to the Delivery Address, used by sales when evaluating dispatch.
+The road distance from the Freeplast Warehouse to the Delivery Address, used by sales to estimate a dispatch price without waiting for the Carrier's charge. It is a pricing reference, not a guarantee of the journey the Carrier will travel.
 _Avoid_: Straight-line distance, shipping price
+
+**Estimated Dispatch Price**:
+The amount Freeplast estimates for dispatch using Dispatch Distance to respond to the customer before the Carrier provides its charge. Freeplast accepts the risk of absorbing a difference between its estimate and the Carrier's charge.
+_Avoid_: Carrier Charge, guaranteed transport cost
+
+**Dispatch Estimate Breakdown**:
+The internal inputs and calculation explaining the Estimated Dispatch Price, available to the owner when reviewing the proposed amount. The Customer receives a separate dispatch amount, not this breakdown, and neither establishes the Carrier Charge.
+_Avoid_: Carrier invoice, unexplained shipping total
+
+**Quoted Dispatch Price**:
+The dispatch amount approved by the owner and offered to the Customer for the destination and quantities in a Quotation Version during its Quotation Validity. Freeplast absorbs differences from the Carrier Charge; changes to destination or quantities require review and a new Quotation Version.
+_Avoid_: Carrier Charge, provisional customer surcharge
+
+**Carrier Charge**:
+The amount the external Carrier charges Freeplast for dispatch, based on distance. It is distinct from the Estimated Dispatch Price Freeplast offers the customer.
+_Avoid_: Customer shipping price, Estimated Dispatch Price
+
+**Carrier**:
+The external transport provider that performs Freeplast dispatches using small freight vehicles.
+_Avoid_: Freeplast fleet
 
 **Warehouse**:
 The Freeplast dispatch origin at Camino El Arrayán 52, San Francisco de Mostazal.

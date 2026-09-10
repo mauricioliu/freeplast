@@ -1,0 +1,1596 @@
+diff --git a/EXAMPLES.md b/EXAMPLES.md
+index c4b8a7f..8e5dc96 100644
+--- a/EXAMPLES.md
++++ b/EXAMPLES.md
+@@ -67,6 +67,7 @@ en `.env` o en el propio compose.
+     "logic":   ["wp-content/plugins/**", "wp-content/mu-plugins/**"],
+     "data":    ["**/migrate*.php", "data/**"]
+   },
++  "hooks": { "verifyState": "verify-state.php", "recordFingerprint": "record-fingerprint.php" },
+   "smoke": [
+     { "url": "https://misitio.com/", "status": 200 },
+     { "url": "https://misitio.com/wp-content/themes/mitema/style.css", "status": 200,
+@@ -100,6 +101,7 @@ en `.env` o en el propio compose.
+   "artifacts": ["mitema.zip"],
+   "install": { "themes": [ { "slug": "mitema", "artifact": "mitema.zip" } ], "plugins": [] },
+   "tiers": { "surface": ["wp-content/themes/**"], "logic": ["wp-content/plugins/**"], "data": ["**/migrate*.php"] },
++  "hooks": { "verifyState": "verify-state.php", "recordFingerprint": "record-fingerprint.php" },
+   "smoke": [ { "url": "https://misitio.com/", "status": 200 } ],
+   "record": { "dir": "docs/releases" }
+ }
+@@ -120,7 +122,7 @@ corren en docker en TU máquina, jamás en el host compartido.
+ 4. **El tema/plugin deben estar ya activos en el sitio**: el skill
+    *actualiza* componentes activos, no los activa
+ 
+-## Paso 4 — Hooks opcionales (recomendados)
++## Paso 4 — Fingerprint obligatorio y verificación de estado
+ 
+ ```php
+ <?php // verify-state.php — debe salir ≠0 si el sitio no está como esperas
+@@ -130,16 +132,23 @@ WP_CLI::success( 'estado ok' );
+ 
+ ```php
+ <?php // record-fingerprint.php — debe imprimir UN digest hex de 64
++global $wpdb;
+ $rows = $wpdb->get_results( "SELECT ID, post_title, post_modified_gmt FROM $wpdb->posts ORDER BY ID", ARRAY_A );
+ echo hash( 'sha256', wp_json_encode( $rows ) ), PHP_EOL;
+ ```
+ 
+-Declara ambos en `"hooks": { "verifyState": "...", "recordFingerprint": "..." }`.
+-Sin ellos el release funciona, pero el registro queda "not configured —
+-evidence limited".
++Crea los archivos declarados en `hooks`. El fingerprint es obligatorio y corre
++con plugins/temas omitidos: usa WordPress core o `$wpdb`. Este ejemplo protege
++solo filas de posts; define las tablas/columnas protegidas de tu dominio antes
++del primer release. `verifyState` sigue siendo opcional y sí carga la aplicación.
+ 
+ ## Paso 5 — Validar y primer release
+ 
++Primero ejecuta `node ~/.agents/skills/wp-release/scripts/self-test.mjs`.
++Necesita Docker y PHP CLI; si falta PHP en PATH, pasa
++`WP_RELEASE_PHP=/ruta/absoluta/al/php`. El recibo local deja de ser válido si
++cambia el código del skill. Véase [RECOVERY.md](RECOVERY.md).
++
+ ```bash
+ # valida el config y propone tier (sin tocar nada)
+ node ~/.agents/skills/wp-release/scripts/release.mjs plan
+@@ -154,8 +163,9 @@ node ~/.agents/skills/wp-release/scripts/release.mjs run \
+ ```
+ 
+ El **primer release** no tiene previo: el rollback code-only no estará
+-disponible (solo el paired) — el registro lo anota. Desde el segundo, cada
+-release genera su rollback hacia el anterior.
++disponible (solo el paired) — el registro lo anota. Desde el segundo puede usar
++el último release completado del mismo target, siempre que su lista de
++componentes coincida. Un intento fallido nunca se toma como versión anterior.
+ 
+ Después de cada release: el agente completa las secciones `<!-- narrative
+ -->` del registro y commitea con las convenciones del proyecto.
+diff --git a/RECOVERY.md b/RECOVERY.md
+new file mode 100644
+index 0000000..57baec6
+--- /dev/null
++++ b/RECOVERY.md
+@@ -0,0 +1,114 @@
++# Recovery and safety preflight
++
++## Test receipt missing or stale
++
++Run the full self-test from this skill directory:
++
++```bash
++node scripts/self-test.mjs
++# If PHP CLI is not on PATH:
++WP_RELEASE_PHP=/absolute/path/to/php node scripts/self-test.mjs
++```
++
++It exercises the real scripts with a fake WP transport, then real disposable
++WordPress/MariaDB releases and recoveries. Every test must pass and owned
++containers/volumes must be removed before `.self-test.json` is written. Scripts,
++assets and fixtures are hashed; changing them invalidates the receipt. The
++configured PHP path is saved locally for subsequent automatic fast regressions.
++The receipt is machine-local test evidence: do not distribute or edit it.
++
++Every `run`/`resume` reaching the target verifies the receipt and reruns the
++fast safety suite. There is no `--skip-safety` flag. The full self-test can
++bootstrap its own receipt only for its exact local disposable Docker fixture,
++not an arbitrary config, SSH host or WordPress root.
++
++The self-test refuses pre-existing wp-release Docker projects and existing
++workspaces. It never deletes somebody else's volumes to make its tests pass.
++If refused, inspect the listed resources and have their owner resolve them.
++
++## Install/verify failed; site held
++
++1. Inspect the release's local state and phase error. `status` is read-only.
++2. Keep the operation-owned maintenance files intact. The lock is keyed by
++   release ID; another release cannot adopt it. The native marker is
++   non-expiring, and a temporary MU guard protects against native upgraders
++   deleting `.maintenance`. CLI work remains possible.
++3. Repair the cause and resume with the same config/bundle and a **fresh**
++   owner quote. Editing the original config, manifest or pre-install digest
++   is not a repair: it invalidates the evidence. Old states without the new
++   safety metadata cannot resume.
++4. Verification checks installed hashes, versions, the state hook and the
++   original protected fingerprint. Reopening repeats these checks, flushes
++   cache and releases the guard. Public HTTP smoke follows; if it fails or
++   times out the driver re-holds maintenance and reports failure.
++
++An HTTP smoke necessarily observes an open site briefly. This PHP guard cannot
++control a CDN, cached HTML, static files, external cron or other background
++writers. Coordinate those at the project level. A `CRITICAL` maintenance error
++means the tool could not confirm the guard; treat it as requiring operator
++intervention, not as success.
++
++## Rollback: prepared is not executed
++
++Run the bundle's **host-side** `rollback.sh` on the configured target, not the
++path as seen inside its WP-CLI container. Obtain a new explicit owner decision;
++release authorization is not authorization to discard later writes.
++
++### Code-only — preferred when a compatible previous release exists
++
++```bash
++bash /host/path/to/bundle/<id>/rollback.sh code-only --authorized "<fresh owner quote>"
++```
++
++The previous release must have completed on the same target and have the same
++install scope. Its manifest is checked before mutation. The runner preserves
++compound WP-CLI arguments and skips current plugins/themes for identity,
++fingerprint and recovery installs, allowing recovery from a broken plugin.
++Installed hashes, old versions, the previous state hook and an unchanged
++protected fingerprint must pass before reopening. No SQL reset/import occurs.
++
++### Paired — destructive database AND file restoration
++
++First inspect the current protected fingerprint (read-only):
++
++```bash
++bash /host/path/to/bundle/<id>/rollback.sh inspect
++```
++
++Explain that post-backup writes, files and tables will be lost. After explicit
++approval, pass that fresh digest and acknowledge the risk:
++
++```bash
++bash /host/path/to/bundle/<id>/rollback.sh paired \
++  --authorized "<fresh owner quote>" \
++  --acknowledge-data-loss-risk \
++  --expected-current-fingerprint <digest>
++```
++
++The operator must then type `RESTORE`. The current digest is checked again
++under the maintenance lock. A change while awaiting confirmation aborts.
++Non-streaming WP commands cannot consume the confirmation input.
++
++The runtime checks backup hashes and archive paths, removes post-backup files
++while retaining the maintenance markers, extracts the actual archive, verifies
++restored file hashes, resets the database and imports SQL **through stdin**
++(works across a CLI container boundary). It compares the restored fingerprint
++and LIVE-CHECK to the backup, checks the home URL and flushes cache before
++reopening. Any failed restore/check exits nonzero and does not claim success.
++
++The backup and bundle must live outside the WordPress root. A corrupt backup
++is not made usable by regenerating its checksum manifest.
++
++## Evidence boundaries and follow-up
++
++Fixture success does not validate a specific site's migration, hosting setup,
++CDN, data model or UI. A real release still pays its own project gate, paired
++backup, restore rehearsal, required trial, install, verify, smoke and record.
++Native shared-host rollback transport is covered by the fast bare-runner tests;
++the real integration suite uses Docker, not a Hostinger account.
++
++A standalone rollback does not edit the operator's local release registry or
++assert public smoke. Record the recovery and inspect the site before planning
++another release. A failed release remains failed evidence; it is never selected
++as the last completed bundle. Keep older historical records/probes as history,
++not as tests against the new implementation.
+diff --git a/REFERENCE.md b/REFERENCE.md
+index 94de270..b9b118a 100644
+--- a/REFERENCE.md
++++ b/REFERENCE.md
+@@ -3,20 +3,23 @@
+ ## Glossary (canonical terms)
+ 
+ - **Release** — the whole ceremony for one change set, identified by a UTC
+-  stamp (`20260908T212037Z`). *Deploy* is colloquial for the install step;
++  stamp plus a random suffix (`20260909T102124Z-6d6c80`). *Deploy* is colloquial for the install step;
+   the skill's vocabulary is release.
+ - **Tier** — the risk class of the change set: **surface** (presentation:
+   theme assets, CSS/JS), **logic** (plugin/mu-plugin PHP), **data**
+   (migrations, catalog/import scripts). The agent proposes from the diff,
+   the owner confirms; a mixed diff takes the highest tier.
+-- **Gate** — the project's own offline test command (`npm test`, etc.). Must
++- **Gate** — the project's test command (`npm test`, etc.; may use a disposable integration stack). Must
+   pass before packaging. Non-negotiable part of every release.
+ - **Bundle** — the immutable artifact set for one release: artifact zips,
+   `SHA256SUMS`, `INSTALLED-SHA256SUMS` (every zip entry mapped to its
+-  `wp-content/...` path), hook scripts, `release.json`, `rollback.sh`,
+-  `RECORD.md`. Stored on the target under `<stackDir>/<bundleDir>/<id>/`.
++  `wp-content/...` path), hook scripts, `release.json`, `rollback.sh` and its
++  runtime helpers. `SHA256SUMS` covers the entire executable payload; the driver
++  seals that manifest in local state. `RECORD.md` is appended after smoke, not
++  part of the pre-install payload. Stored on the target under `<stackDir>/<bundleDir>/<id>/`.
+ - **Paired backup** — `db.sql` (via `wp db export -`) + `files.tgz` (the
+-  whole WordPress root) + relative `SHA256SUMS` + `LIVE-CHECK`, stored
++  whole WordPress root) + `FILES-SHA256SUMS`, `LIVE-CHECK` and `FINGERPRINT`, all
++  covered by relative `SHA256SUMS`, stored
+   outside the live volumes in `<backupDir>/<id>/`.
+ - **Restore rehearsal (rehearse)** — proof that the paired backup restores:
+   a disposable WordPress+MariaDB stack is created from the backup artifacts
+@@ -37,18 +40,22 @@
+ - **Verify** — post-install checks against the live site: installed-source
+   hash manifest (`INSTALLED-SHA256SUMS`), the project's `verifyState` hook,
+   and the record fingerprint.
+-- **Record fingerprint** — a 64-hex digest over protected records
+-  (project's `recordFingerprint` hook, e.g. posts/meta/orders). Computed
+-  before install and after verify; a change means the install touched
+-  protected data → the release stops for investigation.
++- **Record fingerprint** — exactly one bare 64-hex digest over protected
++  records, produced by the required `recordFingerprint` hook. Runs with
++  plugins/themes skipped so broken application code cannot block recovery;
++  use WordPress core/`$wpdb`, not plugin APIs. Compared across backup, install
++  and verify. The original pre-install digest persists on the target and
++  cannot be overwritten by resume. A mismatch stops with maintenance held.
+ - **Smoke** — public read-only HTTP checks (status codes; optional
+   byte-identical asset comparison against committed files).
+ - **Record** — the release document (auto-filled mechanical sections +
+   narrative placeholders), written to the project's `record.dir`.
+ - **Rollback** — per-release generated script, prepared, never executed:
+-  `code-only` (reinstall previous bundle's artifacts; DB untouched) or
+-  `paired` (restore db+files; requires `--acknowledge-data-loss-risk` and
+-  an interactive RESTORE confirmation).
++  `code-only` (reinstall a completed, same-target previous bundle with the
++  identical install scope; no SQL import/reset) or `paired` (restore db+files).
++  Both require fresh `--authorized`. Paired additionally requires a fresh
++  inspected fingerprint, `--acknowledge-data-loss-risk` and interactive RESTORE
++  confirmation. See [RECOVERY.md](RECOVERY.md) for the exact commands.
+ 
+ ## wp-release.json schema
+ 
+@@ -93,11 +100,14 @@
+   root (`x/style.css`), exactly what `wp theme/plugin install` expects.
+ - Artifact zips (hook or builtin) must contain a readable `Version:` header
+   (style.css for themes; a plugin PHP file header) — it becomes the
+-  post-install version assertion.
++  post-install version assertion. Hooks must have unique basenames, distinct
++  from runtime/manifest/artifact names. Archive paths must stay under their
++  configured component roots.
+ - `verifyState` runs via `wp eval-file` after install (and inside trials);
+   it must exit non-zero on failure. `recordFingerprint` must print a bare
+-  64-hex digest. Both are optional; absence is recorded as "not configured —
+-  evidence limited".
++  64-hex digest. `recordFingerprint` is required for a real release and paired
++  recovery; `verifyState` is optional. No hook output may contain private rows
++  or credentials. Backup and bundle paths must be outside the WordPress root.
+ 
+ ## On-host compose contract (rehearsal.env = "on-host")
+ 
+@@ -116,8 +126,16 @@ The target's `compose.yaml` in `stackDir` must provide:
+    e.g. `./bundle:/bundle:ro`).
+ 
+ The rehearsal runs `docker compose -p wprelease-rh-<id> …` over this same
+-file — it never touches the live project's containers or volumes, and tears
+-itself down (`down -v --remove-orphans`) afterwards.
++file with an internal-network override. Preflight rejects fixed/external
++volumes/networks, fixed container names, shared namespaces, extra dependencies
++and writable/foreign binds. Only the read-only bundle bind is allowed; the
++WordPress roots must use project-scoped volumes. An existing rehearsal project
++is refused rather than adopted. Cleanup runs on success and failure.
++
++Local rehearsals verify restored file hashes, then adapt only the disposable
++copy's DB constants before WordPress bootstrap. Both backends disable restored
++WP cron. Internal networks prevent restored plugins from reaching external
++mail/payment/production services. Backups themselves remain unchanged.
+ 
+ ## Supported targets / limits
+ 
+@@ -130,6 +148,11 @@ itself down (`down -v --remove-orphans`) afterwards.
+   two configs, invoked explicitly.
+ - Bundles/backups dirs must be pre-created and operator-owned (docker bind
+   mounts create host dirs as root — create them before the first release).
+-- Not covered: multisite, background cron during install, plugin **data**
++- Live maintenance uses an operation-owned, non-expiring `.maintenance` and
++  temporary MU guard. It remains held through install/verify. Reopening rechecks
++  installed hashes, versions, state and fingerprint, then runs public smoke;
++  failed smoke re-holds maintenance. A public HTTP smoke necessarily has a short
++  open window. Cached/CDN/static responses are outside the PHP guard.
++- Not covered: multisite, external cron/workers during live install, plugin **data**
+   migrations are a *data*-tier concern (fingerprint hook is how you prove
+   you didn't touch protected records).
+diff --git a/SKILL.md b/SKILL.md
+index 5e57761..5594042 100644
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -6,7 +6,7 @@ description: Release a WordPress site through the full safety ceremony (gate, de
+ # wp-release
+ 
+ Generic WordPress release pipeline. The ceremony is a **fixed contract** (see
+-[ADR in the first consumer repo] — harden-only, never weakenable): every
++[contract reference](REFERENCE.md) — harden-only, never weakenable): every
+ release pays backup + restore rehearsal; *logic*/*data* tiers additionally
+ pay a trial upgrade. Nothing mutates the target without the owner's explicit
+ in-session authorization.
+@@ -20,9 +20,10 @@ node ~/.agents/skills/wp-release/scripts/release.mjs --config wp-release.json ru
+ node ~/.agents/skills/wp-release/scripts/release.mjs --config wp-release.json status
+ ```
+ 
+-A failed phase leaves the release resumable: fix the cause, then
+-`release.mjs resume --id <id> [--authorized "..."]` continues from the failed
+-phase without redoing the completed ones.
++A failed phase is resumable with the **same sealed configuration and bundle**:
++fix the cause, then `release.mjs resume --id <id> --authorized "<fresh quote>"`.
++Stored quotes are evidence, never authorization for a new invocation. Legacy
++states without the safety metadata are refused; do not retrofit flags by hand.
+ 
+ ## Your job as the agent (the parts that are NOT scripted)
+ 
+@@ -47,9 +48,13 @@ phase without redoing the completed ones.
+ | backup (db + files, hashed) | ✔ | ✔ | ✔ |
+ | rehearse (restore rehearsal) | ✔ | ✔ | ✔ |
+ | trial (upgrade vs restored copy) | — | ✔ | ✔ |
+-| install (maintenance window) + verify + smoke + record + rollback | ✔ | ✔ | ✔ (+ protected-records fingerprint compared pre/post) |
++| install (maintenance window) + verify + smoke + record + rollback | ✔ | ✔ | ✔ |
+ 
+-Authorization gates: `install` always; `trial` when rehearsal is `on-host`.
++Protected-record fingerprints are required and compared for every tier.
++
++Authorization gates: **all target contact**, including resume, requires a fresh
++quote. Dry-run is capped at local packaging. Safety tests and a source-matched
++self-test receipt are checked automatically before target contact.
+ 
+ ## Config, contracts, glossary
+ 
+@@ -57,11 +62,20 @@ Authorization gates: `install` always; `trial` when rehearsal is `on-host`.
+   rollback modes and the glossary of canonical terms: **[REFERENCE.md](REFERENCE.md)**
+ - Adopting the skill in a NEW project (both compose-server and shared-hosting
+   shapes, step by step): **[EXAMPLES.md](EXAMPLES.md)**
++- On a blocked release, maintenance hold, rollback, or stale test receipt:
++  **[RECOVERY.md](RECOVERY.md)**. Follow the recovery procedure; no ad hoc
++  deactivation of maintenance or manual state-file edits.
+ - Validate any doubt against REFERENCE.md before improvising — the contract's
+   details (bundle layout, LIVE-CHECK, hash manifests) are load-bearing.
+ 
+ ## Self-test
+ 
+-`node scripts/self-test.mjs` — boots a fixture WordPress target in local
+-docker and runs three releases (surface, logic+local-trial, logic+on-host).
+-Run it whenever the skill's scripts change.
++`node scripts/self-test.mjs` runs fast negative regressions, then three fixture
++Docker releases, a failed verification/resume, and real code-only/paired
++recovery. Requires Docker and PHP CLI; set `WP_RELEASE_PHP=/absolute/path/to/php`
++if PHP is not on PATH. Run it whenever scripts, assets or fixtures change.
++
++Success writes a machine-local `.self-test.json` tied to those exact sources.
++A new test run invalidates the old receipt until the whole suite passes.
++The driver blocks a missing/stale receipt or failing fast regressions. This is
++test evidence, not proof of a particular site's release or visual approval.
+diff --git a/assets/local-generic.compose.yaml b/assets/local-generic.compose.yaml
+index 8496f74..5c20a46 100644
+--- a/assets/local-generic.compose.yaml
++++ b/assets/local-generic.compose.yaml
+@@ -37,5 +37,9 @@ services:
+     volumes:
+       - wp_data:/var/www/html
+       - ${WP_RELEASE_BUNDLE_DIR:?}:/bundle:ro
++# Restored plugins must not contact payment, mail, or production endpoints.
++networks:
++  default:
++    internal: true
+ volumes:
+   wp_data:
+diff --git a/scripts/cli-test.mjs b/scripts/cli-test.mjs
+new file mode 100644
+index 0000000..7d27a32
+--- /dev/null
++++ b/scripts/cli-test.mjs
+@@ -0,0 +1,33 @@
++#!/usr/bin/env node
++import assert from 'node:assert/strict';
++import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,cpSync} from 'node:fs';
++import {join,dirname} from 'node:path';
++import {tmpdir} from 'node:os';
++import {fileURLToPath} from 'node:url';
++import {spawnSync} from 'node:child_process';
++const skill=join(dirname(fileURLToPath(import.meta.url)),'..');
++const root=mkdtempSync(join(tmpdir(),'wp-release-cli-'));
++let count=0;
++try {
++  const driver=join(skill,'scripts/release.mjs');
++  const run=(args,bin=driver,env={})=>spawnSync(process.execPath,[bin,'--config',join(root,'wp-release.json'),...args],{encoding:'utf8',env:{...process.env,...env}});
++  for(const args of [['run','--typo'],['run','--authorized','--through','transfer'],['run','extra'],['status','--dry-run'],['run','--through','bogus'],['resume','--id','../../elsewhere']]) {
++    assert.equal(run(args).status,2,JSON.stringify(args));count++;
++  }
++  assert.equal(run(['--help']).status,0);count++;
++  mkdirSync(join(root,'src/theme'),{recursive:true});writeFileSync(join(root,'src/theme/style.css'),'Version: 1.0.0\n');writeFileSync(join(root,'finger.php'),'<?php echo str_repeat("a",64);');
++  const cfg={project:'cli-negative',target:{ssh:'',stackDir:root,wpRoot:join(root,'wp'),wp:`touch ${join(root,'TARGET-TOUCHED')}`,exec:'',filesTar:'false',bundleDir:'bundles',backupDir:'backups',homeUrl:'https://fixture.invalid'},gate:'true',rehearsal:{env:'local'},packaging:{sources:[{from:'src/theme',zip:'theme.zip'}]},artifacts:['theme.zip'],install:{themes:[{slug:'theme',artifact:'theme.zip'}],plugins:[]},hooks:{recordFingerprint:'finger.php'},tiers:{surface:['src/**'],logic:[],data:[]},smoke:[],record:{dir:'records'}};
++  writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
++  let r=run(['run','--id','dry','--tier-confirmed','surface','--dry-run','--through','record']);assert.equal(r.status,0,r.stdout+r.stderr);
++  const state=JSON.parse(readFileSync(join(root,'.build/wp-release/dry/state.json'),'utf8'));assert.deepEqual(Object.keys(state.phases),['gate','package']);assert.ok(!existsSync(join(root,'bundles')));assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  r=run(['run','--id','local-package','--tier-confirmed','surface','--through','package','--authorized','old quote']);assert.equal(r.status,0,r.stdout+r.stderr);
++  r=run(['resume','--id','local-package','--through','transfer']);assert.notEqual(r.status,0);assert.match(r.stderr,/current owner quote/);assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  // A copied/modified skill has no certificate, even if a fixture environment
++  // variable is supplied. Blocking happens before its configured WP runner.
++  const copy=join(root,'uncertified');cpSync(skill,copy,{recursive:true});rmSync(join(copy,'.self-test.json'),{force:true});
++  r=run(['resume','--id','local-package','--through','transfer','--authorized','fresh quote'],join(copy,'scripts/release.mjs'),{WP_RELEASE_TEST_WORKSPACE:root});
++  assert.notEqual(r.status,0);assert.match(r.stderr,/Safety certification missing\/stale/);assert.ok(!existsSync(join(root,'bundles')));assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  cfg.target.homeUrl='https://another.invalid';writeFileSync(join(root,'wp-release.json'),JSON.stringify(cfg));
++  r=run(['resume','--id','local-package','--authorized','fresh quote']);assert.notEqual(r.status,0);assert.match(r.stderr,/changed configuration/);assert.ok(!existsSync(join(root,'TARGET-TOUCHED')));count++;
++  console.log(`cli: ${count} argument/dry-run/authorization/certification/config-seal cases passed`);
++} finally {rmSync(root,{recursive:true,force:true});}
+diff --git a/scripts/maintenance.php b/scripts/maintenance.php
+new file mode 100644
+index 0000000..3de6462
+--- /dev/null
++++ b/scripts/maintenance.php
+@@ -0,0 +1,44 @@
++<?php
++// Run via PHP CLI in the WordPress root, never via HTTP or WordPress bootstrap.
++if (PHP_SAPI !== 'cli') { http_response_code(403); exit(1); }
++function stop_release(string $message): never { fwrite(STDERR, $message . "\n"); exit(1); }
++[$script, $mode, $id] = $argv + [null, null, null];
++if (!in_array($mode, ['hold', 'check', 'release'], true) || !preg_match('/^[A-Za-z0-9_-]+$/D', $id ?? '')) { stop_release('Invalid maintenance operation/id'); }
++if (!is_file('wp-config.php') || !is_dir('wp-includes')) { stop_release('Not a WordPress root'); }
++$lock = '.wp-release-lock';
++$guard = 'wp-content/mu-plugins/wp-release-guard.php';
++$maintenance = "<?php /* wp-release owned */ \$upgrading = time();\n";
++// Native upgraders may delete .maintenance. The independent MU guard keeps
++// requests closed across that deletion, and does not expire after ten minutes.
++$guardCode = <<<'PHP'
++<?php
++/* wp-release owned */
++if (!(defined('WP_CLI') && WP_CLI) && is_dir(ABSPATH . '.wp-release-lock')) {
++    http_response_code(503);
++    header('Retry-After: 600');
++    header('Cache-Control: no-store');
++    exit('Briefly unavailable for scheduled maintenance.');
++}
++PHP;
++if (is_link($lock) || is_link($guard) || is_link('.maintenance')) { stop_release('Refusing symlinked maintenance files'); }
++if ($mode === 'hold' && !is_dir($lock)) {
++    if (file_exists($guard) || file_exists('.maintenance')) { stop_release('Unowned maintenance already exists'); }
++    if (!mkdir($lock, 0755)) { stop_release('Cannot acquire maintenance lock'); }
++    if (file_put_contents("$lock/owner", $id) === false) { stop_release('Cannot write lock owner'); }
++}
++if (!is_dir($lock) || @file_get_contents("$lock/owner") !== $id) { stop_release('Maintenance lock belongs to another operation (or is missing)'); }
++if ($mode === 'check') {
++    if (@file_get_contents($guard) !== $guardCode || @file_get_contents('.maintenance') !== $maintenance) { stop_release('Maintenance guards missing or modified'); }
++    exit(0);
++}
++if ($mode === 'hold') {
++    if (file_exists($guard) && file_get_contents($guard) !== $guardCode) { stop_release('Refusing to replace another MU guard'); }
++    if (file_exists('.maintenance') && file_get_contents('.maintenance') !== $maintenance) { stop_release('Refusing to replace another maintenance file'); }
++    if (!is_dir(dirname($guard)) && !mkdir(dirname($guard), 0755, true)) { stop_release('Cannot create MU directory'); }
++    foreach ([$guard => $guardCode, '.maintenance' => $maintenance] as $file => $code) {
++        if (file_put_contents($file . '.wp-release-tmp', $code) === false || !rename($file . '.wp-release-tmp', $file)) { stop_release('Cannot write maintenance guard'); }
++    }
++} else {
++    if (@file_get_contents($guard) !== $guardCode || @file_get_contents('.maintenance') !== $maintenance) { stop_release('Refusing to remove modified maintenance guards'); }
++    if (!unlink('.maintenance') || !unlink($guard) || !unlink("$lock/owner") || !rmdir($lock)) { stop_release('Cannot release maintenance'); }
++}
+diff --git a/scripts/plan-test.mjs b/scripts/plan-test.mjs
+index 918fff8..4fa9adf 100644
+--- a/scripts/plan-test.mjs
++++ b/scripts/plan-test.mjs
+@@ -10,7 +10,7 @@ const root=mkdtempSync(join(tmpdir(),'wprelease-plan-'));
+ const driver=fileURLToPath(new URL('./release.mjs',import.meta.url));
+ const git=(...args)=>execFileSync('git',['-c','commit.gpgsign=false',...args],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ const put=(file,content)=>{mkdirSync(join(root,file,'..'),{recursive:true});writeFileSync(join(root,file),content);};
+-const cfg={project:'plan-fixture',target:{ssh:'',stackDir:root,wp:'false',exec:'false',wpRoot:root,filesTar:'false',bundleDir:'bundle',backupDir:'backups',homeUrl:'https://example.invalid'},rehearsal:{env:'local'},gate:'false',packaging:{sources:[]},artifacts:['theme.zip'],install:{themes:[],plugins:[]},tiers:{surface:['wordpress/wp-content/themes/**'],logic:['wordpress/wp-content/plugins/**'],data:['**/migrate*.php']},smoke:[],record:{dir:'records'}};
++const cfg={project:'plan-fixture',target:{ssh:'',stackDir:root,wp:'false',exec:'false',wpRoot:join(root,'wp'),filesTar:'false',bundleDir:'bundle',backupDir:'backups',homeUrl:'https://example.invalid'},rehearsal:{env:'local'},gate:'false',packaging:{sources:[]},artifacts:['theme.zip'],install:{themes:[],plugins:[]},tiers:{surface:['wordpress/wp-content/themes/**'],logic:['wordpress/wp-content/plugins/**'],data:['**/migrate*.php']},smoke:[],record:{dir:'records'}};
+ let checks=0;
+ try {
+   git('init','-q');git('config','user.name','Release test');git('config','user.email','test@example.invalid');
+diff --git a/scripts/release-chain.sh b/scripts/release-chain.sh
+index 4b6cd0e..51823a9 100644
+--- a/scripts/release-chain.sh
++++ b/scripts/release-chain.sh
+@@ -7,57 +7,33 @@
+ # the cli service must see the bundle dir at BUNDLE_PATH (bind mount).
+ set -euo pipefail
+ 
+-fail() { echo "wp-release-chain: $*" >&2; exit 1; }
+-log()  { echo "wp-release-chain: $*"; }
+-
++source "$(dirname "${BASH_SOURCE[0]}")/release-common.sh"
+ PHASE="${WP_RELEASE_PHASE:?}"
+-ID="${WP_RELEASE_ID:?}"
+-STACK_DIR="${STACK_DIR:?}"; WP_ROOT="${WP_ROOT:?}"; HOME_URL="${HOME_URL:?}"
+-BUNDLE_HOST_DIR="${BUNDLE_HOST_DIR:?}"        # host-side path of this release's bundle
+-BUNDLE_PATH="${BUNDLE_PATH:?}"                # same bundle as seen by the wp runner
+-BACKUP_DIR="${BACKUP_DIR:?}"
+-DEST="$BACKUP_DIR/$ID"
+-
+-read -r -a WP <<< "${WP_RUN:?}"               # wp runner, e.g. docker compose run --rm -T cli wp
+-EXEC=()
+-[ -n "${EXEC_RUN:-}" ] && read -r -a EXEC <<< "$EXEC_RUN"   # exec runner in WP root context, may be empty
+-FILES_TAR="${FILES_TAR:?}"                    # command emitting the files tar.gz on stdout
+-CHECK_EXPR="${REHEARSAL_CHECK:?}"
+ DB_ENV_FILE="${DB_ENV_FILE:-}"
+ REHEARSAL_PROJECT="${REHEARSAL_PROJECT:?}"
+-INSTALL_THEMES="${INSTALL_THEMES:-}"; INSTALL_PLUGINS="${INSTALL_PLUGINS:-}"
+-EXPECTED_VERSIONS="${EXPECTED_VERSIONS:-}"
+-VERIFY_HOOK="${VERIFY_HOOK:-}"; FINGERPRINT_HOOK="${FINGERPRINT_HOOK:-}"
+-
+-cd "$STACK_DIR"
+-wpr() { "${WP[@]}" "$@"; }
+-
+-# run a command in WP-root context (docker exec or bare shell)
+-exec_in_wp_root() {
+-  if [ "${#EXEC[@]}" -eq 0 ]; then (cd "$WP_ROOT" && "$@"); else "${EXEC[@]}" "$@"; fi
+-}
+-
+-assert_home() {
+-  [ "$(wpr option get home 2>/dev/null)" = "$HOME_URL" ] || fail "wrong target: 'wp option get home' != $HOME_URL"
+-}
+-
+-live_check() { wpr eval "$CHECK_EXPR" 2>/dev/null | tail -1; }
++RUNTIME="$DEST/runtime"
++bundle_check
+ 
+ rh() {  # temp rehearsal project over the target's own compose
+   local ef=()
+   [ -n "$DB_ENV_FILE" ] && ef=(--env-file "$DB_ENV_FILE")
+-  WP_PORT=18093 FREEPLAST_LOOPBACK_PORT=18093 docker compose "${ef[@]}" -p "$REHEARSAL_PROJECT" "$@"
++  WP_PORT=18093 FREEPLAST_LOOPBACK_PORT=18093 docker compose "${ef[@]}" -f compose.yaml -f "$DEST/rh-isolation.json" -p "$REHEARSAL_PROJECT" "$@"
+ }
+ rh_wp() { rh run --rm -T cli wp "$@"; }
+ 
+ restore_rehearsal_stack() {  # leaves a restored copy running under $REHEARSAL_PROJECT
+-  [ -f "$DEST/db.sql" ] && [ -f "$DEST/files.tgz" ] || fail "rehearsal: backup artifacts missing in $DEST"
++  backup_check
++  [ -z "$(rh ps -aq)" ] || fail 'rehearsal project already exists; operator review required'
++  trap teardown_rehearsal EXIT
+   rh up -d db
+   for _ in $(seq 1 60); do rh exec -T db healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1 && break; sleep 2; done
+   rh exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' < "$DEST/db.sql" 2>/dev/null \
+     || fail "rehearsal: db import failed (contract: compose db service defines MARIADB_ROOT_PASSWORD/MARIADB_DATABASE)"
+   rh up -d wordpress
+   rh exec -T wordpress tar -xzf - -C "$WP_ROOT" < "$DEST/files.tgz"
++  rh exec -T -w "$WP_ROOT" wordpress sha256sum -c - < "$DEST/FILES-SHA256SUMS" || fail 'rehearsal files differ from backup'
++  rh_wp config set DB_HOST db --type=constant
++  rh_wp config set DISABLE_WP_CRON true --raw --type=constant
+   local i ok=0
+   for i in $(seq 1 30); do
+     [ "$(rh_wp eval "$CHECK_EXPR" 2>/dev/null | tail -1)" = "$(cat "$DEST/LIVE-CHECK")" ] && { ok=1; break; }
+@@ -73,15 +49,28 @@ case "$PHASE" in
+ 
+ backup)
+   assert_home
+-  mkdir -p "$DEST"; chmod 700 "$DEST"
+-  wpr db export - > "$DEST/db.sql" 2>/dev/null || fail "wp db export failed"
+-  [ -s "$DEST/db.sql" ] || fail "wp db export produced an empty dump"
+-  eval "$FILES_TAR" > "$DEST/files.tgz" || fail "files tar failed"
+-  [ -s "$DEST/files.tgz" ] || fail "files tar is empty"
+-  (cd "$DEST" && sha256sum db.sql files.tgz > SHA256SUMS)
+-  local_check="$(live_check)"
+-  echo "$local_check" > "$DEST/LIVE-CHECK"
+-  case "$local_check" in ''|*[!0-9]*) fail "rehearsal check expression must print a bare number (got: $local_check)";; esac
++  if [ -e "$DEST" ]; then
++    backup_check
++    [ "$(fingerprint)" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'existing backup no longer matches protected records'
++    local_check="$(cat "$DEST/LIVE-CHECK")"
++  else
++    exec_in_wp_root test ! -d .wp-release-lock || fail 'another release holds maintenance'
++    exec_in_wp_root test ! -f .maintenance || fail 'unowned maintenance active'
++    mkdir -p "$DEST"; chmod 700 "$DEST"
++    fingerprint > "$DEST/FINGERPRINT"
++    exec_in_wp_root sh -c 'find . -type f -exec sha256sum {} + | LC_ALL=C sort' > "$DEST/FILES-SHA256SUMS"
++    wpr db export - > "$DEST/db.sql" 2>/dev/null || fail "wp db export failed"
++    [ -s "$DEST/db.sql" ] || fail "wp db export produced an empty dump"
++    eval "$FILES_TAR" > "$DEST/files.tgz" || fail "files tar failed"
++    [ -s "$DEST/files.tgz" ] || fail "files tar is empty"
++    local_check="$(live_check)"
++    echo "$local_check" > "$DEST/LIVE-CHECK"
++    [ "$(fingerprint)" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'protected records changed during backup'
++    exec_in_wp_root sh -c 'find . -type f -exec sha256sum {} + | LC_ALL=C sort' > "$DEST/FILES-AFTER"
++    cmp "$DEST/FILES-SHA256SUMS" "$DEST/FILES-AFTER" || fail 'files changed during backup'
++    rm "$DEST/FILES-AFTER"
++    (cd "$DEST" && sha256sum db.sql files.tgz LIVE-CHECK FINGERPRINT FILES-SHA256SUMS > SHA256SUMS)
++  fi
+   log "paired backup stored in $DEST (db.sql + files.tgz + SHA256SUMS + LIVE-CHECK)"
+   echo "BACKUP=$DEST"
+   echo "LIVE-CHECK=$local_check"
+@@ -91,11 +80,12 @@ rehearse-onhost)
+   assert_home
+   [ -f "$DEST/LIVE-CHECK" ] || fail "run the backup phase first"
+   restore_rehearsal_stack
+-  teardown_rehearsal
++  teardown_rehearsal; trap - EXIT
+   echo "RESTORE-VERIFIED (on-host rehearsal torn down; live stack untouched)"
+   ;;
+ 
+ trial-onhost)
++  [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail 'on-host trial requires authorization'
+   assert_home
+   [ -f "$DEST/LIVE-CHECK" ] || fail "run the backup phase first"
+   restore_rehearsal_stack
+@@ -108,39 +98,51 @@ trial-onhost)
+     [ "$(rh_wp "$kind" get "$slug" --field=version 2>/dev/null)" = "$ver" ] || fail "trial: $kind $slug version != $ver"
+   done
+   [ -n "$VERIFY_HOOK" ] && rh_wp eval-file "$BUNDLE_PATH/$VERIFY_HOOK"
+-  teardown_rehearsal
++  teardown_rehearsal; trap - EXIT
+   echo "TRIAL-VERIFIED (upgrade against restored copy passed; rehearsal torn down)"
+   ;;
+ 
+ install)
+   assert_home
+-  [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail "install requires the owner's authorization (driver passes it; never run by hand)"
+-  pre=""
+-  [ -n "$FINGERPRINT_HOOK" ] && { pre="$(wpr eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK" 2>/dev/null | tail -1)"; case "$pre" in ''|*[!0-9a-f]*) fail "fingerprint hook did not print a hex digest";; esac; }
+-  wpr maintenance-mode activate
+-  ok=0
+-  trap 'if [ "$ok" != 1 ]; then echo "INSTALL FAILED: maintenance retained — investigate before reopening" >&2; wpr maintenance-mode deactivate || true; fi' EXIT
+-  it=
+-  for it in $INSTALL_THEMES;  do wpr theme  install "$BUNDLE_PATH/${it#*=}" --force;  done
++  [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail 'install requires authorization'
++  backup_check
++  start_guard
++  mkdir -p "$RUNTIME"; chmod 700 "$RUNTIME"
++  pre="$(fingerprint)"
++  [ "$pre" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'protected records changed since backup; refusing install'
++  if [ -f "$RUNTIME/FINGERPRINT-PRE" ]; then
++    [ "$pre" = "$(cat "$RUNTIME/FINGERPRINT-PRE")" ] || fail 'resume cannot overwrite the original fingerprint'
++  else printf '%s\n' "$pre" > "$RUNTIME/FINGERPRINT-PRE"; fi
++  for it in $INSTALL_THEMES; do wpr theme install "$BUNDLE_PATH/${it#*=}" --force; done
+   for it in $INSTALL_PLUGINS; do wpr plugin install "$BUNDLE_PATH/${it#*=}" --force; done
+-  pair=
+-  for pair in $EXPECTED_VERSIONS; do
+-    kind="${pair%%:*}"; rest="${pair#*:}"; slug="${rest%%=*}"; ver="${rest#*=}"
+-    [ "$(wpr "$kind" get "$slug" --field=version 2>/dev/null)" = "$ver" ] || fail "install: $kind $slug version != $ver"
+-  done
+-  wpr maintenance-mode deactivate; ok=1; trap - EXIT
+-  [ -n "$pre" ] && echo "FINGERPRINT-PRE=$pre"
+-  log "install complete: ${INSTALL_THEMES} ${INSTALL_PLUGINS}"
++  maintenance hold
++  assert_versions
++  echo "FINGERPRINT-PRE=$pre"
++  log 'install complete; maintenance remains held for verification'
++  ;;
++
++verify|reopen)
++  assert_home
++  [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail 'verification/reopen requires current authorization'
++  start_guard
++  assert_installed
++  pre="$(cat "$RUNTIME/FINGERPRINT-PRE")"
++  post="$(fingerprint)"
++  [[ "$pre" =~ ^[0-9a-f]{64}$ ]] && [ "$pre" = "$post" ] || fail 'protected fingerprint changed; maintenance retained'
++  echo "FINGERPRINT-POST=$post"
++  if [ "$PHASE" = reopen ]; then
++    wpr cache flush
++    maintenance release
++    trap - EXIT
++    log 'verified site reopened for read-only smoke'
++  else log 'verify complete; maintenance remains held'; fi
+   ;;
+ 
+-verify)
++hold)
++  [ -n "${WP_RELEASE_AUTHORIZED:-}" ] || fail 'holding maintenance requires authorization'
+   assert_home
+-  wpr maintenance-mode is-active 2>/dev/null && fail "maintenance mode still active"
+-  exec_in_wp_root sha256sum -c - < "$BUNDLE_HOST_DIR/INSTALLED-SHA256SUMS" || fail "installed files do not match packaged hashes"
+-  log "installed-source manifest verified ($(grep -c . "$BUNDLE_HOST_DIR/INSTALLED-SHA256SUMS") files)"
+-  [ -n "$VERIFY_HOOK" ] && { wpr eval-file "$BUNDLE_PATH/$VERIFY_HOOK" || fail "state verification hook failed"; }
+-  [ -n "$FINGERPRINT_HOOK" ] && echo "FINGERPRINT-POST=$(wpr eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK" 2>/dev/null | tail -1)"
+-  log "verify complete"
++  maintenance hold
++  log 'maintenance held'
+   ;;
+ 
+ *) fail "unknown phase $PHASE" ;;
+diff --git a/scripts/release-common.sh b/scripts/release-common.sh
+new file mode 100644
+index 0000000..1f97a9d
+--- /dev/null
++++ b/scripts/release-common.sh
+@@ -0,0 +1,59 @@
++#!/usr/bin/env bash
++# Shared by the immutable release chain and generated rollback wrapper.
++set -euo pipefail
++fail() { echo "wp-release-chain: $*" >&2; exit 1; }
++log() { echo "wp-release-chain: $*"; }
++ID="${WP_RELEASE_ID:?}"
++STACK_DIR="${STACK_DIR:?}"; WP_ROOT="${WP_ROOT:?}"; HOME_URL="${HOME_URL:?}"
++BUNDLE_HOST_DIR="${BUNDLE_HOST_DIR:?}"; BUNDLE_PATH="${BUNDLE_PATH:?}"
++BACKUP_DIR="${BACKUP_DIR:?}"; DEST="$BACKUP_DIR/$ID"
++read -r -a WP <<< "${WP_RUN:?}"
++EXEC=(); [ -z "${EXEC_RUN:-}" ] || read -r -a EXEC <<< "$EXEC_RUN"
++FILES_TAR="${FILES_TAR:?}"; CHECK_EXPR="${REHEARSAL_CHECK:?}"
++INSTALL_THEMES="${INSTALL_THEMES:-}"; INSTALL_PLUGINS="${INSTALL_PLUGINS:-}"
++EXPECTED_VERSIONS="${EXPECTED_VERSIONS:-}"
++VERIFY_HOOK="${VERIFY_HOOK:-}"; FINGERPRINT_HOOK="${FINGERPRINT_HOOK:-}"
++cd "$STACK_DIR"
++# Non-streaming commands must not consume a rollback operator's confirmation.
++wpr() { "${WP[@]}" "$@" < /dev/null; }
++wpr_input() { "${WP[@]}" "$@"; }
++exec_in_wp_root() {
++  if [ "${#EXEC[@]}" -eq 0 ]; then (cd "$WP_ROOT" && "$@"); else "${EXEC[@]}" "$@"; fi
++}
++assert_home() { [ "$(wpr --skip-plugins --skip-themes option get home)" = "$HOME_URL" ] || fail "wrong target: home != $HOME_URL"; }
++bundle_check() { (cd "$BUNDLE_HOST_DIR" && sha256sum -c SHA256SUMS >/dev/null) || fail 'bundle integrity failed'; }
++backup_check() { (cd "$DEST" && sha256sum -c SHA256SUMS >/dev/null) || fail 'backup integrity failed'; }
++live_check() {
++  local value; value="$(wpr eval "$CHECK_EXPR")" || return $?
++  [[ "$value" =~ ^[0-9]+$ ]] || fail 'LIVE-CHECK must be a bare integer'
++  printf '%s\n' "$value"
++}
++fingerprint() {
++  [ -n "$FINGERPRINT_HOOK" ] || fail 'a protected-record fingerprint hook is required'
++  local value; value="$(wpr --skip-plugins --skip-themes eval-file "$BUNDLE_PATH/$FINGERPRINT_HOOK")" || return $?
++  [[ "$value" =~ ^[0-9a-f]{64}$ ]] || fail 'fingerprint hook must print one 64-hex digest'
++  printf '%s\n' "$value"
++}
++maintenance() { exec_in_wp_root php /dev/stdin "$1" "$ID" < "$BUNDLE_HOST_DIR/maintenance.php"; }
++retain_on_failure() {
++  local code=$?
++  trap - EXIT
++  if [ "$code" -ne 0 ]; then
++    if maintenance hold; then echo 'FAILED: maintenance retained; investigate or roll back before reopening' >&2
++    else echo 'CRITICAL: could not confirm maintenance; operator intervention required' >&2; fi
++  fi
++  exit "$code"
++}
++start_guard() { maintenance hold; trap retain_on_failure EXIT; }
++assert_versions() {
++  local pair kind rest slug ver
++  for pair in $EXPECTED_VERSIONS; do
++    kind="${pair%%:*}"; rest="${pair#*:}"; slug="${rest%%=*}"; ver="${rest#*=}"
++    [ "$(wpr "$kind" get "$slug" --field=version)" = "$ver" ] || fail "$kind $slug version != $ver"
++  done
++}
++assert_installed() {
++  exec_in_wp_root sha256sum -c - < "$BUNDLE_HOST_DIR/INSTALLED-SHA256SUMS" || fail 'installed files do not match packaged hashes'
++  assert_versions
++  if [ -n "$VERIFY_HOOK" ]; then wpr eval-file "$BUNDLE_PATH/$VERIFY_HOOK" || fail 'state verification hook failed'; fi
++}
+diff --git a/scripts/release-rollback.sh b/scripts/release-rollback.sh
+new file mode 100644
+index 0000000..a509bff
+--- /dev/null
++++ b/scripts/release-rollback.sh
+@@ -0,0 +1,70 @@
++#!/usr/bin/env bash
++# Called only by the per-bundle rollback.sh wrapper. Prepared != executed.
++set -euo pipefail
++source "$(dirname "${BASH_SOURCE[0]}")/release-common.sh"
++MODE="${1:-}"; [ "$#" -eq 0 ] || shift
++ACK=''; AUTH=''; EXPECTED=''
++while [ "$#" -gt 0 ]; do
++  case "$1" in
++    --acknowledge-data-loss-risk) ACK=1; shift;;
++    --authorized|--expected-current-fingerprint)
++      [ "$#" -ge 2 ] && [[ "$2" != --* ]] || fail "missing value for $1"
++      if [ "$1" = --authorized ]; then AUTH="$2"; else EXPECTED="$2"; fi; shift 2;;
++    *) fail "unknown rollback argument: $1";;
++  esac
++done
++case "$MODE" in inspect|code-only|paired) ;; *) fail 'usage: rollback.sh inspect | code-only --authorized "quote" | paired --authorized "quote" --acknowledge-data-loss-risk --expected-current-fingerprint <digest>';; esac
++bundle_check
++assert_home
++if [ "$MODE" = inspect ]; then
++  printf 'target: %s\nrelease: %s\nfingerprint: %s\n' "$HOME_URL" "$ID" "$(fingerprint)"
++  exit 0
++fi
++[ -n "$AUTH" ] || fail 'rollback requires fresh explicit owner authorization'
++
++if [ "$MODE" = code-only ]; then
++  [ -n "${PREVIOUS_BUNDLE_HOST:-}" ] || fail 'no completed previous bundle; code-only unavailable'
++  [ -n "${ROLLBACK_VERSIONS:-}" ] || fail 'previous bundle has no verified version metadata'
++  (cd "$PREVIOUS_BUNDLE_HOST" && sha256sum -c SHA256SUMS >/dev/null) || fail 'previous bundle integrity failed'
++  start_guard
++  before="$(fingerprint)"
++  for it in ${ROLLBACK_THEMES:-}; do wpr --skip-plugins --skip-themes theme install "$PREVIOUS_BUNDLE_PATH/${it#*=}" --force; done
++  for it in ${ROLLBACK_PLUGINS:-}; do wpr --skip-plugins --skip-themes plugin install "$PREVIOUS_BUNDLE_PATH/${it#*=}" --force; done
++  maintenance hold
++  exec_in_wp_root sha256sum -c - < "$PREVIOUS_BUNDLE_HOST/INSTALLED-SHA256SUMS" || fail 'rollback installed files differ from previous bundle'
++  EXPECTED_VERSIONS="$ROLLBACK_VERSIONS"; assert_versions
++  # The previous hook describes the previous code; the current fingerprint
++  # contract checks that the code-only operation did not alter protected data.
++  if [ -n "${ROLLBACK_VERIFY_HOOK:-}" ]; then wpr eval-file "$PREVIOUS_BUNDLE_PATH/$ROLLBACK_VERIFY_HOOK"; fi
++  [ "$(fingerprint)" = "$before" ] || fail 'code-only rollback changed protected records'
++else
++  [ "$ACK" = 1 ] || fail 'paired restore erases post-backup writes; explicit risk acknowledgement required'
++  [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]] || fail 'provide the fresh fingerprint from rollback.sh inspect'
++  backup_check
++  [ "$(fingerprint)" = "$EXPECTED" ] || fail 'current fingerprint changed; inspect and authorize again'
++  # Check archive names before any destructive operation. GNU tar is required.
++  entries="$(tar -tzf "$DEST/files.tgz")"
++  [[ "$entries" != /* ]] && ! grep -Eq '(^/|(^|/)\.\.(/|$))' <<< "$entries" || fail 'unsafe backup archive paths'
++  grep -Eq '^(\./)?wp-config.php$' <<< "$entries" || fail 'backup does not contain wp-config.php'
++  printf 'Restore database AND files into %s? Type RESTORE: ' "$HOME_URL"
++  read -r answer || fail 'restore confirmation missing'; [ "$answer" = RESTORE ] || fail 'restore cancelled'
++  start_guard
++  [ "$(fingerprint)" = "$EXPECTED" ] || fail 'fingerprint changed while awaiting confirmation'
++  # Remove post-backup files as well as overwriting old ones. Persistent guards
++  # stay outside the deletion set. Backup and bundle must be outside WP_ROOT.
++  exec_in_wp_root find . -mindepth 1 -maxdepth 1 ! -name .maintenance ! -name .wp-release-lock -exec rm -rf -- '{}' +
++  exec_in_wp_root tar -xzf - -C "$WP_ROOT" --exclude=./.maintenance --exclude=./.wp-release-lock < "$DEST/files.tgz"
++  maintenance hold
++  exec_in_wp_root sha256sum -c - < "$DEST/FILES-SHA256SUMS" || fail 'restored files differ from backup'
++  # stdin works for both bare wp and a CLI container; never give it a host path.
++  wpr db reset --yes
++  wpr_input db import - < "$DEST/db.sql"
++  assert_home
++  [ "$(fingerprint)" = "$(cat "$DEST/FINGERPRINT")" ] || fail 'restored protected fingerprint differs from backup'
++  [ "$(live_check)" = "$(cat "$DEST/LIVE-CHECK")" ] || fail 'restored LIVE-CHECK differs from backup'
++fi
++assert_home
++wpr cache flush
++maintenance release
++trap - EXIT
++printf 'rollback: %s complete\n' "$MODE"
+diff --git a/scripts/release.mjs b/scripts/release.mjs
+index 4e6d83e..024d4f3 100644
+--- a/scripts/release.mjs
++++ b/scripts/release.mjs
+@@ -7,11 +7,12 @@
+  * Nothing mutates the target without --authorized "<owner quote>".
+  */
+ import {spawnSync} from 'node:child_process';
+-import {createHash} from 'node:crypto';
++import {createHash,randomBytes} from 'node:crypto';
+ import {existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync} from 'node:fs';
+ import {dirname, join, relative, resolve, isAbsolute} from 'node:path';
+ import {fileURLToPath} from 'node:url';
+ import zlib from 'node:zlib';
++import {assertSafety} from './safety.mjs';
+ 
+ const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+ const ASSETS = join(SKILL_DIR, 'assets');
+@@ -31,10 +32,10 @@ function must(cmd, opts, what) {
+   if (r.code !== 0) fail(`${what} failed (exit ${r.code}):\n${(r.out+r.err).slice(-4000)}`);
+   return r.out;
+ }
+-function fail(msg) { console.error(`wp-release: ${msg}`); process.exit(1); }
++function fail(msg) { throw new Error(msg); }
+ const log = m => console.log(`wp-release: ${m}`);
+ const now = () => new Date().toISOString();
+-const stampId = () => new Date().toISOString().replace(/[-:]/g,'').replace(/\..+/,'') + 'Z';
++const stampId = () => new Date().toISOString().replace(/[-:]/g,'').replace(/\..+/,'') + 'Z-' + randomBytes(3).toString('hex');
+ 
+ /* ---------- deterministic zip writer (files only, fixed date, 0644) ---------- */
+ const CRC_TABLE = (() => {const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+@@ -96,7 +97,8 @@ function loadConfig(path) {
+   const need = (o,k,w) => { if (o?.[k]===undefined||o[k]==='') fail(`config: missing ${w||k}`); };
+   need(cfg,'project'); need(cfg,'gate'); need(cfg,'tiers'); need(cfg,'artifacts');
+   if (cfg.target?.ssh===undefined) fail('config: missing target.ssh (empty string = local target)'); need(cfg.target,'stackDir'); need(cfg.target,'wp');
+-  need(cfg.target,'exec'); need(cfg.target,'wpRoot'); need(cfg.target,'bundleDir');
++  if (typeof cfg.target.exec !== 'string') fail('config: target.exec must be a string (empty = bare host)');
++  need(cfg.target,'wpRoot'); need(cfg.target,'bundleDir');
+   need(cfg.target,'backupDir'); need(cfg.target,'homeUrl'); need(cfg.target,'filesTar');
+   need(cfg.rehearsal,'env');
+   if (!['on-host','local'].includes(cfg.rehearsal.env)) fail('config: rehearsal.env must be on-host|local');
+@@ -108,6 +110,15 @@ function loadConfig(path) {
+   cfg.__path = resolve(path); cfg.__repo = dirname(cfg.__path);
+   cfg.__build = join(cfg.__repo,'.build','wp-release');
+   if (!cfg.target.ssh && !isAbsolute(cfg.target.stackDir)) cfg.target.stackDir = resolve(cfg.__repo, cfg.target.stackDir);
++  if (!isAbsolute(cfg.target.stackDir) || !isAbsolute(cfg.target.wpRoot)) fail('config: target stackDir/wpRoot must be absolute');
++  for (const key of ['bundleDir','backupDir']) {
++    const path=resolve(cfg.target.stackDir,cfg.target[key]), root=resolve(cfg.target.wpRoot);
++    if (path===root || path.startsWith(root+'/')) fail(`config: ${key} must be outside the WordPress root`);
++  }
++  for (const name of cfg.artifacts) if (!/^[A-Za-z0-9_.-]+\.zip$/.test(name)) fail('config: unsafe artifact name');
++  for (const item of [...cfg.install.themes,...cfg.install.plugins]) {
++    if (!/^[A-Za-z0-9_-]+$/.test(item.slug) || !cfg.artifacts.includes(item.artifact)) fail('config: invalid install slug/artifact');
++  }
+   return cfg;
+ }
+ 
+@@ -133,11 +144,11 @@ function registryAdd(cfg,entry) {
+ 
+ /* ---------- target wrappers ---------- */
+ function targetRun(cfg, cmd, opts={}) { // run a shell command in stackDir on the target
+-  if (cfg.target.ssh) return sh(`ssh ${cfg.target.ssh} ${shellQuote(cmd)}`, opts);
++  if (cfg.target.ssh) return sh(`ssh ${q(cfg.target.ssh)} ${shellQuote(cmd)}`, opts);
+   return sh(cmd, {cwd:cfg.target.stackDir, ...opts});
+ }
+ function targetFilesGet(cfg, remotePath, localPath) {
+-  if (cfg.target.ssh) must(`ssh ${cfg.target.ssh} 'cat ${q(remotePath)}' > ${q(localPath)}`,{}, `fetch ${remotePath}`);
++  if (cfg.target.ssh) must(`ssh ${q(cfg.target.ssh)} ${q(`cat ${q(remotePath)}`)} > ${q(localPath)}`,{}, `fetch ${remotePath}`);
+   else copyFileSync(resolve(cfg.target.stackDir,remotePath), localPath);
+ }
+ function shellQuote(s) { return `'${s.replaceAll(`'`,`'\\''`)}'`; }
+@@ -239,61 +250,47 @@ function phasePackage(cfg,st) {
+   for (const a of cfg.artifacts) if (!existsSync(join(dir,a))) fail(`artifact missing in bundle after packaging: ${a}`);
+   // versions expected on the target after install
+   st.expectedVersions=parseVersionFromZips(cfg,dir);
+-  // SHA256SUMS of the bundle
+-  const sums=cfg.artifacts.map(a=>`${sha256(readFileSync(join(dir,a)))}  ${a}`).join('\n')+'\n';
+-  writeFileSync(join(dir,'SHA256SUMS'),sums);
++  // Hash the entire executable bundle only after hooks/runners are copied.
+   // INSTALLED-SHA256SUMS: every zip file entry -> wp-content path hash
+   const prefixBySlug={};
+   for (const t of cfg.install.themes||[])  prefixBySlug[t.slug]=`wp-content/themes/${t.slug}`;
+   for (const p of cfg.install.plugins||[]) prefixBySlug[p.slug]=`wp-content/plugins/${p.slug}`;
+   const lines=[];
+   for (const a of cfg.artifacts) for (const e of zipRead(readFileSync(join(dir,a)))) {
++    if (e.name.startsWith('/') || e.name.split('/').some(p=>p==='..'||p==='.') || /[\\\r\n\0]/.test(e.name)) fail(`unsafe zip entry in ${a}`);
+     const slug=e.name.split('/')[0];
+     if (!prefixBySlug[slug]) fail(`zip ${a}: entry '${e.name}' does not sit under a configured slug (known: ${Object.keys(prefixBySlug).join(', ')})`);
+     lines.push(`${sha256(e.data)}  ${prefixBySlug[slug]}/${e.name.split('/').slice(1).join('/')}`);
+   }
+   lines.sort((x,y)=>x.slice(66)<y.slice(66)?-1:1);
+   writeFileSync(join(dir,'INSTALLED-SHA256SUMS'),lines.join('\n')+'\n');
+-  // hook scripts travel inside the bundle (the chain needs them on the target)
+-  for (const h of ['verifyState','recordFingerprint'])
+-    if (cfg.hooks?.[h]) copyFileSync(resolve(cfg.__repo,cfg.hooks[h]),join(dir,cfg.hooks[h].split('/').pop()));
++  for (const file of ['release-chain.sh','release-common.sh','release-rollback.sh','maintenance.php']) copyFileSync(join(SKILL_DIR,'scripts',file),join(dir,file));
++  for (const h of ['verifyState','recordFingerprint']) if (cfg.hooks?.[h]) {
++    const name=cfg.hooks[h].split('/').pop();
++    if (existsSync(join(dir,name)) || ['SHA256SUMS','release.json','rollback.sh'].includes(name)) fail(`hook basename collision: ${name}`);
++    copyFileSync(resolve(cfg.__repo,cfg.hooks[h]),join(dir,name));
++  }
++  st.install=cfg.install; st.verifyHook=cfg.hooks?.verifyState?.split('/').pop()||'';
++  writeFileSync(join(dir,'release.json'),JSON.stringify({id:st.id,commit:st.commit,tier:st.tier,install:st.install,expectedVersions:st.expectedVersions},null,2));
+   // rollback.sh (previous release, captured when this release was created)
+   const prev=st.prevRelease||null;
+   writeFileSync(join(dir,'rollback.sh'),rollbackScript(cfg,st,prev));
++  const sums=readdirSync(dir).sort().map(a=>`${sha256(readFileSync(join(dir,a)))}  ${a}`).join('\n')+'\n';
++  writeFileSync(join(dir,'SHA256SUMS'),sums);
++  st.bundleHash=sha256(sums);
+   st.phases.package={status:'ok',at:now(),artifacts:cfg.artifacts.map(a=>({name:a,sha256:sha256(readFileSync(join(dir,a)))}))};
+ }
+-function rollbackScript(cfg,st,prev) {
+-  const t=cfg.target, prefix=bundlePrefixFor(cfg,st.id);
+-  return `#!/usr/bin/env bash
+-# wp-release rollback for ${st.id} (generated; prepared, NOT executed).
+-# code-only : force-reinstall previous release artifacts (DB untouched) — preferred.
+-# paired    : restore db.sql + files.tgz from the pre-release backup.
+-#             DANGEROUS: erases any human writes made after the backup.
+-#             Requires --acknowledge-data-loss-risk and a fresh record fingerprint check.
+-set -euo pipefail
+-cd ${q(t.stackDir)}
+-WP=(${t.wp})
+-MODE=\${1:-}; ACK=\${2:-}
+-case "\$MODE" in
+-  code-only)
+-${prev ? `    ${cfg.install.themes.map(x=>`    $WP theme install ${prefix.replace(st.id,prev.id)}/${x.artifact} --force`).join('\n')}
+-${cfg.install.plugins.map(x=>`    $WP plugin install ${prefix.replace(st.id,prev.id)}/${x.artifact} --force`).join('\n')}` : '    echo "No previous release bundle — code-only rollback unavailable. Use paired mode."; exit 1'}
+-    $WP cache flush
+-    echo "code-only rollback to ${prev?prev.id:'(none)'} complete";;
+-  paired)
+-    [[ "\$ACK" == "--acknowledge-data-loss-risk" ]] || { echo "paired mode erases post-backup writes; pass --acknowledge-data-loss-risk"; exit 1; }
+-    BACKUP=${q((isAbsolute(t.backupDir)?t.backupDir:join(t.stackDir,t.backupDir))+'/'+st.id)}
+-    (cd "\$BACKUP" && sha256sum -c SHA256SUMS)
+-    echo "Restore db.sql+files.tgz from \$BACKUP into ${t.homeUrl} now? Type RESTORE to continue:"
+-    read -r A; [[ "\$A" == "RESTORE" ]] || exit 1
+-    $WP maintenance-mode activate
+-    $WP db import "\$BACKUP/db.sql"
+-    ${t.filesTar.replace(/tar -czf -(.*)$/,'')} && echo "(files restore command is host-specific — see REFERENCE.md; run: tar -xzf \$BACKUP/files.tgz into ${t.wpRoot})"
+-    $WP cache flush; $WP maintenance-mode deactivate
+-    echo "paired rollback complete";;
+-  *) echo "usage: rollback.sh code-only | paired --acknowledge-data-loss-risk"; exit 2;;
+-esac
+-`;
++export function rollbackScript(cfg,st,prev) {
++  const compatible=prev && JSON.stringify(prev.install)===JSON.stringify(cfg.install);
++  const env={
++    PREVIOUS_BUNDLE_HOST:compatible?join(cfg.target.stackDir,cfg.target.bundleDir,prev.id):'',
++    PREVIOUS_BUNDLE_PATH:compatible?bundlePrefixFor(cfg,prev.id):'',
++    ROLLBACK_THEMES:compatible?prev.install.themes.map(x=>`${x.slug}=${x.artifact}`).join(' '):'',
++    ROLLBACK_PLUGINS:compatible?prev.install.plugins.map(x=>`${x.slug}=${x.artifact}`).join(' '):'',
++    ROLLBACK_VERSIONS:compatible?Object.entries(prev.expectedVersions||{}).map(([k,v])=>`${k}=${v}`).join(' '):'',
++    ROLLBACK_VERIFY_HOOK:compatible?prev.verifyHook||'':'',
++  };
++  return `#!/usr/bin/env bash\n# Prepared, not executed. Each mutation requires fresh --authorized.\nset -euo pipefail\n${chainEnv(cfg,st,'rollback')} ${Object.entries(env).map(([k,v])=>`${k}=${q(v)}`).join(' ')} bash ${q(join(cfg.target.stackDir,cfg.target.bundleDir,st.id,'release-rollback.sh'))} "$@"\n`;
+ }
+ function bundlePrefixFor(cfg,id) { // path to this release's bundle as seen by the wp runner
+   if (cfg.target.bundlePrefix) return `${cfg.target.bundlePrefix}/${id}`;
+@@ -311,10 +308,7 @@ function phaseTransfer(cfg,st) {
+     for (const f of readdirSync(dir)) copyFileSync(join(dir,f),join(remote,f));
+     must(`cd ${q(remote)} && sha256sum -c SHA256SUMS`,{},'verify transferred hashes');
+   }
+-  // copy the chain runner next to the stack
+-  const chainSrc=join(SKILL_DIR,'scripts','release-chain.sh');
+-  if (cfg.target.ssh) must(`cat ${q(chainSrc)} | ssh ${cfg.target.ssh} ${shellQuote(`mkdir -p ${q(join(cfg.target.stackDir,'.wp-release'))} && cat > ${q(join(cfg.target.stackDir,'.wp-release','release-chain.sh'))} && chmod +x ${q(join(cfg.target.stackDir,'.wp-release','release-chain.sh'))}`)}`,{},'upload chain script');
+-  else { mkdirSync(join(cfg.target.stackDir,'.wp-release'),{recursive:true}); copyFileSync(chainSrc,join(cfg.target.stackDir,'.wp-release','release-chain.sh')); }
++  // Runners travel in this hashed bundle, never in a shared mutable location.
+   st.backupRemote=remote;
+   st.phases.transfer={status:'ok',at:now(),remote};
+ }
+@@ -342,7 +336,7 @@ function chainEnv(cfg,st,phase) {
+   return Object.entries(env).map(([k,v])=>`${k}=${shellQuote(String(v))}`).join(' ');
+ }
+ function runChain(cfg,st,phase,extra='') {
+-  const chain=join(cfg.target.stackDir,'.wp-release','release-chain.sh');
++  const chain=join(cfg.target.stackDir,cfg.target.bundleDir,st.id,'release-chain.sh');
+   const cmd=`${chainEnv(cfg,st,phase)} ${extra} bash ${q(chain)} ${phase}`;
+   const r=targetRun(cfg,cmd);
+   if (r.code!==0) fail(`chain phase ${phase} failed (exit ${r.code}):\n${(r.out+r.err).slice(-6000)}`);
+@@ -351,20 +345,54 @@ function runChain(cfg,st,phase,extra='') {
+ 
+ function phaseBackup(cfg,st) {
+   const out=runChain(cfg,st,'backup');
+-  const m=/BACKUP=(\S+)/.exec(out); const c=/LIVE-CHECK=(.*)/.exec(out);
++  const m=/^BACKUP=(.+)$/m.exec(out); const c=/LIVE-CHECK=(.*)/.exec(out);
+   if (!m) fail('backup: chain did not report BACKUP path');
+   st.backup={path:m[1],liveCheck:c?c[1].trim():null,at:now()};
+   st.phases.backup={status:'ok',...st.backup};
+ }
++function prepareLocalRestore(dcmd,work) {
++  // Inspect original restored bytes before adapting ONLY this disposable copy.
++  must(`${dcmd('exec -T -w /var/www/html wordpress')} sha256sum -c - < ${q(join(work,'FILES-SHA256SUMS'))}`,{},'restored files');
++  must(dcmd('exec -T wordpress chown -R www-data:www-data /var/www/html'),{},'local restored ownership');
++  // wp config set runs before WordPress bootstrap. Never let a restored bare
++  // wp-config.php connect to its original database (or launch its plugins).
++  for (const [key,value] of Object.entries({DB_HOST:'db',DB_NAME:'wordpress',DB_USER:'root',DB_PASSWORD:'wprelease'})) {
++    must(dcmd(`run --rm -T cli wp config set ${key} ${q(value)} --type=constant`),{},'bind isolated database');
++  }
++  must(dcmd('run --rm -T cli wp config set DISABLE_WP_CRON true --raw --type=constant'),{},'disable restored cron');
++}
++function prepareOnhostIsolation(cfg,st) {
++  const project=`wprelease-rh-${st.id.toLowerCase()}`;
++  const ef=cfg.target.dbEnv?`--env-file ${q(join(cfg.target.stackDir,cfg.target.dbEnv))}`:'';
++  const result=targetRun(cfg,`cd ${q(cfg.target.stackDir)} && WP_PORT=18093 FREEPLAST_LOOPBACK_PORT=18093 docker compose ${ef} -f compose.yaml -p ${q(project)} config --format json`);
++  let model; try { if(result.code!==0) throw Error();model=JSON.parse(result.out); } catch { fail('cannot inspect rehearsal compose isolation'); }
++  for(const type of ['volumes','networks']) for(const value of Object.values(model[type]||{})) {
++    if(value.external || !value.name?.startsWith(project+'_')) fail('on-host rehearsal refuses external/fixed resources');
++  }
++  for(const service of Object.values(model.services)) {
++    if(service.container_name || service.network_mode || service.privileged || service.volumes_from) fail('on-host rehearsal refuses shared/fixed service namespaces');
++    for(const dependency of Object.keys(service.depends_on||{})) if(!['db','wordpress','cli'].includes(dependency)) fail('on-host rehearsal refuses extra dependencies');
++    for(const mount of service.volumes||[]) if(mount.type==='bind') {
++      const bundle=resolve(cfg.target.stackDir,cfg.target.bundleDir);
++      if(!mount.read_only || !bundle.startsWith(resolve(mount.source)+'/') || !cfg.target.bundlePrefix?.startsWith(mount.target+'/')) fail('on-host rehearsal only permits the read-only bundle bind');
++    }
++  }
++  for(const name of ['wordpress','cli']) if(!model.services[name]?.volumes?.some(v=>v.type==='volume' && v.target===cfg.target.wpRoot)) fail('rehearsal WordPress root must be a project-scoped volume');
++  const override={networks:Object.fromEntries(Object.keys(model.networks||{default:{}}).map(name=>[name,{internal:true}]))};
++  const path=join(st.backup.path,'rh-isolation.json');
++  const written=targetRun(cfg,`printf '%s' ${q(JSON.stringify(override))} > ${q(path)}`);
++  if(written.code!==0) fail('cannot write isolated rehearsal network override');
++}
+ function phaseRehearse(cfg,st) {
+   if (cfg.rehearsal.env==='on-host') {
++    prepareOnhostIsolation(cfg,st);
+     const out=runChain(cfg,st,'rehearse-onhost');
+     if (!/RESTORE-VERIFIED/.test(out)) fail('rehearse: verification line missing');
+     st.rehearsal={env:'on-host',verified:true,at:now()};
+   } else {
+     // pull backup artifacts, spin local-generic compose, restore, check, teardown
+-    const work=join(cfg.__build,st.id,'rehearsal'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true});
+-    for (const f of ['db.sql','files.tgz','SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
++    const work=join(cfg.__build,st.id,'rehearsal'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true,mode:0o700});
++    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
+     must(`cd ${q(work)} && sha256sum -c SHA256SUMS`,{},'verify local backup copy');
+     const composeFile=join(ASSETS,'local-generic.compose.yaml');
+     const proj=`wprelease-rh-${st.id.toLowerCase()}`;
+@@ -377,6 +405,7 @@ function phaseRehearse(cfg,st) {
+       must(`${dcmd('exec -T db')} sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' < ${q(join(work,'db.sql'))}`,{},'rehearsal db import');
+       must(dcmd('up -d --wait wordpress'),{},'rehearsal wordpress up');
+       must(`${dcmd('exec -T wordpress')} tar -xzf - -C /var/www/html < ${q(join(work,'files.tgz'))}`,{},'rehearsal files restore');
++      prepareLocalRestore(dcmd,work);
+       // wait until the restored copy answers wp (db import + files in place)
+       let healthy=false;
+       for (let i=0;i<30;i++) { if (sh(dcmd('run --rm -T cli wp core is-installed')).code===0) {healthy=true;break;} spawnSync('sleep',['2']); }
+@@ -395,13 +424,14 @@ function phaseTrial(cfg,st) {
+   if (st.tier==='surface') { st.phases.trial={status:'skipped',reason:'surface tier: trial not required'}; return; }
+   if (cfg.rehearsal.env==='on-host') {
+     if (!st.authorized) fail('trial (on-host) creates resources on the server — rerun with --authorized "<owner quote>"');
++    prepareOnhostIsolation(cfg,st);
+     const out=runChain(cfg,st,'trial-onhost');
+     if (!/TRIAL-VERIFIED/.test(out)) fail('trial: verification line missing');
+     st.trial={env:'on-host',verified:true,at:now()};
+   } else {
+     // local trial: restored copy in the skill's disposable compose + install + hooks, then teardown
+-    const work=join(cfg.__build,st.id,'trial'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true});
+-    for (const f of ['db.sql','files.tgz','SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
++    const work=join(cfg.__build,st.id,'trial'); rmSync(work,{recursive:true,force:true}); mkdirSync(work,{recursive:true,mode:0o700});
++    for (const f of ['db.sql','files.tgz','SHA256SUMS','LIVE-CHECK','FINGERPRINT','FILES-SHA256SUMS']) targetFilesGet(cfg,`${st.backup.path}/${f}`,join(work,f));
+     must(`cd ${q(work)} && sha256sum -c SHA256SUMS`,{},'verify trial backup copy');
+     const composeFile=join(ASSETS,'local-generic.compose.yaml');
+     const proj=`wprelease-tr-${st.id.toLowerCase()}`;
+@@ -414,6 +444,7 @@ function phaseTrial(cfg,st) {
+       must(`${dcmd('exec -T db')} sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' < ${q(join(work,'db.sql'))}`,{},'trial db import');
+       must(dcmd('up -d --wait wordpress'),{},'trial wordpress up');
+       must(`${dcmd('exec -T wordpress')} tar -xzf - -C /var/www/html < ${q(join(work,'files.tgz'))}`,{},'trial files restore');
++      prepareLocalRestore(dcmd,work);
+       let healthy=false;
+       for (let i=0;i<30;i++) { if (sh(dcmd('run --rm -T cli wp core is-installed')).code===0) {healthy=true;break;} spawnSync('sleep',['2']); }
+       if (!healthy) fail('trial: wp never became healthy in the restored copy');
+@@ -432,34 +463,44 @@ function phaseTrial(cfg,st) {
+ }
+ function phaseInstall(cfg,st) {
+   if (!st.authorized) fail(`install mutates ${cfg.target.homeUrl} — rerun with --authorized "<the owner's exact instruction>"`);
++  if (!st.rehearsal?.verified || (st.tier!=='surface' && !st.trial?.verified)) fail('install requires successful restore rehearsal and the tier-required trial');
+   const out=runChain(cfg,st,'install');
+-  const pre=/FINGERPRINT-PRE=([0-9a-f]{64})/.exec(out);
+-  st.fingerprintPre=pre?pre[1]:null;
++  const pre=/^FINGERPRINT-PRE=([0-9a-f]{64})$/m.exec(out);
++  if (!pre) fail('install: original protected fingerprint missing');
++  st.fingerprintPre=pre[1];
+   st.phases.install={status:'ok',at:now()};
+ }
+ function phaseVerify(cfg,st) {
+   const out=runChain(cfg,st,'verify');
+-  const post=/FINGERPRINT-POST=([0-9a-f]{64})/.exec(out);
++  const post=/^FINGERPRINT-POST=([0-9a-f]{64})$/m.exec(out);
+   if (post) {
+     st.fingerprintPost=post[1];
+-    if (st.fingerprintPre && st.fingerprintPre!==st.fingerprintPost)
++    if (!st.fingerprintPre || st.fingerprintPre!==st.fingerprintPost)
+       fail(`record fingerprint changed during install: pre=${st.fingerprintPre} post=${st.fingerprintPost} — investigate protected records before reopening`);
+   }
+-  st.phases.verify={status:'ok',fingerprintUnchanged:st.fingerprintPre?(st.fingerprintPre===st.fingerprintPost):null,at:now()};
++  if (!post) fail('verify: protected fingerprint missing');
++  st.phases.verify={status:'ok',fingerprintUnchanged:st.fingerprintPre===st.fingerprintPost,at:now()};
+ }
+-async function phaseSmoke(cfg,st) {
++export async function phaseSmoke(cfg,st) {
+   const results=[];
+-  for (const s of cfg.smoke) {
+-    const r=await fetch(s.url,{redirect:'manual'});
+-    const body=Buffer.from(await r.arrayBuffer());
+-    let byteMatch=null;
+-    if (s.matchFile) {
+-      const f=readFileSync(resolve(cfg.__repo,s.matchFile));
+-      byteMatch=body.equals(f);
+-      if (!byteMatch) fail(`smoke: ${s.url} body does not match ${s.matchFile}`);
++  try {
++    // Recheck on every resume before opening; a saved verify flag is not proof
++    // that the live site is still the verified one.
++    runChain(cfg,st,'reopen');
++    for (const s of cfg.smoke) {
++      const r=await fetch(s.url,{redirect:'manual',signal:AbortSignal.timeout(20000)});
++      const body=Buffer.from(await r.arrayBuffer());
++      let byteMatch=null;
++      if (s.matchFile) {
++        byteMatch=body.equals(readFileSync(resolve(cfg.__repo,s.matchFile)));
++        if (!byteMatch) fail(`smoke: ${s.url} body does not match ${s.matchFile}`);
++      }
++      if (s.status && r.status!==s.status) fail(`smoke: ${s.url} returned ${r.status} (expected ${s.status})`);
++      results.push({url:s.url,status:r.status,byteMatch});
+     }
+-    if (s.status && r.status!==s.status) fail(`smoke: ${s.url} returned ${r.status} (expected ${s.status})`);
+-    results.push({url:s.url,status:r.status,byteMatch});
++  } catch (error) {
++    try { runChain(cfg,st,'hold'); } catch (hold) { throw new Error(`${error.message}; CRITICAL: could not confirm maintenance: ${hold.message}`); }
++    throw error;
+   }
+   st.phases.smoke={status:'ok',results,at:now()};
+ }
+@@ -470,9 +511,10 @@ function phaseRecord(cfg,st) {
+   const slug=`${date}-${st.tier}-${st.id.slice(-6).toLowerCase()}`;
+   const dir=resolve(cfg.__repo,cfg.record.dir);
+   const art=st.phases.package?.artifacts||[];
++  const codeRollback=st.prevRelease && JSON.stringify(st.prevRelease.install)===JSON.stringify(cfg.install);
+   const fill={
+     '{{id}}':st.id,'{{date}}':date,'{{project}}':cfg.project,'{{tier}}':st.tier,
+-    '{{commit}}':st.commit||'(uncommitted)','{{prev}}':st.prevRelease?`${st.prevRelease.id} (${st.prevRelease.commit.slice(0,8)})`:'none — first release',
++    '{{commit}}':st.commit||'(uncommitted)','{{prev}}':st.prevRelease?`${st.prevRelease.id} (${st.prevRelease.commit?.slice(0,8)||'uncommitted'})`:'none — first release',
+     '{{authorization}}':st.authorized||'(not applicable — no mutating phase ran)',
+     '{{homeUrl}}':cfg.target.homeUrl,
+     '{{artifacts}}':art.map(a=>`- \`${a.name}\` — \`${a.sha256.slice(0,16)}…\``).join('\n')||'- (none)',
+@@ -483,7 +525,7 @@ function phaseRecord(cfg,st) {
+     '{{manifest}}':`INSTALLED-SHA256SUMS verified on target (${(st.expectedVersions?Object.keys(st.expectedVersions).length:0)} versioned components)`,
+     '{{fingerprint}}':st.fingerprintPre?`pre == post (${st.fingerprintPre.slice(0,16)}…)`:'no record-fingerprint hook configured — evidence limited',
+     '{{smoke}}':(st.phases.smoke?.results||[]).map(r=>`- ${r.status} ${r.url}${r.byteMatch?' (byte-identical to committed file)':''}`).join('\n')||'(none)',
+-    '{{rollback}}':`${bundlePrefixFor(cfg,st.id)}/rollback.sh — modes: code-only${st.prevRelease?` (→ ${st.prevRelease.id})`:' (unavailable: first release)'} / paired (--acknowledge-data-loss-risk)`,
++    '{{rollback}}':`${join(cfg.target.stackDir,cfg.target.bundleDir,st.id,'rollback.sh')} — prepared, not executed; fresh --authorized required. code-only${codeRollback?` (→ ${st.prevRelease.id})`:' (unavailable: no compatible completed bundle)'} / paired (inspect fingerprint + --acknowledge-data-loss-risk + RESTORE)`,
+   };
+   const rendered=Object.entries(fill).reduce((s,[k,v])=>s.split(k).join(v),tpl);
+   if (st.dryRun) { log('dry-run: record NOT written (would land in '+join(dir,slug+'.md')+')'); st.phases.record={status:'ok',file:'(dry-run, not written)',at:now()}; return; }
+@@ -491,6 +533,8 @@ function phaseRecord(cfg,st) {
+   const out=join(dir,`${slug}.md`);
+   writeFileSync(out,rendered);
+   copyFileSync(out,join(cfg.__build,st.id,'bundle','RECORD.md'));
++  const recorded=targetRun(cfg,`printf '%s' ${q(rendered)} > ${q(join(cfg.target.stackDir,cfg.target.bundleDir,st.id,'RECORD.md'))}`);
++  if(recorded.code!==0) fail('could not archive the release record on the target');
+   st.phases.record={status:'ok',file:relative(cfg.__repo,out),at:now()};
+   log(`record written: ${out}`);
+ }
+@@ -505,22 +549,29 @@ function cmdPlan(cfg,args) {
+ }
+ async function cmdRun(cfg,args) {
+   const id=args.id||stampId();
++  if (!/^[A-Za-z0-9_-]+$/.test(id)) fail('invalid release id');
++  const configHash=sha256(readFileSync(cfg.__path));
++  const targetHash=sha256(JSON.stringify(cfg.target));
+   let st;
+   const stPath=join(cfg.__build,id,'state.json');
+   if (existsSync(stPath)) {
+     st=loadState(cfg,id);
++    if (st.configHash!==configHash || !st.bundleHash && st.phases.package?.status==='ok') fail('legacy/changed configuration; unsafe resume refused');
+     log(`resuming release ${id} (status: ${st.status})`);
+   } else {
+     if (!args.tierConfirmed || !TIERS.includes(args.tierConfirmed)) fail('pass --tier-confirmed surface|logic|data (see `plan`)');
+     const dry=args.dryRun===true;
+-    const prevEntry=registry(cfg).releases.at(-1);
+-    st={id,status:dry?'dry-run':'in-progress',tier:args.tierConfirmed,tierEvidence:proposeTier(cfg,args.base).evidence,
++    const previous=registry(cfg).releases.map(e=>loadState(cfg,e.id)).filter(s=>s.status==='complete' && s.targetHash===targetHash).at(-1);
++    const proposal=proposeTier(cfg,args.base);
++    if (proposal.tier && TIER_RANK[proposal.tier]>TIER_RANK[args.tierConfirmed]) fail('confirmed tier is below the classified risk; review the diff and confirm the higher tier');
++    st={id,configHash,targetHash,status:dry?'dry-run':'in-progress',tier:args.tierConfirmed,tierEvidence:proposeTier(cfg,args.base).evidence,
+       commit:sh('git rev-parse HEAD',{cwd:cfg.__repo}).code===0?sh('git rev-parse HEAD',{cwd:cfg.__repo}).out.trim():null,
+-      createdAt:now(),phases:{},dryRun:dry,prevRelease:prevEntry?{id:prevEntry.id,commit:prevEntry.commit}:null};
++      createdAt:now(),phases:{},dryRun:dry,prevRelease:previous?{id:previous.id,commit:previous.commit,install:previous.install,expectedVersions:previous.expectedVersions,verifyHook:previous.verifyHook}:null};
+     if (!dry) registryAdd(cfg,{id,commit:st.commit,tier:st.tier,at:now()});
+     saveState(cfg,st.id,st);
+   }
+-  if (args.authorized) st.authorized=args.authorized;
++  // Stored quotes are evidence, not authorization for this new invocation.
++  st.authorized=args.authorized||'';
+   let through=args.through||PHASES.at(-1);
+   const endIdx=PHASES.indexOf(through);
+   if (endIdx<0) fail(`--through must be one of: ${PHASES.join(', ')}`);
+@@ -529,11 +580,29 @@ async function cmdRun(cfg,args) {
+     log('dry-run: capping at phase package (no target contact)');
+     through='package'; stopIdx=PHASES.indexOf('package');
+   }
++  if (!st.dryRun && stopIdx>=PHASES.indexOf('transfer')) {
++    if (!st.authorized.trim()) fail('target contact requires --authorized "<current owner quote>"');
++    if (!cfg.hooks?.recordFingerprint) fail('a recordFingerprint hook is required for safe backup/rollback');
++    assertSafety(cfg);
++  }
+   for (const phase of PHASES.slice(0,stopIdx+1)) {
+     if (st.phases[phase]?.status==='ok'||st.phases[phase]?.status==='skipped') continue;
+     log(`— ${phase}`);
+-    await ({gate:phaseGate,package:phasePackage,transfer:phaseTransfer,backup:phaseBackup,rehearse:phaseRehearse,
+-      trial:phaseTrial,install:phaseInstall,verify:phaseVerify,smoke:phaseSmoke,record:phaseRecord})[phase](cfg,st);
++    try {
++      if (PHASES.indexOf(phase)>PHASES.indexOf('package')) {
++        const bundle=join(cfg.__build,st.id,'bundle');
++        if (sha256(readFileSync(join(bundle,'SHA256SUMS')))!==st.bundleHash) fail('bundle manifest changed since packaging');
++        must('sha256sum -c SHA256SUMS',{cwd:bundle},'bundle integrity');
++      }
++      await ({gate:phaseGate,package:phasePackage,transfer:phaseTransfer,backup:phaseBackup,rehearse:phaseRehearse,
++        trial:phaseTrial,install:phaseInstall,verify:phaseVerify,smoke:phaseSmoke,record:phaseRecord})[phase](cfg,st);
++    } catch (error) {
++      st.status='failed'; st.failure={phase,at:now(),message:error.message}; saveState(cfg,st.id,st);
++      if (st.phases.install?.status==='ok') {
++        try { runChain(cfg,st,'hold'); } catch (hold) { error.message+='; CRITICAL maintenance hold failed: '+hold.message; }
++      }
++      throw error;
++    }
+     saveState(cfg,st.id,st);
+   }
+   const done=PHASES.every(p=>['ok','skipped'].includes(st.phases[p]?.status));
+@@ -553,19 +622,29 @@ function cmdStatus(cfg,args) {
+ }
+ async function main() {
+   const argv=process.argv.slice(2);
++  if (argv.includes('--help')) { console.log(USAGE); return; }
+   const args={}; let cfgPath='wp-release.json'; let cmd=null;
++  const allowed={plan:['base'],run:['tierConfirmed','base','authorized','through','id','dryRun'],resume:['id','authorized','through'],status:['id']};
++  const usageError=message=>{ const e=new Error(message+'; use --help for valid arguments');e.exitCode=2;throw e; };
+   for (let i=0;i<argv.length;i++) {
+     const a=argv[i];
+-    if (a==='--config') cfgPath=argv[++i];
+-    else if (a==='--') { for (const p of argv.slice(i+1)) if (!p.startsWith('-')) { cmd=cmd||p; } break; }
+-    else if (a.startsWith('--')) {
+-      const key=a.replace(/^--/,'').replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
++    if (a.startsWith('--')) {
++      const key=a.slice(2).replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
++      if (key!=='config' && !Object.values(allowed).flat().includes(key)) usageError('unknown flag '+a);
+       if (BOOL_FLAGS.has(key)) args[key]=true;
+-      else args[key]=argv[++i]??true;
+-    }
+-    else cmd=cmd||a;
++      else {
++        const value=argv[++i];
++        if (!value || value.startsWith('--')) usageError('missing value for '+a);
++        if(key==='config') cfgPath=value;else args[key]=value;
++      }
++    } else if (!cmd) cmd=a;
++    else usageError('unexpected argument '+a);
+   }
+   if (!cmd) { console.log(USAGE); return; }
++  if (!allowed[cmd]) usageError('unknown command '+cmd);
++  for(const key of Object.keys(args)) if(!allowed[cmd].includes(key)) usageError('flag not supported by '+cmd+': '+key);
++  if(args.id && !/^[A-Za-z0-9_-]+$/.test(args.id)) usageError('invalid release id');
++  if(args.through && !PHASES.includes(args.through)) usageError('invalid --through phase');
+   const cfg=loadConfig(cfgPath);
+   if (cmd==='plan') return cmdPlan(cfg,args);
+   if (cmd==='run') return cmdRun(cfg,args);
+@@ -579,4 +658,4 @@ const USAGE=`usage:
+   release.mjs --config wp-release.json resume [--id <id>] [--authorized "<owner quote>"] [--through <phase>]
+   release.mjs --config wp-release.json status [--id <id>]
+ phases: ${PHASES.join(' → ')}`;
+-main().catch(e=>fail(e.stack||e.message));
++if (process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) main().catch(e=>{console.error(`wp-release: ${e.message}`);process.exitCode=e.exitCode||1;});
+diff --git a/scripts/safety-test.mjs b/scripts/safety-test.mjs
+new file mode 100644
+index 0000000..dd9292d
+--- /dev/null
++++ b/scripts/safety-test.mjs
+@@ -0,0 +1,103 @@
++#!/usr/bin/env node
++// Real chain + generated rollback + PHP maintenance, fake WP transport only.
++// No Docker, SSH, HTTP listeners or external requests.
++import assert from 'node:assert/strict';
++import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,copyFileSync,readdirSync,rmSync,existsSync,symlinkSync} from 'node:fs';
++import {join,dirname} from 'node:path';
++import {tmpdir} from 'node:os';
++import {fileURLToPath} from 'node:url';
++import {createHash} from 'node:crypto';
++import {spawnSync} from 'node:child_process';
++import {rollbackScript,phaseSmoke} from './release.mjs';
++const scripts=dirname(fileURLToPath(import.meta.url));
++if (process.env.WP_RELEASE_PHP) {
++  const bin=mkdtempSync(join(tmpdir(),'wp-release-php-'));
++  symlinkSync(process.env.WP_RELEASE_PHP,join(bin,'php'));
++  process.env.PATH=bin+':'+process.env.PATH;
++  process.on('exit',()=>rmSync(bin,{recursive:true,force:true}));
++}
++assert.equal(spawnSync('php',['-v'],{stdio:'ignore'}).status,0,'Install PHP CLI or set WP_RELEASE_PHP to its absolute executable path');
++const hash=b=>createHash('sha256').update(b).digest('hex');
++const q=s=>"'"+s.replaceAll("'","'\\''")+"'";
++const A='a'.repeat(64),B='b'.repeat(64);
++let count=0;
++const put=(p,s)=>{mkdirSync(dirname(p),{recursive:true});writeFileSync(p,s);};
++function fixture() {
++  const root=mkdtempSync(join(tmpdir(),'wp-release-negative-')),wp=join(root,'wp root');
++  const bundle=join(root,'bundle/new');mkdirSync(bundle,{recursive:true});
++  put(join(wp,'wp-config.php'),'<?php');mkdirSync(join(wp,'wp-includes'),{recursive:true});
++  put(join(wp,'wp-content/themes/fixture/style.css'),'Version: 1.0.0\n');put(join(root,'db'),A+'\n');put(join(root,'home'),'https://fixture.invalid\n');
++  put(join(root,'mock.sh'),`#!/bin/bash\nset -euo pipefail\nR=${q(root)}\nW=${q(wp)}\nprintf '%s\\n' "$*" >> "$R/calls"\nwhile [[ "\${1:-}" == --skip-* ]]; do shift; done\nif [ "$*" != 'db import -' ]; then cat >/dev/null; fi\ncase "$*" in\n 'option get home') cat "$R/home";;\n 'db export -') cat "$R/db";;\n 'db reset --yes') :;;\n 'db import -') [ ! -f "$R/import-fail" ] || exit 43; cat > "$R/db";;\n eval\\ *) echo 1;;\n eval-file\\ *finger.php) if [ -f "$R/bad-fingerprint" ]; then echo bad; else cat "$R/db"; fi;;\n eval-file\\ *verify.php) [ ! -f "$R/verify-fail" ] || exit 44;;\n theme\\ install\\ *) cp "$3" "$W/wp-content/themes/fixture/style.css"; rm -f "$W/.maintenance"; [ ! -f "$R/install-fail" ] || exit 42;;\n 'theme get fixture --field=version') awk '{print $2}' "$W/wp-content/themes/fixture/style.css";;\n 'cache flush') [ ! -f "$R/cache-fail" ] || exit 45;;\n *) echo 'unexpected mock call' >&2; exit 90;;\nesac\n`);
++  const cfg={__repo:root,target:{ssh:'',stackDir:root,wpRoot:wp,wp:`bash ${join(root,'mock.sh')}`,exec:'',filesTar:`tar -czf - -C ${q(wp)} .`,bundleDir:'bundle',backupDir:'backup space',homeUrl:'https://fixture.invalid'},rehearsalCheck:'echo 1;',hooks:{recordFingerprint:'finger.php',verifyState:'verify.php'},install:{themes:[{slug:'fixture',artifact:'fixture.zip'}],plugins:[]},smoke:[]};
++  const st={id:'new',authorized:'fixture-only',expectedVersions:{'theme:fixture':'1.0.1'}};
++  for(const f of ['release-chain.sh','release-common.sh','release-rollback.sh','maintenance.php']) copyFileSync(join(scripts,f),join(bundle,f));
++  put(join(bundle,'fixture.zip'),'Version: 1.0.1\n');put(join(bundle,'finger.php'),'<?php');put(join(bundle,'verify.php'),'<?php');
++  put(join(bundle,'INSTALLED-SHA256SUMS'),hash('Version: 1.0.1\n')+'  wp-content/themes/fixture/style.css\n');
++  function seal(dir=bundle) {writeFileSync(join(dir,'SHA256SUMS'),readdirSync(dir).filter(f=>f!=='SHA256SUMS').sort().map(f=>hash(readFileSync(join(dir,f)))+'  '+f).join('\n')+'\n');}
++  function wrapper(prev=null) {put(join(bundle,'rollback.sh'),rollbackScript(cfg,st,prev));seal();}
++  wrapper();
++  const env={...process.env,WP_RELEASE_ID:'new',WP_RELEASE_AUTHORIZED:'fixture-only',STACK_DIR:root,WP_ROOT:wp,HOME_URL:cfg.target.homeUrl,BUNDLE_HOST_DIR:bundle,BUNDLE_PATH:bundle,BACKUP_DIR:join(root,cfg.target.backupDir),WP_RUN:cfg.target.wp,EXEC_RUN:'',FILES_TAR:cfg.target.filesTar,REHEARSAL_CHECK:'echo 1;',REHEARSAL_PROJECT:'unused',INSTALL_THEMES:'fixture=fixture.zip',INSTALL_PLUGINS:'',EXPECTED_VERSIONS:'theme:fixture=1.0.1',VERIFY_HOOK:'verify.php',FINGERPRINT_HOOK:'finger.php'};
++  const run=(file,args=[],extra={},input='')=>spawnSync('bash',[file,...args],{env:{...env,...extra},encoding:'utf8',input});
++  const chain=(phase,extra={})=>run(join(bundle,'release-chain.sh'),[phase],{WP_RELEASE_PHASE:phase,...extra});
++  const rb=(args,input='')=>run(join(bundle,'rollback.sh'),args,{},input);
++  const good=r=>assert.equal(r.status,0,r.stdout+r.stderr);
++  good(chain('backup'));
++  return {root,wp,bundle,cfg,st,seal,wrapper,chain,rb,good,held:()=>existsSync(join(wp,'.wp-release-lock')),close:()=>rmSync(root,{recursive:true,force:true})};
++}
++async function test(name,fn) { const f=fixture();try {await fn(f);console.log('ok: '+name);count++;}finally{f.close();} }
++await test('partial install retains persistent maintenance',f=>{
++  put(join(f.root,'install-fail'),'');const r=f.chain('install');assert.equal(r.status,42,r.stdout+r.stderr);assert.ok(f.held());assert.ok(existsSync(join(f.wp,'.maintenance')));assert.ok(existsSync(join(f.wp,'wp-content/mu-plugins/wp-release-guard.php')));
++});
++await test('success stays closed until verified reopen',f=>{f.good(f.chain('install'));assert.ok(f.held());f.good(f.chain('verify'));assert.ok(f.held());f.good(f.chain('reopen'));assert.ok(!f.held());});
++await test('changed installed bytes stay closed',f=>{f.good(f.chain('install'));put(join(f.wp,'wp-content/themes/fixture/style.css'),'corrupt');assert.notEqual(f.chain('verify').status,0);assert.ok(f.held());});
++await test('failing verify hook stays closed',f=>{f.good(f.chain('install'));put(join(f.root,'verify-fail'),'');assert.notEqual(f.chain('verify').status,0);assert.ok(f.held());});
++await test('fingerprint mismatch cannot reopen or reset original on resume',f=>{f.good(f.chain('install'));put(join(f.root,'db'),B);assert.notEqual(f.chain('reopen').status,0);assert.notEqual(f.chain('install').status,0);assert.equal(readFileSync(join(f.root,'backup space/new/runtime/FINGERPRINT-PRE'),'utf8').trim(),A);assert.ok(f.held());});
++await test('malformed fingerprint rejected',f=>{put(join(f.root,'bad-fingerprint'),'');assert.notEqual(f.chain('install').status,0);assert.ok(f.held());});
++await test('wrong target has no installation or maintenance mutation',f=>{put(join(f.root,'home'),'https://wrong.invalid');assert.notEqual(f.chain('install').status,0);assert.ok(!f.held());assert.ok(!readFileSync(join(f.root,'calls'),'utf8').includes('theme install'));});
++await test('missing authorization has no installation mutation',f=>{assert.notEqual(f.chain('install',{WP_RELEASE_AUTHORIZED:''}).status,0);assert.ok(!f.held());});
++await test('modified executable bundle rejected',f=>{put(join(f.bundle,'finger.php'),'tampered');assert.notEqual(f.chain('install').status,0);assert.ok(!f.held());});
++await test('another operation maintenance is not adopted',f=>{put(join(f.wp,'.wp-release-lock/owner'),'another-release');assert.notEqual(f.chain('install').status,0);assert.equal(readFileSync(join(f.wp,'.wp-release-lock/owner'),'utf8'),'another-release');});
++await test('maintenance survives expiry and native upgrader removal',f=>{
++  f.good(f.chain('install'));const native=readFileSync(join(f.wp,'.maintenance'),'utf8');assert.match(native,/\$upgrading = time\(\)/);
++  rmSync(join(f.wp,'.maintenance'));const guard=join(f.wp,'wp-content/mu-plugins/wp-release-guard.php');
++  const r=spawnSync('php',['-r',`define('ABSPATH',${JSON.stringify(f.wp+'/')});register_shutdown_function(function(){echo http_response_code();});require ${JSON.stringify(guard)};`],{encoding:'utf8'});
++  assert.match(r.stdout,/503$/);assert.doesNotMatch(r.stdout,/undefined/);
++});
++await test('smoke HTTP failure re-holds maintenance',async f=>{
++  f.good(f.chain('install'));f.good(f.chain('verify'));f.cfg.smoke=[{url:'https://fixture.invalid',status:200}];
++  const saved=globalThis.fetch;globalThis.fetch=async()=>new Response('bad',{status:500});
++  try {await assert.rejects(()=>phaseSmoke(f.cfg,f.st),/returned 500/);assert.ok(f.held());}finally{globalThis.fetch=saved;}
++});
++await test('smoke network failure re-holds maintenance',async f=>{
++  f.good(f.chain('install'));f.cfg.smoke=[{url:'https://fixture.invalid',status:200}];const saved=globalThis.fetch;globalThis.fetch=async()=>{throw Error('network failure');};
++  try {await assert.rejects(()=>phaseSmoke(f.cfg,f.st),/network failure/);assert.ok(f.held());}finally{globalThis.fetch=saved;}
++});
++await test('smoke cannot hold a site whose home identity changed',async f=>{
++  put(join(f.root,'home'),'https://wrong.invalid');
++  await assert.rejects(()=>phaseSmoke(f.cfg,f.st),/wrong target/);assert.ok(!f.held());
++});
++await test('paired requires fresh authorization, risk acknowledgement and current fingerprint',f=>{
++  assert.notEqual(f.rb(['paired']).status,0);
++  assert.notEqual(f.rb(['paired','--authorized','fixture-only','--acknowledge-data-loss-risk','--expected-current-fingerprint',B],'RESTORE\n').status,0);
++  assert.ok(!f.held());assert.equal(readFileSync(join(f.root,'db'),'utf8').trim(),A);
++});
++await test('paired restores SQL AND files, removes post-backup files',f=>{
++  f.good(f.chain('install'));put(join(f.root,'db'),B+'\n');put(join(f.wp,'post-backup.txt'),'new');
++  f.good(f.rb(['paired','--authorized','fixture-only','--acknowledge-data-loss-risk','--expected-current-fingerprint',B],'RESTORE\n'));
++  assert.equal(readFileSync(join(f.root,'db'),'utf8').trim(),A);assert.equal(readFileSync(join(f.wp,'wp-content/themes/fixture/style.css'),'utf8'),'Version: 1.0.0\n');assert.ok(!existsSync(join(f.wp,'post-backup.txt')));assert.ok(!f.held());
++});
++await test('paired import failure never reports success or reopens',f=>{
++  f.good(f.chain('install'));put(join(f.root,'import-fail'),'');const r=f.rb(['paired','--authorized','fixture-only','--acknowledge-data-loss-risk','--expected-current-fingerprint',A],'RESTORE\n');assert.equal(r.status,43,r.stderr);assert.ok(f.held());assert.doesNotMatch(r.stdout,/rollback: paired complete/);
++});
++await test('corrupt paired backup rejected before deletion',f=>{
++  put(join(f.root,'backup space/new/files.tgz'),'broken');const r=f.rb(['paired','--authorized','fixture-only','--acknowledge-data-loss-risk','--expected-current-fingerprint',A],'RESTORE\n');assert.notEqual(r.status,0);assert.ok(!f.held());assert.ok(existsSync(join(f.wp,'wp-config.php')));
++});
++await test('code-only preserves compound argv, verifies old bytes and never imports SQL',f=>{
++  f.good(f.chain('install'));const prev={id:'old',install:f.cfg.install,expectedVersions:{'theme:fixture':'1.0.0'},verifyHook:'verify.php'};
++  const old=join(f.root,'bundle/old');mkdirSync(old);put(join(old,'fixture.zip'),'Version: 1.0.0\n');put(join(old,'verify.php'),'<?php');put(join(old,'INSTALLED-SHA256SUMS'),hash('Version: 1.0.0\n')+'  wp-content/themes/fixture/style.css\n');f.seal(old);f.wrapper(prev);
++  f.good(f.rb(['code-only','--authorized','fixture-only']));assert.ok(!f.held());assert.equal(readFileSync(join(f.root,'db'),'utf8').trim(),A);assert.doesNotMatch(readFileSync(join(f.root,'calls'),'utf8'),/db import/);
++});
++await test('first release code-only refuses without side effects',f=>{assert.notEqual(f.rb(['code-only','--authorized','fixture-only']).status,0);assert.ok(!f.held());});
++const cli=spawnSync(process.execPath,[join(scripts,'cli-test.mjs')],{encoding:'utf8'});
++assert.equal(cli.status,0,cli.stdout+cli.stderr);console.log(cli.stdout.trim());
++console.log(`safety: ${count} executable regression cases passed`);
+diff --git a/scripts/safety.mjs b/scripts/safety.mjs
+new file mode 100644
+index 0000000..40a2438
+--- /dev/null
++++ b/scripts/safety.mjs
+@@ -0,0 +1,32 @@
++import {createHash} from 'node:crypto';
++import {readFileSync,readdirSync,writeFileSync} from 'node:fs';
++import {join,dirname,resolve,basename} from 'node:path';
++import {tmpdir} from 'node:os';
++import {fileURLToPath} from 'node:url';
++import {spawnSync} from 'node:child_process';
++const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..');
++export function safetyHash() {
++  const hash=createHash('sha256');
++  function walk(dir) { for(const e of readdirSync(join(ROOT,dir),{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) {
++    const path=join(dir,e.name); if(e.isDirectory()) walk(path); else { hash.update(path+'\0');hash.update(readFileSync(join(ROOT,path))); }
++  }}
++  for(const dir of ['scripts','assets','fixture']) walk(dir);
++  return hash.digest('hex');
++}
++export function writeSafetyReceipt() {
++  writeFileSync(join(ROOT,'.self-test.json'),JSON.stringify({hash:safetyHash(),passedAt:new Date().toISOString(),php:process.env.WP_RELEASE_PHP||'php',suite:'negative + docker release/rollback'},null,2));
++}
++export function assertSafety(cfg) {
++  // Only the built-in, local, disposable Docker fixture may bootstrap a new
++  // receipt. This is not a CLI skip flag and cannot authorize another target.
++  const testWork=process.env.WP_RELEASE_TEST_WORKSPACE;
++  if(testWork && cfg.__repo===resolve(testWork) && dirname(cfg.__repo)===resolve(tmpdir()) && basename(cfg.__repo).startsWith('wp-release-selftest-') &&
++    cfg.project==='fixture' && cfg.target.ssh==='' && cfg.target.stackDir===cfg.__repo && cfg.target.wp==='docker compose run --rm -T cli wp' &&
++    cfg.target.exec==='docker compose exec -T -w /var/www/html wordpress' && cfg.target.wpRoot==='/var/www/html' &&
++    readFileSync(join(cfg.__repo,'compose.yaml'),'utf8')===readFileSync(join(ROOT,'fixture/compose.yaml'),'utf8')) return;
++  let receipt;
++  try { receipt=JSON.parse(readFileSync(join(ROOT,'.self-test.json'),'utf8')); } catch {}
++  if(receipt?.hash!==safetyHash()) throw new Error('Safety certification missing/stale. Run node '+join(ROOT,'scripts/self-test.mjs')+'; no target contact occurred.');
++  const r=spawnSync(process.execPath,[join(ROOT,'scripts/safety-test.mjs')],{encoding:'utf8',env:{...process.env,...(receipt.php!=='php'?{WP_RELEASE_PHP:process.env.WP_RELEASE_PHP||receipt.php}:{})}});
++  if(r.status!==0) throw new Error('Safety regressions failed; release blocked before target contact. Run scripts/safety-test.mjs.\n'+(r.stdout+r.stderr).slice(-2000));
++}
+diff --git a/scripts/self-test.mjs b/scripts/self-test.mjs
+index 1f36525..5eda5c3 100644
+--- a/scripts/self-test.mjs
++++ b/scripts/self-test.mjs
+@@ -10,22 +10,35 @@
+  */
+ import {spawnSync} from 'node:child_process';
+ import {cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, readdirSync} from 'node:fs';
+-import {join, dirname, resolve} from 'node:path';
++import {join, dirname, resolve, basename} from 'node:path';
++import {tmpdir} from 'node:os';
+ import {fileURLToPath} from 'node:url';
++import {writeSafetyReceipt} from './safety.mjs';
+ 
+ const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+ const FIXTURE = join(SKILL, 'fixture');
+-const WORK = process.env.WP_RELEASE_SELFTEST_DIR || `/tmp/wp-release-selftest-${Date.now()}`;
++const WORK = process.env.WP_RELEASE_SELFTEST_DIR || join(tmpdir(),`wp-release-selftest-${Date.now()}`);
+ const PORT = process.env.WP_RELEASE_SELFTEST_PORT || '8095';
+ 
+ const sh = (cmd, opts={}) => spawnSync(cmd, {shell:true, encoding:'utf8', ...opts});
+-const die = m => { console.error(`self-test FAIL: ${m}`); process.exit(1); };
++const die = m => { throw new Error(`self-test FAIL: ${m}`); };
+ const step = m => console.log(`\n== ${m}`);
+ const ok = m => console.log(`   ok: ${m}`);
+ 
+ function docker(c, fatal=true) { const r = sh(`docker compose -p wprelease-selftest -f ${join(WORK,'compose.yaml')} ${c}`, {cwd:WORK}); if (fatal && r.status!==0) die(`${c}\n${(r.stdout||'')+(r.stderr||'')}`); return r; }
+ function wp(args, fatal=true) { return docker(`run --rm -T cli sh -c 'wp ${args}'`, fatal); }
+ 
++let ownedTarget=false;
++try {
++if(dirname(resolve(WORK))!==resolve(tmpdir()) || !basename(WORK).startsWith('wp-release-selftest-') || existsSync(WORK)) die('self-test requires a NEW wp-release-selftest-* directory directly under the temporary directory');
++rmSync(join(SKILL,'.self-test.json'),{force:true});
++for (const file of ['plan-test.mjs','safety-test.mjs']) {
++  const result=spawnSync(process.execPath,[join(SKILL,'scripts',file)],{encoding:'utf8'});
++  if(result.status!==0) die(file+'\n'+result.stdout+result.stderr);
++  console.log(result.stdout.trim());
++}
++process.env.WP_RELEASE_TEST_WORKSPACE=WORK;
++process.env.WP_PORT=PORT;
+ /* 0. Never delete another run's projects or volumes. Refuse a collision. */
+ const inventory = sh('docker compose ls -a --format json');
+ if (inventory.status !== 0) die('cannot inspect existing compose projects');
+@@ -34,19 +47,26 @@ if (existing.length) die('existing wp-release projects require operator review;
+ 
+ /* 1. workspace */
+ step(`fixture workspace ${WORK}`);
+-rmSync(WORK,{recursive:true,force:true}); mkdirSync(WORK,{recursive:true});
++mkdirSync(WORK);
+ for (const f of readdirSync(FIXTURE)) cpSync(join(FIXTURE,f), join(WORK,f), {recursive:true});
+ writeFileSync(join(WORK,'.gitignore'), '.build/\nbackups/\nbundle/\ndocs/\n');
+ mkdirSync(join(WORK,'bundle'),{recursive:true});   // pre-create: docker bind mounts would make it root-owned
+ mkdirSync(join(WORK,'backups'),{recursive:true});
++const home=`http://mliu:${PORT}`;
++const config=JSON.parse(readFileSync(join(WORK,'wp-release.json'),'utf8'));
++const oldHome=config.target.homeUrl;
++config.target.homeUrl=home;
++for(const s of config.smoke) s.url=s.url.replace(oldHome,home);
++writeFileSync(join(WORK,'wp-release.json'),JSON.stringify(config,null,2));
+ 
+ /* 2. target stack + WP + active theme/plugin */
+ step('target stack (db + wordpress) up + core install');
++ownedTarget=true;
+ docker('up -d --wait db wordpress');
+ let installed=false;
+ for (let i=0;i<45 && !installed;i++) {
+   installed = wp(`core is-installed`, false).status===0
+-           || wp(`core install --url=http://127.0.0.1:${PORT} --title=Fixture --admin_user=admin --admin_password=adminpass --admin_email=admin@example.com --skip-email`, false).status===0;
++           || wp(`core install --url=http://mliu:${PORT} --title=Fixture --admin_user=admin --admin_password=adminpass --admin_email=admin@example.com --skip-email`, false).status===0;
+   if (!installed) spawnSync('sleep',['2']);
+ }
+ if (!installed) die('could not install WP core');
+@@ -58,8 +78,8 @@ wp(`plugin activate fixture-plugin`);
+ wp(`post create --post_title='Hello fixture' --post_status=publish`);
+ ok('target live: theme+plugin active, 1 post');
+ 
+-function release(configFile, tier) {
+-  const r = sh(`node ${join(SKILL,'scripts','release.mjs')} --config ${join(WORK,configFile)} run --tier-confirmed ${tier} --authorized "self-test authorization"`, {cwd:WORK});
++function release(configFile, tier, through='record') {
++  const r = sh(`node ${join(SKILL,'scripts','release.mjs')} --config ${join(WORK,configFile)} run --tier-confirmed ${tier} --through ${through} --authorized "self-test authorization"`, {cwd:WORK});
+   const out=(r.stdout||'')+(r.stderr||'');
+   console.log(out.split('\n').filter(l=>l.startsWith('wp-release:')).join('\n'));
+   if (r.status!==0) die(`release (${configFile}, ${tier}) failed:\n${out.split('\n').slice(-25).join('\n')}`);
+@@ -68,7 +88,22 @@ function release(configFile, tier) {
+ /* 3. release 1: surface + local rehearsal */
+ step('release 1 — surface tier, rehearsal local');
+ sh(`git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm initial`, {cwd:WORK});
+-release('wp-release.json','surface');
++release('wp-release.json','surface','install');
++const driver=join(SKILL,'scripts/release.mjs');
++const latest=()=>JSON.parse(readFileSync(join(WORK,'.build/wp-release/registry.json'),'utf8')).releases.at(-1).id;
++const resume=(extra='--authorized "self-test authorization"')=>sh(`node ${driver} --config ${join(WORK,'wp-release.json')} resume --id ${latest()} ${extra}`,{cwd:WORK});
++const httpCode=()=>sh(`curl --max-time 10 -s -o /dev/null -w '%{http_code}' ${home}`).stdout;
++if(httpCode()!=='503') die('native site must stay closed after install');
++if(resume('').status===0) die('resume reused a stored authorization');
++docker(`exec -T wordpress sh -c 'echo damaged >> wp-content/themes/fixture-theme/style.css'`);
++const broken=resume();
++if(broken.status===0 || !/installed files/.test(broken.stdout+broken.stderr)) die('corrupt installed file did not fail verification');
++if(httpCode()!=='503') die('verification failure reopened the native site');
++docker('cp wp-content/themes/fixture-theme/style.css wordpress:/var/www/html/wp-content/themes/fixture-theme/style.css');
++docker('exec -T wordpress chown www-data:www-data wp-content/themes/fixture-theme/style.css');
++const recovered=resume();if(recovered.status!==0) die('repair/resume failed: '+recovered.stdout+recovered.stderr);
++if(httpCode()!=='200') die('verified/resumed site did not reopen');
++ok('real 503 hold, corruption rejection, fresh authorization and repair/resume');
+ if (!readdirSync(join(WORK,'docs','releases')).some(f=>f.endsWith('.md'))) die('no record written for release 1');
+ 
+ /* 4. mutate + bump */
+@@ -100,9 +135,31 @@ release('wp-release-onhost.json','logic');
+ const got = wp(`plugin get fixture-plugin --field=version`).stdout.trim();
+ if (got !== '1.0.2') die(`fixture-plugin version after release 3: ${got}`);
+ 
++/* Recovery against actual WP-CLI/DB/files, never a live site. */
++step('real code-only and paired rollback');
++const rollback=join(WORK,'bundle/releases',latest(),'rollback.sh');
++// Recovery must work even when the currently installed plugin cannot load.
++docker(`exec -T wordpress sh -c 'echo "<?php broken plugin" > wp-content/plugins/fixture-plugin/fixture-plugin.php'`);
++let recovery=sh(`bash ${rollback} code-only --authorized 'fixture rollback'`,{cwd:WORK});
++if(recovery.status!==0) die('code-only rollback failed: '+recovery.stdout+recovery.stderr);
++if(wp('plugin get fixture-plugin --field=version').stdout.trim()!=='1.0.1') die('code-only did not reinstall the completed previous release');
++const extraPost=wp(`post create --post_title='Post-backup fixture' --post_status=publish --porcelain`).stdout.trim();
++docker(`exec -T wordpress sh -c 'echo new > post-backup.txt'`);
++wp('db query "CREATE TABLE wp_postbackup_fixture (id INT)"');
++const inspect=sh(`bash ${rollback} inspect`,{cwd:WORK});
++const current=/^fingerprint: ([0-9a-f]{64})$/m.exec(inspect.stdout)?.[1];
++if(!current) die('rollback inspect lacks a fresh fingerprint');
++recovery=sh(`bash ${rollback} paired --authorized 'fixture paired rollback' --acknowledge-data-loss-risk --expected-current-fingerprint ${current}`,{cwd:WORK,input:'RESTORE\n'});
++if(recovery.status!==0) die('paired rollback failed: '+recovery.stdout+recovery.stderr);
++if(wp(`post get ${extraPost} --field=ID`,false).status===0) die('paired did not restore SQL');
++if(docker('exec -T wordpress test -e post-backup.txt',false).status===0) die('paired did not remove post-backup files');
++if(wp('db query "SELECT 1 FROM wp_postbackup_fixture"',false).status===0) die('paired did not remove a post-backup table');
++if(httpCode()!=='200') die('verified rollback did not reopen');
++ok('real previous ZIP install + paired DB/files reset/restore + fingerprint + reopen');
++
+ /* 7. teardown + leftovers */
+ step('teardown and leftovers');
+-docker('down -v --remove-orphans');
++docker('down -v --remove-orphans');ownedTarget=false;
+ let projects=[];
+ try { projects = JSON.parse(sh(`docker compose ls -a --format json`).stdout||'[]'); } catch {}
+ const leftovers = projects.filter(p => /wprelease/.test(p.Name||p.Project||''));
+@@ -110,4 +167,13 @@ if (leftovers.length) die(`leftover compose projects: ${JSON.stringify(leftovers
+ const records = readdirSync(join(WORK,'docs','releases')).filter(f=>f.endsWith('.md'));
+ if (records.length !== 3) die(`expected 3 records, found ${records.length}: ${records}`);
+ ok(`${records.length} records; no leftover rehearsal projects; target torn down`);
+-console.log('\nSELF-TEST PASS');
++writeSafetyReceipt();
++console.log('\nSELF-TEST PASS — safety receipt written for these exact sources');
++} catch (error) {
++  console.error(error.message);process.exitCode=1;
++} finally {
++  if(ownedTarget) {
++    const cleanup=docker('down -v --remove-orphans',false);
++    if(cleanup.status!==0) {console.error('CRITICAL: fixture cleanup failed; review '+WORK);process.exitCode=1;}
++  }
++}

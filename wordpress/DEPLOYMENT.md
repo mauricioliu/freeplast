@@ -10,10 +10,12 @@
 
 **Notas anteriores (históricas):**
 
-> **2026-09-09: PUBLICACIÓN BLOQUEADA.** El gate de Freeplast está verde, pero
-> el driver actual falla en rollback y conservación de mantenimiento al fallar
-> install. No publicar hasta corregir esas ramas y sus pruebas. Evidencia:
-> [preflight bloqueado](docs/releases/2026-09-09-preflight-blocked/README.md).
+> **2026-09-09: DRIVER CORREGIDO; SIN RELEASE NUEVO.** Los fallos del
+> [preflight anterior](docs/releases/2026-09-09-preflight-blocked/README.md)
+> fueron corregidos y probados con regresiones y recuperación real en fixtures
+> Docker. [Cambios y evidencia](docs/releases/2026-09-09-wp-release-hardening/README.md).
+> No se publicó Freeplast: el próximo release exige autorización expresa,
+> recibo válido del self-test y su ceremonia íntegra contra el target.
 >
 > **2026-09-09 releases move to `wp-release`.** New releases of the Woo stack
 > run through the generic skill `~/.agents/skills/wp-release/` driven by the
