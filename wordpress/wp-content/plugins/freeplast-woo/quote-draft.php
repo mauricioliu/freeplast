@@ -181,6 +181,21 @@ function fpw_insert_options_row( string $name, string $value ): bool {
 	return false !== $result && null !== $result;
 }
 
+/** The replacing write: an unconditional UPDATE by option_name — zero rows when the row does not exist yet. Errors are suppressed like the insert's: losing a race is an expected outcome, not a fault. */
+function fpw_update_options_row( string $name, string $value ): bool {
+	global $wpdb;
+	$was_suppressed = $wpdb->suppress_errors();
+	$result = $wpdb->query(
+		$wpdb->prepare(
+			"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s",
+			$value,
+			$name
+		)
+	);
+	$wpdb->suppress_errors( $was_suppressed );
+	return is_numeric( $result ) && 0 < (int) $result;
+}
+
 function fpw_insert_draft_row( int $order_id, array $payload ): bool {
 	return fpw_insert_options_row( fpw_draft_row_name( $order_id ), wp_json_encode( $payload ) );
 }
@@ -226,6 +241,11 @@ function fpw_read_draft_work( int $order_id ): ?array {
 	if ( null === $raw ) { return null; }
 	$work = json_decode( $raw, true );
 	return is_array( $work ) ? $work : null;
+}
+
+/** The saved work's revision, 0 when no work exists yet (issue #55 names it the binding revision of a preview). */
+function fpw_draft_work_revision( ?array $work ): int {
+	return is_array( $work ) ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0;
 }
 
 /** The exact compare-and-set write: applied only while the stored row still holds the value this save was rendered from. A concurrent or interleaved write makes it lose — the revision conflict, not a fault. */
@@ -427,14 +447,14 @@ function fpw_draft_screen_order() {
 }
 
 /**
- * Request-scoped stash for the save outcome (ADR-0005): admin_init runs the
- * save BEFORE wp-admin renders (so a CSRF refusal is a real 403, not a 200
- * after headers); the screen callback reads the outcome back to render its
- * notice. Direct invocation without the admin_init pass (offline tests) is
- * supported: the callback runs the same handler itself when the stash is
- * empty.
+ * Request-scoped stash for the handled action's outcome (ADR-0005): admin_init
+ * runs the action BEFORE wp-admin renders (so a CSRF refusal is a real 403,
+ * not a 200 after headers); the screen callback reads the outcome back to
+ * render its notice. Direct invocation without the admin_init pass (offline
+ * tests) is supported: the callback runs the same handler itself when the
+ * stash is empty.
  */
-function fpw_pending_draft_save( ?array $set = null ): ?array {
+function fpw_pending_draft_outcome( ?array $set = null ): ?array {
 	static $pending = null;
 	return null === $set ? $pending : ( $pending = $set );
 }
@@ -449,7 +469,7 @@ function fpw_draft_preview_row_name( int $order_id ): string {
 	return FPW_DRAFT_PREVIEW_PREFIX . $order_id;
 }
 
-/** The stored preview of one request, decoded — the reviewed projection and the work revision it was rendered from. */
+/** The stored preview of one request, decoded — the reviewed projection and the work revision it was rendered from. Unlike the draft/work readers this one guards on $wpdb: the markup builder reads the preview row itself and must stay callable in wpdb-less offline render contexts. */
 function fpw_read_draft_preview( int $order_id ): ?array {
 	if ( $order_id <= 0 ) { return null; }
 	global $wpdb;
@@ -458,6 +478,11 @@ function fpw_read_draft_preview( int $order_id ): ?array {
 	if ( ! is_string( $raw ) || '' === $raw ) { return null; }
 	$preview = json_decode( $raw, true );
 	return is_array( $preview ) && is_array( $preview['projection'] ?? null ) ? $preview : null;
+}
+
+/** The preview's binding invariant (issue #55): a stored preview answers only while the saved work still sits on the revision it reviewed — any later save leaves it obsolete, unable to authorize issuing different values. */
+function fpw_draft_preview_is_obsolete( array $preview, ?array $work ): bool {
+	return max( 0, (int) ( $preview['revision'] ?? 0 ) ) !== fpw_draft_work_revision( $work );
 }
 
 /**
@@ -469,22 +494,11 @@ function fpw_read_draft_preview( int $order_id ): ?array {
  * revision it names is still the stored one.
  */
 function fpw_write_draft_preview_row( int $order_id, array $payload ): bool {
-	global $wpdb;
-	$update = static function () use ( $wpdb, $order_id, $payload ): bool {
-		$was_suppressed = $wpdb->suppress_errors();
-		$updated = $wpdb->query(
-			$wpdb->prepare(
-				"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s",
-				wp_json_encode( $payload ),
-				fpw_draft_preview_row_name( $order_id )
-			)
-		);
-		$wpdb->suppress_errors( $was_suppressed );
-		return is_numeric( $updated ) && 0 < (int) $updated;
-	};
-	if ( $update() ) { return true; }
-	if ( fpw_insert_options_row( fpw_draft_preview_row_name( $order_id ), wp_json_encode( $payload ) ) ) { return true; }
-	return $update();
+	$name  = fpw_draft_preview_row_name( $order_id );
+	$value = wp_json_encode( $payload );
+	if ( fpw_update_options_row( $name, $value ) ) { return true; }
+	if ( fpw_insert_options_row( $name, $value ) ) { return true; }
+	return fpw_update_options_row( $name, $value );
 }
 
 /** The preview's server-side half: CSRF (its own nonce), then the shared projection of the CURRENT saved work, frozen with its revision; the outcome is stashed for the screen. Previewing approves nothing, issues no document and sends no mail. */
@@ -498,13 +512,13 @@ function fpw_handle_draft_preview_request( $order, array $draft ): void {
 	$payload    = array(
 		'schema'     => 1,
 		'order_id'   => $order_id,
-		'revision'   => $work ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0,
+		'revision'   => fpw_draft_work_revision( $work ),
 		'created_at' => time(),
 		'created_by' => get_current_user_id(),
 		'projection' => $projection,
 	);
 	$written = fpw_write_draft_preview_row( $order_id, $payload );
-	fpw_pending_draft_save( array( 'order_id' => $order_id, 'result' => array( 'state' => $written ? 'previewed' : 'preview-failed', 'preview' => $payload ) ) );
+	fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => $written ? 'previewed' : 'preview-failed', 'preview' => $payload ) ) );
 }
 
 /** The posted screen action, when any: a draft save or a preview generation. */
@@ -515,13 +529,13 @@ function fpw_draft_posted_action(): ?string {
 }
 
 /** One screen action's server-side half: CSRF (its own nonce), then the guarded save or the preview generation; the outcome is stashed for the screen. */
-function fpw_handle_draft_save_request( $order, array $draft, string $action = 'save' ): void {
+function fpw_handle_draft_action_request( $order, array $draft, string $action ): void {
 	if ( 'preview' === $action ) { fpw_handle_draft_preview_request( $order, $draft ); return; }
 	if ( ! wp_verify_nonce( (string) ( $_POST['fpw_draft_nonce'] ?? '' ), fpw_draft_save_action( (int) $order->get_id() ) ) ) {
 		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo.', '', array( 'response' => 403 ) );
 	}
 	$result = fpw_save_draft_work( (int) $order->get_id(), $draft, wp_unslash( $_POST ), get_current_user_id() );
-	fpw_pending_draft_save( array( 'order_id' => (int) $order->get_id(), 'result' => $result ) );
+	fpw_pending_draft_outcome( array( 'order_id' => (int) $order->get_id(), 'result' => $result ) );
 }
 
 /**
@@ -530,8 +544,8 @@ function fpw_handle_draft_save_request( $order, array $draft, string $action = '
  * own CSRF nonce, then the guarded save or the preview generation. Requests
  * without a resolved draft edit nothing; the screen answers them honestly.
  */
-function fpw_handle_draft_save(): void {
-	fpw_pending_draft_save( null );   // a fresh request starts with no outcome
+function fpw_handle_draft_posted_action(): void {
+	fpw_pending_draft_outcome( null );   // a fresh request starts with no outcome
 	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) ) { return; }
 	$action = fpw_draft_posted_action();
 	if ( null === $action ) { return; }
@@ -539,12 +553,12 @@ function fpw_handle_draft_save(): void {
 	$order = fpw_draft_screen_order();
 	$draft = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	if ( ! $draft ) { return; }
-	fpw_handle_draft_save_request( $order, $draft, $action );
+	fpw_handle_draft_action_request( $order, $draft, $action );
 }
-add_action( 'admin_init', 'fpw_handle_draft_save' );
+add_action( 'admin_init', 'fpw_handle_draft_posted_action' );
 
-/** The save outcome's screen notice, in the screen's own language. */
-function fpw_draft_save_notice( array $result ): array {
+/** The handled action's outcome notice, in the screen's own language. */
+function fpw_draft_outcome_notice( array $result ): array {
 	if ( 'saved' === $result['state'] ) {
 		return array(
 			'class' => 'ok',
@@ -589,11 +603,12 @@ function fpw_draft_save_notice( array $result ): array {
 
 /**
  * The screen callback: capability first, then resolve honestly — the request,
- * its draft, its saved work, or a state that invents nothing. A POST save was
- * already processed by admin_init ahead of the header render; the callback
- * renders its outcome and always re-renders the form from the stored state —
- * on a conflict that is the preserved accepted edit, on an invalid save the
- * untouched stored values. The same holds for a preview generation.
+ * its draft, its saved work, or a state that invents nothing. A posted action
+ * (save or preview) was already processed by admin_init ahead of the header
+ * render; the callback renders its outcome and always re-renders the form
+ * from the stored state — on a conflict that is the preserved accepted edit,
+ * on an invalid save the untouched stored values. The same holds for a
+ * preview generation.
  */
 function fpw_render_quote_draft_screen(): void {
 	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
@@ -601,15 +616,16 @@ function fpw_render_quote_draft_screen(): void {
 	$draft    = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	$work     = $order ? fpw_read_draft_work( (int) $order->get_id() ) : null;
 	$notice   = null;
-	$handled  = fpw_pending_draft_save();
-	if ( $order && $draft && null !== fpw_draft_posted_action() && (int) ( $handled['order_id'] ?? 0 ) !== (int) $order->get_id() ) {
+	$handled  = fpw_pending_draft_outcome();
+	$action   = fpw_draft_posted_action();
+	if ( $order && $draft && null !== $action && (int) ( $handled['order_id'] ?? 0 ) !== (int) $order->get_id() ) {
 		// No admin_init pass on this request: run the same server-side process here.
-		fpw_handle_draft_save_request( $order, $draft, fpw_draft_posted_action() );
-		$handled = fpw_pending_draft_save();
+		fpw_handle_draft_action_request( $order, $draft, $action );
+		$handled = fpw_pending_draft_outcome();
 	}
 	if ( $handled && (int) ( $handled['order_id'] ?? 0 ) === (int) ( $order ? $order->get_id() : 0 ) ) {
 		$result = $handled['result'];
-		$notice = fpw_draft_save_notice( $result );
+		$notice = fpw_draft_outcome_notice( $result );
 		if ( in_array( $result['state'], array( 'saved', 'conflict' ), true ) && array_key_exists( 'work', $result ) ) {
 			$work = $result['work'];
 		}
@@ -791,7 +807,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 	$stale_dispatch = fpw_draft_dispatch_stale( $work );
 	$missing        = array();
 	$lines          = array();
-	$subtotal       = null;
+	$subtotal       = 0;
 	$all_priced     = ! empty( $values['lines'] );
 	foreach ( $values['lines'] as $i => $work_line ) {
 		$item      = is_array( $items[ $i ] ?? null ) ? $items[ $i ] : array();
@@ -803,7 +819,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 			$missing[] = 'Falta el precio neto de «' . (string) ( $item['name'] ?? ( 'Línea ' . ( $i + 1 ) ) ) . '»: la línea queda pendiente, no en cero.';
 		} else {
 			$line_total = $quantity * $price;
-			$subtotal   = ( $subtotal ?? 0 ) + $line_total;
+			$subtotal  += $line_total;
 		}
 		$lines[] = array(
 			'index'        => $i,
@@ -836,10 +852,13 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 	if ( empty( $tax_config ) ) {
 		$missing[] = 'Falta la política fiscal confirmada (tasa de IVA): sin ella el IVA y el total quedan pendientes.';
 	} elseif ( $all_priced && ( ! $with_dispatch || null !== $dispatch ) ) {
-		$tax_rate = (int) $tax_config['rate_permille'];
-		$tax_base = $subtotal + ( $with_dispatch && $tax_config['applies_to_dispatch'] ? ( $dispatch ?? 0 ) : 0 );
-		$tax      = fpw_quotation_tax_amount( $tax_base, $tax_rate );
-		$total    = $subtotal + ( $with_dispatch ? ( $dispatch ?? 0 ) : 0 ) + $tax;
+		// Here the subtotal is a computed integer (every line priced) and, when
+		// dispatch is requested, the dispatch amount is a fresh integer.
+		$tax_rate  = (int) $tax_config['rate_permille'];
+		$net_total = $subtotal + ( $with_dispatch ? $dispatch : 0 );
+		$tax_base  = ( $with_dispatch && $tax_config['applies_to_dispatch'] ) ? $net_total : $subtotal;
+		$tax       = fpw_quotation_tax_amount( $tax_base, $tax_rate );
+		$total     = $net_total + $tax;
 	}
 	return array(
 		'schema'                  => 1,
@@ -878,6 +897,11 @@ function fpw_draft_amount_value_html( ?int $amount, string $pending_note = '' ):
 /** One exact integer CLP amount as the offer states it — deterministic text for a deterministic amount. */
 function fpw_draft_clp_html( int $amount ): string {
 	return esc_html( number_format( $amount, 0, ',', '.' ) ) . ' CLP';
+}
+
+/** The confirmed IVA rate as its percent label — 190‰ renders «19», 125‰ «12,5» (issue #55). */
+function fpw_draft_tax_rate_percent_html( int $rate_permille ): string {
+	return esc_html( rtrim( rtrim( number_format( $rate_permille / 10, 1, ',', '.' ), '0' ), ',' ) );
 }
 
 /** The offer-validity input: pre-filled with the saved days, else empty with the default as its placeholder. */
@@ -1089,8 +1113,8 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 		return $heading . '<p>' . fpw_draft_pending_html() . '</p>' . fpw_draft_preview_generate_html( $order_id ) . '</section>';
 	}
 	$revision = max( 0, (int) ( $preview['revision'] ?? 0 ) );
-	$current  = $work ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0;
-	$obsolete = $revision !== $current;
+	$current  = fpw_draft_work_revision( $work );
+	$obsolete = fpw_draft_preview_is_obsolete( $preview, $work );
 	$html = $heading
 		. ( $obsolete
 			? '<p class="fpw-draft__stale">Vista previa obsoleta: el trabajo del borrador cambió después de esta vista previa (quedó en la revisión ' . $current . ', esta revisó la ' . $revision . '). Ya no refleja lo guardado: genera una nueva. Ninguna aprobación futura puede usar esta vista previa para emitir valores distintos a los revisados.</p>'
@@ -1108,7 +1132,7 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 	}
 	$html .= null === ( $projection['tax_rate_permille'] ?? null )
 		? '<tr><th scope="row">IVA</th><td></td><td class="fpw-draft__line-total">' . fpw_draft_pending_html() . '</td></tr>'
-		: '<tr><th scope="row">IVA (' . esc_html( rtrim( rtrim( number_format( (int) $projection['tax_rate_permille'] / 10, 1, ',', '.' ), '0' ), ',' ) ) . '%)</th><td></td><td class="fpw-draft__line-total">' . fpw_draft_clp_html( (int) $projection['tax'] ) . '</td></tr>';
+		: '<tr><th scope="row">IVA (' . fpw_draft_tax_rate_percent_html( (int) $projection['tax_rate_permille'] ) . '%)</th><td></td><td class="fpw-draft__line-total">' . fpw_draft_clp_html( (int) $projection['tax'] ) . '</td></tr>';
 	$html .= '<tr><th scope="row">Total</th><td></td><td class="fpw-draft__line-total">' . ( is_int( $projection['total'] ?? null ) ? fpw_draft_clp_html( (int) $projection['total'] ) : fpw_draft_pending_html() ) . '</td></tr>'
 		. '</tbody></table>';
 	if ( ! empty( $projection['dispatch_requested'] ) && '' !== (string) ( $projection['destination'] ?? '' ) ) {
@@ -1147,7 +1171,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$units           = 0;
 	foreach ( $items as $line ) { $units += max( 0, (int) ( $line['quantity'] ?? 0 ) ); }
 	$with_dispatch   = fpw_draft_requests_dispatch( $draft );
-	$revision        = $work ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0;
+	$revision        = fpw_draft_work_revision( $work );
 	$values          = fpw_draft_work_values( $draft, $work );
 	$dispatch_stale  = fpw_draft_dispatch_stale( $work );
 	$dispatch_amount = $values['dispatch_amount'];
@@ -1173,7 +1197,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 
 	$sections = fpw_draft_notice_html( $notice )
 		. '<div style="display:grid;gap:16px;min-width:0">'
-		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
+		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
 		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale ) . '</section>'
@@ -1188,11 +1212,13 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$dispatch_state = ! $with_dispatch
 		? 'No requerida (sin despacho)'
 		: ( null !== $dispatch_amount ? ( $dispatch_stale ? 'Requiere revisión' : 'Ingresada manualmente' ) : fpw_draft_pending_html() );
-	$preview_state = ! is_array( $preview )
-		? fpw_draft_pending_html()
-		: ( (int) ( $preview['revision'] ?? -1 ) !== $revision
-			? 'Obsoleta — el trabajo cambió después de la revisión ' . (int) ( $preview['revision'] ?? 0 )
-			: 'Generada (revisión ' . $revision . ')' );
+	if ( ! is_array( $preview ) ) {
+		$preview_state = fpw_draft_pending_html();
+	} elseif ( fpw_draft_preview_is_obsolete( $preview, $work ) ) {
+		$preview_state = 'Obsoleta — el trabajo cambió después de la revisión ' . max( 0, (int) ( $preview['revision'] ?? 0 ) );
+	} else {
+		$preview_state = 'Generada (revisión ' . $revision . ')';
+	}
 
 	$aside = '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
 		. fpw_draft_history_section( $draft )

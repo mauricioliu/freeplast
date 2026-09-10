@@ -36,8 +36,9 @@ function array_contains_string( array $haystack, string $needle ): bool {
 /** The rendered preview section of a draft screen, isolated for exclusion checks. */
 function fpwd_draft_preview_section_of( string $html ): string {
 	$start = strpos( $html, '<section class="fpw-draft__preview">' );
-	$end   = $start >= 0 ? strpos( $html, '</section>', $start ) : false;
-	return ( $start >= 0 && false !== $end ) ? substr( $html, $start, $end - $start + 10 ) : '';
+	if ( false === $start ) { return ''; }
+	$end = strpos( $html, '</section>', $start );
+	return false === $end ? '' : substr( $html, $start, $end - $start + 10 );
 }
 
 /* --- WordPress runtime stubs the feature needs beyond plugin load --- */
@@ -477,7 +478,7 @@ check( str_contains( $html92, 'no incluye destino de entrega ni flete' ), 'the n
 check( str_contains( $html92, 'No requerida (sin despacho)' ), 'the dispatch estimate reads as not required, distinct from pending' );
 
 /* The POST path: authorization first, then CSRF — neither substitutes the other.
- * Every case drives fpw_handle_draft_save() first, exactly as a real request
+ * Every case drives fpw_handle_draft_posted_action() first, exactly as a real request
  * meets admin_init, then the screen callback renders the outcome. */
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '68' );
 $save_post = array(
@@ -489,7 +490,7 @@ $save_post = array(
 $GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
 $_POST = $save_post;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
 	check( false, 'ventas must be denied the draft save' );
 } catch ( FPWD_Die $e ) {
@@ -499,7 +500,7 @@ check( fpw_read_draft_work( 68 ) === $work68, 'the denied save changed nothing' 
 $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 $GLOBALS['fpwd_nonce_ok'] = false;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
 	check( false, 'a save with an invalid nonce must be refused' );
 } catch ( FPWD_Die $e ) {
@@ -507,7 +508,7 @@ try {
 }
 check( fpw_read_draft_work( 68 ) === $work68, 'the refused save changed nothing' );
 $GLOBALS['fpwd_nonce_ok'] = true;
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Cambios guardados (revisión 6)' ) && str_contains( $page, 'value="111"' ), 'the authorized save persists and confirms its revision' );
 check( str_contains( $page, 'no aprueba ni envía' ), 'even a successful save states it approves nothing' );
@@ -518,7 +519,7 @@ $stale_post = $save_post;
 $stale_post['fpw_work_revision'] = '0';
 $stale_post['fpw_work']['destination'] = 'Sobrescritura';
 $_POST = $stale_post;
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'no se guardó' ) && str_contains( $page, 'revisión más reciente' ), 'a stale save through the screen gets the conflict message' );
 check( str_contains( $page, 'Destino guardado 1, Mostazal' ) && str_contains( $page, 'value="111"' ), 'the conflict screen shows the preserved accepted edit' );
@@ -618,7 +619,7 @@ $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => arra
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '91' );
 $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Vista previa generada (revisión 1)' ), 'an authorized preview confirms the revision it reviewed' );
 check( str_contains( $page, 'no aprueba ni envía nada al comprador' ), 'previewing states it issues nothing to the buyer' );
@@ -657,7 +658,7 @@ check( str_contains( $html, '3.195 CLP' ), 'the frozen preview still shows exact
 check( str_contains( $html, 'Obsoleta — el trabajo cambió después de la revisión 1' ), 'the aside names the revision the stale preview reviewed' );
 $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
-fpw_handle_draft_save();
+fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Vista previa generada (revisión 2)' ), 'a new preview re-binds to the new revision' );
 $stored = fpw_read_draft_preview( 91 );
@@ -669,7 +670,7 @@ check( ! str_contains( $html, 'Vista previa obsoleta' ), 'the regenerated previe
 $GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	check( false, 'ventas must be denied the preview generation' );
 } catch ( FPWD_Die $e ) {
 	check( $e->getMessage() === '403', 'a valid ventas session with a valid preview nonce is denied as a permission' );
@@ -677,7 +678,7 @@ try {
 $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 $GLOBALS['fpwd_nonce_ok'] = false;
 try {
-	fpw_handle_draft_save();
+	fpw_handle_draft_posted_action();
 	check( false, 'a preview with an invalid nonce must be refused' );
 } catch ( FPWD_Die $e ) {
 	check( $e->getMessage() === '403', 'a preview failing the CSRF check is refused 403' );
