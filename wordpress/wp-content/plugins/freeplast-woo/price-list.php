@@ -46,14 +46,19 @@ function fpw_price_key( int $product_id, int $variation_id ): string {
 	return $variation_id > 0 ? 'v:' . $variation_id : 'p:' . $product_id;
 }
 
+/** The list's explicit empty shape: an absent or unreadable row is no invention, never a guessed price. */
+function fpw_price_empty_list(): array {
+	return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() );
+}
+
 /** The maintained list, read straight from the database — never through the per-request options cache. Degrades to an explicit empty list without a database (read-only render paths in offline harnesses). */
 function fpw_price_list(): array {
 	global $wpdb;
-	if ( ! isset( $wpdb ) ) { return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() ); }
+	if ( ! isset( $wpdb ) ) { return fpw_price_empty_list(); }
 	$raw = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", FPW_PRICE_ROW ) );
-	if ( ! is_string( $raw ) || '' === $raw ) { return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() ); }
+	if ( ! is_string( $raw ) || '' === $raw ) { return fpw_price_empty_list(); }
 	$payload = json_decode( $raw, true );
-	if ( ! is_array( $payload ) || ! isset( $payload['prices'] ) || ! is_array( $payload['prices'] ) ) { return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() ); }
+	if ( ! is_array( $payload ) || ! isset( $payload['prices'] ) || ! is_array( $payload['prices'] ) ) { return fpw_price_empty_list(); }
 	return array(
 		'schema'     => (int) ( $payload['schema'] ?? 1 ),
 		'updated_at' => (int) ( $payload['updated_at'] ?? 0 ),
@@ -85,6 +90,11 @@ function fpw_price_save_entries( array $entries, string $actor ): array {
 	return $payload;
 }
 
+/** One stored value read as a price: only a positive integer is one — absent, malformed or zero is no price at all. */
+function fpw_price_read_value( $value ): ?int {
+	return ( is_int( $value ) && $value > 0 ) ? $value : null;
+}
+
 /**
  * The current suggestion for one native identity: the variation's own price
  * when maintained, otherwise its product's; null when nothing applies. Only
@@ -93,18 +103,15 @@ function fpw_price_save_entries( array $entries, string $actor ): array {
 function fpw_price_for( int $product_id, int $variation_id ): ?int {
 	$prices = fpw_price_list()['prices'];
 	if ( $variation_id > 0 ) {
-		$v = $prices[ 'v:' . $variation_id ] ?? null;
-		if ( is_int( $v ) && $v > 0 ) { return $v; }
+		$own = fpw_price_read_value( $prices[ fpw_price_key( $product_id, $variation_id ) ] ?? null );
+		if ( null !== $own ) { return $own; }
 	}
-	$p = $prices[ 'p:' . $product_id ] ?? null;
-	return ( is_int( $p ) && $p > 0 ) ? $p : null;
+	return fpw_price_read_value( $prices[ fpw_price_key( $product_id, 0 ) ] ?? null );
 }
 
 /** The entry of ONE identity itself, without any fallback: what the mantenedor's inputs show and save. */
 function fpw_price_own_entry( int $product_id, int $variation_id ): ?int {
-	$key = fpw_price_key( $product_id, $variation_id );
-	$v = fpw_price_list()['prices'][ $key ] ?? null;
-	return ( is_int( $v ) && $v > 0 ) ? $v : null;
+	return fpw_price_read_value( fpw_price_list()['prices'][ fpw_price_key( $product_id, $variation_id ) ] ?? null );
 }
 
 /**
@@ -153,9 +160,10 @@ function fpw_price_catalog(): array {
 function fpw_price_parse_input( array $catalog, array $posted ): array {
 	$allowed = array();
 	foreach ( $catalog as $entry ) {
-		$allowed[ fpw_price_key( (int) ( $entry['product_id'] ?? 0 ), 0 ) ] = true;
+		$product_id = (int) ( $entry['product_id'] ?? 0 );
+		$allowed[ fpw_price_key( $product_id, 0 ) ] = true;
 		foreach ( ( is_array( $entry['variations'] ?? null ) ? $entry['variations'] : array() ) as $variation ) {
-			$allowed[ fpw_price_key( (int) ( $entry['product_id'] ?? 0 ), (int) ( $variation['variation_id'] ?? 0 ) ) ] = true;
+			$allowed[ fpw_price_key( $product_id, (int) ( $variation['variation_id'] ?? 0 ) ) ] = true;
 		}
 	}
 	$errors  = array();
@@ -310,7 +318,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		);
 	}
 
-	$rows = '';
+	$rows       = '';
 	$maintained = 0;
 	foreach ( $catalog as $entry ) {
 		$product_id = (int) ( $entry['product_id'] ?? 0 );
@@ -321,14 +329,14 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		if ( ! empty( $variations ) ) {
 			$variation_rows = '';
 			foreach ( $variations as $variation ) {
-				$variation_id = (int) ( $variation['variation_id'] ?? 0 );
+				$variation_id    = (int) ( $variation['variation_id'] ?? 0 );
 				$variation_price = fpw_price_own_entry( $product_id, $variation_id );
 				if ( null !== $variation_price ) { $maintained++; }
-				$row_html = fpw_price_row_html( fpw_price_key( $product_id, $variation_id ), (string) ( $variation['name'] ?? '' ), 'Opción de ' . (string) ( $entry['name'] ?? '' ) . ' · ID #' . $variation_id, $variation_price );
+				$variation_row = fpw_price_row_html( fpw_price_key( $product_id, $variation_id ), (string) ( $variation['name'] ?? '' ), 'Opción de ' . (string) ( $entry['name'] ?? '' ) . ' · ID #' . $variation_id, $variation_price );
 				if ( null === $variation_price && null !== $product_price ) {
-					$row_html .= '<p class="fpw-prices__note">Sin precio propio: mientras tanto sugerirá el precio del producto (' . esc_html( number_format( $product_price, 0, ',', '.' ) ) . ' CLP neto).</p>';
+					$variation_row .= '<p class="fpw-prices__note">Sin precio propio: mientras tanto sugerirá el precio del producto (' . esc_html( number_format( $product_price, 0, ',', '.' ) ) . ' CLP neto).</p>';
 				}
-				$variation_rows .= $row_html;
+				$variation_rows .= $variation_row;
 			}
 			$row .= '<div class="fpw-prices__variations">' . $variation_rows . '</div>';
 		}

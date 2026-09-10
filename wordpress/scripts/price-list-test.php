@@ -222,7 +222,7 @@ check( 2 === count( $catalog ), 'the catalog lists the published products' );
 check( $catalog[0]['product_id'] === 22 && array() === $catalog[0]['variations'], 'the simple product lists without variations' );
 check( $catalog[1]['product_id'] === 25 && array( array( 'variation_id' => 310, 'name' => 'Caja Universal Cerrada Color — Azul' ), array( 'variation_id' => 311, 'name' => 'Caja Universal Cerrada Color — Rojo' ), array( 'variation_id' => 312, 'name' => 'Caja Universal Cerrada Color — Verde' ) ) === $catalog[1]['variations'], 'the variable product lists every variation identity with its name' );
 
-$ok = fpw_price_parse_input( $catalog, array( 'p:22' => '1490', 'v:310' => '2.190' !== '' ? '2190' : '', 'v:311' => '', 'p:25' => '' ) );
+$ok = fpw_price_parse_input( $catalog, array( 'p:22' => '1490', 'v:310' => '2190', 'v:311' => '', 'p:25' => '' ) );
 check( empty( $ok['errors'] ) && $ok['entries'] === array( 'p:22' => 1490, 'v:310' => 2190 ), 'valid entries parse; empty inputs mean not-maintained' );
 
 $invented = fpw_price_parse_input( $catalog, array( 'p:999' => '100', 'v:4242' => '100' ) );
