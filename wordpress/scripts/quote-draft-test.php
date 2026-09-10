@@ -30,6 +30,17 @@ function wp_die( $message = '', $title = '', $args = array() ) { throw new FPWD_
 function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function esc_attr( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function esc_url( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
+function esc_textarea( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
+function get_current_user_id(): int { return 1; }
+/* Issue #51: the save action carries and verifies a nonce in-server. */
+$GLOBALS['fpwd_nonce_ok'] = true;
+function wp_create_nonce( $action = -1 ) { return 'offline-nonce'; }
+function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $echo = true ) {
+	$html = '<input type="hidden" name="' . esc_attr( (string) $name ) . '" value="offline-nonce" />';
+	if ( $echo ) { echo $html; }
+	return $html;
+}
+function wp_verify_nonce( $nonce, $action = -1 ) { return $GLOBALS['fpwd_nonce_ok'] && 'offline-nonce' === (string) $nonce ? 1 : false; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
@@ -64,6 +75,10 @@ class FPWD_Fake_wpdb {
 		if ( preg_match( "/INSERT INTO \{?\w*options\}? \( option_name, option_value, autoload \) VALUES \( '(.+?)', '(.*)', 'off' \)$/s", $sql, $m ) ) {
 			if ( array_key_exists( $m[1], $GLOBALS['fpwd_table'] ) ) { return false; }
 			$GLOBALS['fpwd_table'][ $m[1] ] = $m[2]; return 1;
+		}
+		if ( preg_match( "/^UPDATE \{?\w*options\}? SET option_value = '(.*)' WHERE option_name = '(.+?)' AND option_value = '(.*)'$/s", $sql, $m ) ) {
+			if ( ! array_key_exists( $m[2], $GLOBALS['fpwd_table'] ) || $GLOBALS['fpwd_table'][ $m[2] ] !== $m[3] ) { return 0; }
+			$GLOBALS['fpwd_table'][ $m[2] ] = $m[1]; return 1;
 		}
 		return 0;
 	}
@@ -245,4 +260,244 @@ $customer_mail = fpwd_render_request_email( $order68, false );
 check( ! str_contains( $customer_mail, 'fpw-quote-draft' ) && ! str_contains( $customer_mail, 'Borrador' ), 'the buyer acknowledgement carries no private link and no draft' );
 check( str_contains( $customer_mail, 'no constituye una compra' ), 'the acknowledgement keeps its own no-purchase wording, distinct from an issued quotation' );
 
-echo "quote draft: $assertions offline checks passed (issue #50)\n";
+/* ===== Issue #51 — corte 2 de #49: completar y ajustar el borrador manualmente =====
+ * The owner completes net CLP prices, quantities, a working destination and the
+ * dispatch amount on the same private screen; saves survive revisits; a missing
+ * amount stays pending (never zero); stale or concurrent saves are detected
+ * without silently overwriting newer work; saving never approves or sends. */
+
+/* A request without dispatch gets its own draft. */
+$order92 = new FPWD_Order( 92, array( new FPWD_Item( 'Caja Cosechera 3/4', 10, 22, 0 ) ), array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+$GLOBALS['fpwd_orders'][92] = $order92;
+check( fpw_create_request_draft( $order92 ) === true, 'the no-dispatch request creates its draft' );
+$payload92 = fpw_read_request_draft( 92 );
+
+/* Fresh state: nothing is saved before the owner saves it. */
+check( fpw_read_draft_work( 68 ) === null, 'no working state exists before the owner saves one' );
+
+/* The private screen gains the editing form: revision 0, nonce, per-line
+ * working quantity and net price inputs, working destination and dispatch. */
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+$html = fpw_quote_draft_markup( $order68, $payload );
+check( str_contains( $html, '<form method="post" action="' ) && str_contains( $html, 'page=fpw-quote-draft' ) && str_contains( $html, 'request=68' ), 'the editing form posts to the private screen of its own request' );
+check( str_contains( $html, 'name="fpw_work_revision" value="0"' ), 'the form carries the revision it was rendered from (0 before any save)' );
+check( str_contains( $html, 'name="fpw_draft_nonce"' ), 'the save action carries its CSRF nonce' );
+check( str_contains( $html, 'name="fpw_work[lines][0][quantity]"' ) && str_contains( $html, 'name="fpw_work[lines][0][price]"' ), 'every line offers its working quantity and net price inputs' );
+check( str_contains( $html, 'name="fpw_work[destination]"' ) && str_contains( $html, 'name="fpw_work[dispatch_amount]"' ), 'the working destination and the dispatch amount are editable' );
+check( substr_count( $html, 'placeholder="Pendiente"' ) >= 2, 'unset amounts read as pending placeholders, never as zeros' );
+check( str_contains( $html, 'Guardar cambios del borrador' ) && str_contains( $html, 'no aprueba ni envía' ), 'saving states it never approves nor sends an offer' );
+check( str_contains( $html, 'afecta solo a este borrador' ), 'the form states manual adjustments affect only this draft, never a general list' );
+check( str_contains( $html, 'Pedido: 140 unidades' ), 'the originally requested quantity stays beside the working one' );
+
+/* Real edit → save → reopen: every chosen value is recovered. */
+$save1 = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '120', 'price' => '1490' ),
+			array( 'quantity' => '25', 'price' => '' ),
+		),
+		'destination' => 'Camino de trabajo 456, Mostazal',
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $save1['state'] ?? '' ) === 'saved', 'a valid save is accepted' );
+$work1 = fpw_read_draft_work( 68 );
+check( is_array( $work1 ) && 1 === (int) $work1['revision'] && 68 === (int) $work1['order_id'], 'the first save stores revision 1 bound to its request' );
+check( $work1['lines'][0] === array( 'index' => 0, 'product_id' => 22, 'variation_id' => 0, 'quantity' => 120, 'price' => 1490, 'price_source' => 'manual' ), 'line values are stored normalized with their manual origin' );
+check( null === $work1['lines'][1]['price'] && 'pending' === $work1['lines'][1]['price_source'], 'a left-empty price stays pending, never zero' );
+check( 25 === (int) $work1['lines'][1]['quantity'], 'the untouched quantity persists as chosen' );
+check( 'Camino de trabajo 456, Mostazal' === $work1['destination'] && 39990 === (int) $work1['dispatch_amount'], 'the working destination and the dispatch amount persist' );
+check( $work1['dispatch_conditions'] === array( 'destination' => 'Camino de trabajo 456, Mostazal', 'quantities' => array( 120, 25 ) ), 'the dispatch amount records the destination and quantities it was entered for' );
+check( fpw_draft_dispatch_stale( $work1 ) === false, 'a dispatch amount matching its conditions is not stale' );
+
+$html = fpw_quote_draft_markup( $order68, $payload, $work1 );
+check( str_contains( $html, 'name="fpw_work_revision" value="1"' ), 'the form re-renders from the saved revision' );
+check( str_contains( $html, 'value="120"' ) && str_contains( $html, 'value="1490"' ), 'the saved quantity and price recover into the form' );
+check( str_contains( $html, '1.490 CLP neto' ) && str_contains( $html, 'ingreso manual' ), 'the saved price renders as a net CLP amount with its manual origin' );
+check( str_contains( $html, 'Camino de trabajo 456, Mostazal' ) && str_contains( $html, '39.990 CLP' ), 'the saved working destination and dispatch amount recover' );
+check( ! str_contains( $html, 'value="0"' ) && str_contains( $html, '[1][price]" value="" placeholder="Pendiente"' ) && ! preg_match( '/[^.\d]0 CLP/', $html ), 'no pending amount ever reads as zero' );
+check( str_contains( $html, 'revisión 1' ), 'the screen names the saved revision the owner is retaking' );
+check( str_contains( $html, 'Ingresada manualmente' ), 'the dispatch estimate state reads as manually entered' );
+check( ! str_contains( $html, 'Ingresados manualmente por el dueño' ), 'prices with a pending line still read as pending in the status' );
+check( str_contains( $html, 'Pedido: 140 unidades' ), 'the original request stays separate from the working values' );
+
+/* Destination or quantity changes after an amount was saved put it under review. */
+$save2 = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '1',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '120', 'price' => '1490' ),
+			array( 'quantity' => '25', 'price' => '' ),
+		),
+		'destination' => 'Bodega destino 789, Rancagua',
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $save2['state'] ?? '' ) === 'saved' && 2 === (int) $save2['work']['revision'], 'the second save stores revision 2' );
+check( fpw_draft_dispatch_stale( $save2['work'] ) === true, 'changing the working destination marks the saved dispatch amount for review' );
+check( str_contains( fpw_quote_draft_markup( $order68, $payload, $save2['work'] ), 'Requiere revisión' ), 'the screen marks the stale dispatch amount' );
+$save3 = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '2',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '100', 'price' => '1490' ),
+			array( 'quantity' => '25', 'price' => '' ),
+		),
+		'destination' => 'Bodega destino 789, Rancagua',
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $save3['state'] ?? '' ) === 'saved' && fpw_draft_dispatch_stale( $save3['work'] ) === true, 'a quantity change keeps the dispatch amount under review' );
+
+/* Every priced line completes the prices state. */
+$save4 = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '3',
+	'fpw_work' => array(
+		'lines' => array(
+			array( 'quantity' => '100', 'price' => '1490' ),
+			array( 'quantity' => '25', 'price' => '2190' ),
+		),
+		'destination' => 'Bodega destino 789, Rancagua',
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $save4['state'] ?? '' ) === 'saved' && str_contains( fpw_quote_draft_markup( $order68, $payload, $save4['work'] ), 'Ingresados manualmente por el dueño' ), 'with every line priced, the status names the manual completion' );
+$work68 = fpw_read_draft_work( 68 );
+
+/* Stale and concurrent saves: the accepted edit is preserved, never overwritten. */
+$stale = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '9', 'price' => '1' ), array( 'quantity' => '9', 'price' => '9' ) ),
+		'destination' => 'Sobrescritura',
+		'dispatch_amount' => '1',
+	),
+), 1 );
+check( ( $stale['state'] ?? '' ) === 'conflict', 'a stale revision is detected instead of silently overwriting' );
+check( fpw_read_draft_work( 68 ) === $work68, 'the accepted edit is preserved; the stale submission changed nothing' );
+/* A double click submits the same rendered form twice: the first write lands,
+ * the retried submission of the SAME revision now conflicts. */
+$double_body = array(
+	'fpw_work_revision' => '4',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '100', 'price' => '1490' ), array( 'quantity' => '25', 'price' => '2190' ) ),
+		'destination' => 'Bodega destino 789, Rancagua',
+		'dispatch_amount' => '39990',
+	),
+);
+$double_first = fpw_save_draft_work( 68, $payload, $double_body, 1 );
+check( ( $double_first['state'] ?? '' ) === 'saved' && 5 === (int) $double_first['work']['revision'], 'the first submission of a rendered form saves its revision' );
+$double = fpw_save_draft_work( 68, $payload, $double_body, 1 );
+check( ( $double['state'] ?? '' ) === 'conflict', 'the retried submission of the same revision (double click) cannot write twice' );
+$work68 = fpw_read_draft_work( 68 );
+$raw68 = fpw_read_draft_work_raw( 68 );
+check( fpw_cas_draft_work_row( 68, $raw68 . '-touched', array( 'revision' => 999 ) ) === false, 'a compare-and-set against a diverged previous value loses' );
+check( fpw_read_draft_work( 68 ) === $work68, 'the losing compare-and-set changed nothing' );
+
+/* Server-side validation: no zero price, no junk amounts, sane quantities. */
+$zero = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '5',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '100', 'price' => '0' ), array( 'quantity' => '25', 'price' => '2190' ) ),
+		'destination' => 'Bodega destino 789, Rancagua',
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $zero['state'] ?? '' ) === 'invalid' && 1 === count( $zero['errors'] ), 'a zero price is refused: no unapproved gratuity policy' );
+check( str_contains( $zero['errors'][0] ?? '', 'deja el campo vacío' ), 'the zero-price error points at leaving the value pending' );
+foreach (
+	array(
+		'negative price' => array( 'price' => '-5' ),
+		'non-numeric price' => array( 'price' => 'abc' ),
+		'zero quantity' => array( 'quantity' => '0' ),
+		'junk quantity' => array( 'quantity' => '2x' ),
+		'oversized price' => array( 'price' => '100000000' ),
+	) as $case => $field
+) {
+	$lines = array(
+		array( 'quantity' => '100', 'price' => '1490' ),
+		array( 'quantity' => '25', 'price' => '2190' ),
+	);
+	$lines[0] = array_merge( $lines[0], $field );
+	$bad = fpw_save_draft_work( 68, $payload, array( 'fpw_work_revision' => '5', 'fpw_work' => array( 'lines' => $lines, 'destination' => 'Bodega destino 789, Rancagua', 'dispatch_amount' => '39990' ) ), 1 );
+	check( ( $bad['state'] ?? '' ) === 'invalid' && ! empty( $bad['errors'] ), "the $case is refused server-side" );
+}
+$long_dest = fpw_save_draft_work( 68, $payload, array(
+	'fpw_work_revision' => '5',
+	'fpw_work' => array(
+		'lines' => array( array( 'quantity' => '100', 'price' => '1490' ), array( 'quantity' => '25', 'price' => '2190' ) ),
+		'destination' => str_repeat( 'a', 801 ),
+		'dispatch_amount' => '39990',
+	),
+), 1 );
+check( ( $long_dest['state'] ?? '' ) === 'invalid', 'an over-long working destination is refused' );
+check( fpw_read_draft_work( 68 ) === $work68, 'every invalid save stored nothing: the accepted edit stands' );
+
+/* Sin despacho is different from dispatch not yet priced: no destination, no
+ * freight, nothing to review. */
+$save92 = fpw_save_draft_work( 92, $payload92, array(
+	'fpw_work_revision' => '0',
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '10', 'price' => '990' ) ), 'destination' => 'Intento de destino', 'dispatch_amount' => '5000' ),
+), 1 );
+check( ( $save92['state'] ?? '' ) === 'saved' && '' === $save92['work']['destination'] && null === $save92['work']['dispatch_amount'], 'a no-dispatch draft never stores a working destination or a freight amount' );
+$html92 = fpw_quote_draft_markup( $order92, $payload92, $save92['work'] );
+check( ! str_contains( $html92, 'name="fpw_work[destination]"' ) && ! str_contains( $html92, 'name="fpw_work[dispatch_amount]"' ), 'a no-dispatch draft offers no destination or freight inputs' );
+check( str_contains( $html92, 'no incluye destino de entrega ni flete' ), 'the no-dispatch work offer excludes the delivery destination and freight' );
+check( str_contains( $html92, 'No requerida (sin despacho)' ), 'the dispatch estimate reads as not required, distinct from pending' );
+
+/* The POST path: authorization first, then CSRF — neither substitutes the other.
+ * Every case drives fpw_handle_draft_save() first, exactly as a real request
+ * meets admin_init, then the screen callback renders the outcome. */
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '68' );
+$save_post = array(
+	'fpw_work_save' => '1',
+	'fpw_work_revision' => '5',
+	'fpw_draft_nonce' => 'offline-nonce',
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '111', 'price' => '1200' ), array( 'quantity' => '25', 'price' => '990' ) ), 'destination' => 'Destino guardado 1, Mostazal', 'dispatch_amount' => '5000' ),
+);
+$GLOBALS['fpwd_caps'] = array( 'read' => true, 'manage_freeplast_quotes' => true, 'edit_shop_orders' => true, 'edit_others_shop_orders' => true );
+$_POST = $save_post;
+try {
+	fpw_handle_draft_save();
+	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
+	check( false, 'ventas must be denied the draft save' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'ventas receives the 403 permission denial on save, whatever nonce it presents' );
+}
+check( fpw_read_draft_work( 68 ) === $work68, 'the denied save changed nothing' );
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+$GLOBALS['fpwd_nonce_ok'] = false;
+try {
+	fpw_handle_draft_save();
+	ob_start(); fpw_render_quote_draft_screen(); ob_end_clean();
+	check( false, 'a save with an invalid nonce must be refused' );
+} catch ( FPWD_Die $e ) {
+	check( $e->getMessage() === '403', 'a save failing the CSRF check is refused 403' );
+}
+check( fpw_read_draft_work( 68 ) === $work68, 'the refused save changed nothing' );
+$GLOBALS['fpwd_nonce_ok'] = true;
+fpw_handle_draft_save();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'Cambios guardados (revisión 6)' ) && str_contains( $page, 'value="111"' ), 'the authorized save persists and confirms its revision' );
+check( str_contains( $page, 'no aprueba ni envía' ), 'even a successful save states it approves nothing' );
+
+/* The conflict journey through the screen: the submission from a stale
+ * revision is refused, the accepted edit is shown preserved. */
+$stale_post = $save_post;
+$stale_post['fpw_work_revision'] = '0';
+$stale_post['fpw_work']['destination'] = 'Sobrescritura';
+$_POST = $stale_post;
+fpw_handle_draft_save();
+ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
+check( str_contains( $page, 'no se guardó' ) && str_contains( $page, 'revisión más reciente' ), 'a stale save through the screen gets the conflict message' );
+check( str_contains( $page, 'Destino guardado 1, Mostazal' ) && str_contains( $page, 'value="111"' ), 'the conflict screen shows the preserved accepted edit' );
+check( ! str_contains( $page, 'Sobrescritura' ), 'the stale submission is not merged in' );
+check( str_contains( $page, 'name="fpw_work_revision" value="6"' ), 'the conflict screen re-renders the form from the accepted revision' );
+
+/* A record whose draft never existed offers no editing at all. */
+$manual2 = new FPWD_Order( 79, array( new FPWD_Item( 'X', 1, 1, 0 ) ), array( '_fp_request' => '' ) );
+$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+check( ! str_contains( fpw_quote_draft_markup( $manual2, null ), 'fpw_work' ), 'a record without a draft offers no editing form' );
+
+echo "quote draft: $assertions offline checks passed (issues #50 + #51)\n";

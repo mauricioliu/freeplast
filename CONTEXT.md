@@ -52,6 +52,10 @@ _Avoid_: Quote Request, order, invoice
 The single private initial draft Freeplast creates when a Quote Request is received durably, called **Borrador de cotización** in Spanish. It snapshots the request's native record — products, options, quantities, identity, destination and Submitted Details — and names what the record does not carry yet (prices, purchase history, dispatch estimate) as pending, never as zero. Later cuts enrich it into an internal, editable proposal for the owner's review, prefilled with available customer information, requested quantities and Price List prices; those prices remain unchanged by later Price List updates unless explicitly refreshed. It is not a customer-issued Quotation, issues nothing, requires the owner's final decision, and is readable only by the owner.
 _Avoid_: Draft order, quote, Quote Request, documento, issued Quotation, confirmed sale
 
+**Draft Working State**:
+The owner's saved manual completion of a Quotation Draft — working quantities, net CLP prices, working destination and dispatch amount — kept in its own durable storage, separate from the immutable receipt snapshot, with the revision it supersedes so stale or concurrent saves are detected and refused instead of silently overwriting newer work. Its amounts are the owner's manual decisions scoped to that one draft; saving never approves, sends or notifies anything.
+_Avoid_: Rewritten receipt, draft order, quotation, autosave
+
 **Quotation Version**:
 The fixed customer-facing prices and conditions of a Quotation approved and issued by the owner. Later changes require a new version rather than alteration of what was already sent.
 _Avoid_: Live Price List, editable sent quote

@@ -690,6 +690,156 @@ register_shutdown_function( static function () {
       check(manualScreen.includes('Sin borrador') && !manualScreen.includes('Borrador inicial'), 'a record without a draft reads honestly, without inventing one');
       const bogus = await owner('/wp-admin/admin.php?page=fpw-quote-draft&request=99999999');
       check(bogus.status === 200 && (await bogus.text()).includes('no encontrada'), 'an unknown request id answers an honest empty state');
+
+      /* 5d. Issue #51 journey: the owner completes and adjusts drafts
+         manually over real HTTP — real edit → save → reopen with recovered
+         values, pending-not-zero, no-dispatch contracts, destination/quantity
+         dispatch review, stale-edit conflicts that preserve the accepted
+         revision, server validation without a gratuity policy, CSRF +
+         permission boundaries with valid nonces, and source records that
+         stay untouched. Fixture-driven: the race request has dispatch=no,
+         the corrected request dispatch=si, the stale request two lines. */
+      {
+        const editUrl = (requestId) => `/wp-admin/admin.php?page=fpw-quote-draft&request=${requestId}`;
+        const mailCount = () => (existsSync(mailLog) ? readFileSync(mailLog, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+        const mint = async (fetcher, forAction) => {
+          const minted = await fetcher('/wp-admin/admin-ajax.php', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ action: 'fpw_test_nonce', for: forAction }).toString() });
+          const payload = await minted.json();
+          return payload && payload.success ? String(payload.data.nonce) : null;
+        };
+        const postForm = (fetcher, requestId, fields) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
+        const lineFields = (record, priceFor, quantityFor) => {
+          const fields = {};
+          record.lines.forEach((line, index) => {
+            fields[`fpw_work[lines][${index}][quantity]`] = String(quantityFor ? quantityFor(index, line) : line.quantity);
+            const price = priceFor ? priceFor(index, line) : null;
+            fields[`fpw_work[lines][${index}][price]`] = price === null ? '' : String(price);
+          });
+          return fields;
+        };
+        const mailsBefore = mailCount();
+        const correctRecord = draftState.records[correctOrder];
+
+        /* The no-dispatch request: no working destination or freight exists to
+           edit — sin despacho is different from dispatch not yet priced. */
+        const noDispatchInitial = await (await owner(editUrl(raceOrder))).text();
+        check(!noDispatchInitial.includes('name="fpw_work[destination]"') && !noDispatchInitial.includes('name="fpw_work[dispatch_amount]"'), 'a no-dispatch draft offers no working destination or freight input');
+        check(noDispatchInitial.includes('no incluye destino de entrega ni flete'), 'the no-dispatch work offer states it excludes the delivery destination and freight');
+        const noDispatchSave = await postForm(owner, raceOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${raceOrder}`),
+          ...lineFields(draftState.records[raceOrder], (i) => (i === 0 ? 1490 : null)),
+          'fpw_work[destination]': 'Intento de destino', 'fpw_work[dispatch_amount]': '5000',
+        });
+        check((await noDispatchSave.text()).includes('Cambios guardados (revisión 1)'), 'the no-dispatch draft saves its line work');
+        const noDispatchReopened = await (await owner(editUrl(raceOrder))).text();
+        check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(noDispatchReopened), 'the saved price is recovered on reopening');
+        check(!noDispatchReopened.includes('Intento de destino') && !noDispatchReopened.includes('name="fpw_work[dispatch_amount]"'), 'the posted destination and freight stay out of a no-dispatch draft');
+
+        /* The dispatch request: real edit → save → reopen, every chosen value
+           recovered. */
+        const initial = await (await owner(editUrl(correctOrder))).text();
+        const baseRevision = (initial.match(/name="fpw_work_revision" value="(\d+)"/) || [])[1];
+        check(baseRevision === '0', `a fresh draft renders its editing form at revision 0 (got ${baseRevision})`);
+        check(initial.includes('Camino de prueba 1, Mostazal'), 'the working destination pre-fills from the recorded address');
+        const saveNonce = await mint(owner, `fpw-draft-save-${correctOrder}`);
+        check(typeof saveNonce === 'string' && saveNonce.length >= 10, 'the editing form carries a mintable CSRF nonce for the owner');
+        const saved = await postForm(owner, correctOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': baseRevision, 'fpw_draft_nonce': saveNonce,
+          ...lineFields(correctRecord, (i) => (i === 0 ? 1490 : null)),
+          'fpw_work[destination]': 'Plaza de Armas 123, Santiago', 'fpw_work[dispatch_amount]': '39990',
+        });
+        check(saved.status === 200, `the owner's save must answer 200 (got ${saved.status})`);
+        check((await saved.text()).includes('Cambios guardados (revisión 1)'), 'a valid save confirms the revision it stored');
+        const reopened = await (await owner(editUrl(correctOrder))).text();
+        check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(reopened), 'the saved line price is recovered on reopening');
+        check(reopened.includes('Plaza de Armas 123, Santiago') && /39\.990 CLP/.test(reopened) && reopened.includes('ingreso manual'), 'the saved working destination and dispatch amount recover with their manual origin');
+        check((reopened.match(/name="fpw_work_revision" value="(\d+)"/) || [])[1] === '1', 'the form re-renders from the saved revision');
+        check(!/(^|[^.\d])0 CLP/.test(reopened) && !reopened.includes('value="0"'), 'no pending amount ever reads as zero');
+
+        /* The dispatch amount keeps the conditions it was entered for: moving
+           the working destination (amount unchanged) marks it for review. */
+        const moved = await postForm(owner, correctOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '1', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${correctOrder}`),
+          ...lineFields(correctRecord, (i) => (i === 0 ? 1490 : null)),
+          'fpw_work[destination]': 'Camino rural 9, Colchane', 'fpw_work[dispatch_amount]': '39990',
+        });
+        check((await moved.text()).includes('Requiere revisión'), 'a destination change after saving a dispatch amount marks it for review');
+
+        /* A quantity change requires dispatch review too; the original request
+           stays visible beside the working values. */
+        const requantifiedHtml = await (await postForm(owner, correctOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '2', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${correctOrder}`),
+          ...lineFields(correctRecord, (i) => (i === 0 ? 1490 : null), (i, line) => (i === 0 ? line.quantity + 5 : line.quantity)),
+          'fpw_work[destination]': 'Camino rural 9, Colchane', 'fpw_work[dispatch_amount]': '39990',
+        })).text();
+        check(requantifiedHtml.includes('Requiere revisión'), 'a quantity change keeps the dispatch amount under review');
+        check(requantifiedHtml.includes('Pedido: ' + correctRecord.lines[0].quantity), 'the originally requested quantity stays visible beside the working one');
+
+        /* Stale edits are detected, refused, and the accepted edit is shown
+           preserved — nothing is silently overwritten or merged. */
+        const staleHtml = await (await postForm(owner, correctOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '1', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${correctOrder}`),
+          ...lineFields(correctRecord, () => 1),
+          'fpw_work[destination]': 'Sobrescritura', 'fpw_work[dispatch_amount]': '1',
+        })).text();
+        check(staleHtml.includes('no se guardó') && staleHtml.includes('revisión más reciente'), 'a stale edit is refused with the conflict message');
+        check(/name="fpw_work_revision" value="3"/.test(staleHtml), 'the conflict screen re-renders from the accepted revision');
+        check(staleHtml.includes('Camino rural 9, Colchane') && !staleHtml.includes('Sobrescritura'), 'the accepted edit is preserved; the stale submission is not merged in');
+
+        /* Server-side validation: a zero price is refused (no unapproved
+           gratuity policy) and the stored values stand. */
+        const zeroHtml = await (await postForm(owner, correctOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '3', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${correctOrder}`),
+          ...lineFields(correctRecord, (i) => (i === 0 ? 0 : null)),
+          'fpw_work[destination]': 'Camino rural 9, Colchane', 'fpw_work[dispatch_amount]': '39990',
+        })).text();
+        check(zeroHtml.includes('No se guardó nada') && zeroHtml.includes('deja el campo vacío'), 'a zero price is refused server-side with the pending escape hatch');
+        check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(zeroHtml), 'the refused save left the stored values intact');
+
+        /* A two-line request keeps every line's own choice: one priced, one
+           left pending. */
+        const staleRecord = draftState.records[staleOrder];
+        check(staleRecord.lines.length === 2, `the two-line fixture must have two lines (got ${staleRecord.lines.length})`);
+        const twoLineHtml = await (await postForm(owner, staleOrder, {
+          'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${staleOrder}`),
+          ...lineFields(staleRecord, (i) => (i === 0 ? 990 : null)),
+          'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '',
+        })).text();
+        check(twoLineHtml.includes('Cambios guardados (revisión 1)'), 'the two-line draft saves');
+        const twoLineReopened = await (await owner(editUrl(staleOrder))).text();
+        check(/name="fpw_work\[lines\]\[0\]\[price\]" value="990"/.test(twoLineReopened) && /name="fpw_work\[lines\]\[1\]\[price\]" value="" placeholder="Pendiente"/.test(twoLineReopened), 'each line recovers its own price: one entered, one left pending');
+
+        /* CSRF: a valid owner session with an invalid nonce is refused 403. */
+        const forged = { 'fpw_work_save': '1', 'fpw_work_revision': '3', 'fpw_draft_nonce': 'forged', ...lineFields(correctRecord, () => 1), 'fpw_work[destination]': 'x', 'fpw_work[dispatch_amount]': '1' };
+        const forgedStatus = (await postForm(owner, correctOrder, forged)).status;
+        check(forgedStatus === 403, `a save with an invalid nonce is refused 403 (got ${forgedStatus})`);
+
+        /* Permissions: ventas' valid session with a VALID nonce is still
+           denied — presenting a nonce grants nothing. A visitor goes to login. */
+        const ventasSave = await postForm(ventas, correctOrder, { ...forged, 'fpw_draft_nonce': await mint(ventas, `fpw-draft-save-${correctOrder}`) });
+        check(ventasSave.status === 403, `a valid ventas session with a valid nonce must be DENIED the save (got ${ventasSave.status})`);
+        const visitorSave = await postForm(visitor, correctOrder, forged);
+        check(visitorSave.status === 302 && String(visitorSave.headers.get('location') || '').includes('wp-login.php'), 'a visitor save is sent to the login');
+
+        /* Saving approves nothing: no notification fires and the source
+           records keep their status, quantities and identity. */
+        check(mailCount() === mailsBefore, `saving must not send any notification (${mailsBefore} → ${mailCount()})`);
+        const recordState = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+          $out = array();
+          foreach (array(${raceOrder}, ${correctOrder}, ${staleOrder}) as $id) {
+            $order = wc_get_order($id);
+            $quantities = array();
+            foreach ($order->get_items() as $item) { $quantities[] = (int) $item->get_quantity(); }
+            $out[$id] = array('status' => $order->get_status(), 'quantities' => $quantities, 'qwc' => (string) $order->get_meta('_qwc_quote'), 'email' => $order->get_billing_email());
+          }
+          echo wp_json_encode($out);
+        `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
+        for (const [id, record] of Object.entries(recordState)) {
+          check(record.status === 'pending' && record.qwc === '1', `saving must not approve record ${id} (status ${record.status})`);
+          check(JSON.stringify(record.quantities) === JSON.stringify(draftState.records[id].lines.map((l) => l.quantity)), `record ${id} keeps its own quantities (${JSON.stringify(record.quantities)})`);
+          check(record.email === draftState.records[id].email, `record ${id} keeps its identity`);
+        }
+      }
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -775,6 +925,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + restricted-ventas record boundary) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + restricted-ventas record boundary) on ${SITE_URL}`);
   return checks;
 }
