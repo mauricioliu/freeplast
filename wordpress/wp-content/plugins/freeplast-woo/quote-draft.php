@@ -1334,7 +1334,7 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 		. fpw_draft_preview_generate_html( $order_id )
 		. ( $obsolete || empty( $projection['complete'] ) || is_array( fpw_read_quotation_version( $order_id ) )
 			? ''
-			: fpw_draft_approve_html( $order_id ) )
+			: fpw_draft_approve_html( $order_id, $preview ) )
 		. '</section>';
 	return $html;
 }

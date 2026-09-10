@@ -100,7 +100,7 @@ function fpw_quotation_approval_check( array $draft, ?array $work, ?array $previ
  * freezes the version, the losers of a double click, concurrency or a known
  * retry answer with the standing version and never mail anything.
  *
- * @return array{state:'already'|'document-pending'|'mail-rejected'|'mail-unknown'|'sent'|'refused', version:?array, reason?:string, missing?:string[]}
+ * @return array{state:'already'|'storage-failed'|'document-pending'|'mail-rejected'|'mail-unknown'|'sent'|'refused', version:?array, reason?:string, missing?:string[]}
  */
 function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $work, ?array $preview, int $user_id ): array {
 	$guard = fpw_quotation_approval_check( $draft, $work, $preview );
@@ -131,7 +131,8 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	// THE durable approval: a plain INSERT against the unique row name decides.
 	// The loser's payload is dropped whole — no version, no document, no mail.
 	if ( ! fpw_insert_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) ) ) {
-		return array( 'state' => 'already', 'version' => fpw_read_quotation_version( $order_id ) );
+		$existing = fpw_read_quotation_version( $order_id );
+		return array( 'state' => is_array( $existing ) ? 'already' : 'storage-failed', 'version' => $existing );
 	}
 	$document = fpw_quotation_render_document( $version );
 	if ( ! fpw_quotation_pdf_is_valid( $document ) ) {
@@ -139,12 +140,21 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 		// attempted — an incomplete offer is never sent.
 		return array( 'state' => 'document-pending', 'version' => $version );
 	}
+	$approved = $version;
 	$version['document']   = 'ready';
 	$version['pdf_base64'] = base64_encode( $document );
-	fpw_update_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) );
+	// Write-ahead uncertainty: a crash or failed outcome write after wp_mail
+	// must not leave a durable "never attempted" state that invites a resend.
+	$version['delivery'] = array( 'state' => 'unknown', 'at' => time() );
+	if ( ! fpw_update_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) ) ) {
+		return array( 'state' => 'document-pending', 'version' => $approved );
+	}
+	$unconfirmed = $version;
 	$delivery = fpw_quotation_deliver( $version );
 	$version['delivery'] = array( 'state' => $delivery, 'at' => time() );
-	fpw_update_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) );
+	if ( ! fpw_update_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) ) ) {
+		return array( 'state' => 'mail-unknown', 'version' => $unconfirmed );
+	}
 	return array( 'state' => 'accepted' === $delivery ? 'sent' : ( 'unknown' === $delivery ? 'mail-unknown' : 'mail-rejected' ), 'version' => $version );
 }
 
@@ -392,9 +402,9 @@ function fpw_quotation_pdf_is_valid( string $bytes ): bool {
 
 /** The document stage: a delivered renderer decides when configured; otherwise the built-in writer renders. Any thrown failure is an empty (pending) document, never a crash. */
 function fpw_quotation_render_document( array $version ): string {
-	$custom = apply_filters( 'fpw_quotation_document_bytes', null, $version );
-	if ( is_string( $custom ) && '' !== $custom ) { return $custom; }
 	try {
+		$custom = apply_filters( 'fpw_quotation_document_bytes', null, $version );
+		if ( null !== $custom ) { return is_string( $custom ) ? $custom : ''; }
 		return fpw_quotation_pdf_render( $version );
 	} catch ( Throwable ) {
 		return '';
@@ -403,10 +413,16 @@ function fpw_quotation_render_document( array $version ): string {
 
 /* ===== The screen's approval surface ===== */
 
-/** The approval action: its own form, its own nonce, its own button — never the work-save form. */
-function fpw_draft_approve_html( int $order_id ): string {
+/** Bind the form to the exact preview rendered, including its projection, not just its working revision. Not an authorization token. */
+function fpw_quotation_preview_token( array $preview ): string {
+	return hash( 'sha256', wp_json_encode( $preview ) );
+}
+
+/** The approval action carries the preview actually rendered; never reread it while building the form. */
+function fpw_draft_approve_html( int $order_id, array $preview ): string {
 	return '<form method="post" action="' . esc_url( fpw_draft_screen_url( $order_id ) ) . '">'
 		. '<input type="hidden" name="fpw_work_approve" value="1" />'
+		. '<input type="hidden" name="fpw_approve_preview" value="' . esc_attr( fpw_quotation_preview_token( $preview ) ) . '" />'
 		. wp_nonce_field( fpw_quotation_approve_action( $order_id ), 'fpw_approve_nonce', true, false )
 		. '<button type="submit">Aprobar y enviar</button>'
 		. '<span class="fpw-draft__origin">Congela esta revisión como la primera versión de la cotización, genera su PDF e intenta enviarlo por correo al comprador. Se resuelve en el servidor: un doble clic no crea versiones ni envíos extra.</span>'
@@ -458,6 +474,9 @@ function fpw_approval_outcome_notice( array $result ): array {
 	$vlabel  = 'Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) );
 	if ( 'approval-refused' === $state ) {
 		$reason = (string) ( $result['reason'] ?? '' );
+		if ( 'vista-previa-no-revisada' === $reason ) {
+			return array( 'class' => 'warn', 'title' => 'Nada se aprobó: el formulario no corresponde a la vista previa actual.', 'lines' => array( 'Recarga el borrador y revisa la vista previa actual antes de aprobarla.' ) );
+		}
 		if ( 'sin-vista-previa' === $reason ) {
 			return array( 'class' => 'warn', 'title' => 'Nada se aprobó: este borrador no tiene una vista previa guardada.', 'lines' => array( 'Genera una vista previa y revísala: ninguna aprobación puede emitir valores que no fueron revisados.' ) );
 		}
@@ -472,6 +491,9 @@ function fpw_approval_outcome_notice( array $result ): array {
 		}
 		return array( 'class' => 'warn', 'title' => 'Nada se aprobó: la proyección guardada ya no coincide con el cálculo compartido.', 'lines' => array( 'Lo emitido debe coincidir exactamente con lo revisado. Genera una nueva vista previa, revísala y aprueba sobre ella.' ) );
 	}
+	if ( 'approval-storage-failed' === $state ) {
+		return array( 'class' => 'error', 'title' => 'No se pudo confirmar la aprobación.', 'lines' => array( 'No se intentó enviar desde esta solicitud. Recarga el borrador para comprobar su estado antes de volver a aprobar.' ) );
+	}
 	if ( 'approval-already' === $state ) {
 		return array( 'class' => 'ok', 'title' => 'Este borrador ya tiene su primera versión aprobada (' . $vlabel . ').', 'lines' => array( 'No se creó otra versión ni se reenvió nada: repetir la aprobación responde siempre con la versión existente. La recuperación del envío es una acción explícita aparte.' ) );
 	}
@@ -482,13 +504,13 @@ function fpw_approval_outcome_notice( array $result ): array {
 		) );
 	}
 	if ( 'approval-document-pending' === $state ) {
-		return array( 'class' => 'error', 'title' => 'Cotización aprobada (' . $vlabel . '), pero el documento no se pudo generar.', 'lines' => array( 'No se intentó enviar ninguna oferta sin su documento. La versión aprobada queda conservada para la recuperación posterior.' ) );
+		return array( 'class' => 'error', 'title' => 'Cotización aprobada (' . $vlabel . '), pero el documento no se pudo generar o guardar.', 'lines' => array( 'No se intentó enviar ninguna oferta sin su documento. La versión aprobada queda conservada para la recuperación posterior.' ) );
 	}
 	if ( 'approval-mail-rejected' === $state ) {
 		return array( 'class' => 'error', 'title' => 'Cotización aprobada (' . $vlabel . ') con documento listo, pero el correo fue rechazado por el transporte.', 'lines' => array( 'Nada llegó al comprador por este intento. La versión aprobada queda conservada; la recuperación explícita del envío es la operación siguiente.' ) );
 	}
 	if ( 'approval-mail-unknown' === $state ) {
-		return array( 'class' => 'error', 'title' => 'Cotización aprobada (' . $vlabel . ') con documento listo, pero el resultado del correo es desconocido.', 'lines' => array( 'El transporte no devolvió un resultado: no se afirma recepción ni rechazo, y no se reintenta automáticamente. La recuperación explícita es la operación siguiente.' ) );
+		return array( 'class' => 'error', 'title' => 'Cotización aprobada (' . $vlabel . ') con documento listo, pero el resultado del correo es desconocido.', 'lines' => array( 'No hay un resultado confirmado y guardado: no se afirma recepción ni rechazo, y no se reintenta automáticamente. La recuperación explícita es la operación siguiente.' ) );
 	}
 	return array( 'class' => 'error', 'title' => 'No se pudo completar la aprobación.', 'lines' => array() );
 }
@@ -508,6 +530,11 @@ function fpw_handle_draft_approve_request( int $order_id, array $draft ): void {
 	$guard   = fpw_quotation_approval_check( $draft, $work, $preview );
 	if ( 'ok' !== $guard['state'] ) {
 		fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => 'approval-refused', 'reason' => $guard['state'], 'missing' => $guard['missing'] ?? array() ) ) );
+		return;
+	}
+	$viewed = $_POST['fpw_approve_preview'] ?? null;
+	if ( ! is_string( $viewed ) || ! hash_equals( fpw_quotation_preview_token( $preview ), $viewed ) ) {
+		fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => 'approval-refused', 'reason' => 'vista-previa-no-revisada' ) ) );
 		return;
 	}
 	$outcome = fpw_quotation_approve_and_send( $order_id, $draft, $work, $preview, get_current_user_id() );

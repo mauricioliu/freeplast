@@ -1625,7 +1625,11 @@ register_shutdown_function( static function () {
         echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
       `).split('\n').pop());
       const postForm56 = (fetcher, requestId, fields) => fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
-      const approvePost56 = (fetcher, requestId, nonce) => postForm56(fetcher, requestId, { 'fpw_work_approve': '1', 'fpw_approve_nonce': nonce });
+      const approvalToken56 = (html) => html.match(/name="fpw_approve_preview" value="([a-f0-9]{64})"/)?.[1] || '';
+      const approvePost56 = async (fetcher, requestId, nonce, viewedToken = null) => {
+        const token = viewedToken ?? approvalToken56(await (await fetcher(editUrl(requestId))).text());
+        return postForm56(fetcher, requestId, { 'fpw_work_approve': '1', 'fpw_approve_nonce': nonce, 'fpw_approve_preview': token });
+      };
       const lineFields56 = (record, priceFor) => {
         const fields = {};
         record.lines.forEach((line, index) => {
@@ -1746,6 +1750,19 @@ register_shutdown_function( static function () {
       });
       check((await asistidaSave56.text()).includes('Cambios guardados (revisión 1)'), 'the asistida draft completes its commercial work');
       await postForm56(owner, placesJourneyIds.asistida, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.asistida}`) });
+      // A complete review in tab A must not approve the newer review tab B sees.
+      const oldReview56 = approvalToken56(await (await owner(editUrl(placesJourneyIds.asistida))).text());
+      check(oldReview56.length === 64, 'the approval form carries the preview actually shown');
+      const newerSave56 = await postForm56(owner, placesJourneyIds.asistida, {
+        'fpw_work_save': '1', 'fpw_work_revision': '1', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${placesJourneyIds.asistida}`),
+        ...lineFields56(asistidaRecord56, () => 1490),
+        'fpw_work[destination]': 'Camino El Arrayán 52, San Francisco de Mostazal',
+        'fpw_work[dispatch_amount]': '20000', 'fpw_work[validity_days]': '14',
+      });
+      check((await newerSave56.text()).includes('Cambios guardados (revisión 2)'), 'tab B saves new commercial conditions');
+      await postForm56(owner, placesJourneyIds.asistida, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.asistida}`) });
+      const staleForm56 = await approvePost56(owner, placesJourneyIds.asistida, await mint(owner, `fpw-draft-approve-${placesJourneyIds.asistida}`), oldReview56);
+      check((await staleForm56.text()).includes('Nada se aprobó') && versionRow56(placesJourneyIds.asistida) === null && mailCount56() === mails56Before + 1, 'a stale valid owner form cannot approve or mail tab B\'s unseen offer');
       setDeliveryScenario('pdf-fail');
       const pdfFail56 = await approvePost56(owner, placesJourneyIds.asistida, await mint(owner, `fpw-draft-approve-${placesJourneyIds.asistida}`));
       const pdfFailHtml56 = await pdfFail56.text();

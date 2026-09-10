@@ -100,6 +100,10 @@ class FPWD_Fake_wpdb {
 		return $sql;
 	}
 	public function query( $sql ) {
+		if ( isset( $GLOBALS['fpwd_query_fault'] ) ) {
+			$result = ( $GLOBALS['fpwd_query_fault'] )( $sql );
+			if ( null !== $result ) { return $result; }
+		}
 		if ( preg_match( "/INSERT INTO \{?\w*options\}? \( option_name, option_value, autoload \) VALUES \( '(.+?)', '(.*)', 'off' \)$/s", $sql, $m ) ) {
 			if ( array_key_exists( $m[1], $GLOBALS['fpwd_table'] ) ) { return false; }
 			$GLOBALS['fpwd_table'][ $m[1] ] = $m[2]; return 1;
@@ -764,10 +768,24 @@ $tampered_projection['total'] = 1;
 check( fpw_quotation_approval_check( $payload91, $work91, array( 'revision' => 3, 'projection' => $tampered_projection ) )['state'] === 'proyeccion-divergente', 'a projection that diverges from the shared calculation cannot be issued' );
 
 /* Through the screen front door: every refusal is an honest state — nothing is created and nobody is mailed. */
-function fpwd_approve_and_render( int $request_id, string $nonce = 'offline-nonce' ): string {
+/** Submit the hidden controls of the form actually shown, not a fresh server revision invented by the test. */
+function fpwd_approval_form( int $request_id ): array {
+	$html = fpw_quote_draft_markup( wc_get_order( $request_id ), fpw_read_request_draft( $request_id ), fpw_read_draft_work( $request_id ) );
+	preg_match_all( '/<form\b[^>]*>.*?<\/form>/s', $html, $forms );
+	foreach ( $forms[0] as $form ) {
+		if ( ! str_contains( $form, 'name="fpw_work_approve"' ) ) { continue; }
+		preg_match_all( '/<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"[^>]*>/', $form, $fields, PREG_SET_ORDER );
+		$post = array();
+		foreach ( $fields as $field ) { $post[ $field[1] ] = html_entity_decode( $field[2], ENT_QUOTES ); }
+		return $post;
+	}
+	return array( 'fpw_work_approve' => '1' );
+}
+function fpwd_approve_and_render( int $request_id, string $nonce = 'offline-nonce', ?array $viewed_form = null ): string {
 	$_GET = array( 'page' => 'fpw-quote-draft', 'request' => (string) $request_id );
 	$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
-	$_POST = array( 'fpw_work_approve' => '1', 'fpw_approve_nonce' => $nonce );
+	$_POST = $viewed_form ?? fpwd_approval_form( $request_id );
+	$_POST['fpw_approve_nonce'] = $nonce;
 	fpw_handle_draft_posted_action();
 	ob_start();
 	fpw_render_quote_draft_screen();
@@ -969,5 +987,110 @@ check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_68'] ) && $mail_calls === 
 $quotation_rows = array_values( array_filter( array_keys( $GLOBALS['fpwd_table'] ), static fn( $name ) => str_starts_with( $name, 'fpw_quotation_' ) ) );
 sort( $quotation_rows );
 check( array( 'fpw_quotation_91', 'fpw_quotation_92', 'fpw_quotation_93', 'fpw_quotation_94' ) === $quotation_rows, 'exactly the four journey versions exist, never a fifth (' . implode( ', ', $quotation_rows ) . ')' );
+
+/** Synthetic complete review through the real receipt, save and preview actions. */
+function fpwd_review_for_approval( int $id, string $price = '1000' ): array {
+	if ( ! isset( $GLOBALS['fpwd_orders'][ $id ] ) ) {
+		$GLOBALS['fpwd_orders'][ $id ] = new FPWD_Order( $id, array( new FPWD_Item( 'Caja de prueba', 1, 22, 0 ) ), array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+		check( fpw_create_request_draft( $GLOBALS['fpwd_orders'][ $id ] ), 'synthetic request creates its own draft' );
+	}
+	$draft = fpw_read_request_draft( $id );
+	$saved = fpw_save_draft_work( $id, $draft, array(
+		'fpw_work_revision' => (string) fpw_draft_work_revision( fpw_read_draft_work( $id ) ),
+		'fpw_work' => array( 'lines' => array( array( 'quantity' => '1', 'price' => $price ) ), 'validity_days' => '7' ),
+	), 1 );
+	check( 'saved' === $saved['state'], 'synthetic commercial work is saved' );
+	$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
+	$_GET = array( 'page' => 'fpw-quote-draft', 'request' => (string) $id );
+	$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+	fpw_handle_draft_posted_action();
+	return fpwd_approval_form( $id );
+}
+
+/* Recovery #56: tab A cannot approve the new review tab B saved and saw. */
+$tab_a = fpwd_review_for_approval( 95 );
+$tab_b = fpwd_review_for_approval( 95, '2000' );
+$before = count( $GLOBALS['fpwd_mail_calls'] );
+$page = fpwd_approve_and_render( 95, 'offline-nonce', $tab_a );
+check( null === fpw_read_quotation_version( 95 ) && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'Nada se aprobó' ), 'a stale owner tab must not approve a newer unseen review' );
+
+/* A failed approval INSERT is not proof that another version exists. */
+$form96 = fpwd_review_for_approval( 96 );
+$GLOBALS['fpwd_query_fault'] = static fn( $sql ) => str_starts_with( $sql, 'INSERT INTO' ) && str_contains( $sql, "'fpw_quotation_96'" ) ? false : null;
+$page = fpwd_approve_and_render( 96, 'offline-nonce', $form96 );
+unset( $GLOBALS['fpwd_query_fault'] );
+check( null === fpw_read_quotation_version( 96 ) && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'No se pudo confirmar la aprobación' ) && ! str_contains( $page, 'ya tiene su primera versión aprobada' ), 'failed storage must not claim an existing approved version or mail anything' );
+
+/* The approved version survives a failed PDF write, but mail must not start. */
+$form97 = fpwd_review_for_approval( 97 );
+$GLOBALS['fpwd_query_fault'] = static fn( $sql ) => str_starts_with( $sql, 'UPDATE ' ) && str_contains( $sql, "'fpw_quotation_97'" ) ? false : null;
+$page = fpwd_approve_and_render( 97, 'offline-nonce', $form97 );
+unset( $GLOBALS['fpwd_query_fault'] );
+$stored97 = fpw_read_quotation_version( 97 );
+check( 'pending' === $stored97['document'] && ! isset( $stored97['pdf_base64'] ) && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'el documento no se pudo generar' ) && ! str_contains( $page, 'Cotización aprobada y enviada' ), 'mail cannot start or claim success when the frozen PDF was not saved' );
+
+/* Mail can be accepted before recording that outcome fails: never claim durable success. */
+$form98 = fpwd_review_for_approval( 98 );
+$GLOBALS['fpwd_query_fault'] = static fn( $sql ) => str_starts_with( $sql, 'UPDATE ' ) && str_contains( $sql, "'fpw_quotation_98'" ) && str_contains( $sql, '"state":"accepted"' ) ? false : null;
+$page = fpwd_approve_and_render( 98, 'offline-nonce', $form98 );
+unset( $GLOBALS['fpwd_query_fault'] );
+$stored98 = fpw_read_quotation_version( 98 );
+check( $before + 1 === count( $GLOBALS['fpwd_mail_calls'] ) && 'ready' === $stored98['document'] && 'unknown' === $stored98['delivery']['state'] && str_contains( $page, 'el resultado del correo es desconocido' ) && ! str_contains( $page, 'Cotización aprobada y enviada' ), 'a failed delivery-result write leaves durable unknown, not a false sent or unattempted state' );
+$before = count( $GLOBALS['fpwd_mail_calls'] );
+$page = fpwd_approve_and_render( 98, 'offline-nonce', $form98 );
+check( $before === count( $GLOBALS['fpwd_mail_calls'] ) && $stored98 === fpw_read_quotation_version( 98 ), 'retry after an unrecorded transport outcome never sends again or rewrites the version' );
+
+/* A configured renderer throwing is the same recoverable document failure. */
+$form99 = fpwd_review_for_approval( 99 );
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array( static function () { throw new RuntimeException( 'synthetic renderer unavailable' ); } );
+$page = fpwd_approve_and_render( 99, 'offline-nonce', $form99 );
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array();
+$stored99 = fpw_read_quotation_version( 99 );
+check( 'pending' === $stored99['document'] && null === $stored99['delivery']['state'] && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'el documento no se pudo generar' ), 'a renderer exception preserves approval as document-pending and mails nobody' );
+
+/* An installed renderer returning no bytes failed; do not silently replace its document. */
+$form100 = fpwd_review_for_approval( 100 );
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array( static fn() => '' );
+$page = fpwd_approve_and_render( 100, 'offline-nonce', $form100 );
+$GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array();
+check( 'pending' === fpw_read_quotation_version( 100 )['document'] && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'el documento no se pudo generar' ), 'an empty configured PDF cannot fall back to a different document and send it' );
+
+/* Missing/malformed controls fail closed; even a new projection on the SAME revision needs review. */
+foreach ( array( null, '', array( 'malformed' ), str_repeat( '0', 64 ) ) as $invalid ) {
+	$post = $tab_b;
+	if ( null === $invalid ) { unset( $post['fpw_approve_preview'] ); } else { $post['fpw_approve_preview'] = $invalid; }
+	$page = fpwd_approve_and_render( 95, 'offline-nonce', $post );
+	check( null === fpw_read_quotation_version( 95 ) && $before === count( $GLOBALS['fpwd_mail_calls'] ) && str_contains( $page, 'Nada se aprobó' ), 'a missing or malformed viewed-preview control cannot issue a quotation' );
+}
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( static fn() => array( 'rate_permille' => 0, 'applies_to_dispatch' => false ) );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '95' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+$page = fpwd_approve_and_render( 95, 'offline-nonce', $tab_b );
+check( null === fpw_read_quotation_version( 95 ) && $before === count( $GLOBALS['fpwd_mail_calls'] ), 'changing the reviewed projection without changing the working revision still invalidates the old approval form' );
+$page = fpwd_approve_and_render( 95 );
+$accepted95 = fpw_read_quotation_version( 95 );
+check( 'accepted' === $accepted95['delivery']['state'] && 2 === $accepted95['work_revision'] && 2000 === $accepted95['projection']['total'] && $before + 1 === count( $GLOBALS['fpwd_mail_calls'] ), 'the newly viewed form approves exactly the current complete offer (2000 CLP at confirmed 0 percent)' );
+$before = count( $GLOBALS['fpwd_mail_calls'] );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( static fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
+
+/* A zero-row PDF UPDATE is just as unsafe as a database error. */
+$form101 = fpwd_review_for_approval( 101 );
+$GLOBALS['fpwd_query_fault'] = static fn( $sql ) => str_starts_with( $sql, 'UPDATE ' ) && str_contains( $sql, "'fpw_quotation_101'" ) ? 0 : null;
+$page = fpwd_approve_and_render( 101, 'offline-nonce', $form101 );
+unset( $GLOBALS['fpwd_query_fault'] );
+check( 'pending' === fpw_read_quotation_version( 101 )['document'] && $before === count( $GLOBALS['fpwd_mail_calls'] ), 'a zero-row PDF write never sends' );
+
+/* Deterministic interleaving at the DB boundary: another approval wins before our INSERT. Not a real-DB concurrency test. */
+$form102 = fpwd_review_for_approval( 102 );
+$GLOBALS['fpwd_query_fault'] = static function ( $sql ) use ( $form102 ) {
+	if ( str_starts_with( $sql, 'INSERT INTO' ) && str_contains( $sql, "'fpw_quotation_102'" ) ) {
+		unset( $GLOBALS['fpwd_query_fault'] );
+		fpwd_approve_and_render( 102, 'offline-nonce', $form102 );
+	}
+	return null;
+};
+$page = fpwd_approve_and_render( 102, 'offline-nonce', $form102 );
+check( $before + 1 === count( $GLOBALS['fpwd_mail_calls'] ) && 1 === fpw_read_quotation_version( 102 )['version'] && str_contains( $page, 'ya tiene su primera versión aprobada' ), 'the losing concurrent approval returns the standing version and never sends a duplicate' );
 
 echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56)\n";
