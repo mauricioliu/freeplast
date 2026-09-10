@@ -259,11 +259,17 @@ function fpw_distance_disclaimer_html(): string {
 	return 'Referencia de conducción para la operación en vehículo menor: no certifica el acceso de un camión ni promete tiempos de entrega, y no reemplaza el cobro del transportista. La distancia no se guarda en ningún registro: cada consulta se calcula de nuevo desde el destino guardado, y el monto de despacho sigue siendo tu ingreso manual.';
 }
 
-/** One consultation result rendered under the state row, with the consulted destination when it no longer matches the current one. */
+/** One consultation result rendered under the state row, with the rule's suggestion for a usable distance (issue #61) and the consulted destination when it no longer matches the current one. */
 function fpw_distance_result_html( array $result, string $current_destination ): string {
 	$state = fpw_distance_state_html( $result );
 	if ( '' === $state ) { return ''; }
 	$html = '<p>' . $state . '</p>';
+	if ( 'ok' === ( $result['state'] ?? '' ) && is_int( $result['distance_meters'] ?? null ) ) {
+		// Issue #61: the maintained rule turns THIS consultation's distance into
+		// a suggestion for the owner's decision — never a stored, chosen or
+		// buyer-facing amount.
+		$html .= fpw_rule_suggestion_html( (int) $result['distance_meters'] );
+	}
 	if ( is_array( $result['destination'] ?? null ) ) {
 		$html .= '<p>' . esc_html( fpw_distance_precision_note( (string) ( $result['destination']['precision'] ?? 'escrita' ) ) ) . '</p>';
 		$consulted = (string) ( $result['destination']['address'] ?? '' );

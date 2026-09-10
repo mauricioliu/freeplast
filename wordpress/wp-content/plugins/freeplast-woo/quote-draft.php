@@ -1413,6 +1413,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. fpw_draft_fact_html( 'Vigencia de la oferta', $validity_days . ' días' )
 		. fpw_draft_fact_raw_html( 'Vista previa', $preview_state )
 		. '</dl><p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_price_screen_url() ) . '">Mantenedor de precios</a></p>'
+		. '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_rule_screen_url() ) . '">Regla de despacho</a></p>'
 		. '<p class="fpw-draft__aside-note"><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
 		. '</aside>';
 

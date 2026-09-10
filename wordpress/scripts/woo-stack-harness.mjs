@@ -1584,6 +1584,118 @@ register_shutdown_function( static function () {
       check(record5f.email === draftState.records[correctOrder].email, 'the native record keeps its identity');
     }
 
+    /* 5f. Issue #61 (cut 12 of #49): the owner's dispatch pricing rule. The
+       mantenedor edits the ONE explicit shape (cargo fijo + CLP/km × started
+       kilometers, never below the minimum) over real HTTP; a consultation
+       produces the internal breakdown and a suggestion distinguishable from
+       the chosen amount; a manual amount survives rule changes and
+       recalculations; the buyer-facing review never carries kilometers,
+       formula or breakdown and stays byte-identical across rule changes;
+       absent configuration keeps dispatch pending or manual. Synthetic
+       values — fixtures, never productive tariffs. */
+    {
+      const ruleUrl = '/wp-admin/admin.php?page=fpw-dispatch-rule';
+      const mailsRuleBefore = mailCount();
+      const ruleFields = (base, perKm, min) => ({ 'fpw_rule[base_fee]': base, 'fpw_rule[per_km]': perKm, 'fpw_rule[minimum]': min });
+      const postRule = (fetcher, fields, nonce) => fetcher(ruleUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_rule_save': '1', 'fpw_rule_nonce': nonce, ...fields }).toString() });
+      const ruleNonceFrom = (html) => (html.match(/name="fpw_rule_nonce" value="([0-9a-f]+)"/) || [])[1] || null;
+      const consult61 = async (requestId, fetcher) => {
+        const nonce = await mint(fetcher, `fpw-draft-distance-${requestId}`);
+        return (await fetcher(editUrl(requestId), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_distance_consult': '1', 'fpw_distance_nonce': nonce }).toString() })).text();
+      };
+      const storedRuleRow = () => sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        echo (string) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_dispatch_rule'));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop();
+      const previewSectionOf61 = (html) => {
+        const start = html.indexOf('<section class="fpw-draft__preview">');
+        if (start < 0) { return ''; }
+        const end = html.indexOf('</section>', start);
+        return end > start ? html.slice(start, end + 10) : '';
+      };
+
+      /* Deterministic reset of the run-owned rule row on the persistent disposable DB. */
+      sh(PHP, [WPCLI, 'eval', `global $wpdb; $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name = 'fpw_dispatch_rule'");`, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1', '--quiet']);
+
+      /* Absent by default: the mantenedor opens honest and empty — no shipped
+         coefficients — and ventas/visitors stay out of the screen and save. */
+      const emptyRule = await (await owner(ruleUrl)).text();
+      check(emptyRule.includes('Regla de despacho') && emptyRule.includes('Sin regla configurada'), 'the owner opens the dispatch-rule mantenedor and an unconfigured rule reads as exactly that (issue #61)');
+      check(emptyRule.includes('name="fpw_rule[base_fee]"') && emptyRule.includes('name="fpw_rule[per_km]"') && emptyRule.includes('name="fpw_rule[minimum]"'), 'the mantenedor offers exactly the three parameters of the one shape');
+      check(!emptyRule.includes('sugeriría'), 'the empty mantenedor ships no coefficient and invents no worked example');
+      const ventasRule = await ventas(ruleUrl);
+      check(ventasRule.status === 403, `a valid ventas session must be DENIED the rule mantenedor (got ${ventasRule.status})`);
+      const visitorRule = await visitor(ruleUrl);
+      check(visitorRule.status === 302 && String(visitorRule.headers.get('location') || '').includes('wp-login.php'), 'a visitor with the rule-mantenedor link is sent to the login');
+      const ventasRulePost = await postRule(ventas, ruleFields('15000', '2500', '20000'), await mint(ventas, 'fpw_rule_save'));
+      check(ventasRulePost.status === 403, `a ventas rule save with a VALID nonce is denied as a permission (got ${ventasRulePost.status})`);
+      const forgedRule = await postRule(owner, ruleFields('15000', '2500', '20000'), 'forged');
+      check(forgedRule.status === 403, `a rule save without a valid nonce is refused 403 (got ${forgedRule.status})`);
+      check(!storedRuleRow(), 'no denied or refused save wrote a rule row');
+
+      /* All-or-nothing: a partial rule is refused whole. */
+      const rulePage = await (await owner(ruleUrl)).text();
+      const ruleNonce = ruleNonceFrom(rulePage);
+      check(Boolean(ruleNonce), 'the rule save form carries a minted nonce');
+      const partial = await (await postRule(owner, ruleFields('15000', '', '20000'), ruleNonce)).text();
+      check(partial.includes('No se guardó nada'), 'a partial rule save is refused all-or-nothing');
+      check(!storedRuleRow(), 'the refused partial save wrote nothing');
+
+      /* The owner saves the synthetic test rule over the real screen; the
+         mantenedor recovers it and explains its effect with a worked example. */
+      const validRule = await postRule(owner, ruleFields('15000', '2500', '20000'), ruleNonce);
+      check(validRule.status === 200 && (await validRule.text()).includes('Regla de despacho guardada'), 'the valid rule save lands with its explicit banner');
+      const savedRuleRow = JSON.parse(storedRuleRow());
+      check(savedRuleRow.rule.base_fee === 15000 && savedRuleRow.rule.per_km === 2500 && savedRuleRow.rule.minimum === 20000, 'the rule persists as its one shape (no extra terms)');
+      const reopenedRule = await (await owner(ruleUrl)).text();
+      check(reopenedRule.includes('sugeriría') && reopenedRule.includes('90.000 CLP neto'), 'the mantenedor explains the rule effect with a worked example from the saved values');
+      check(mailCount() === mailsRuleBefore, `editing the rule sends no notification (${mailsRuleBefore} → ${mailCount()})`);
+
+      /* Consultation → suggestion with breakdown, distinguishable from the
+         chosen amount. correctOrder stands at revision 5 with the manual
+         dispatch amount 25.000 and the typed destination 'Plaza revisada 55,
+         Mostazal' (61.200 m simulated → 62 started kilometers). */
+      const consult1 = await consult61(correctOrder, owner);
+      check(consult1.includes('Sugerencia de la regla: 170.000 CLP neto'), 'the consultation renders the rule suggestion (15.000 + 2.500 × 62 km iniciados)');
+      check(consult1.includes('62 km') && consult1.includes('cargo fijo 15.000') && consult1.includes('2.500 CLP/km'), 'the internal breakdown names its inputs and the started-kilometer interpretation');
+      check(consult1.includes('25.000 CLP neto · ingreso manual'), 'the chosen amount keeps its manual origin beside the suggestion');
+      check(consult1.includes('no es el monto elegido') && consult1.includes('no certifica el acceso de un camión'), 'the suggestion says it is not the chosen amount and carries the route limitations');
+
+      /* The buyer-facing review carries no kilometers, formula or breakdown. */
+      const previewRaw = () => sh(PHP, [WPCLI, 'eval', `
+        global $wpdb;
+        echo (string) $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_preview_${correctOrder}'));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop();
+      const previewBeforeRule = previewRaw();
+      check(previewBeforeRule && !previewBeforeRule.includes('CLP/km') && !previewBeforeRule.includes('Desglose interno') && !previewBeforeRule.includes('Sugerencia') && !/\d+ km/.test(previewBeforeRule), 'the stored buyer-facing preview carries no kilometers, formula or breakdown');
+
+      /* The owner fixes a manual amount; a recalibrated rule and a fresh
+         consultation never replace it, and the stored review stays untouched. */
+      const manualFields61 = { 'fpw_work_save': '1', 'fpw_work_revision': '5', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${correctOrder}`), 'fpw_work[destination]': 'Plaza revisada 55, Mostazal', 'fpw_work[dispatch_amount]': '30000', 'fpw_work[validity_days]': '10' };
+      draftState.records[correctOrder].lines.forEach((line, index) => {
+        manualFields61[`fpw_work[lines][${index}][quantity]`] = String(line.quantity);
+        manualFields61[`fpw_work[lines][${index}][price]`] = '1490';
+      });
+      const manualSave = await (await owner(editUrl(correctOrder), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(manualFields61).toString() })).text();
+      check(manualSave.includes('Cambios guardados (revisión 6)'), 'the owner fixes the manual dispatch amount (revision 6)');
+
+      const recalibrated = await postRule(owner, ruleFields('15000', '3000', '20000'), ruleNonceFrom(await (await owner(ruleUrl)).text()));
+      check((await recalibrated.text()).includes('Regla de despacho guardada'), 'the recalibrated rule saves');
+      const consult2 = await consult61(correctOrder, owner);
+      check(consult2.includes('Sugerencia de la regla: 201.000 CLP neto'), 'the recalibrated rule suggests its new amount on a fresh consultation (15.000 + 3.000 × 62)');
+      check(consult2.includes('30.000 CLP neto · ingreso manual'), 'the manual amount survives the rule change and the recalculation');
+      check(previewRaw() === previewBeforeRule, 'changing the rule and consulting never rewrites the stored buyer-facing preview');
+      check(previewSectionOf61(await (await owner(editUrl(correctOrder))).text()).includes('Vista previa obsoleta'), 'the revision-6 save marks the reviewed preview obsolete through the existing invariant');
+
+      /* Removing the rule: the explicit empty save deactivates suggestions. */
+      const removed = await (await postRule(owner, ruleFields('', '', ''), ruleNonceFrom(await (await owner(ruleUrl)).text()))).text();
+      check(removed.includes('Regla quitada'), 'leaving the three fields empty removes the rule explicitly');
+      check(String(storedRuleRow()).includes('"rule":null'), 'the removed rule keeps no coefficients');
+      const consult3 = await consult61(correctOrder, owner);
+      check(consult3.includes('no está configurada') && !consult3.includes('Sugerencia de la regla'), 'without a rule the consultation suggests no amount and names the manual path');
+      check(mailCount() === mailsRuleBefore, `the whole rule journey sends no notification (${mailsRuleBefore} → ${mailCount()})`);
+    }
+
     } finally {
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftOwner, '--yes', ...draftWpArgs], { stdio: 'ignore' });
       spawnSync(PHP, [WPCLI, 'user', 'delete', draftVentas, '--yes', ...draftWpArgs], { stdio: 'ignore' });
@@ -1669,6 +1781,6 @@ add_action( 'init', static function () {
     check(lingering === 0, `the disposable stack still answers on ${SITE_URL} after shutdown (HTTP ${lingering}) — a server instance survived`);
   }
 
-  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
+  console.log(`stack harness: ${checks} real-stack checks passed (Home card contract + bounded concurrent-race repetition + same-attempt retry recovery + lost-response confirmation recovery + identical-rebuild-new-reference + per-request records + notification-event count + per-request private drafts and their owner-notice links + manual draft completion by the owner + dispatch-address provenance journeys + dispatch-distance consultation with nothing stored + the dispatch pricing rule and its suggestion journey + restricted-ventas record boundary + ventas import and RUT purchase history + the private price list and its draft prefill/refresh journey + totals-and-validity review before approval) on ${SITE_URL}`);
   return checks;
 }

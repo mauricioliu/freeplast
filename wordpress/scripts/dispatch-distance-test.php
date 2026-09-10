@@ -356,6 +356,35 @@ fpw_render_quote_draft_screen();
 $html = (string) ob_get_clean();
 check( str_contains( $html, 'la consulta se hizo para' ) && str_contains( $html, 'Camino de prueba 123, Mostazal' ), 'a consultation older than the current working destination names what it consulted' );
 
+/* Issue #61: the rule turns a successful consultation into a SUGGESTION with
+ * its internal breakdown — distinguishable from the chosen amount, never
+ * stored; without a maintained rule no amount is suggested at all. */
+check( str_contains( $html, 'no está configurada' ) && ! str_contains( $html, 'Sugerencia de la regla' ), 'without a maintained rule a successful consult suggests no amount and names the manual path' );
+check( str_contains( $html, 'name="fpw_rule_save"' ) === false && str_contains( $html, 'fpw-dispatch-rule' ), 'the draft screen links the rule mantenedor instead of inlining a rule editor' );
+$GLOBALS['fpwd_table']['fpw_dispatch_rule'] = wp_json_encode( array( 'schema' => 1, 'updated_at' => time(), 'updated_by' => 'dueña', 'rule' => array( 'base_fee' => 15000, 'per_km' => 2500, 'minimum' => 20000 ) ) );
+ob_start();
+fpw_render_quote_draft_screen();
+$html = (string) ob_get_clean();
+check( str_contains( $html, 'Sugerencia de la regla: 170.000 CLP neto' ), 'the rule suggestion renders beside the standing consultation (15.000 + 2.500 × 62 km iniciados)' );
+check( str_contains( $html, 'cargo fijo 15.000' ) && str_contains( $html, '2.500 CLP/km × 62 km' ) && str_contains( $html, 'no se aplica' ), 'the breakdown names its inputs, the started-kilometer interpretation and the unused minimum' );
+check( str_contains( $html, 'no es el monto elegido' ) && str_contains( $html, 'no certifica el acceso de un camión' ), 'the suggestion distinguishes itself from the chosen amount and carries the route-reference limitations' );
+$GLOBALS['fpwd_table']['fpw_draft_work_68'] = wp_json_encode( array( 'revision' => 9, 'destination' => 'Otro destino posterior, Rancagua', 'lines' => array(), 'dispatch_amount' => 90000 ) );
+ob_start();
+fpw_render_quote_draft_screen();
+$html = (string) ob_get_clean();
+check( str_contains( $html, '90.000 CLP neto · ingreso manual' ) && str_contains( $html, 'Sugerencia de la regla: 170.000' ), 'the chosen amount keeps its manual origin beside the standing suggestion: consulting never replaces it' );
+$GLOBALS['fpwd_table']['fpw_dispatch_rule'] = wp_json_encode( array( 'schema' => 1, 'updated_at' => time(), 'updated_by' => 'dueña', 'rule' => array( 'base_fee' => 15000, 'per_km' => 2500, 'minimum' => 99999999 ) ) );
+ob_start();
+fpw_render_quote_draft_screen();
+$html = (string) ob_get_clean();
+check( str_contains( $html, 'Sugerencia de la regla: 99.999.999 CLP neto' ) && str_contains( $html, 'se aplica el mínimo' ), 'a binding minimum is applied and explained in the breakdown' );
+$rows_before = $GLOBALS['fpwd_table'];
+fpw_rule_suggestion( 61200 );
+ob_start();
+fpw_render_quote_draft_screen();
+$html = (string) ob_get_clean();
+check( $GLOBALS['fpwd_table'] === $rows_before, 'rendering the suggestion (and computing it) stores nothing: the commercial decision stays manual' );
+
 /* The no-dispatch draft never renders the section nor its action. */
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '92' );
 $_POST = array();

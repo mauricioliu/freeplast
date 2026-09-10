@@ -116,6 +116,10 @@ _Avoid_: Carrier Charge, guaranteed transport cost
 The internal inputs and calculation explaining the Estimated Dispatch Price, available to the owner when reviewing the proposed amount. The Customer receives a separate dispatch amount, not this breakdown, and neither establishes the Carrier Charge.
 _Avoid_: Carrier invoice, unexplained shipping total
 
+**Dispatch Pricing Rule**:
+The one explicit, owner-maintained pricing shape — a fixed base charge, an amount per started road kilometer and a minimum charge — that turns the Dispatch Distance of a current consultation into an Estimated Dispatch Price suggestion with its Dispatch Estimate Breakdown, shown only to the owner beside the consultation. It is absent by default, calibrated only against real Carrier Charges, never prices by itself, never fills the chosen dispatch amount, and changing it rewrites no draft, preview or issued offer.
+_Avoid_: Prototype freight formula, automatic shipping rate, Carrier Charge
+
 **Quoted Dispatch Price**:
 The dispatch amount approved by the owner and offered to the Customer for the destination and quantities in a Quotation Version during its Quotation Validity. Freeplast absorbs differences from the Carrier Charge; changes to destination or quantities require review and a new Quotation Version.
 _Avoid_: Carrier Charge, provisional customer surcharge
@@ -165,3 +169,5 @@ _Avoid_: New production site, replacement site
 [ADR-0009](docs/adr/0009-quotation-projection-shared-calculation.md) records the totals-and-validity review decision (issue #55): one deterministic server-side Quotation Projection shared by preview and future issuance, a fiscal policy absent by default (no invented IVA rate), a seven-day editable Quotation Validity, and a Quotation Preview bound to the reviewed revision and made obsolete by any later commercial save — previewing issues nothing.
 
 [ADR-0010](docs/adr/0010-dispatch-distance-consultation.md) records the dispatch-distance consultation decision (issue #60): one bounded Routes `computeRoutes` call per explicit owner action from the private draft screen behind an absent-by-default server-credential seam, the permitted destination identification served only while it matches the working text, honest states for every failure or ambiguity, and nothing stored — the result is the current consultation only, and the manual dispatch price path always survives.
+
+[ADR-0011](docs/adr/0011-dispatch-pricing-rule.md) records the dispatch-pricing-rule decision (issue #61): ONE explicit, owner-maintained rule shape — cargo fijo + CLP/km × started whole kilometers, never below the minimum — on a private mantenedor, absent by default with no shipped coefficient, turning only a current consultation's distance into an internal suggestion plus its Dispatch Estimate Breakdown; the suggestion never becomes the chosen amount, never reaches the buyer, stores nothing, and changing the rule rewrites no draft, preview or issued offer.

@@ -1422,6 +1422,9 @@ require_once __DIR__ . '/sales-register.php';
 // Borrador privado de cotización (issue #50, corte 1 de #49): one durable initial draft per received request + the owner-only screen that reads it.
 require_once __DIR__ . '/quote-draft.php';
 
+// Regla de despacho (issue #61, corte 12 de #49): the owner's ONE explicit, editable dispatch-pricing rule — the mantenedor that calibrates the SUGGESTION rendered beside a distance consultation. Absent by default: without it dispatch stays pending or manual, never an invented amount. Loads before the distance consultation so its suggestion is available to the render.
+require_once __DIR__ . '/dispatch-rule.php';
+
 // Consulta de distancia de despacho (issue #60, corte 11 de #49): the owner's bounded Routes consultation from the private draft screen — read-only, nothing stored.
 require_once __DIR__ . '/dispatch-distance.php';
 
