@@ -369,11 +369,10 @@ function fpw_price_import_confirm( string $token, array $catalog ): array {
 	}
 	fpw_price_import_clear_pending();
 	fpw_price_import_sweep_receipts();
-	$counted = static fn( int $n, string $one, string $many ): string => $n . ' ' . ( 1 === $n ? $one : $many );
-	$message = 'Importación aplicada: ' . $counted( $classified['nuevos'], 'precio nuevo', 'precios nuevos' ) . ', '
-		. $counted( $classified['cambios'], 'precio actualizado', 'precios actualizados' ) . ', '
-		. $counted( $classified['iguales'], 'valor idéntico (sin cambios)', 'valores idénticos (sin cambios)' ) . ', '
-		. $counted( $receipt['errores_total'], 'fila con error', 'filas con error' ) . '.';
+	$message = 'Importación aplicada: ' . fpw_price_import_counted( $classified['nuevos'], 'precio nuevo', 'precios nuevos' ) . ', '
+		. fpw_price_import_counted( $classified['cambios'], 'precio actualizado', 'precios actualizados' ) . ', '
+		. fpw_price_import_counted( $classified['iguales'], 'valor idéntico (sin cambios)', 'valores idénticos (sin cambios)' ) . ', '
+		. fpw_price_import_counted( $receipt['errores_total'], 'fila con error', 'filas con error' ) . '.';
 	return array( 'ok' => true, 'message' => $message, 'receipt' => $receipt );
 }
 
@@ -490,6 +489,11 @@ function fpw_price_import_format_clp( $price ): string {
 	return null === $price ? '—' : number_format( (int) $price, 0, ',', '.' ) . ' CLP';
 }
 
+/** One counted noun with its Spanish plural: «1 fila con error», «2 filas con error». */
+function fpw_price_import_counted( int $n, string $one, string $many ): string {
+	return $n . ' ' . ( 1 === $n ? $one : $many );
+}
+
 /** The mobile-first screen shell and its styles. */
 function fpw_price_import_shell( string $inner ): string {
 	return '<div class="wrap fpw-price-import"><style>'
@@ -537,7 +541,9 @@ function fpw_price_import_pending_preview_html(): string {
 	$nonce_confirm = wp_nonce_field( FPW_PRICE_IMPORT_NONCE_CONFIRM, 'fpw_price_import_nonce', true, false );
 	$nonce_cancel  = wp_nonce_field( FPW_PRICE_IMPORT_NONCE_CANCEL, 'fpw_price_import_nonce', true, false );
 
-	$rows = fpw_price_import_classify( is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
+	$rows        = fpw_price_import_classify( is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
+	$applicable  = count( $rows['rows'] );
+	$error_total = (int) ( $pending['errores_total'] ?? 0 );
 	$preview = '';
 	foreach ( array_slice( $rows['rows'], 0, FPW_PRICE_IMPORT_PREVIEW_ROWS ) as $row ) {
 		$preview .= '<tr><td>' . (int) ( $row['line'] ?? 0 ) . '</td><td><code>' . esc_html( (string) ( $row['key'] ?? '' ) ) . '</code></td>'
@@ -553,12 +559,12 @@ function fpw_price_import_pending_preview_html(): string {
 	$token = (string) ( $pending['token'] ?? '' );
 	$html = '<section><h2>Vista previa pendiente</h2>'
 		. '<p><strong>' . esc_html( (string) ( $pending['filename'] ?? '' ) ) . '</strong> · subida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $pending['at'] ?? 0 ) ) ) . ' por ' . esc_html( (string) ( $pending['actor'] ?? '' ) ) . '</p>'
-		. '<p>' . count( $rows['rows'] ) . ' ' . esc_html( 1 === count( $rows['rows'] ) ? 'fila aplicable' : 'filas aplicables' ) . ' · ' . $rows['nuevos'] . ' nuevos · ' . $rows['cambios'] . ' cambios · ' . $rows['iguales'] . ' idénticos · ' . (int) ( $pending['errores_total'] ?? 0 ) . ' ' . esc_html( 1 === (int) ( $pending['errores_total'] ?? 0 ) ? 'fila con error' : 'filas con error' )
+		. '<p>' . esc_html( fpw_price_import_counted( $applicable, 'fila aplicable', 'filas aplicables' ) ) . ' · ' . $rows['nuevos'] . ' nuevos · ' . $rows['cambios'] . ' cambios · ' . $rows['iguales'] . ' idénticos · ' . esc_html( fpw_price_import_counted( $error_total, 'fila con error', 'filas con error' ) )
 		. ( ! empty( $pending['ignored_columns'] ) ? ' · columnas ignoradas: ' . esc_html( implode( ', ', (array) $pending['ignored_columns'] ) ) : '' ) . '</p>';
 	if ( '' !== $preview ) {
 		$html .= '<table><thead><tr><th scope="col">Línea</th><th scope="col">Identidad</th><th scope="col">Hoy en la lista</th><th scope="col">En el archivo</th><th scope="col">Estado</th></tr></thead><tbody>' . $preview . '</tbody></table>';
-		if ( count( $rows['rows'] ) > FPW_PRICE_IMPORT_PREVIEW_ROWS ) {
-			$html .= '<p class="fpw-price-import__note">Mostrando las primeras ' . FPW_PRICE_IMPORT_PREVIEW_ROWS . ' de ' . count( $rows['rows'] ) . ' filas.</p>';
+		if ( $applicable > FPW_PRICE_IMPORT_PREVIEW_ROWS ) {
+			$html .= '<p class="fpw-price-import__note">Mostrando las primeras ' . FPW_PRICE_IMPORT_PREVIEW_ROWS . ' de ' . $applicable . ' filas.</p>';
 		}
 	}
 	if ( '' !== $errores_html ) {

@@ -1610,6 +1610,8 @@ register_shutdown_function( static function () {
         }
         return null;
       };
+      const pendingToken53 = (html) => (html.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1];
+      const postAction53 = (action, nonce, token) => owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': action, 'fpw_price_import_nonce': nonce, 'fpw_price_import_token': token }).toString() });
       const uploadCsv53 = async (csv, filename) => {
         const page = await (await owner(importUrl53)).text();
         const uploadNonce = formNonce53(page, 'upload');
@@ -1666,7 +1668,6 @@ register_shutdown_function( static function () {
       `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']).split('\n').pop());
       const [varA53, varB53] = catalog53.variations;
       check(varA53 > 0 && varB53 > 0 && varA53 !== varB53, 'the import-journey fixture exposes two distinct variations');
-      const seedPrices53 = { [`p:${catalog53.simple}`]: 31111, [`v:${varA53}`]: 32222 };
 
       /* The owner screens cross-link and the importer names its standing blocker. */
       const importHome53 = await (await owner(importUrl53)).text();
@@ -1711,7 +1712,7 @@ register_shutdown_function( static function () {
       check(importHtml53.includes('la lista de precios NO cambió'), 'the upload banner states the list did not change');
       check(importHtml53.includes('semilla.csv') && importHtml53.includes('2 filas aplicables') && importHtml53.includes('2 nuevos'), 'the preview names its source file and the proposed new prices');
       check(priceRow53().raw === '', 'upload/preview stage a proposal only: the price row does not even exist until confirmation');
-      const seedConfirm53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      const seedConfirm53 = await postAction53('confirm', formNonce53(importHtml53, 'confirm'), pendingToken53(importHtml53));
       check((await seedConfirm53.text()).includes('Importación aplicada: 2 precios nuevos'), 'the seeded confirmation reports its explicit result');
       const seeded = priceRow53().prices;
       check(seeded[`p:${catalog53.simple}`] === 31111 && seeded[`v:${varA53}`] === 32222, 'the confirmed seed prices persist by native identity');
@@ -1730,8 +1731,7 @@ register_shutdown_function( static function () {
       importHtml53 = await uploadCsv53(messyCsv53, 'con-errores.csv');
       check(importHtml53.includes('0 filas aplicables') && importHtml53.includes('6 filas con error'), 'the messy batch previews zero applicable rows and names every error');
       check(importHtml53.includes('identidad duplicada') && importHtml53.includes('asociación ambigua') && importHtml53.includes('producto desconocido') && importHtml53.includes('precio 0') && importHtml53.includes('nunca se evalúan'), 'the review names the conflict, the ambiguity, the unknown product, the zero sentinel and the inert formula');
-      const cancelToken53 = (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1];
-      const cancelled53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'cancel', 'fpw_price_import_nonce': formNonce53(importHtml53, 'cancel'), 'fpw_price_import_token': cancelToken53 }).toString() });
+      const cancelled53 = await postAction53('cancel', formNonce53(importHtml53, 'cancel'), pendingToken53(importHtml53));
       check((await cancelled53.text()).includes('sin efectos'), 'the cancellation answers its harmlessness explicitly');
       check(JSON.stringify(priceRow53().prices) === JSON.stringify(seeded), 'the cancelled batch left the list exactly as it was');
 
@@ -1747,7 +1747,7 @@ register_shutdown_function( static function () {
       importHtml53 = await uploadCsv53(reviewedCsv53, 'lote-revisado.csv');
       check(importHtml53.includes('3 filas aplicables · 1 nuevos · 1 cambios · 1 idénticos · 1 fila con error'), 'the reviewed preview counts its nuevo, cambio, idéntico and error rows');
       check(importHtml53.includes('>Cambio<') && importHtml53.includes('>Idéntico<') && importHtml53.includes('>Nuevo<') && importHtml53.includes('31.111 CLP') && importHtml53.includes('32.222 CLP'), 'each proposed row renders its classification beside the current list value');
-      const reviewed53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      const reviewed53 = await postAction53('confirm', formNonce53(importHtml53, 'confirm'), pendingToken53(importHtml53));
       check((await reviewed53.text()).includes('Importación aplicada: 1 precio nuevo, 1 precio actualizado, 1 valor idéntico (sin cambios), 1 fila con error.'), 'the confirmation reports the exact reviewed outcome with counts');
       const afterReview53 = priceRow53().prices;
       check(afterReview53[`p:${catalog53.simple}`] === 33333 && afterReview53[`v:${varB53}`] === 34444 && afterReview53[`v:${varA53}`] === 32222, 'the cambio and the nuevo landed; the idéntico kept its value');
@@ -1757,20 +1757,20 @@ register_shutdown_function( static function () {
          zero fabricated commercial changes, the list row byte-identical. */
       const rawBeforeRepeat53 = priceRow53().raw;
       importHtml53 = await uploadCsv53(reviewedCsv53, 'lote-repetido.csv');
-      const repeated53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': formNonce53(importHtml53, 'confirm'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      const repeated53 = await postAction53('confirm', formNonce53(importHtml53, 'confirm'), pendingToken53(importHtml53));
       check((await repeated53.text()).includes('Importación aplicada: 0 precios nuevos, 0 precios actualizados, 3 valores idénticos (sin cambios)'), 'the repeated import applies nothing and reports the identical rows');
       check(priceRow53().raw === rawBeforeRepeat53, 'the list row is byte-identical after the repeat: repetition fabricates no commercial change');
 
       /* A stale preview (replaced by a later upload) demands re-review instead
          of applying; the replacement is cancelled harmlessly. */
       importHtml53 = await uploadCsv53(`id_producto,id_variacion,precio\n${catalog53.simple},,35555\n`, 'reemplazada.csv');
-      const staleToken53 = (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1];
+      const staleToken53 = pendingToken53(importHtml53);
       const staleNonce53 = formNonce53(importHtml53, 'confirm');
       importHtml53 = await uploadCsv53(`id_producto,id_variacion,precio\n${catalog53.simple},,36666\n`, 'vigente.csv');
-      const stale53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'confirm', 'fpw_price_import_nonce': staleNonce53, 'fpw_price_import_token': staleToken53 }).toString() });
+      const stale53 = await postAction53('confirm', staleNonce53, staleToken53);
       check((await stale53.text()).includes('ya no está disponible'), 'confirming the replaced (stale) preview is refused explicitly');
       check(priceRow53().prices[`p:${catalog53.simple}`] === 33333, 'the stale confirm applied nothing');
-      const cancelVigente53 = await owner(importUrl53, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_import_action': 'cancel', 'fpw_price_import_nonce': formNonce53(importHtml53, 'cancel'), 'fpw_price_import_token': (importHtml53.match(/name="fpw_price_import_token" value="([0-9a-f]+)"/) || [])[1] }).toString() });
+      const cancelVigente53 = await postAction53('cancel', formNonce53(importHtml53, 'cancel'), pendingToken53(importHtml53));
       check((await cancelVigente53.text()).includes('sin efectos'), 'the replacement is cancelled without effects');
 
       /* The import mutated no products, no drafts, no sales: the guarded rows stand. */

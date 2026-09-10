@@ -345,7 +345,6 @@ check( str_contains( $page, 'pendiente.csv' ) && str_contains( $page, 'Confirmar
 check( str_contains( $page, 'Hoy en la lista' ) && str_contains( $page, '1.700 CLP' ) && str_contains( $page, '>Cambio<' ) && str_contains( $page, '>Idéntico<' ), 'the review classifies each row beside the current list value' );
 check( str_contains( $page, 'page=fpw-price-list' ), 'the importer links the mantenedor it updates' );
 check( str_contains( $page, 'muestra real' ), 'the screen names the standing external blocker: the definitive contract awaits the real price-sheet sample' );
-check( str_contains( $page, 'fpw_price_import_receipt' ) === false || true, 'receipts render only their own markup' );
 $receiptPage = fpw_price_import_receipts_html();
 check( str_contains( $receiptPage, (string) ( fpw_price_import_receipts( 1 )[0]['token'] ?? 'x' ) ), 'the applied receipts are consultable on the screen with their token' );
 check( str_contains( $page, '@media (min-width: 782px)' ), 'the screen is authored mobile-first with a desktop enhancement' );
