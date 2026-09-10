@@ -64,6 +64,7 @@ function wp_mail( $to, $subject, $message, $headers = array(), $attachments = ar
 	$GLOBALS['fpwd_mail_calls'][] = array(
 		'to' => $to, 'subject' => $subject, 'message' => $message, 'headers' => $headers,
 		'attachments' => $attachments,
+		'attachment_dir_modes' => array_map( static fn( $path ) => fileperms( dirname( $path ) ) & 0777, $attachments ),
 		'attachment_bytes' => array_map( 'file_get_contents', array_values( (array) $attachments ) ),
 	);
 	if ( 'reject' === $GLOBALS['fpwd_mail_mode'] ) { return false; }
@@ -71,6 +72,7 @@ function wp_mail( $to, $subject, $message, $headers = array(), $attachments = ar
 	return true;
 }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
+function wp_date( $format, $timestamp ) { return gmdate( $format, (int) $timestamp ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}
@@ -853,25 +855,28 @@ check( $version['buyer'] === array( 'name' => 'Pilar', 'company' => 'Agrícola d
 check( 'ready' === $version['document'] && 'accepted' === ( $version['delivery']['state'] ?? '' ) && is_int( $version['delivery']['at'] ?? null ), 'document ready and mail accepted are recorded on the version' );
 check( 1 === (int) ( $version['approved_by'] ?? 0 ) && ( $version['approved_at'] ?? 0 ) > 0, 'the approval records its actor and time' );
 
-/* The document: a real PDF with exactly the approved values and nothing internal. */
+/* Inspect the actual frozen attachment through an independent PDF reader. */
+require_once __DIR__ . '/lib/pdf-probe.php';
 $pdf = base64_decode( (string) ( $version['pdf_base64'] ?? '' ), true );
-check( is_string( $pdf ) && str_starts_with( $pdf, '%PDF-1.4' ) && str_ends_with( $pdf, '%%EOF' ), 'the frozen document is a real PDF file' );
-$xref_at = (int) trim( preg_replace( '/^startxref\s+/', '', (string) substr( $pdf, (int) strrpos( $pdf, 'startxref' ) ) ) );
-check( $xref_at > 0 && str_starts_with( (string) substr( $pdf, $xref_at ), 'xref' ), 'the PDF xref table sits exactly at its declared offset' );
-check( str_contains( $pdf, 'FP-2026-000091' ), 'the PDF names the request reference and its version' );
-check( str_contains( $pdf, '3.210 CLP' ) && str_contains( $pdf, '1.000 CLP' ) && str_contains( $pdf, '610 CLP' ) && str_contains( $pdf, '4.820 CLP' ), 'the PDF shows the exact approved amounts (3.210 + 1.000 + 610 = 4.820)' );
-/* The document's fixed grid stays on the page: every Courier line fits the usable width. */
-$fpwd_overflow = 0;
-foreach ( preg_split( '/\n/', $pdf ) as $fpwd_line ) {
-	if ( ! preg_match( '/^BT \\/(F\\d) (\\d+) Tf 1 0 0 1 ([\\d.]+) ([\\d.]+) Tm \\((.*)\\) Tj ET$/', $fpwd_line, $fpwd_m ) ) { continue; }
-	if ( 'F2' !== $fpwd_m[1] ) { continue; }
-	$fpwd_chars = strlen( $fpwd_m[5] ) - substr_count( $fpwd_m[5], '\\' );
-	if ( (float) $fpwd_m[3] + 0.6 * (int) $fpwd_m[2] * $fpwd_chars > 556.0 ) { $fpwd_overflow++; }
+$probe = fpw_test_pdf_probe( $pdf );
+check( str_contains( $probe['info'], 'dompdf 3.1.6' ), 'the approved quotation is produced by the owner-approved pinned library, not the hand-written writer' );
+check( str_starts_with( $pdf, '%PDF-' ) && str_ends_with( rtrim( $pdf ), '%%EOF' ), 'the frozen document is a real PDF file' );
+$text = preg_replace( '/\s+/u', ' ', $probe['text'] );
+check( str_contains( $probe['fonts'], 'Manrope-Regular' ) && str_contains( $probe['fonts'], 'Manrope-Bold' ), 'the authorized Manrope font is embedded for normal and emphasized text' );
+check( str_contains( $text, 'FP-2026-000091' ), 'the PDF names the request reference and its version' );
+check( str_contains( $text, '3.210 CLP' ) && str_contains( $text, '1.000 CLP' ) && str_contains( $text, '610 CLP' ) && str_contains( $text, '4.820 CLP' ), 'the PDF shows the exact approved amounts (3.210 + 1.000 + 610 = 4.820)' );
+$bounds = new DOMDocument();
+$bounds->loadXML( $probe['bounds'] );
+$overflow = 0;
+foreach ( $bounds->getElementsByTagName( 'page' ) as $sheet ) {
+	foreach ( $sheet->getElementsByTagName( 'word' ) as $word ) {
+		if ( (float) $word->getAttribute( 'xMin' ) < 0 || (float) $word->getAttribute( 'yMin' ) < 0 || (float) $word->getAttribute( 'xMax' ) > (float) $sheet->getAttribute( 'width' ) || (float) $word->getAttribute( 'yMax' ) > (float) $sheet->getAttribute( 'height' ) ) { $overflow++; }
+	}
 }
-check( 0 === $fpwd_overflow, 'every fixed-grid document line fits the usable page width' );
-check( str_contains( $pdf, 'IVA \\(19%' ), 'the PDF names the confirmed rate it applied' );
-check( str_contains( $pdf, 'Vigencia de la oferta: 7' ), 'the PDF freezes the effective validity (the default seven days here)' );
-check( ! str_contains( $pdf, 'Historial' ) && ! str_contains( $pdf, 'sugerido' ) && ! str_contains( $pdf, 'ingreso manual' ), 'the buyer document carries no history or internal price origins' );
+check( 0 === $overflow && $bounds->getElementsByTagName( 'word' )->length > 20, 'independently decoded document text stays within its pages (not visual acceptance)' );
+check( str_contains( $text, 'IVA (19%' ), 'the PDF names the confirmed rate it applied' );
+check( str_contains( $text, 'Vigencia de la oferta: 7' ), 'the PDF freezes the effective validity (the default seven days here)' );
+check( ! str_contains( $text, 'Historial' ) && ! str_contains( $text, 'sugerido' ) && ! str_contains( $text, 'ingreso manual' ), 'the buyer document carries no history or internal price origins' );
 
 /* The buyer mail: addressed to the frozen identity, carrying exactly the frozen bytes. */
 $mail = $GLOBALS['fpwd_mail_calls'][ count( $GLOBALS['fpwd_mail_calls'] ) - 1 ];
@@ -879,6 +884,7 @@ check( 'compras@prueba.invalid' === $mail['to'], 'the buyer mail addresses the f
 check( str_contains( $mail['subject'], 'Cotización FP-2026-000091' ) && str_contains( $mail['subject'], 'versión 1' ), 'the mail subject names the quotation and its version' );
 check( 1 === count( $mail['attachments'] ) && str_contains( basename( (string) $mail['attachments'][0] ), 'FP-2026-000091' ), 'the mail carries exactly one document named after the version' );
 check( ( $mail['attachment_bytes'][0] ?? null ) === $pdf, 'the attached file is byte-for-byte the frozen document' );
+check( array( 0700 ) === $mail['attachment_dir_modes'], 'the transport reads its attachment from an owner-only directory even with a permissive host umask' );
 check( ! file_exists( (string) $mail['attachments'][0] ), 'the staging temp file never survives the send' );
 check( ! str_contains( $mail['message'], 'Historial' ) && ! str_contains( $mail['message'], 'sugerido' ) && ! str_contains( $mail['message'], 'ingreso manual' ), 'the buyer mail excludes history and internal price origins' );
 check( str_contains( $mail['message'], '4.820 CLP' ) && str_contains( $mail['message'], 'Vigencia de la oferta: 7' ), 'the buyer mail shows the approved values' );
@@ -1092,5 +1098,31 @@ $GLOBALS['fpwd_query_fault'] = static function ( $sql ) use ( $form102 ) {
 };
 $page = fpwd_approve_and_render( 102, 'offline-nonce', $form102 );
 check( $before + 1 === count( $GLOBALS['fpwd_mail_calls'] ) && 1 === fpw_read_quotation_version( 102 )['version'] && str_contains( $page, 'ya tiene su primera versión aprobada' ), 'the losing concurrent approval returns the standing version and never sends a duplicate' );
+
+/* A real approval with forty long product names must keep every line and the final amounts across pages. */
+$items103 = array();
+$work103 = array();
+for ( $i = 1; $i <= 40; $i++ ) {
+	$items103[] = new FPWD_Item( 'Caja agrícola Ñandú con nombre largo para revisar su presentación — PIEZA-' . sprintf( '%03d', $i ), 1, 2000 + $i, 0 );
+	$work103[] = array( 'quantity' => '1', 'price' => '1000' );
+}
+$GLOBALS['fpwd_orders'][103] = new FPWD_Order( 103, $items103, array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+check( fpw_create_request_draft( $GLOBALS['fpwd_orders'][103] ), 'long-offer fixture creates its own receipt' );
+$saved103 = fpw_save_draft_work( 103, fpw_read_request_draft( 103 ), array( 'fpw_work_revision' => '0', 'fpw_work' => array( 'lines' => $work103, 'validity_days' => '7' ) ), 1 );
+check( 'saved' === $saved103['state'], 'owner saves all forty manually priced lines' );
+$_GET = array( 'page' => 'fpw-quote-draft', 'request' => '103' );
+$_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
+fpw_handle_draft_posted_action();
+$page103 = fpwd_approve_and_render( 103 );
+check( str_contains( $page103, 'Cotización aprobada y enviada' ), 'a long complete offer can be approved through the same form' );
+$multi = fpw_test_pdf_probe( base64_decode( fpw_read_quotation_version( 103 )['pdf_base64'], true ) );
+check( str_contains( $multi['fonts'], 'Manrope-Regular' ) && str_contains( $multi['fonts'], 'Manrope-Bold' ) && ! str_contains( $multi['fonts'], 'Helvetica' ), 'later approvals in the same process still embed the authorized fonts after earlier private caches were removed' );
+$multiText = preg_replace( '/\s+/u', ' ', $multi['text'] );
+preg_match( '/^Pages:\s+(\d+)/m', $multi['info'], $pageCount );
+check( (int) ( $pageCount[1] ?? 0 ) > 1, 'the long offer genuinely spans multiple PDF pages' );
+for ( $i = 1; $i <= 40; $i++ ) {
+	check( preg_match( '/PIEZA-\s*' . sprintf( '%03d', $i ) . '\b/u', $multiText ) === 1, 'the independently parsed multi-page offer retains product ' . $i );
+}
+check( str_contains( $multiText, '40.000 CLP' ) && str_contains( $multiText, '7.600 CLP' ) && str_contains( $multiText, '47.600 CLP' ) && str_contains( $multiText, 'Vigencia de la oferta: 7' ), 'the end of the multi-page document keeps its exact net, tax, total and validity' );
 
 echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56)\n";

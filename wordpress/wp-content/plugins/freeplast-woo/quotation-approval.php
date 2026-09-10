@@ -174,9 +174,12 @@ function fpw_quotation_deliver( array $version ): string {
 	$to       = (string) ( $version['buyer']['email'] ?? '' );
 	if ( ! is_string( $document ) || '' === $document || '' === $to ) { return 'rejected'; }
 	$safe_reference = preg_replace( '/[^A-Za-z0-9._-]/', '', (string) ( $version['reference'] ?? '' ) );
-	$path = rtrim( sys_get_temp_dir(), '/\\' ) . '/cotizacion-' . $safe_reference . '-v' . max( 1, (int) ( $version['version'] ?? 1 ) ) . '-' . uniqid() . '.pdf';
+	require_once __DIR__ . '/quotation-document.php';
+	$dir = null;
 	try {
-		if ( false === file_put_contents( $path, $document ) ) { return 'rejected'; }
+		$dir = fpw_quotation_temp_dir();
+		$path = $dir . '/cotizacion-' . $safe_reference . '-v' . max( 1, (int) ( $version['version'] ?? 1 ) ) . '.pdf';
+		if ( strlen( $document ) !== file_put_contents( $path, $document ) ) { return 'rejected'; }
 		try {
 			$sent = wp_mail(
 				$to,
@@ -189,8 +192,10 @@ function fpw_quotation_deliver( array $version ): string {
 			return 'unknown';
 		}
 		return $sent ? 'accepted' : 'rejected';
+	} catch ( Throwable ) {
+		return 'rejected';
 	} finally {
-		if ( file_exists( $path ) ) { @unlink( $path ); }
+		if ( is_string( $dir ) ) { fpw_quotation_remove_temp( $dir ); }
 	}
 }
 
@@ -225,172 +230,6 @@ function fpw_quotation_email_html( array $version ): string {
 		. '<p><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 }
 
-/* ===== The document: a real, minimal PDF built from the frozen version =====
- * The project's dependency contract pins wordpress.org zips only and no
- * external PDF library or paid license is approved (ADR-0011), so issuance
- * renders its own PDF 1.4: core fonts (Helvetica + Helvetica-Bold,
- * WinAnsiEncoding), exact text lines, uncompressed streams. It carries
- * exactly the approved values — no invented legal clauses, bank data,
- * delivery promises or logo. The renderer is replaceable through the
- * fpw_quotation_document_bytes filter (absent by default); whatever bytes are
- * delivered, fpw_quotation_pdf_is_valid() must accept them before anything is
- * attached or stored.
- */
-
-/** UTF-8 → CP1252 (WinAnsi) for the core-font encoding; anything unmappable degrades to '?', never to a broken byte. */
-function fpw_pdf_win_ansi( string $text ): string {
-	$chars = preg_split( '//u', $text, -1, PREG_SPLIT_NO_EMPTY );
-	if ( ! is_array( $chars ) ) { return preg_replace( '/[^\x20-\x7e]/', '?', $text ); }
-	$specials = array(
-		0x20ac => "\x80", 0x201a => "\x82", 0x0192 => "\x83", 0x201e => "\x84", 0x2026 => "\x85",
-		0x2020 => "\x86", 0x2021 => "\x87", 0x02c6 => "\x88", 0x2030 => "\x89", 0x0160 => "\x8a",
-		0x2039 => "\x8b", 0x0152 => "\x8c", 0x017d => "\x8e", 0x2018 => "\x91", 0x2019 => "\x92",
-		0x201c => "\x93", 0x201d => "\x94", 0x2022 => "\x95", 0x2013 => "\x96", 0x2014 => "\x97",
-		0x02dc => "\x98", 0x2122 => "\x99", 0x0161 => "\x9a", 0x203a => "\x9b", 0x0153 => "\x9c",
-		0x017e => "\x9e", 0x0178 => "\x9f",
-	);
-	$out = '';
-	foreach ( $chars as $char ) {
-		$len = strlen( $char );
-		if ( 1 === $len ) { $cp = ord( $char ); }
-		elseif ( 2 === $len ) { $cp = ( ( ord( $char[0] ) & 0x1f ) << 6 ) | ( ord( $char[1] ) & 0x3f ); }
-		elseif ( 3 === $len ) { $cp = ( ( ord( $char[0] ) & 0x0f ) << 12 ) | ( ( ord( $char[1] ) & 0x3f ) << 6 ) | ( ord( $char[2] ) & 0x3f ); }
-		else { $out .= '?'; continue; }
-		if ( $cp < 128 ) { $out .= $char; }
-		elseif ( $cp <= 255 ) { $out .= chr( $cp ); }
-		elseif ( isset( $specials[ $cp ] ) ) { $out .= $specials[ $cp ]; }
-		else { $out .= '?'; }
-	}
-	return $out;
-}
-
-/** The codepoints of one UTF-8 string as an array (safe on malformed input). */
-function fpw_pdf_chars( string $text ): array {
-	$chars = preg_split( '//u', $text, -1, PREG_SPLIT_NO_EMPTY );
-	return is_array( $chars ) ? $chars : preg_split( '//', preg_replace( '/[^\x20-\x7e]/', '?', $text ), -1, PREG_SPLIT_NO_EMPTY );
-}
-
-/** Pad one UTF-8 text to a codepoint width, left or right — column layout without ever breaking a character. */
-function fpw_pdf_pad( string $text, int $width, bool $right = false ): string {
-	$fill = str_repeat( ' ', max( 0, $width - count( fpw_pdf_chars( $text ) ) ) );
-	return $right ? $fill . $text : $text . $fill;
-}
-
-/** Wrap one UTF-8 text into chunks of at most $width codepoints. */
-function fpw_pdf_wrap( string $text, int $width ): array {
-	$chars = fpw_pdf_chars( $text );
-	$out   = array();
-	for ( $i = 0, $n = count( $chars ); $i < $n; $i += $width ) { $out[] = implode( '', array_slice( $chars, $i, $width ) ); }
-	return $out ?: array( '' );
-}
-
-/** Escape one CP1252 string as a PDF literal: control bytes dropped, \\ ( ) escaped. */
-function fpw_pdf_escape_literal( string $cp1252 ): string {
-	return addcslashes( preg_replace( '/[\x00-\x1f\x7f]/', '', $cp1252 ), '\\()' );
-}
-
-/**
- * Render the approved version's PDF (1.4, Letter, core fonts). The lines are
- * laid out in a fixed character grid so the exact amounts sit in readable
- * columns; long names and notes wrap instead of truncating. Throws on a
- * payload missing its projection — a corrupt version must never produce a
- * half document (the caller treats any thrown failure as document pending).
- */
-function fpw_quotation_pdf_render( array $version ): string {
-	$projection = $version['projection'] ?? null;
-	if ( ! is_array( $projection ) ) { throw new RuntimeException( 'the approved version carries no projection' ); }
-	$clp = static fn( $amount ): string => is_int( $amount ) ? number_format( $amount, 0, ',', '.' ) . ' CLP' : 'Pendiente';
-	$right = static fn( string $text, int $width ): string => fpw_pdf_pad( $text, $width, true );
-	$lines   = array();
-	$lines[] = array( 'F2', 14, 'Cotización ' . (string) ( $version['reference'] ?? '' ) . ' · Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) );
-	$lines[] = array( 'F1', 9, 'Freeplast' );
-	$lines[] = array( 'F1', 9, 'Fecha de aprobación: ' . date_i18n( get_option( 'date_format' ), (int) ( $version['approved_at'] ?? 0 ) ) );
-	$company = (string) ( $version['buyer']['company'] ?? '' );
-	if ( '' !== $company ) { $lines[] = array( 'F1', 9, 'Señores: ' . $company ); }
-	$lines[] = array( 'F2', 11, 'Productos ofertados' );
-	foreach ( (array) ( $projection['lines'] ?? array() ) as $line ) {
-		$line = is_array( $line ) ? $line : array();
-		$name = (string) ( $line['name'] ?? '' );
-		foreach ( (array) ( $line['options'] ?? array() ) as $option ) {
-			$name .= ' — ' . wc_attribute_label( (string) ( $option['key'] ?? '' ) ) . ': ' . (string) ( $option['value'] ?? '' );
-		}
-		foreach ( fpw_pdf_wrap( $name, 46 ) as $i => $piece ) {
-			if ( 0 === $i ) {
-				$lines[] = array( 'F2', 9, fpw_pdf_pad( $piece, 47 ) . $right( number_format( (int) ( $line['quantity'] ?? 0 ), 0, ',', '.' ), 8 ) . '  ' . $right( $clp( $line['price'] ?? null ), 14 ) . '  ' . $right( $clp( $line['line_total'] ?? null ), 14 ) );
-			} else {
-				$lines[] = array( 'F1', 9, '    ' . $piece );
-			}
-		}
-	}
-	$lines[] = array( 'F1', 9, '' );
-	$lines[] = array( 'F2', 10, $right( 'Subtotal (neto):', 60 ) . $right( $clp( $projection['subtotal'] ?? null ), 23 ) );
-	if ( ! empty( $projection['dispatch_requested'] ) ) {
-		$lines[] = array( 'F2', 10, $right( 'Despacho (neto):', 60 ) . $right( $clp( $projection['dispatch'] ?? null ), 23 ) );
-	}
-	$tax_value = $clp( $projection['tax'] ?? null );
-	$tax_label = null === ( $projection['tax_rate_permille'] ?? null ) ? 'IVA:' : 'IVA (' . fpw_draft_tax_rate_percent_html( (int) $projection['tax_rate_permille'] ) . '%):';
-	$lines[] = array( 'F2', 10, $right( $tax_label, 60 ) . $right( $tax_value, 23 ) );
-	$lines[] = array( 'F2', 12, $right( 'TOTAL:', 46 ) . $right( $clp( $projection['total'] ?? null ), 23 ) );
-	$lines[] = array( 'F1', 9, '' );
-	if ( ! empty( $projection['dispatch_requested'] ) && '' !== (string) ( $projection['destination'] ?? '' ) ) {
-		foreach ( fpw_pdf_wrap( 'Destino de la oferta: ' . (string) $projection['destination'], 95 ) as $piece ) {
-			$lines[] = array( 'F1', 9, $piece );
-		}
-	}
-	foreach ( fpw_pdf_wrap( 'Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días a contar de su aprobación, para los productos, cantidades y destino revisados.', 95 ) as $piece ) {
-		$lines[] = array( 'F1', 9, $piece );
-	}
-
-	// Paginate: Letter page, fixed margins, one absolute-positioned line each.
-	$pages = array();
-	$page  = array();
-	$y     = 735.0;
-	foreach ( $lines as [ $font, $size, $text ] ) {
-		$lead = (float) $size + 4.0;
-		if ( $y - $lead < 57.0 ) { $pages[] = $page; $page = array(); $y = 735.0; }
-		$page[] = array( 'font' => $font, 'size' => $size, 'y' => $y, 'text' => $text );
-		$y -= $lead;
-	}
-	$pages[] = $page;
-
-	$page_count      = count( $pages );
-	$content_objects = array();
-	foreach ( $pages as $page ) {
-		$stream = '';
-		foreach ( $page as $line ) {
-			$stream .= 'BT /' . $line['font'] . ' ' . (int) $line['size'] . ' Tf 1 0 0 1 56 ' . sprintf( '%.2F', $line['y'] ) . ' Tm (' . fpw_pdf_escape_literal( fpw_pdf_win_ansi( $line['text'] ) ) . ') Tj ET' . "\n";
-		}
-		$content_objects[] = $stream;
-	}
-
-	// Object layout: 1 catalog · 2 pages · 3–4 fonts · one page + one content
-	// stream per rendered page. Offsets are recorded as the file is assembled.
-	$objects = array(
-		1 => '<< /Type /Catalog /Pages 2 0 R >>',
-		2 => '<< /Type /Pages /Kids [ ' . implode( ' ', array_map( static fn( $i ): string => ( 5 + $i ) . ' 0 R', range( 0, $page_count - 1 ) ) ) . ' ] /Count ' . $page_count . ' >>',
-		3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
-		4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
-	);
-	foreach ( $content_objects as $i => $stream ) {
-		$objects[ 5 + $i ] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' . ( 5 + $page_count + $i ) . ' 0 R >>';
-		$objects[ 5 + $page_count + $i ] = '<< /Length ' . strlen( $stream ) . " >>\nstream\n" . $stream . 'endstream';
-	}
-	$pdf = "%PDF-1.4\n%\xe2\xe3\xcf\xd3\n";
-	$offsets = array();
-	foreach ( $objects as $number => $body ) {
-		$offsets[ $number ] = strlen( $pdf );
-		$pdf .= $number . ' 0 obj' . "\n" . $body . "\n" . 'endobj' . "\n";
-	}
-	$xref_at = strlen( $pdf );
-	$count   = count( $objects ) + 1;
-	$pdf    .= "xref\n0 " . $count . "\n0000000000 65535 f \n";
-	for ( $number = 1; $number < $count; $number++ ) {
-		$pdf .= sprintf( '%010d %05d n ', $offsets[ $number ], 0 ) . "\n";
-	}
-	$pdf .= "trailer\n<< /Size " . $count . " /Root 1 0 R >>\nstartxref\n" . $xref_at . "\n%%EOF";
-	return $pdf;
-}
-
 /** Whether one delivered byte string is a usable PDF document: real header, catalog, and a closed xref/EOF — garbage never becomes an attachment. */
 function fpw_quotation_pdf_is_valid( string $bytes ): bool {
 	return strlen( $bytes ) > 300
@@ -400,12 +239,13 @@ function fpw_quotation_pdf_is_valid( string $bytes ): bool {
 		&& str_ends_with( rtrim( $bytes ), '%%EOF' );
 }
 
-/** The document stage: a delivered renderer decides when configured; otherwise the built-in writer renders. Any thrown failure is an empty (pending) document, never a crash. */
+/** The document stage uses the approved Dompdf distribution. Configured errors stay pending; no legacy-writer fallback. */
 function fpw_quotation_render_document( array $version ): string {
 	try {
 		$custom = apply_filters( 'fpw_quotation_document_bytes', null, $version );
 		if ( null !== $custom ) { return is_string( $custom ) ? $custom : ''; }
-		return fpw_quotation_pdf_render( $version );
+		require_once __DIR__ . '/quotation-document.php';
+		return fpw_quotation_dompdf_render( $version );
 	} catch ( Throwable ) {
 		return '';
 	}

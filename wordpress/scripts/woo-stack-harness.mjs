@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { runQuotationNativeFailures } from './quotation-native.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORDPRESS_DIR = dirname(HERE);
@@ -168,12 +169,16 @@ add_filter( 'pre_wp_mail', static function ( $result, $atts ) {
 		'draft_request' => $draft_request,
 		'to' => (string) ( $atts['to'] ?? '' ),
 		'attachments' => $attachments,
+		'attachment_sha256' => array_map( static fn( $p ) => hash_file( 'sha256', $p ), (array) ( $atts['attachments'] ?? array() ) ),
 	) );
 	if ( is_string( $entry ) ) { file_put_contents( dirname( ABSPATH ) . '/mail-log.jsonl', $entry . "\\n", FILE_APPEND ); }
 	return true; // blocked: the disposable stack never delivers mail.
 }, PHP_INT_MAX, 2 );
 add_filter( 'fpw_quotation_document_bytes', static function ( $bytes ) {
-	if ( 'pdf-fail' === (string) get_option( 'fpw_stack_delivery_scenario', 'ok' ) ) { return 'esto no es un documento pdf'; }
+	$scenario = (string) get_option( 'fpw_stack_delivery_scenario', 'ok' );
+	if ( 'pdf-fail' === $scenario ) { return 'esto no es un documento pdf'; }
+	if ( 'pdf-throw' === $scenario ) { throw new RuntimeException( 'controlled document renderer failure' ); }
+	if ( 'pdf-empty' === $scenario ) { return ''; }
 	return $bytes;
 }, 10, 1 );
 `,
@@ -1675,6 +1680,9 @@ register_shutdown_function( static function () {
         $version = json_decode( (string) $get( 'fpw_quotation_' . $id ), true );
         $preview = json_decode( (string) $get( 'fpw_draft_preview_' . $id ), true );
         $pdf = base64_decode( (string) ( $version['pdf_base64'] ?? '' ), true );
+        require_once ${JSON.stringify(join(HERE, 'lib/pdf-probe.php'))};
+        $inspection = fpw_test_pdf_probe( (string) $pdf );
+        $text = preg_replace('/\\\\s+/u', ' ', $inspection['text']);
         $mail_html = function_exists( 'fpw_quotation_email_html' ) ? fpw_quotation_email_html( $version ) : '';
         echo wp_json_encode( array(
           'reference' => $version['reference'] ?? null,
@@ -1686,11 +1694,14 @@ register_shutdown_function( static function () {
           'delivery' => $version['delivery']['state'] ?? null,
           'projection_matches_preview' => ( $version['projection'] ?? null ) === ( $preview['projection'] ?? null ),
           'pdf_header' => substr( (string) $pdf, 0, 8 ),
-          'pdf_tail' => substr( (string) $pdf, -5 ),
-          'pdf_has_reference' => is_string( $pdf ) && str_contains( $pdf, (string) ( $version['reference'] ?? '' ) ),
-          'pdf_has_total' => is_string( $pdf ) && str_contains( $pdf, '${totalLabel56} CLP' ),
-          'pdf_has_validity' => is_string( $pdf ) && str_contains( $pdf, 'Vigencia de la oferta: 10' ),
-          'pdf_clean' => is_string( $pdf ) && ! str_contains( $pdf, 'Historial' ) && ! str_contains( $pdf, 'sugerido' ) && ! str_contains( $pdf, 'ingreso manual' ),
+          'pdf_tail' => substr( rtrim( (string) $pdf ), -5 ),
+          'pdf_producer' => str_contains( $inspection['info'], 'dompdf 3.1.6' ),
+          'pdf_numeric_date' => (bool) preg_match('~Fecha de aprobación: [0-9]{2}/[0-9]{2}/[0-9]{4}~', $text),
+          'pdf_sha256' => hash( 'sha256', $pdf ),
+          'pdf_has_reference' => str_contains( $text, (string) ( $version['reference'] ?? '' ) ),
+          'pdf_has_total' => str_contains( $text, '${totalLabel56} CLP' ),
+          'pdf_has_validity' => str_contains( $text, 'Vigencia de la oferta: 10' ),
+          'pdf_clean' => ! str_contains( $text, 'Historial' ) && ! str_contains( $text, 'sugerido' ) && ! str_contains( $text, 'ingreso manual' ),
           'mail_clean' => ! str_contains( $mail_html, 'Historial' ) && ! str_contains( $mail_html, 'sugerido' ) && ! str_contains( $mail_html, 'ingreso manual' ),
           'mail_shows_total' => str_contains( $mail_html, '${totalLabel56} CLP' ),
           'issuance_rows' => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'fpw_quotation%'" ),
@@ -1701,7 +1712,9 @@ register_shutdown_function( static function () {
       check(versionState56.buyer && versionState56.buyer.email === draftState.records[correctOrder].email, 'the version freezes the buyer identity for delivery');
       check(versionState56.projection_matches_preview === true, 'the frozen version IS the projection the owner reviewed');
       check(versionState56.document === 'ready' && versionState56.delivery === 'accepted', 'document ready and mail accepted are recorded on the version');
-      check(versionState56.pdf_header === '%PDF-1.4' && versionState56.pdf_tail === '%%EOF', 'the frozen document is a real PDF file');
+      check(versionState56.pdf_header.startsWith('%PDF-') && versionState56.pdf_tail === '%%EOF' && versionState56.pdf_producer, 'the frozen document parses independently and uses the approved pinned PDF library');
+      check(buyerMail56.attachment_sha256?.[0] === versionState56.pdf_sha256, 'the intercepted attachment is byte-identical to the durable PDF');
+      check(versionState56.pdf_numeric_date, 'the approval date is unambiguous day/month/year even when the WP installation locale is English');
       check(versionState56.pdf_has_reference && versionState56.pdf_has_total && versionState56.pdf_has_validity, `the PDF carries the reference, the exact total (${totalLabel56} CLP) and the reviewed validity`);
       check(versionState56.pdf_clean && versionState56.mail_clean && versionState56.mail_shows_total, 'the buyer document and mail exclude history and internal origins while showing the approved values');
       check(versionState56.issuance_rows === 1, 'exactly one issuance row exists after the approval');
@@ -1828,6 +1841,7 @@ register_shutdown_function( static function () {
       `).split('\n').pop());
       check(record56.status === 'pending' && record56.qwc === '1', 'approving creates no purchase, payment or status change on the record');
       check(JSON.stringify(record56.quantities) === JSON.stringify(correctRecord56.lines.map((l) => l.quantity)) && record56.email === draftState.records[correctOrder].email, 'the record keeps its quantities and identity: issuing is not a sale');
+      await runQuotationNativeFailures({ owner, makeCookieFetch, mint, editUrl, wpEval: wpEval56, postForm: postForm56, approvePost: approvePost56, versionRow: versionRow56, mailLines: mailLines56, wpDir: WP_DIR, check });
     }
 
     } finally {

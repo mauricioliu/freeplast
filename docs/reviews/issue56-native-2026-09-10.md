@@ -1,5 +1,7 @@
 # #56 — primera ejecución nativa y decisión PDF pendiente
 
+> Registro de la fase inicial. La decisión fue aprobada después y biblioteca/pruebas se completaron en una fase posterior: [estado actualizado](issue56-pdf-and-native-2026-09-10.md). No interpretar los pendientes históricos de abajo como el estado actual.
+
 ## Autorización y límites
 
 El dueño pidió en esta sesión: «continua con biblioteca/activos PDF y pruebas nativas con base de datos real». Se ejecutó el harness desechable del worktree `freeplast-issue56-fix`, rama `ralph/issue-56`, sobre la corrección `45b0a54`. No se tocó staging, producción, Ralph, dispositivos, datos comerciales ni otras ramas.

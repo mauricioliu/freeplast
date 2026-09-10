@@ -18,6 +18,10 @@ for(const file of files){
  if(file.endsWith('.json')) {JSON.parse(readFileSync(file,'utf8'));checks++;}
  if(file.endsWith('.html') && /wp:freeplast\//.test(readFileSync(file,'utf8'))) throw Error('Legacy block in active theme: '+file);
 }
+const pdfArtifacts=Number(run('python3',['-c',`import sys; from pathlib import Path; sys.path.insert(0, ${JSON.stringify(path.join(root,'scripts'))}); from lib.quotation_artifacts import verify_quotation_artifacts; print(verify_quotation_artifacts(Path(${JSON.stringify(path.join(root,'wp-content/plugins/freeplast-woo'))})))`]));
+console.log(`quotation PDF: ${pdfArtifacts} pinned library/asset hashes checked`);
+checks+=pdfArtifacts;
+console.log(run('python3',[path.join(root,'scripts/quotation-artifacts-test.py')]));
 const deps=JSON.parse(readFileSync(path.join(root,'woo-dependencies.json'),'utf8'));
 for(const dep of Object.values(deps)){if(!/^[a-f0-9]{64}$/.test(dep.sha256)||!dep.url.startsWith('https://downloads.wordpress.org/plugin/'))throw Error('Unpinned dependency');checks++;}
 // Issue #28: behavioral states of the variation add-to-cart button script (initial, selected, cleared, unavailable, pending).
