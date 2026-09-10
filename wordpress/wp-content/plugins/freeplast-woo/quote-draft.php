@@ -186,6 +186,12 @@ function fpw_draft_save_action( int $order_id ): string {
 	return 'fpw-draft-save-' . $order_id;
 }
 
+/** Whether the receipt snapshot's request asked for dispatch ('si'). */
+function fpw_draft_requests_dispatch( array $draft ): bool {
+	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
+	return 'si' === ( $destination['dispatch'] ?? '' );
+}
+
 /** The raw stored saved-work row of one request, read straight from the database — never through the per-request options cache. */
 function fpw_read_draft_work_raw( int $order_id ): ?string {
 	if ( $order_id <= 0 ) { return null; }
@@ -244,12 +250,12 @@ function fpw_parse_draft_quantity( $raw ) {
  * @return array{errors:string[],lines:array[],destination:string,dispatch_amount:?int}
  */
 function fpw_parse_draft_work_input( array $draft, array $posted ): array {
-	$items    = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
-	$work_in  = is_array( $posted['fpw_work'] ?? null ) ? $posted['fpw_work'] : array();
-	$lines_in = is_array( $work_in['lines'] ?? null ) ? $work_in['lines'] : array();
-	$with_dispatch = 'si' === ( is_array( $draft['destination'] ?? null ) ? ( $draft['destination']['dispatch'] ?? '' ) : '' );
-	$errors = array();
-	$lines  = array();
+	$items          = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
+	$work_in        = is_array( $posted['fpw_work'] ?? null ) ? $posted['fpw_work'] : array();
+	$lines_in       = is_array( $work_in['lines'] ?? null ) ? $work_in['lines'] : array();
+	$with_dispatch  = fpw_draft_requests_dispatch( $draft );
+	$errors         = array();
+	$lines          = array();
 	foreach ( $items as $i => $item ) {
 		$label = 'Línea ' . ( $i + 1 ) . ' (' . (string) ( $item['name'] ?? '' ) . ')';
 		$quantity = fpw_parse_draft_quantity( $lines_in[ $i ]['quantity'] ?? ( $item['quantity'] ?? 1 ) );
@@ -330,21 +336,22 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
 			: $kept;
 	}
 	$next = array(
-		'schema'               => 1,
-		'order_id'             => $order_id,
-		'revision'             => $stored_revision + 1,
-		'updated_at'           => time(),
-		'updated_by'           => $user_id,
-		'lines'                => $parsed['lines'],
-		'destination'          => $parsed['destination'],
-		'dispatch_amount'      => $parsed['dispatch_amount'],
-		'dispatch_conditions'  => $conditions,
+		'schema'              => 1,
+		'order_id'            => $order_id,
+		'revision'            => $stored_revision + 1,
+		'updated_at'          => time(),
+		'updated_by'          => $user_id,
+		'lines'               => $parsed['lines'],
+		'destination'         => $parsed['destination'],
+		'dispatch_amount'     => $parsed['dispatch_amount'],
+		'dispatch_conditions' => $conditions,
 	);
-	if ( null === $raw ) {
-		if ( ! fpw_insert_options_row( fpw_draft_work_row_name( $order_id ), wp_json_encode( $next ) ) ) {
-			return array( 'state' => 'conflict', 'work' => fpw_read_draft_work( $order_id ), 'stored_revision' => $stored_revision );
-		}
-	} elseif ( ! fpw_cas_draft_work_row( $order_id, $raw, $next ) ) {
+	// First save: plain INSERT (a concurrent first save loses cleanly). Later
+	// saves: the exact compare-and-set. Either write losing is the conflict.
+	$written = null === $raw
+		? fpw_insert_options_row( fpw_draft_work_row_name( $order_id ), wp_json_encode( $next ) )
+		: fpw_cas_draft_work_row( $order_id, $raw, $next );
+	if ( ! $written ) {
 		return array( 'state' => 'conflict', 'work' => fpw_read_draft_work( $order_id ), 'stored_revision' => $stored_revision );
 	}
 	return array( 'state' => 'saved', 'work' => $next );
@@ -374,6 +381,13 @@ function fpw_quote_draft_register_screen(): void {
 /** The uniform denial: private to the owner, stated in Spanish, 403 — attributable to permissions, never to a nonce. */
 function fpw_die_draft_forbidden(): void {
 	wp_die( 'Este borrador de cotización es privado del dueño: requiere una sesión con permisos de administración de WooCommerce.', '', array( 'response' => 403 ) );
+}
+
+/** The order the draft screen targets, resolved from its request id: null when absent, unknown or not a real record. */
+function fpw_draft_screen_order() {
+	$order_id = isset( $_GET['request'] ) ? absint( wp_unslash( $_GET['request'] ) ) : 0;
+	$order    = $order_id ? wc_get_order( $order_id ) : null;
+	return ( is_object( $order ) && method_exists( $order, 'get_id' ) ) ? $order : null;
 }
 
 /**
@@ -408,11 +422,9 @@ function fpw_handle_draft_save(): void {
 	fpw_pending_draft_save( null );   // a fresh request starts with no outcome
 	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) || empty( $_POST['fpw_work_save'] ) ) { return; }
 	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
-	$order_id = isset( $_GET['request'] ) ? absint( wp_unslash( $_GET['request'] ) ) : 0;
-	$order    = $order_id ? wc_get_order( $order_id ) : null;
-	$order    = ( is_object( $order ) && method_exists( $order, 'get_id' ) ) ? $order : null;
-	$draft    = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
-	if ( ! $order || ! $draft ) { return; }
+	$order = fpw_draft_screen_order();
+	$draft = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
+	if ( ! $draft ) { return; }
 	fpw_handle_draft_save_request( $order, $draft );
 }
 add_action( 'admin_init', 'fpw_handle_draft_save' );
@@ -451,9 +463,7 @@ function fpw_draft_save_notice( array $result ): array {
  */
 function fpw_render_quote_draft_screen(): void {
 	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
-	$order_id = isset( $_GET['request'] ) ? absint( wp_unslash( $_GET['request'] ) ) : 0;
-	$order    = $order_id ? wc_get_order( $order_id ) : null;
-	$order    = ( is_object( $order ) && method_exists( $order, 'get_id' ) ) ? $order : null;
+	$order    = fpw_draft_screen_order();
 	$draft    = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	$work     = $order ? fpw_read_draft_work( (int) $order->get_id() ) : null;
 	$notice   = null;
@@ -528,10 +538,10 @@ function fpw_draft_submitted_details_html( $details ): string {
 
 /** The saved-work values the screen shows for one draft: the owner's saved adjustments over the receipt snapshot's defaults (identity-checked per line). */
 function fpw_draft_work_values( array $draft, ?array $work ): array {
-	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
-	$with_dispatch = 'si' === ( $destination['dispatch'] ?? '' );
+	$with_dispatch = fpw_draft_requests_dispatch( $draft );
+	$address       = (string) ( is_array( $draft['destination'] ?? null ) ? ( $draft['destination']['address'] ?? '' ) : '' );
 	$values = array(
-		'destination'     => $with_dispatch ? (string) ( $destination['address'] ?? '' ) : '',
+		'destination'     => $with_dispatch ? $address : '',
 		'dispatch_amount' => null,
 		'lines'           => array(),
 	);
@@ -560,8 +570,13 @@ function fpw_draft_work_values( array $draft, ?array $work ): array {
 }
 
 /** One amount as the owner entered it: plain integer input, pending placeholder when absent. */
-function fpw_draft_amount_input_html( string $name, $value ): string {
-	return '<input type="number" inputmode="numeric" min="1" max="' . FPW_DRAFT_WORK_MAX_AMOUNT . '" step="1" name="' . esc_attr( $name ) . '" value="' . ( is_int( $value ) && $value > 0 ? $value : '' ) . '" placeholder="Pendiente" />';
+function fpw_draft_amount_input_html( string $name, ?int $value ): string {
+	return '<input type="number" inputmode="numeric" min="1" max="' . FPW_DRAFT_WORK_MAX_AMOUNT . '" step="1" name="' . esc_attr( $name ) . '" value="' . ( null !== $value && $value > 0 ? $value : '' ) . '" placeholder="Pendiente" />';
+}
+
+/** One working quantity as the owner set it: a plain integer input, never a placeholder. */
+function fpw_draft_quantity_input_html( string $name, int $value ): string {
+	return '<input type="number" inputmode="numeric" min="1" max="' . FPW_DRAFT_WORK_MAX_QUANTITY . '" step="1" name="' . esc_attr( $name ) . '" value="' . $value . '" />';
 }
 
 /** One entered amount with its manual origin, or the pending badge. */
@@ -578,14 +593,14 @@ function fpw_draft_items_html( array $items, array $values ): string {
 		foreach ( ( is_array( $line['options'] ?? null ) ? $line['options'] : array() ) as $option ) {
 			$options .= '<span class="fpw-draft__option">' . esc_html( wc_attribute_label( (string) $option['key'] ) . ': ' . (string) $option['value'] ) . '</span> ';
 		}
-		$quantity  = max( 0, (int) ( $line['quantity'] ?? 0 ) );
-		$work_qty  = (int) ( $values['lines'][ $i ]['quantity'] ?? $quantity );
+		$quantity   = max( 0, (int) ( $line['quantity'] ?? 0 ) );
+		$work_qty   = (int) ( $values['lines'][ $i ]['quantity'] ?? $quantity );
 		$work_price = $values['lines'][ $i ]['price'] ?? null;
 		$html .= '<li><strong>' . esc_html( (string) ( $line['name'] ?? '' ) ) . '</strong>'
 			. ( '' !== $options ? '<div>' . trim( $options ) . '</div>' : '' )
 			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">Pedido: ' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . fpw_draft_amount_value_html( $work_price ) . '</span></div>'
 			. '<div class="fpw-draft__edit">'
-			. '<label>Cantidad de trabajo<input type="number" inputmode="numeric" min="1" max="' . FPW_DRAFT_WORK_MAX_QUANTITY . '" step="1" name="fpw_work[lines][' . $i . '][quantity]" value="' . $work_qty . '" /></label>'
+			. '<label>Cantidad de trabajo' . fpw_draft_quantity_input_html( 'fpw_work[lines][' . $i . '][quantity]', $work_qty ) . '</label>'
 			. '<label>Precio neto unitario (CLP)' . fpw_draft_amount_input_html( 'fpw_work[lines][' . $i . '][price]', $work_price ) . '</label>'
 			. '<span class="fpw-draft__origin">Ajuste manual del dueño: afecta solo a este borrador.</span>'
 			. '</div></li>';
@@ -690,19 +705,18 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		}
 		return fpw_draft_no_draft_html( $order );
 	}
-	$identity    = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
-	$destination = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
-	$items       = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
-	$units       = 0;
+	$identity        = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
+	$destination     = is_array( $draft['destination'] ?? null ) ? $draft['destination'] : array();
+	$items           = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
+	$units           = 0;
 	foreach ( $items as $line ) { $units += max( 0, (int) ( $line['quantity'] ?? 0 ) ); }
-	$with_dispatch = 'si' === ( $destination['dispatch'] ?? '' );
-	$work       = is_array( $work ) ? $work : null;
-	$revision   = $work ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0;
-	$values     = fpw_draft_work_values( $draft, $work );
-	$dispatch_stale = fpw_draft_dispatch_stale( $work );
+	$with_dispatch   = fpw_draft_requests_dispatch( $draft );
+	$revision        = $work ? max( 0, (int) ( $work['revision'] ?? 0 ) ) : 0;
+	$values          = fpw_draft_work_values( $draft, $work );
+	$dispatch_stale  = fpw_draft_dispatch_stale( $work );
 	$dispatch_amount = $values['dispatch_amount'];
-	$order_id   = (int) ( $draft['order_id'] ?? 0 );
-	$all_priced = ! empty( $values['lines'] );
+	$order_id        = (int) ( $draft['order_id'] ?? 0 );
+	$all_priced      = ! empty( $values['lines'] );
 	foreach ( $values['lines'] as $work_line ) { if ( null === ( $work_line['price'] ?? null ) ) { $all_priced = false; } }
 
 	$heading = '<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
