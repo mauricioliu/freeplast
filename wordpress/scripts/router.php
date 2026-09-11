@@ -17,7 +17,14 @@
  * pick up repo changes).
  */
 $wp_root = dirname( __DIR__ ) . '/.build/wp';
-$uri     = urldecode( parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) );
+$uri     = urldecode( (string) parse_url( $_SERVER['REQUEST_URI'], PHP_URL_PATH ) );
+
+// The native test server is reachable through the tailnet. Never expose its
+// database, dotfiles, diagnostic logs or executable test-only configuration.
+if ( str_contains( $uri, "\0" ) || preg_match( '~(?:^|/)\.|\.(?:log|sqlite|sqlite3|db)(?:$|/)|^/wp-config\.php(?:$|/)|^/wp-content/(?:database|mu-plugins)(?:/|$)~i', $uri ) ) {
+	http_response_code( 404 );
+	exit;
+}
 
 if ( '/' !== $uri ) {
 	$file = $wp_root . $uri;

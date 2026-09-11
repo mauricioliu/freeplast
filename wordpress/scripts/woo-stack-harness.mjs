@@ -287,6 +287,15 @@ register_shutdown_function( static function () {
     }
     check(home === 200, `the disposable stack never answered 200 (last ${home})\n${readFileSync(serverLogFile, 'utf8').slice(-800)}`);
 
+    // Focused red/green entry point; the same seam also runs in the full suite.
+    const { runOwnerWorkspaceTests } = await import('./owner-workspace-native.mjs');
+    await runOwnerWorkspaceTests({ makeCookieFetch, wpLogin, check, wpEval: code => sh(PHP,
+      [WPCLI, 'eval', code, `--path=${WP_DIR}`, `--url=${SITE_URL}`, '--user=1']) });
+    if (process.env.FREEPLAST_WORKSPACE_ONLY === '1') {
+      console.log(`owner workspace: ${checks} native checks passed`);
+      return checks;
+    }
+
     /* 2b. Catalog search contract (2026-09-07 staging regression): the adapter's
        search hook forces post_type=product AND wc_query=product_query — without
        the latter wc_setup_loop() defaults total=0 and archive-product.php skips

@@ -89,7 +89,7 @@ define( 'FPW_QUOTATION_MAX_RATE_PERMILLE', 5000 );
 
 /** The private screen's address for one request's draft. */
 function fpw_draft_screen_url( int $order_id ): string {
-	return admin_url( 'admin.php?page=' . FPW_DRAFT_SCREEN . '&request=' . $order_id );
+	return admin_url( 'admin.php?page=' . FPW_DRAFT_SCREEN . '&request=' . $order_id . '&workspace=1' );
 }
 
 /** The draft row name of one request: unique option_name → one draft, ever. */
@@ -772,7 +772,9 @@ function fpw_render_quote_draft_screen(): void {
 		// No admin_init pass on this request: run the same read-only process here.
 		fpw_handle_distance_consult_request( $order, $draft );
 	}
-	echo fpw_quote_draft_markup( $order, $draft, $work, $notice );
+	echo '1' === ( $_GET['workspace'] ?? '' )
+		? fpw_workspace_detail_markup( $order, $draft, $work, $notice )
+		: fpw_quote_draft_markup( $order, $draft, $work, $notice );
 }
 
 /** The native request record's editor link, in either Woo storage mode. */

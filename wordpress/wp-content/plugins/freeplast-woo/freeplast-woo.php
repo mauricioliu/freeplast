@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.10.0
+ * Version: 1.11.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1421,6 +1421,8 @@ require_once __DIR__ . '/sales-register.php';
 
 // Borrador privado de cotización (issue #50, corte 1 de #49): one durable initial draft per received request + the owner-only screen that reads it.
 require_once __DIR__ . '/quote-draft.php';
+require_once __DIR__ . '/quotation-tracking.php';
+require_once __DIR__ . '/owner-workspace.php';
 
 // Aprobación y envío de la cotización (issue #56, corte 7 de #49): the owner's "Aprobar y enviar" over the reviewed draft — the frozen first version, its PDF and its buyer mail, deduplicated at the durable operation.
 require_once __DIR__ . '/quotation-approval.php';
