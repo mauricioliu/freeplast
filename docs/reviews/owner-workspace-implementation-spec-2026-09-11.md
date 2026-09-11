@@ -43,3 +43,5 @@ Supplement the screen seam with the shipped browser enhancement over real render
 ## Release boundary
 
 Prepare staging only. The old `wp-release.json` includes a photo migration: do not reuse it for this feature. A separate plugin-only release configuration must preserve catalog/media/requests and commercial rows, with backup, restore rehearsal and logic-tier trial. The owner still confirms the final risk classification before target contact/install. No production configuration, cutover, real mail, real workbook import or external provider spend is implied.
+
+Implementation/review evidence: [2026-09-11 handoff](owner-workspace-implementation-2026-09-11.md). Both review axes, reproduced failures, subsequent fixes, native totals and remaining human gates are recorded separately from this contract.
