@@ -14,7 +14,7 @@
     if (status) status.textContent = savedStatus;
     if (dockTotal) dockTotal.textContent = savedTotal;
     root.querySelector('#fpw-summary')?.classList.remove('has-unsaved');
-    root.querySelectorAll('[data-fpw-preview] button,[data-fpw-refresh] button').forEach(button => { button.disabled = false; });
+    root.querySelectorAll('[data-fpw-preview],[data-fpw-refresh]').forEach(button => { button.disabled = false; });
     root.querySelectorAll('[data-fpw-unsaved-warning]').forEach(notice => notice.remove());
   });
   tracking?.addEventListener('reset', () => {
@@ -27,8 +27,10 @@
     root.querySelector('#fpw-summary')?.classList.add('has-unsaved');
     const total = root.querySelector('[data-fpw-dock-total]');
     if (total) total.textContent = 'Sin guardar';
-    root.querySelectorAll('[data-fpw-preview] button,[data-fpw-refresh] button').forEach(button => { button.disabled = true; });
+    root.querySelectorAll('[data-fpw-preview],[data-fpw-refresh]').forEach(button => { button.disabled = true; });
   };
+  if (work?.dataset.fpwUnsaved === '1') setWorkDirty();
+  root.querySelector('[data-fpw-discard-work]')?.addEventListener('click', () => { if (!trackingDirty) submitted = true; });
   work?.addEventListener('input', setWorkDirty);
   work?.addEventListener('change', setWorkDirty);
   root.querySelectorAll('[data-fpw-apply-price]').forEach(button => {

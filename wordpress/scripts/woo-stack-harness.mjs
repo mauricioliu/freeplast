@@ -291,10 +291,15 @@ register_shutdown_function( static function () {
     const { runOwnerWorkspaceTests } = await import('./owner-workspace-native.mjs');
     await runOwnerWorkspaceTests({ makeCookieFetch, wpLogin, check, wpEval: code => sh(PHP,
       [WPCLI, 'eval', code, `--path=${WP_DIR}`, `--url=${SITE_URL}`, '--user=1']) });
+    const workspaceMail = existsSync(mailLog) ? readFileSync(mailLog, 'utf8') : '';
+    check(workspaceMail.trim().split('\n').filter(Boolean).length === 1, 'workspace: exactly one intercepted quotation mail, no mails from saves or manual tracking');
     if (process.env.FREEPLAST_WORKSPACE_ONLY === '1') {
       console.log(`owner workspace: ${checks} native checks passed`);
       return checks;
     }
+    // Keep the evidence, but start the independent checkout notification ledger at zero.
+    writeFileSync(`${mailLog}.owner-workspace`, workspaceMail);
+    writeFileSync(mailLog, '');
 
     /* 2b. Catalog search contract (2026-09-07 staging regression): the adapter's
        search hook forces post_type=product AND wc_query=product_query — without

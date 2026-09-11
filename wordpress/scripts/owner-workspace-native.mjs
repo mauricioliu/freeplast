@@ -41,7 +41,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const detail = document(await (await owner(detailUrl)).text());
     const tracking = detail.querySelector('form[data-fpw-tracking]');
     check(!!tracking, 'workspace: detail offers the independent commercial tracking form');
-    const formValues = form => Object.fromEntries([...form.querySelectorAll('input[name]')].filter(i => i.type !== 'checkbox' || i.checked).map(i => [i.name, i.value]));
+    const formValues = (form, submitter) => Object.fromEntries(new form.ownerDocument.defaultView.FormData(form, submitter));
     const post = (actor, fields) => actor(detailUrl, {method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields).toString()});
     const original = formValues(tracking);
     const paidOnly = {...original, 'fpw_tracking[paid][done]':'1', 'fpw_tracking[paid][date]':'2026-09-10'};
@@ -64,7 +64,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     check(!corrected.querySelector('[name="fpw_tracking[paid][done]"]').checked, 'workspace: owner can correct a milestone without changing the quotation');
     const work = corrected.querySelector('form[data-fpw-work]');
     check(!!work, 'workspace: A exposes a real quotation editing form');
-    const values = {...formValues(work), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7'};
+    const values = {...formValues(work, corrected.querySelector('button[name="fpw_work_save"]')), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7'};
     const saved = document(await (await post(owner, values)).text());
     check(saved.body.textContent.includes('Cambios guardados'), 'workspace: quotation save uses the existing guarded action');
     const fresh = document(await (await owner(detailUrl)).text());
@@ -77,9 +77,22 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     }
     const conflict = document(await (await post(owner, {...values, 'fpw_work[lines][0][price]':'1900'})).text());
     check(conflict.body.textContent.includes('revisión más reciente') && conflict.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: stale price edit does not overwrite');
-    const previewForm = fresh.querySelector('form[data-fpw-preview]');
-    check(!!previewForm, 'workspace: preview is a separate explicit action');
-    const preview = document(await (await post(owner, formValues(previewForm))).text());
+    const previewButton = fresh.querySelector('button[data-fpw-preview], [data-fpw-preview] button');
+    check(!!previewButton, 'workspace: preview is a separate explicit action');
+    const changedQuantity = fresh.querySelector('[name="fpw_work[lines][0][quantity]"]');
+    changedQuantity.value = '350';
+    check((await post(owner, {...formValues(previewButton.form, previewButton), fpw_preview_nonce:'forged'})).status === 403, 'workspace: no-JS unsaved guard checks the preview nonce before considering changes');
+    for (const selector of ['button[data-fpw-preview], [data-fpw-preview] button', 'button[data-fpw-refresh], [data-fpw-refresh] button']) {
+      const submitter = fresh.querySelector(selector);
+      const refused = document(await (await post(owner, formValues(submitter.form, submitter))).text());
+      check(refused.body.textContent.includes('Cambios sin guardar') && refused.querySelector('[name="fpw_work[lines][0][quantity]"]')?.value === '350', 'workspace: native no-JS preview/refresh preserve unsaved submitted inputs');
+      const recovery = refused.querySelector('button[name="fpw_work_save"]');
+      const recoverFields = formValues(recovery.form, recovery);
+      check(recoverFields['fpw_work[lines][0][quantity]'] === '350' && recoverFields.fpw_work_save === '1' && !recoverFields.fpw_work_preview, 'workspace: preserved no-JS inputs offer an explicit save without carrying the rejected action');
+      check(wpEval(`echo fpw_draft_work_revision(fpw_read_draft_work(${fixture.order}));`) === '1' && wpEval(`echo fpw_read_draft_preview(${fixture.order}) ? 'present' : 'absent';`) === 'absent', 'workspace: rejected no-JS action changes neither saved work nor preview');
+    }
+    changedQuantity.value = '3';
+    const preview = document(await (await post(owner, formValues(previewButton.form, previewButton))).text());
     check(preview.body.textContent.includes('5.355 CLP'), 'workspace: server preview agrees with 3 × 1500 plus the configured synthetic tax');
     const approval = [...preview.querySelectorAll('form')].find(f => f.querySelector('[name="fpw_approve_preview"]'));
     check(!!approval, 'workspace: reviewed preview offers the bound approval action');
@@ -94,7 +107,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       const input = dom.window.document.querySelector('[name="fpw_work[lines][0][quantity]"]');
       input.value = '350'; input.dispatchEvent(new dom.window.Event('input', {bubbles:true}));
       check(dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('sin guardar'), 'workspace: editing names unsaved totals, without a second browser calculator');
-      check(dom.window.document.querySelector('[data-fpw-preview] button').disabled, 'workspace: unsaved values cannot be mistaken for the preview');
+      check(dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved values cannot be mistaken for the preview');
       check(dom.window.document.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: quantity does not change offered price');
     } finally { dom.window.close(); }
     const searched = document(await (await owner(inbox + '&q=' + encodeURIComponent(`workspace ${suffix}`))).text());

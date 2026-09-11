@@ -643,6 +643,7 @@ function fpw_draft_posted_action(): ?string {
 
 /** One screen action's server-side half: CSRF (its own nonce), then the guarded save, the preview generation or the explicit price refresh; the outcome is stashed for the screen. */
 function fpw_handle_draft_action_request( $order, array $draft, string $action ): void {
+	if ( '1' === ( $_GET['workspace'] ?? '' ) && function_exists( 'fpw_workspace_guard_clean_action' ) && ! fpw_workspace_guard_clean_action( (int) $order->get_id(), $draft, $action ) ) { return; }
 	if ( 'preview' === $action ) { fpw_handle_draft_preview_request( $order, $draft ); return; }
 	if ( 'refresh' === $action ) { fpw_handle_draft_refresh_request( (int) $order->get_id(), $draft ); return; }
 	if ( 'approve' === $action ) { fpw_handle_draft_approve_request( (int) $order->get_id(), $draft ); return; }
@@ -686,6 +687,9 @@ add_action( 'admin_init', 'fpw_handle_draft_posted_action' );
 function fpw_draft_outcome_notice( array $result ): array {
 	$state = is_string( $result['state'] ?? null ) ? $result['state'] : '';
 	if ( str_starts_with( $state, 'approval-' ) ) { return fpw_approval_outcome_notice( $result ); }
+	if ( 'workspace-unsaved' === $state ) {
+		return array( 'class' => 'warn', 'title' => 'Cambios sin guardar: guarda o descarta antes de continuar.', 'lines' => array( 'Se conservaron tus entradas en el formulario. No se generó otra vista previa ni se refrescaron precios; los importes guardados siguen intactos.' ) );
+	}
 	if ( 'saved' === $state ) {
 		$revision = (int) ( $result['work']['revision'] ?? 0 );
 		if ( ! empty( $result['refresh'] ) ) {
