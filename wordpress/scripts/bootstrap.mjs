@@ -32,7 +32,7 @@ const TOOLS_DIR = join(WORDPRESS_DIR, '.tools');
 const CACHE = join(TOOLS_DIR, 'cache');
 const PHP = join(TOOLS_DIR, 'php', 'php');
 const WPCLI = join(CACHE, 'wp-cli.phar');
-const SITE_URL = process.env.FREEPLAST_TEST_URL || 'http://127.0.0.1:8091';
+const SITE_URL = process.env.FREEPLAST_TEST_URL || 'http://mliu:8091';
 
 function sh(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });

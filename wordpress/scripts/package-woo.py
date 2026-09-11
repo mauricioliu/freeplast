@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Package only the active Woo adapter/theme. Vendor ZIPs are verified from the lock."""
 import hashlib, json, pathlib, shutil, urllib.request, zipfile
+from lib.quotation_artifacts import verify_quotation_artifacts
 root = pathlib.Path(__file__).resolve().parents[1]
+verify_quotation_artifacts(root / 'wp-content/plugins/freeplast-woo')
 out = root / '.build' / 'woo-release'
 out.mkdir(parents=True, exist_ok=True)
 lock = json.loads((root / 'woo-dependencies.json').read_text())
