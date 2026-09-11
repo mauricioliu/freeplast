@@ -108,6 +108,12 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     wpEval(`$work = fpw_read_draft_work(${fixture.order}); $work['lines'][0]['price'] = 9999; update_option('fpw_draft_work_${fixture.order}', wp_json_encode($work));`);
     const frozen = document(await (await owner(detailUrl)).text());
     check(frozen.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: issued fields read the approved projection, not later working data');
+    wpEval(`$version=fpw_read_quotation_version(${fixture.order}); unset($version['projection']); update_option('fpw_quotation_${fixture.order}', wp_json_encode($version));`);
+    const unavailable = document(await (await owner(detailUrl)).text());
+    check(unavailable.body.textContent.includes('Versión aprobada no disponible') && !unavailable.querySelector('[data-fpw-work]'), 'workspace: unreadable approved projection never falls back to working amounts');
+    wpEval(`update_option('fpw_quotation_${fixture.order}', 'invalid-json');`);
+    const corrupt = document(await (await owner(detailUrl)).text());
+    check(corrupt.body.textContent.includes('Versión aprobada no disponible') && !corrupt.querySelector('[data-fpw-work]'), 'workspace: corrupt issuance row is not mistaken for an editable draft');
   } finally {
     wpEval(`
       require_once ABSPATH . 'wp-admin/includes/user.php';

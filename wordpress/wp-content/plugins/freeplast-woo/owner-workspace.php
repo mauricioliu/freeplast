@@ -37,6 +37,31 @@ function fpw_workspace_money( ?int $amount ): string {
 	return null === $amount ? 'Por definir' : esc_html( number_format( $amount, 0, ',', '.' ) . ' CLP' );
 }
 
+/** A standing issuance can only supply its own frozen projection, never a draft fallback. */
+function fpw_workspace_read_offer( array $draft, ?array $work ): array {
+	$id = (int) $draft['order_id'];
+	$version = fpw_read_quotation_version( $id );
+	if ( null === $version ) {
+		global $wpdb;
+		$standing = $wpdb->get_var( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name = %s", fpw_quotation_row_name( $id ) ) );
+		if ( null === $standing && '' === ( $wpdb->last_error ?? '' ) ) {
+			return array( 'version' => null, 'projection' => fpw_quotation_projection( $draft, $work ), 'unavailable' => false );
+		}
+	}
+	$p = $version['projection'] ?? null;
+	$valid = is_array( $p ) && 1 === ( $p['schema'] ?? null ) && true === ( $p['complete'] ?? null ) && empty( $p['missing'] ) && is_array( $p['lines'] ?? null ) && ! empty( $p['lines'] )
+		&& array_is_list( $p['lines'] ) && count( $p['lines'] ) === count( $draft['items'] ) && array_key_exists( 'dispatch', $p )
+		&& is_int( $p['validity_days'] ?? null ) && $p['validity_days'] > 0 && is_bool( $p['dispatch_requested'] ?? null ) && is_string( $p['destination'] ?? null );
+	foreach ( array( 'subtotal', 'tax', 'total' ) as $key ) { $valid = $valid && is_int( $p[ $key ] ?? null ) && $p[ $key ] >= 0; }
+	if ( $valid && $p['dispatch_requested'] ) { $valid = is_int( $p['dispatch'] ?? null ) && $p['dispatch'] > 0; }
+	if ( $valid ) {
+		foreach ( $p['lines'] as $line ) {
+			$valid = $valid && is_array( $line ) && is_int( $line['quantity'] ?? null ) && $line['quantity'] > 0 && is_int( $line['price'] ?? null ) && $line['price'] > 0 && is_int( $line['line_total'] ?? null );
+		}
+	}
+	return array( 'version' => $version, 'projection' => $valid ? $p : null, 'unavailable' => ! $valid );
+}
+
 function fpw_workspace_stages(): array {
 	return array( 'all' => 'Todas', 'sent' => 'Por enviar', 'accepted' => 'Por aceptar', 'paid' => 'Pago pendiente', 'dispatched' => 'Despacho pendiente', 'complete' => 'Completas' );
 }
@@ -95,10 +120,11 @@ function fpw_render_workspace(): void {
 			$id = (int) ( $draft['order_id'] ?? 0 );
 			$order = wc_get_order( $id );
 			if ( ! $order ) { continue; }
-			$version = fpw_read_quotation_version( $id );
-			$projection = $version['projection'] ?? fpw_quotation_projection( $draft, fpw_read_draft_work( $id ) );
+			$offer = fpw_workspace_read_offer( $draft, fpw_read_draft_work( $id ) );
+			$version = $offer['version'];
+			$projection = $offer['projection'];
 			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">' . esc_html( $draft['identity']['company'] ?: $draft['reference'] ) . '</a></h2><p class="fpw-muted">' . esc_html( $draft['reference'] ) . ' · ' . esc_html( wp_date( 'd/m/Y', (int) $draft['received_at'] ) ) . '</p></div>'
-				. fpw_milestones_html( fpw_commercial_events( $id, $version ) ) . '<div class="fpw-workspace-row-total"><span>Total ' . ( $version ? 'aprobado' : 'guardado' ) . '</span><strong>' . fpw_workspace_money( $projection['total'] ?? null ) . '</strong></div><a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Abrir<span class="screen-reader-text"> ' . esc_html( $draft['reference'] ) . '</span></a></article>';
+				. fpw_milestones_html( fpw_commercial_events( $id, $version ) ) . '<div class="fpw-workspace-row-total"><span>' . ( $offer['unavailable'] ? 'Versión no disponible' : ( $version ? 'Total aprobado' : 'Total guardado' ) ) . '</span><strong>' . fpw_workspace_money( $projection['total'] ?? null ) . '</strong></div><a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Abrir<span class="screen-reader-text"> ' . esc_html( $draft['reference'] ) . '</span></a></article>';
 		}
 		$body .= '</div><nav class="fpw-workspace-pagination" aria-label="Páginas de cotizaciones">';
 		foreach ( array( -1 => 'Anterior', 1 => 'Siguiente' ) as $delta => $label ) {
@@ -151,8 +177,12 @@ function fpw_workspace_history( array $draft ): string {
 function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?array $notice ): string {
 	if ( ! $draft || ! $order ) { return fpw_workspace_shell( '<a href="' . esc_url( fpw_workspace_url() ) . '">Volver a cotizaciones</a>' . fpw_quote_draft_markup( $order, $draft, $work, $notice ) ); }
 	$id = (int) $order->get_id();
-	$version = fpw_read_quotation_version( $id );
-	$projection = $version['projection'] ?? fpw_quotation_projection( $draft, $work );
+	$offer = fpw_workspace_read_offer( $draft, $work );
+	if ( $offer['unavailable'] ) {
+		return fpw_workspace_shell( '<h1>Versión aprobada no disponible</h1><p>Sus importes guardados no se pueden leer. No se sustituyeron por valores del borrador. Solicita revisión técnica antes de continuar.</p><a class="fpw-button" href="' . esc_url( fpw_workspace_url() ) . '">Volver a cotizaciones</a>' );
+	}
+	$version = $offer['version'];
+	$projection = $offer['projection'];
 	$values = fpw_draft_work_values( $draft, $work );
 	if ( $version ) {
 		foreach ( $projection['lines'] as $index => $line ) {

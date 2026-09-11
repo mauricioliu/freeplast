@@ -11,6 +11,7 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace :is(input,textarea){caret-color:var(--blue)}
 .fpw-workspace :is(a,button,input,textarea,select,summary):focus-visible{outline:3px solid var(--blue);outline-offset:3px;box-shadow:none}
 .fpw-workspace a{color:var(--blue);text-underline-offset:3px}
+.fpw-workspace .fpw-original a,.fpw-workspace .fpw-workspace-history a,.fpw-workspace-body>p a{display:inline-flex;align-items:center;min-height:44px}
 .fpw-workspace :is(h1,h2,h3){line-height:1.25;font-weight:750;margin:0 0 12px;color:var(--blue)}
 .fpw-workspace h1{font-size:28px;letter-spacing:-.02em}
 .fpw-workspace h2{font-size:20px}

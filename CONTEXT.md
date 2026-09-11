@@ -68,6 +68,22 @@ _Avoid_: Issued Quotation, Quotation Version, PDF draft, sent offer
 The fixed customer-facing prices and conditions of a Quotation approved and issued by the owner through «Aprobar y enviar» over the reviewed draft — the request reference and attempt, the reviewed working revision, the buyer identity, the Quotation Projection and the document bytes are frozen together in one durable record. This cut issues only the first version; later changes require a new reviewed version rather than alteration of what was already sent.
 _Avoid_: Live Price List, editable sent quote
 
+**Commercial Tracking**:
+The owner's record of a Quotation's sending, Customer Acceptance, Recorded Payment and Recorded Dispatch, called **Seguimiento comercial**. These are independent milestones, not automatic transitions or evidence of an imported purchase.
+_Avoid_: Order status, payment processing, delivery confirmation
+
+**Customer Acceptance**:
+The owner's record that the customer accepted the Quotation, called **Aceptada por el cliente**. It is distinct from the owner's approval to issue the offer and the mail transport's acceptance of a message.
+_Avoid_: Internal approval, mail acceptance
+
+**Recorded Payment**:
+The owner's dated statement that payment was made, called **Pago realizado**. The mark neither collects money nor defines partial-payment or accounting treatment.
+_Avoid_: Online payment, transaction settlement, imported purchase
+
+**Recorded Dispatch**:
+The owner's dated statement that the products were dispatched, called **Productos despachados**. It is not confirmation that the customer received them.
+_Avoid_: Delivery received, stock movement
+
 **Quotation Validity**:
 The period set by the owner during which the prices offered in a Quotation Version remain valid for its stated destination, quantities and conditions.
 _Avoid_: Delivery deadline, permanent price guarantee
