@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-10-04 UTC: PANEL Y FLUJO COMPLETOS DESPLEGADOS EN STAGING.** Tema **1.0.20**, adaptador **1.12.0**, fuente `59fa378`. Release `20261004T170723Z-bbc521` mediante `wp-release.json` adaptado al Hetzner nativo: backup/restauración/trial MariaDB,391 hashes instalados, fingerprint protegido,20 checks de estado y9 smokes verdes. Solo se añadieron los dos roles restringidos; registros y HPOS preservados. Cron restaurado, correo bloqueado y noindex. Producción intacta. [Registro completo y rollback](docs/releases/2026-10-04-data-bbc521.md) · [Runbook actual](docs/releases/native-staging-runbook.md).
+
 > **2026-10-02 UTC: STAGING RECREADO DESDE CERO**, autorizado por el dueño tras reinstalar el servidor. SSH **`hetzner-vps`**, WordPress en `/var/www/freeplast`, Nginx + PHP-FPM + MariaDB nativos (sin Docker). Tema **1.0.18**, adaptador **1.6.8**, 17 productos, correos bloqueados y noindex. El panel local nuevo NO fue desplegado. **Los comandos antiguos OpenClaw/Compose ya no aplican.** [Estado, pruebas, credencial y respaldo inicial](docs/releases/2026-10-02-fresh-hetzner.md).
 
 > **2026-09-09 11:53 UTC: RELEASE DATA COMPLETADO EN STAGING.**

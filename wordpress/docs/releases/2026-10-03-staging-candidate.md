@@ -1,6 +1,6 @@
 # Consolidated staging candidate — 2026-10-03
 
-**Status: local candidate committed/pushed and verified; read-only target preflight completed; DATA tier subsequently confirmed (2026-10-04), release preparation in progress. This candidate document is not a deployment receipt.**
+**Status: DEPLOYED to staging on2026-10-04 after DATA-tier confirmation.** Release `20261004T170723Z-bbc521`, application source `59fa378`. All phases passed; see [the deployment receipt](2026-10-04-data-bbc521.md). The preparation/preflight notes below are historical, not outstanding blockers.
 
 Owner instruction: «quiero que todo pase a staging, realiza un orden de todo. quiero que todo esté en staging, commited, pushed and deployed.» Target: **https://freeplast.mliu.site**, never freeplast.cl. Initial proposed tier: **logic**. The owner subsequently confirmed «Confirmo logic; usa wp-release para staging», authorizing the read-only target preflight. That preflight found an intentional protected-data delta: the new plugin creates two restricted roles absent on staging. Corrected minimum tier: **data**, confirmed by the owner's «confirmo» in response to the explicit bounded role-migration/deployment question. No target mutations were made during that preflight; do not bypass the protected role-policy fingerprint.
 
@@ -38,7 +38,7 @@ All accumulated source changes are included; no functional file is silently left
 
 Local logs: `.scratch/herd-quotation-fix/lead-evidence/{native,offline,photos}-release-candidate.log` (ignored). Application bundles: `wordpress/.build/woo-release/` (ignored).
 
-## Remaining deployment gates
+## Required deployment gates (subsequently completed)
 
 The historical `wp-release.json` described retired OpenClaw/Compose infrastructure and a photo migration; it was not executed. The canonical config is now adapted to SSH `hetzner-vps`, native `/var/www/freeplast`, local isolated MariaDB rehearsal and the bounded role migration. The redundant plugin-only config is retired. See `native-staging-runbook.md` and `2026-10-02-fresh-hetzner.md`.
 
