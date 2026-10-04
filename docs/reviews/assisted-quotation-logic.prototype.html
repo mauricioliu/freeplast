@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Freeplast · Laboratorio de cotizaciones — PROTOTIPO</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#17181c;background:#fff;font-size:16px;line-height:1.5;--blue:#100090;--line:#dedfe6;--tint:#f4f5f7;--muted:#60626d;font-variant-numeric:tabular-nums}
+*{box-sizing:border-box}body{margin:0}main{max-width:1040px;margin:auto;padding:24px 16px 64px}h1{font-size:clamp(1.65rem,4vw,2.4rem);line-height:1.15;color:#0b078c;margin:0 0 16px}h2{font-size:1.35rem;margin:0 0 16px}h3{font-size:1rem;margin:0 0 8px}p{margin:8px 0 16px;max-width:75ch}a{color:var(--blue);text-underline-offset:4px}nav{display:flex;flex-wrap:wrap;gap:8px 20px}nav a{padding:10px 0}section{margin-top:36px;border-top:1px solid var(--line);padding-top:24px}.note,#feedback{padding:16px;background:#eeedf8;border:1px solid #b8b4d7;border-radius:8px}.note{font-size:.9rem}.muted,small{color:var(--muted)}small{font-size:.86rem}.grid{display:grid;gap:24px}.data{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,1.5fr);gap:8px 16px;margin:0}.data dt{color:var(--muted)}.data dd{margin:0;overflow-wrap:anywhere}.state-title{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}.status{font-weight:650;color:var(--blue)}.line{padding:12px 0;border-bottom:1px solid var(--line)}.line p{margin:4px 0}.total{font-weight:700}.buttons{display:flex;flex-wrap:wrap;gap:8px}button,select,input{font:inherit;min-height:44px;border:1px solid #a0a2af;border-radius:8px;background:white;color:var(--blue);padding:9px 12px;max-width:100%}button{text-align:left;cursor:pointer}button:hover{background:#eeedf8}button.primary,button[aria-selected="true"]{background:var(--blue);color:white;border-color:var(--blue)}button:disabled{opacity:.55;cursor:default}button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:3px}fieldset{border:0;padding:0;margin:0 0 24px;min-width:0}legend{font-weight:650;margin-bottom:8px}label{display:grid;gap:6px}input,select{color:#17181c;width:100%}.fields{display:grid;gap:12px;margin:12px 0}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.tabs button{flex:1 1 130px}.steps{padding-left:24px}.steps li{padding:8px 0}.steps button{display:block;width:100%;margin-bottom:6px}.steps small{display:block}.scenario{padding:16px;background:var(--tint);border-radius:8px}.version{padding:16px 0;border-bottom:1px solid var(--line)}details{margin:12px 0}summary{cursor:pointer;padding:10px 0;color:var(--blue)}.log{padding-left:24px}.log li{padding:4px 0}.review{border:1px solid var(--line);padding:16px;border-radius:8px}::selection{background:#eeedf8;color:var(--blue)}[hidden]{display:none!important}@media(min-width:760px){main{padding:40px 32px 80px}.grid{grid-template-columns:1fr 1fr}.fields{grid-template-columns:repeat(2,minmax(0,1fr))}}@media print{#play,#guided,nav,button{display:none}section{break-inside:avoid}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>¿Cuándo está lista una cotización para enviarse?</h1>
+<p>Explora si este flujo protege tus ajustes, permite completar un despacho sin Maps y conserva exactamente la oferta aprobada cuando el envío falla.</p>
+<p class="note"><strong>PROTOTIPO DE LÓGICA · Desechable, no es la pantalla definitiva.</strong> Productos, clientes, precios, distancias y correos son ficticios. No hay conexión con WordPress ni Google. El PDF es una representación en pantalla, no un archivo. Todo se borra al recargar.</p>
+<nav aria-label="Recorrer el laboratorio"><a href="#guided">Empezar un caso guiado</a><a href="#play">Probar libremente</a><a href="#versions">Ver ofertas aprobadas</a></nav>
+</header>
+<section id="current" aria-labelledby="state-heading">
+<div class="state-title"><h2 id="state-heading">Estado actual</h2><span id="phase" class="status"></span></div>
+<p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+<div id="state"></div>
+</section>
+<section id="play">
+<h2>Prueba libre</h2>
+<p>Los botones siguen disponibles incluso cuando la acción no corresponde: al pulsarlos, el modelo explica por qué la permite o la rechaza. Usarlos interrumpe el caso guiado.</p>
+<div id="actions"></div>
+<fieldset><legend>Valores de prueba para tus ajustes</legend>
+<div class="fields">
+<label>Precio manual de Caja A · CLP netos<input id="manual-price" type="number" min="1" step="1" value="11000"></label>
+<label>Despacho manual · CLP netos<input id="manual-freight" type="number" min="0" step="1" value="45000"></label>
+<label>Unidades de Caja A<input id="manual-qty" type="number" min="1" max="10000" step="1" value="30"></label>
+<label>Vigencia · días<input id="manual-days" type="number" min="1" max="90" step="1" value="10"></label>
+</div>
+<div class="buttons"><button data-custom="price">Aplicar precio manual</button><button data-custom="freight">Aplicar despacho manual</button><button data-custom="qty">Cambiar cantidad</button><button data-custom="days">Cambiar vigencia</button></div>
+</fieldset>
+<fieldset><legend>Qué ocurrirá en la próxima simulación de envío</legend>
+<div class="fields">
+<label>Generación del PDF<select id="pdf-outcome"><option value="ok">Funciona</option><option value="fail">Falla</option></select></label>
+<label>Respuesta del correo<select id="mail-outcome"><option value="accepted">Aceptado por el transportista de correo</option><option value="rejected">Rechazado antes de aceptar</option><option value="unknown">Sin respuesta: resultado desconocido</option></select></label>
+</div>
+<small>Se repite el resultado seleccionado hasta cambiarlo. “Aceptado” no demuestra que el comprador lo recibió.</small>
+</fieldset>
+<button data-action="reset">Reiniciar todo</button>
+</section>
+<section id="guided">
+<h2>Casos guiados</h2>
+<p>Elegir un caso reinicia el laboratorio. Pulsa sus pasos en orden y observa arriba qué cambia. Cada paso ejecuta la misma lógica que la prueba libre.</p>
+<div id="tabs" class="tabs" role="tablist" aria-label="Casos de cotización"></div>
+<div id="walkthrough" class="scenario" role="tabpanel"></div>
+</section>
+<section id="versions"><h2>Lo que recibe el comprador · simulado</h2><p>Solo precios y condiciones. Sin historial de compras, notas internas ni kilómetros. Cada versión aprobada queda fija dentro de esta sesión.</p><div id="documents"></div></section>
+<section><h2>Qué acaba de pasar</h2><ol id="events" class="log" reversed></ol></section>
+<section><h2>Decisiones que esta demo no resuelve</h2>
+<p>La fórmula <strong>$10.000 + $500 × km</strong>, los <strong>80/110 km</strong> y el cálculo de <strong>IVA 19% sobre productos + despacho, redondeado al peso</strong> son supuestos de juguete, no tarifas ni criterios fiscales aprobados. La regla parte desactivada.</p>
+<p>Las importaciones son botones con datos inventados: no leen Excel ni deciden columnas o identidades de ventas. Tampoco se prueban permisos reales, almacenamiento, concurrencia de servidores, PDFs reales ni entrega de correo.</p>
+<p>Para discutir: ¿estos bloqueos ocurren en el momento correcto? ¿Qué ajuste nunca debería perderse? ¿Qué harías cuando no sabes si salió el correo? La verificación manual de ese último caso es una propuesta para conversar, no una integración implementada.</p>
+<p class="muted">Referencia: especificación #49 · Sin integración, despliegue, tests ni validación humana todavía. Tras tu revisión se registra el veredicto; nada se traslada automáticamente a producción.</p>
+</section>
+<noscript><p>Esta demo necesita JavaScript habilitado. No necesita internet.</p></noscript>
+</main>
+<script>
+/* PROTOTYPE — pure in-memory model. No DOM, I/O, real tariffs or customer data. */
+const QuoteLab = (() => {
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const initial = () => ({day:0,request:null,draft:null,prices:[12000,null],priceBatch:null,sales:false,rule:false,route:null,versions:[],ownerNotices:0,preview:null,io:{pdf:'ok',mail:'accepted'},events:[],message:'Elige un caso guiado o recibe la solicitud ficticia para empezar.'});
+  const blockers = s => !s.draft ? ['Falta recibir la solicitud.'] : [
+    ...(s.draft.lines.some(l=>l.price===null)?['Falta el precio de Caja B.']:[]),
+    ...(s.draft.dispatch && s.draft.freight===null?['Falta definir el monto de despacho.']:[])
+  ];
+  const publicDoc = (s,d=s.draft) => {
+    const subtotal=d.lines.some(l=>l.price===null)?null:d.lines.reduce((n,l)=>n+l.qty*l.price,0);
+    const freight=d.dispatch?d.freight:0;
+    const base=subtotal===null || freight===null?null:subtotal+freight;
+    return {customer:'Cliente de ejemplo',destination:d.dispatch?d.destination:'Sin despacho',lines:d.lines.map(({name,qty,price})=>({name,qty,price})),subtotal,freight,iva:base===null?null:Math.round(base*.19),total:base===null?null:base+Math.round(base*.19),days:d.days};
+  };
+  const latest = s => s.versions[s.versions.length-1];
+  const mutable = s => s.draft && !s.draft.locked;
+  const touch = s => {s.draft.revision++;s.preview=null;};
+  const deliver = (s,v) => {
+    if(s.io.pdf==='fail' && !v.pdf){v.mail='not-started';return 'La versión quedó aprobada, pero falló el PDF simulado. No se intentó enviar correo. Recupera esta misma versión.';}
+    v.pdf=true;v.attempts++;v.mail=s.io.mail;
+    return v.mail==='accepted'?'Correo simulado aceptado. No es evidencia de recepción por el comprador.':v.mail==='rejected'?'Correo simulado rechazado. El documento aprobado se conserva; puedes reintentar la misma versión.':'No sabemos si el correo salió. No reintentar a ciegas: primero verificar el resultado.';
+  };
+  function reduce(previous,a){
+    if(a.type==='reset')return initial();
+    const s=clone(previous);
+    const finish=message=>{s.message=message;s.events.push(message);return s;};
+    const edits=['fill','discount','refresh','maps','maps-fail','manual-freight','destination','no-dispatch','qty','days'];
+    if(edits.includes(a.type) && !mutable(s))return finish(s.draft?'Esta oferta está aprobada y bloqueada. Crea una nueva versión de trabajo antes de cambiarla.':'Primero recibe la solicitud.');
+    switch(a.type){
+      case 'receive':
+        if(s.request)return finish('Mismo intento recuperado: sigue habiendo una solicitud, un borrador y un aviso al dueño.');
+        s.request={ref:'DEMO-001',destination:'Destino de ejemplo A',quantities:[20,10]};
+        s.draft={lines:[{name:'Caja A · opción azul (ficticia)',qty:20,price:s.prices[0],suggested:s.prices[0],manual:false},{name:'Caja B · opción negra (ficticia)',qty:10,price:s.prices[1],suggested:s.prices[1],manual:false}],dispatch:true,destination:s.request.destination,freight:null,freightSource:'Pendiente',days:7,revision:1,locked:false};
+        s.ownerNotices=1;
+        return finish('Solicitud recibida. Borrador incompleto y aviso privado al dueño simulados. No se ha emitido una cotización.');
+      case 'fill':s.draft.lines[1].price=8000;s.draft.lines[1].manual=true;touch(s);return finish('Caja B completada manualmente a $8.000. La lista general sigue sin precio para ella.');
+      case 'discount':{
+        const price=a.value??11000;
+        if(!Number.isSafeInteger(price)||price<=0||price>100000000)return finish('Usa un precio entero positivo de hasta $100.000.000 para esta demo.');
+        s.draft.lines[0].price=price;s.draft.lines[0].manual=true;touch(s);return finish('Precio manual aplicado solo a Caja A en este borrador. No cambia la lista general.');}
+      case 'price-preview':s.priceBatch=[15000,9000];return finish('Vista previa de importación ficticia: Caja A $15.000; Caja B $9.000. Todavía no cambia ningún precio.');
+      case 'price-cancel':s.priceBatch=null;return finish('Vista previa descartada. No se aplicó ningún precio.');
+      case 'price-confirm':
+        if(!s.priceBatch)return finish('No hay una vista previa pendiente para confirmar. No se aplicó nada.');
+        s.prices=s.priceBatch;s.priceBatch=null;return finish('Lista actualizada. Los borradores y las ofertas aprobadas conservaron sus valores.');
+      case 'refresh':
+        s.draft.lines.forEach((l,i)=>{l.suggested=s.prices[i];if(!l.manual)l.price=s.prices[i];});touch(s);
+        return finish('Precios sugeridos refrescados explícitamente. Los precios manuales se conservaron; vuelve a revisar la vista previa.');
+      case 'sales':s.sales=true;return finish('Historial ficticio asociado: dos ventas de ejemplo. Repetir este botón no suma ventas. No cambian los precios actuales ni el borrador.');
+      case 'rule':s.rule=true;return finish('Regla DE JUGUETE activada: $10.000 + $500 × km. No es una tarifa de Freeplast. Calcula de nuevo para obtener una sugerencia.');
+      case 'maps':{
+        if(!s.draft.dispatch)return finish('No se consultan rutas: la solicitud de trabajo no requiere despacho.');
+        const km=s.draft.destination.endsWith('B')?110:80;
+        s.route={km,estimate:s.rule?10000+500*km:null};
+        if(s.rule && s.draft.freightSource!=='Manual'){s.draft.freight=s.route.estimate;s.draft.freightSource='Regla ficticia';touch(s);}
+        return finish(!s.rule?'Distancia simulada disponible, pero falta una regla. No se inventó un monto de despacho.':s.draft.freightSource==='Manual'?'Nueva sugerencia calculada, sin pisar el despacho manual.':'Despacho sugerido con regla ficticia. Es una referencia de precio, no garantía de acceso.');}
+      case 'maps-fail':
+        s.route=null;
+        if(!s.draft.dispatch)return finish('Sin despacho: no se consultaría Maps. No cambia ningún monto.');
+        if(s.draft.freightSource!=='Manual'){s.draft.freight=null;s.draft.freightSource='Pendiente';touch(s);}
+        return finish('Maps simulado no responde. Solicitud y aviso se conservan. El monto manual, si existía, no se borra.');
+      case 'manual-freight':{
+        if(!s.draft.dispatch)return finish('Sin despacho: no corresponde ingresar un flete.');
+        const value=a.value??45000;
+        if(!Number.isSafeInteger(value)||value<0||value>100000000)return finish('Ingresa un monto entero entre $0 y $100.000.000. Un cero escrito explícitamente no es un dato ausente.');
+        s.draft.freight=value;s.draft.freightSource='Manual';touch(s);return finish('Despacho completado manualmente. No hace falta que Maps funcione para aprobar una oferta completa.');}
+      case 'destination':s.draft.dispatch=true;s.draft.destination=s.draft.destination.endsWith('A')?'Destino de ejemplo B':'Destino de ejemplo A';s.route=null;s.draft.freight=null;s.draft.freightSource='Pendiente';touch(s);return finish('Destino de trabajo cambiado. Se descartaron la consulta anterior y el flete, incluso si era manual. La solicitud original no cambió.');
+      case 'no-dispatch':s.draft.dispatch=false;s.draft.destination='';s.route=null;s.draft.freight=null;s.draft.freightSource='No corresponde';touch(s);return finish('Borrador sin despacho: no requiere dirección ni monto. La solicitud original conserva lo que pidió el comprador.');
+      case 'qty':{
+        const value=a.value??30;
+        if(!Number.isSafeInteger(value)||value<1||value>10000)return finish('Usa entre 1 y 10.000 unidades para esta demo.');
+        s.draft.lines[0].qty=value;
+        if(s.draft.dispatch){s.draft.freight=null;s.draft.freightSource='Pendiente';}
+        touch(s);return finish('Cantidad cambiada. Propuesta conservadora: exige volver a definir el despacho, porque el volumen cotizado cambió.');}
+      case 'days':{
+        const value=a.value??10;if(!Number.isSafeInteger(value)||value<1||value>90)return finish('Usa de 1 a 90 días para esta demo.');
+        s.draft.days=value;touch(s);return finish('Vigencia del borrador cambiada. Revisa la nueva vista previa antes de aprobar.');}
+      case 'preview':
+        if(!mutable(s))return finish('No hay un borrador editable. Las versiones aprobadas se consultan abajo.');
+        if(blockers(s).length)return finish('Vista previa incompleta: '+blockers(s).join(' '));
+        s.preview={revision:s.draft.revision,document:publicDoc(s)};return finish('Vista previa lista para esta revisión. Un cambio posterior en la oferta obliga a revisarla otra vez.');
+      case 'approve':
+        if(!s.draft)return finish('Primero recibe la solicitud.');
+        if(s.draft.locked)return finish('Esta revisión ya está aprobada. No se creó otra versión ni se reenvió correo.');
+        if(blockers(s).length)return finish('Aprobación bloqueada: '+blockers(s).join(' '));
+        if(!s.preview || s.preview.revision!==s.draft.revision)return finish('Aprobación bloqueada: falta revisar una vista previa de los valores actuales.');
+        {const v={number:s.versions.length+1,document:clone(s.preview.document),issuedDay:s.day,expiresDay:s.day+s.draft.days,pdf:false,mail:'not-started',attempts:0};s.versions.push(v);s.draft.locked=true;return finish('Versión '+v.number+' aprobada e inmutable. '+deliver(s,v));}
+      case 'retry':{
+        const v=latest(s);if(!v)return finish('No hay una versión aprobada para recuperar.');
+        if(v.mail==='accepted')return finish('El transportista ya aceptó este correo. No se reenvía automáticamente.');
+        if(v.mail==='unknown')return finish('Reintento bloqueado: primero verifica si el correo anterior fue aceptado.');
+        if(s.day>=v.expiresDay)return finish('La oferta venció. Esta demo exige preparar y aprobar una nueva versión; no alarga la anterior.');
+        return finish('Recuperación de la versión '+v.number+', sin recalcular precios. '+deliver(s,v));}
+      case 'verify-absent':{
+        const v=latest(s);if(!v||v.mail!=='unknown')return finish('No hay un envío de resultado desconocido para verificar.');
+        v.mail='rejected';return finish('Evidencia simulada: se verificó que el correo NO fue aceptado. Ahora puede recuperarse esa misma versión.');}
+      case 'verify-accepted':{
+        const v=latest(s);if(!v||v.mail!=='unknown')return finish('No hay un envío de resultado desconocido para verificar.');
+        v.mail='accepted';return finish('Evidencia simulada: se verificó aceptación. No corresponde reintentar. Esto no demuestra recepción.');}
+      case 'revise':
+        if(!s.draft?.locked)return finish('Primero aprueba una versión. Un borrador abierto se edita sin crear otra versión.');
+        s.draft.locked=false;touch(s);s.route=null;return finish('Nueva revisión editable a partir de la oferta anterior. Las versiones aprobadas siguen fijas. Se numerará al aprobar.');
+      case 'advance':s.day+=8;return finish('Reloj ficticio avanzado ocho días. Las fechas de las ofertas anteriores no se modifican.');
+      case 'io':s.io={...s.io,...a.value};return finish('Condición del próximo intento cambiada. No altera el resultado de envíos anteriores.');
+      default:return finish('Acción no reconocida por esta demo.');
+    }
+  }
+  return {initial,reduce,blockers,publicDoc};
+})();
+</script>
+<script>
+/* Throwaway page shell. All domain transitions go through QuoteLab.reduce. */
+let state=QuoteLab.initial(), active=null, step=0;
+const $=id=>document.getElementById(id);
+const money=n=>n===null?'Pendiente':new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}).format(n);
+const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const date=day=>new Intl.DateTimeFormat('es-CL',{timeZone:'UTC'}).format(new Date(Date.UTC(2026,8,9+day)));
+const mailLabel={accepted:'Aceptado; recepción no comprobada',rejected:'Rechazado; se puede recuperar',unknown:'Desconocido; no reintentar a ciegas','not-started':'No se ha intentado'};
+const data=rows=>'<dl class="data">'+rows.map(([k,v])=>`<dt>${escape(k)}</dt><dd>${escape(v)}</dd>`).join('')+'</dl>';
+const actions=[
+ ['Solicitud y datos',[['receive','Recibir / repetir el mismo intento'],['sales','Asociar ventas ficticias'],['price-preview','Previsualizar nueva lista'],['price-confirm','Confirmar importación ficticia'],['price-cancel','Cancelar importación']]],
+ ['Preparación',[['fill','Completar Caja B a $8.000'],['discount','Ajustar Caja A a $11.000'],['refresh','Refrescar precios de lista'],['rule','Activar regla ficticia'],['maps','Simular cálculo de Maps'],['maps-fail','Simular fallo de Maps'],['manual-freight','Fijar despacho en $45.000'],['destination','Cambiar destino A / B'],['no-dispatch','Cambiar a sin despacho']]],
+ ['Aprobación y recuperación',[['preview','Ver vista previa'],['approve','Aprobar y enviar · simulación'],['retry','Recuperar última versión aprobada'],['verify-absent','Simular verificación: NO aceptado'],['verify-accepted','Simular verificación: sí aceptado'],['revise','Preparar nueva versión'],['advance','Avanzar ocho días']]]
+];
+const S=(type,label,watch,value)=>({action:{type,...(value!==undefined?{value}: {})},label,watch});
+const cases=[
+ {title:'1. Oferta normal',description:'Completa un precio, estima el despacho y aprueba. Un segundo clic no duplica la oferta.',steps:[S('receive','Recibir solicitud','Nace un borrador aunque Caja B no tenga precio.'),S('fill','Completar precio faltante','La lista general no cambia.'),S('rule','Activar regla de juguete','La fórmula no es una tarifa aprobada.'),S('maps','Calcular distancia ficticia','80 km producen un flete sugerido de $50.000.'),S('preview','Revisar vista previa','Mira abajo la proyección para el comprador.'),S('approve','Aprobar y enviar','Se congela la versión 1; PDF y correo son simulados.'),S('approve','Repetir el clic de aprobación','Debe seguir habiendo una versión y un intento de correo.') ]},
+ {title:'2. Maps falla',description:'Ni Maps ni un precio ausente deben perder la solicitud. Comprueba dónde debe bloquearse la aprobación.',steps:[S('receive','Recibir solicitud','El dueño ya tiene un aviso simulado.'),S('maps-fail','Provocar fallo de Maps','El flete queda pendiente, no en cero.'),S('approve','Intentar aprobar incompleta','La aprobación se rechaza, la solicitud sobrevive.'),S('fill','Completar Caja B','Se resuelve solo la falta de precio.'),S('manual-freight','Ingresar flete manual','No necesitamos una ruta para definir un monto manual.'),S('preview','Revisar oferta completa','Sin historial asociado no significa cliente nuevo.'),S('approve','Aprobar sin Maps','Se emite la oferta sin inventar kilómetros.') ]},
+ {title:'3. Mis ajustes',description:'Una nueva lista de precios no debería pisar lo que negociaste. El historial tampoco es una lista de precios.',steps:[S('receive','Recibir solicitud','Caja A usa el valor inicial de $12.000.'),S('discount','Ajustar Caja A a $11.000','El ajuste pertenece al borrador.'),S('price-preview','Previsualizar lista nueva','Subir una planilla ficticia todavía no aplica cambios.'),S('price-confirm','Confirmar lista nueva','La lista cambia; el borrador no.'),S('refresh','Refrescar explícitamente','Caja A mantiene $11.000; Caja B adopta $9.000.'),S('sales','Asociar historial ficticio','Dos ventas asociadas; no cambia ningún precio.'),S('sales','Repetir asociación','No aparecen ventas duplicadas en esta simulación.') ]},
+ {title:'4. Oferta fija',description:'Cambia el destino después de aprobar. El comprador conserva la primera oferta y el nuevo destino requiere revisar el flete.',steps:[S('receive','Recibir solicitud','La dirección original es A.'),S('fill','Completar precio','Caja B queda a $8.000.'),S('manual-freight','Fijar flete manual','Monto definido para el destino A.'),S('preview','Revisar','La oferta está lista.'),S('approve','Aprobar versión 1','Observa importes y fecha de vencimiento.'),S('destination','Intentar cambiar la aprobada','El modelo lo rechaza.'),S('revise','Preparar nueva versión','La versión 1 no se edita.'),S('destination','Cambiar el destino de trabajo','Flete pendiente; la solicitud original sigue en A.'),S('manual-freight','Definir nuevo flete','Importe ficticio para el nuevo destino.',60000),S('preview','Revisar nueva oferta','Destino B, nuevo flete.'),S('approve','Aprobar versión 2','Ambas versiones conservan sus propios importes.'),S('advance','Avanzar ocho días','Las dos vencen sin alterar su contenido.') ]},
+ {title:'5. Correo incierto',description:'No es lo mismo un rechazo que no saber si salió. Evita duplicar un correo y recupera el documento sin recalcularlo.',steps:[S('receive','Recibir solicitud','Se prepara el mismo ejemplo.'),S('fill','Completar precio','Resuelve Caja B.'),S('manual-freight','Definir flete','Resuelve el despacho.'),S('preview','Revisar oferta','Lista para aprobar.'),S('io','Simular correo sin respuesta','El siguiente intento tendrá resultado desconocido.',{mail:'unknown'}),S('approve','Aprobar y simular envío','La versión existe; no sabemos si salió.'),S('retry','Intentar reenviar a ciegas','Debe bloquearse.'),S('price-preview','Previsualizar nuevos precios','Simula que la lista cambia durante la recuperación.'),S('price-confirm','Aplicar nueva lista','El documento aprobado no se recalcula.'),S('verify-absent','Simular evidencia de no aceptación','Propuesta: solo una verificación permite recuperar.'),S('io','Restaurar respuesta normal','La condición cambia, no el envío anterior.',{mail:'accepted'}),S('retry','Recuperar la misma versión','Mismos precios y versión; segundo intento de correo.') ]},
+ {title:'6. PDF y revisión',description:'Un cambio tras la vista previa exige revisarla otra vez. Si falla el PDF, el correo no debe salir.',steps:[S('receive','Recibir solicitud','Borrador inicial.'),S('fill','Completar precio','Caja B completada.'),S('no-dispatch','Quitar despacho','No se requiere flete; total de despacho cero por no corresponder.'),S('preview','Ver vista previa','Se registra la revisión actual.'),S('discount','Cambiar un precio después','La vista previa deja de ser válida.'),S('approve','Intentar aprobar sin revisar','Se rechaza aunque los importes estén completos.'),S('preview','Revisar los nuevos importes','La revisión vuelve a ser válida.'),S('io','Provocar fallo de PDF','El documento no podrá generarse.',{pdf:'fail'}),S('approve','Aprobar con fallo de PDF','Versión fija, cero intentos de correo.'),S('io','Restaurar generación','No cambia la oferta aprobada.',{pdf:'ok'}),S('retry','Recuperar documento y envío','Primera tentativa de correo sobre la misma versión.') ]}
+];
+function documentHTML(d){return `<p><strong>${escape(d.customer)}</strong> · ${escape(d.destination)}</p>`+d.lines.map(l=>`<div class="line">${escape(l.name)}<br>${l.qty} unidades × ${money(l.price)} netos = <strong>${money(l.price===null?null:l.qty*l.price)}</strong></div>`).join('')+data([['Subtotal neto',money(d.subtotal)],['Despacho neto',money(d.freight)],['IVA ficticio (19%)',money(d.iva)],['Total de ejemplo',money(d.total)],['Vigencia',d.days+' días']]);}
+function render(){
+ const d=state.draft,b=QuoteLab.blockers(state);
+ $('phase').textContent=!d?'Sin solicitud':d.locked?'Oferta aprobada · bloqueada':b.length?'Borrador incompleto':'Borrador completo · requiere revisión y aprobación';
+ $('feedback').textContent=state.message;
+ $('state').innerHTML=`<div class="grid"><div><h3>Solicitud e historial</h3>${data([['Solicitud',state.request?.ref??'No recibida'],['Avisos al dueño',state.ownerNotices+' (simulados)'],['Destino original',state.request?.destination??'—'],['Cantidades originales',state.request?'Caja A: 20; Caja B: 10':'—'],['Historial',state.sales?'Dos ventas ficticias asociadas':'Sin historial asociado'],['Ventas asociadas',state.sales?'2 · asociación sintética, sin RUT real':'0 · no demuestra que sea cliente nuevo'],['Reloj ficticio',date(state.day)]])}<h3 style="margin-top:24px">Lista de precios actual</h3>${data([['Caja A',money(state.prices[0])],['Caja B',money(state.prices[1])],['Importación pendiente',state.priceBatch?'Vista previa: A $15.000; B $9.000. Falta confirmar.':'No hay vista previa pendiente']])}</div><div><h3>Borrador de trabajo</h3>${d?d.lines.map(l=>`<div class="line"><strong>${escape(l.name)}</strong><p>${l.qty} unidades × ${money(l.price)} netos</p><small>${l.manual?'Precio manual protegido':'Precio de lista guardado'} · Última sugerencia: ${money(l.suggested)}</small></div>`).join('')+data([['Destino actual',d.dispatch?d.destination:'Sin despacho'],['Despacho',d.dispatch?money(d.freight):'No corresponde'],['Origen del monto',d.freightSource],['Vigencia',d.days+' días'],['Revisión',d.revision],['Vista previa',state.preview?'Revisión '+state.preview.revision+(d.locked?' · ya aprobada':' · revisada'):'No revisada / invalidada'],['Bloqueos',d.locked?'No editable; preparar nueva versión':b.join(' ')||'Ningún dato requerido pendiente'],['Total ficticio',money(QuoteLab.publicDoc(state).total)]]):'<p>Sin borrador. Recibe la solicitud para crearlo.</p>'}</div></div><details><summary>Consulta de despacho y condiciones del envío</summary>${data([['Regla',state.rule?'DEMO: $10.000 + $500 × km':'Sin configurar'],['Consulta efímera',state.route?state.route.km+' km ficticios; sugerencia '+money(state.route.estimate):'Sin resultado utilizable'],['Almacenamiento','Solo memoria de esta página; sin Google ni base de datos'],['Próximo PDF',state.io.pdf==='ok'?'Generación simulada correcta':'Fallo simulado'],['Próximo correo',mailLabel[state.io.mail]]])}</details>`;
+ $('documents').innerHTML=(state.preview && !d?.locked?`<div class="review"><h3>Vista previa de trabajo · todavía no emitida</h3>${documentHTML(state.preview.document)}</div>`:'')+state.versions.map(v=>`<article class="version"><h3>Versión ${v.number} · contenido aprobado fijo</h3>${data([['Emisión ficticia',date(v.issuedDay)],['Válida hasta (exclusivo)',date(v.expiresDay)],['Vigencia al reloj de demo',state.day<v.expiresDay?'Vigente':'Vencida'],['PDF simulado',v.pdf?'Representación generada':'Generación pendiente / fallida'],['Correo',mailLabel[v.mail]],['Intentos de correo',v.attempts]])}<details><summary>Ver contenido aprobado de la versión ${v.number}${v.pdf?'':' (PDF aún pendiente)'}</summary>${documentHTML(v.document)}</details></article>`).join('')||'<p class="muted">Aún no hay vista previa ni versiones aprobadas.</p>';
+ $('events').innerHTML=state.events.slice().reverse().map(x=>`<li>${escape(x)}</li>`).join('')||'<li>Ninguna acción todavía.</li>';
+ $('pdf-outcome').value=state.io.pdf;$('mail-outcome').value=state.io.mail;
+ renderGuide();
+}
+function renderGuide(){
+ document.querySelectorAll('[role="tab"]').forEach((el,i)=>{el.setAttribute('aria-selected',String(active===i));el.tabIndex=active===null?(i===0?0:-1):(active===i?0:-1);});
+ const w=$('walkthrough');
+ if(active===null){w.removeAttribute('aria-labelledby');w.innerHTML='<p>Elige una pestaña para reiniciar con un recorrido guiado, o sigue probando libremente.</p>';return;}
+ const c=cases[active];w.setAttribute('aria-labelledby','tab-'+active);
+ w.innerHTML=`<h3>${escape(c.title)}</h3><p>${escape(c.description)}</p><p class="note"><strong>Resultado del último paso:</strong> ${escape(state.message)}<br>Versiones aprobadas: ${state.versions.length} · Despacho de trabajo: ${state.draft?(state.draft.dispatch?money(state.draft.freight):'No corresponde'):'Sin borrador'}. <a href="#current">Ver estado completo</a></p><p><strong>${step===c.steps.length?'Caso terminado. ¿Algo debería funcionar distinto?':'Paso '+(step+1)+' de '+c.steps.length}</strong></p><ol class="steps">${c.steps.map((s,i)=>`<li><button data-step="${i}" ${i!==step?'disabled':''} ${i===step?'class="primary"':''}>${i<step?'Hecho · ':''}${escape(s.label)}</button><small>${escape(s.watch)}</small></li>`).join('')}</ol><button data-restart>Reiniciar este caso</button><p><a href="#current">Volver al estado actual</a></p>`;
+}
+$('actions').innerHTML=actions.map(([title,items])=>`<fieldset><legend>${title}</legend><div class="buttons">${items.map(([key,label])=>`<button data-action="${key}" ${key==='approve'?'class="primary"':''}>${label}</button>`).join('')}</div></fieldset>`).join('');
+$('tabs').innerHTML=cases.map((c,i)=>`<button role="tab" id="tab-${i}" aria-controls="walkthrough" aria-selected="false" data-case="${i}">${escape(c.title)}</button>`).join('');
+function start(i){active=i;step=0;state=QuoteLab.initial();state.message='Caso «'+cases[i].title+'» reiniciado. Pulsa su primer paso.';render();}
+document.addEventListener('click',event=>{
+ const el=event.target.closest('button');if(!el)return;
+ if(el.hasAttribute('data-case')){start(Number(el.dataset.case));return;}
+ if(el.hasAttribute('data-restart')){start(active);return;}
+ if(el.hasAttribute('data-step')){
+   if(active===null||Number(el.dataset.step)!==step)return;
+   state=QuoteLab.reduce(state,cases[active].steps[step].action);step++;render();
+   const next=document.querySelector('[data-step="'+step+'"]');(next||document.querySelector('[data-restart]'))?.focus({preventScroll:true});return;
+ }
+ let action;
+ if(el.dataset.action)action={type:el.dataset.action};
+ if(el.dataset.custom){const map={price:['discount','manual-price'],freight:['manual-freight','manual-freight'],qty:['qty','manual-qty'],days:['days','manual-days']};const [type,id]=map[el.dataset.custom];const raw=$(id).value;action={type,value:raw.trim()===''?null:Number(raw)};
+   if(raw.trim()===''){active=null;state.message='Ingresa un valor explícito: un campo vacío no es cero.';render();return;}}
+ if(action){active=null;state=QuoteLab.reduce(state,action);render();}
+});
+$('tabs').addEventListener('keydown',event=>{
+ const tabs=[...$('tabs').querySelectorAll('button')],i=tabs.indexOf(document.activeElement);if(i<0)return;
+ let next;if(event.key==='ArrowRight')next=(i+1)%tabs.length;if(event.key==='ArrowLeft')next=(i+tabs.length-1)%tabs.length;if(event.key==='Home')next=0;if(event.key==='End')next=tabs.length-1;
+ if(next!==undefined){event.preventDefault();tabs.forEach((t,j)=>t.tabIndex=j===next?0:-1);tabs[next].focus();}
+});
+[['pdf-outcome','pdf'],['mail-outcome','mail']].forEach(([id,key])=>$(id).addEventListener('change',()=>{active=null;state=QuoteLab.reduce(state,{type:'io',value:{[key]:$(id).value}});render();}));
+render();
+</script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-10-02 UTC: STAGING RECREADO DESDE CERO**, autorizado por el dueño tras reinstalar el servidor. SSH **`hetzner-vps`**, WordPress en `/var/www/freeplast`, Nginx + PHP-FPM + MariaDB nativos (sin Docker). Tema **1.0.18**, adaptador **1.6.8**, 17 productos, correos bloqueados y noindex. El panel local nuevo NO fue desplegado. **Los comandos antiguos OpenClaw/Compose ya no aplican.** [Estado, pruebas, credencial y respaldo inicial](docs/releases/2026-10-02-fresh-hetzner.md).
+
 > **2026-09-09 11:53 UTC: RELEASE DATA COMPLETADO EN STAGING.**
 > Tema **1.0.17**, adaptador **1.6.8**, 17 fotos nativas; menú PC/móvil unificado
 > e incluye el pulido previo de avisos/resumen/textos. Backup, restore, trial,

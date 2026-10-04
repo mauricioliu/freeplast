@@ -2,6 +2,8 @@
 
 ## Authority and scope
 
+**Later owner decision:** the manual four-milestone workspace described below is superseded by [the two-view requests inbox](owner-workspace-simple-inbox-2026-09-12.md): all native received requests and automatically sent quotations, without manual tracking controls. The rest of the save/approval/privacy/release boundaries remain. This document preserves the original implementation contract for history.
+
 The owner selected A, requested its refinement and polish, then requested implementation of “the prototype in freeplast.cl”. After the agent proposed real-WordPress test seams and staging first, the owner confirmed **“si, staging primero”**. Production remains untouched. This does not approve Excel mapping, tier rules, fiscal policy, the PDF's visual result, or broaden Ventas permissions.
 
 Visual source: `prototype/owner-quotations-2026-09-10` at `1ae9e20`, `docs/reviews/owner-quotation-workspace-A-refined.prototype.{html,template.html,md}`. Preserve this design rather than reopening A/B/C. Do not ship demo customers, amounts, histories, dates or simulated actions.
