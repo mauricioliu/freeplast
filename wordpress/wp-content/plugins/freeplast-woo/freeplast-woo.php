@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.11.0
+ * Version: 1.12.0
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -45,6 +45,43 @@ add_filter('wc_add_to_cart_message_html', static function($message,$products) {
 	$parts=array(); foreach($products as $id=>$quantity) { $parts[]=get_the_title($id).' × '.(int)$quantity; }
 	return esc_html(implode(', ',$parts)).' se agregó a Productos a Cotizar. <a class="button wc-forward" href="'.esc_url(wc_get_cart_url()).'">Ver Productos a Cotizar</a>';
 }, 1000, 2);
+
+/**
+ * H3 (2026-10-03 review) — Spanish accessible names for the exact WooCommerce
+ * strings the quote journey renders when translations are not installed in the
+ * runtime. Server-rendered (PHP gettext) surfaces get this map; the cart page's
+ * client-rendered controls get the same strings through wp.i18n in
+ * themes/freeplast/assets/js/cart-accessible-names.js. Only these specific
+ * strings are overridden — everything else keeps WooCommerce's own translation.
+ */
+function fpw_accessible_name_translations(): array {
+	return array(
+		'Product quantity'                => 'Cantidad del producto',
+		'optional'                        => 'opcional',
+		'Products in cart'                => 'Productos en tu selección',
+		'Quantity of %s in your cart.'    => 'Cantidad de %s en tu selección.',
+		'Reduce quantity of %s'           => 'Reducir cantidad de %s',
+		'Increase quantity of %s'         => 'Aumentar cantidad de %s',
+		'Remove %s from cart'             => 'Quitar %s de tu selección',
+	);
+}
+
+function fpw_accessible_name_spanish_text( string $text ): string {
+	return fpw_accessible_name_translations()[ $text ] ?? $text;
+}
+
+add_filter( 'gettext_woocommerce', static function ( $translation, $text, $domain ) {
+	return fpw_accessible_name_spanish_text( $text );
+}, 10, 3 );
+
+/** The variation form's reset link in Spanish, through Woo's own template filter. */
+function fpw_reset_variations_link_es(): string {
+	return '<a class="reset_variations" href="#" aria-label="Limpiar opciones elegidas">Limpiar</a>';
+}
+
+add_filter( 'woocommerce_reset_variations_link', static function ( $link ) {
+	return fpw_reset_variations_link_es();
+} );
 add_action('woocommerce_single_product_summary', static function() {
 	global $product;
 	if ($product && '1' === get_post_meta($product->get_id(),'_fp_image_provisional',true)) {
@@ -1415,11 +1452,13 @@ add_action('template_redirect', static function () {
 
 // Mantenedor de precios (issue #52, corte 3 de #49): the owner's private, native-identity Price List — the authority that PREFILLS the drafts' suggestions. Loads before the draft so its suggestions are available to the editing form.
 require_once __DIR__ . '/price-list.php';
+require_once __DIR__ . '/data-hub.php';
 
 // Registro de ventas importado (issue #54, corte 5 de #49): the owner's manual CSV import (preview → confirm/cancel, receipts, owner-only screen) and the Purchase History lookups the drafts render. Loads before the draft so its screen can read the history.
 require_once __DIR__ . '/sales-register.php';
 
 // Borrador privado de cotización (issue #50, corte 1 de #49): one durable initial draft per received request + the owner-only screen that reads it.
+require_once __DIR__ . '/quotation-access.php';
 require_once __DIR__ . '/quote-draft.php';
 require_once __DIR__ . '/quotation-tracking.php';
 require_once __DIR__ . '/owner-workspace.php';

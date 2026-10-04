@@ -259,13 +259,13 @@ function fpw_quotation_preview_token( array $preview ): string {
 }
 
 /** The approval action carries the preview actually rendered; never reread it while building the form. */
-function fpw_draft_approve_html( int $order_id, array $preview ): string {
+function fpw_draft_approve_html( int $order_id, array $preview, bool $concise = false ): string {
 	return '<form method="post" action="' . esc_url( fpw_draft_screen_url( $order_id ) ) . '">'
 		. '<input type="hidden" name="fpw_work_approve" value="1" />'
 		. '<input type="hidden" name="fpw_approve_preview" value="' . esc_attr( fpw_quotation_preview_token( $preview ) ) . '" />'
 		. wp_nonce_field( fpw_quotation_approve_action( $order_id ), 'fpw_approve_nonce', true, false )
 		. '<button type="submit">Aprobar y enviar</button>'
-		. '<span class="fpw-draft__origin">Congela esta revisión como la primera versión de la cotización, genera su PDF e intenta enviarlo por correo al comprador. Se resuelve en el servidor: un doble clic no crea versiones ni envíos extra.</span>'
+		. '<span class="fpw-draft__origin">' . ( $concise ? 'La oferta aprobada queda fija. No se confirma recepción del cliente.' : 'Congela esta revisión como la primera versión de la cotización, genera su PDF e intenta enviarlo por correo al comprador. Se resuelve en el servidor: un doble clic no crea versiones ni envíos extra.' ) . '</span>'
 		. '</form>';
 }
 

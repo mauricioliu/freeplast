@@ -377,13 +377,13 @@ function fpw_sales_import_screen_url(): string {
 
 /** The uniform denial: private to the owner, stated in Spanish, 403 — attributable to permissions, never to a nonce. */
 function fpw_die_sales_import_forbidden(): void {
-	wp_die( 'El importador de ventas es privado del dueño: requiere una sesión con permisos de administración de WooCommerce.', '', array( 'response' => 403 ) );
+	wp_die( 'El importador de ventas es privado del dueño: requiere un rol autorizado.', '', array( 'response' => 403 ) );
 }
 
 /** The private screen: unlisted, keyed on the owner capability. */
 add_action( 'admin_menu', 'fpw_sales_register_import_screen' );
 function fpw_sales_register_import_screen(): void {
-	add_submenu_page( null, 'Importar ventas', 'Importar ventas', 'manage_woocommerce', FPW_SALES_SCREEN, 'fpw_render_sales_import_screen' );
+	add_submenu_page( null, 'Importar ventas', 'Importar ventas', fpw_data_screen_capability(), FPW_SALES_SCREEN, 'fpw_render_sales_import_screen' );
 }
 
 /**
@@ -400,7 +400,7 @@ function fpw_sales_maybe_handle_actions(): void {
 
 /** Capability first, then the nonce-scoped action; the screen renders the explicit result either way. */
 function fpw_render_sales_import_screen(): void {
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_sales_import_forbidden(); }
+	if ( ! fpw_can_manage_data() ) { fpw_die_sales_import_forbidden(); }
 	$banner = fpw_sales_handle_actions();
 	echo fpw_sales_import_markup( $banner );
 }
@@ -416,7 +416,7 @@ function fpw_render_sales_import_screen(): void {
 function fpw_sales_handle_actions(): array {
 	static $result  = array();
 	static $handled = false;
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_sales_import_forbidden(); }
+	if ( ! fpw_can_manage_data() ) { fpw_die_sales_import_forbidden(); }
 	$action = isset( $_POST['fpw_sales_action'] ) ? (string) wp_unslash( $_POST['fpw_sales_action'] ) : '';
 	fpw_sales_verify_nonce( $action );
 	if ( $handled ) { return $result; }

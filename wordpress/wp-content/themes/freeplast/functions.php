@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.19' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.20' );
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -110,6 +110,11 @@ add_action(
 		}
 		if ( function_exists( 'is_cart' ) && is_cart() ) {
 			wp_enqueue_script( 'freeplast-cart-quantity-feedback', get_template_directory_uri() . '/assets/js/cart-quantity-feedback.js', array(), FREEPLAST_THEME_VERSION, true );
+			// H3 (2026-10-03 review): Spanish, variant-unambiguous accessible names for
+			// the cart block's own controls, after the block runtime exposes
+			// wc.blocksCheckout (declared as a real dependency so its global exists)
+			// and before its labels compute from fetched cart data.
+			wp_enqueue_script( 'freeplast-cart-names', get_template_directory_uri() . '/assets/js/cart-accessible-names.js', array( 'wc-cart-checkout-base', 'wc-blocks-checkout' ), FREEPLAST_THEME_VERSION, true );
 		}
 	}
 );

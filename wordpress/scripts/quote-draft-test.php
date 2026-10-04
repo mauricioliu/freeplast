@@ -80,6 +80,7 @@ $GLOBALS['fpwd_options'] = array( 'date_format' => 'j F Y' );
 function get_option( $name, $default = false ) { return $GLOBALS['fpwd_options'][ $name ] ?? $default; }
 $GLOBALS['fpwd_caps'] = array();
 function current_user_can( string $cap ): bool { return ! empty( $GLOBALS['fpwd_caps'][ $cap ] ); }
+function wp_get_current_user() { return (object) array( 'roles' => array() ); }
 $GLOBALS['fpwd_submenu'] = null;
 function add_submenu_page( $parent, $page_title, $menu_title, $capability, $slug, $callback ) {
 	$GLOBALS['fpwd_submenu'] = compact( 'parent', 'page_title', 'menu_title', 'capability', 'slug', 'callback' );
@@ -189,7 +190,7 @@ check( in_array( 'fpw_create_request_draft', $registered_actions['woocommerce_ch
 check( in_array( 'fpw_quote_draft_register_screen', $registered_actions['admin_menu'] ?? array(), true ), 'the private screen registers through admin_menu' );
 fpw_quote_draft_register_screen();
 $screen = $GLOBALS['fpwd_submenu'];
-check( is_array( $screen ) && null === $screen['parent'] && 'fpw-quote-draft' === $screen['slug'] && 'manage_woocommerce' === $screen['capability'] && 'fpw_render_quote_draft_screen' === $screen['callback'], 'the screen is a private (unlisted) wp-admin page keyed on manage_woocommerce' );
+check( is_array( $screen ) && null === $screen['parent'] && 'fpw-quote-draft' === $screen['slug'] && 'fpw_manage_quotations' === $screen['capability'] && 'fpw_render_quote_draft_screen' === $screen['callback'], 'the private screen uses the quotation capability without granting Woo administration' );
 check( empty( $registered_actions['woocommerce_checkout_order_processed'] ), 'the feature registers nothing on checkout_order_processed: the owner notice stays the extension\'s single existing email' );
 check( is_string( fpw_draft_screen_url( 68 ) ) && str_contains( fpw_draft_screen_url( 68 ), 'page=fpw-quote-draft&request=68' ), 'the notice link names the screen and its request' );
 

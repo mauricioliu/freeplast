@@ -3,23 +3,62 @@
   const root = document.querySelector('.fpw-workspace');
   if (!root) return;
   const work = root.querySelector('[data-fpw-work]');
-  const tracking = root.querySelector('[data-fpw-tracking]');
-  let workDirty = false, trackingDirty = false, submitted = false;
+  let workDirty = false, submitted = false;
   const status = root.querySelector('[data-fpw-save-state]');
   const savedStatus = status?.textContent;
   const dockTotal = root.querySelector('[data-fpw-dock-total]');
   const savedTotal = dockTotal?.textContent;
+  const syncPallets = () => {
+    root.querySelectorAll('[data-fpw-pallets]').forEach(note => {
+      const units = Number(note.dataset.units);
+      const field = work?.elements.namedItem(`fpw_work[lines][${note.dataset.fpwPallets}][quantity]`);
+      if (!units || !field) return;
+      const quantity = Number(field.value);
+      if (!/^\d+$/.test(field.value) || !Number.isSafeInteger(quantity) || quantity < 1) {
+        note.textContent = 'Ingresa una cantidad entera para ver la equivalencia en pallets.';
+        return;
+      }
+      const full = Math.floor(quantity / units);
+      note.textContent = `${full} ${full === 1 ? 'pallet completo' : 'pallets completos'} + ${quantity % units} un. · ${units} un. por pallet`;
+    });
+  };
+  const syncActions = () => {
+    const reviewReady = !workDirty && work?.dataset.fpwHasSaved === '1';
+    const save = root.querySelector('[data-fpw-dock-save]');
+    const preview = root.querySelector('[data-fpw-dock-preview]');
+    if (save) save.hidden = reviewReady;
+    if (preview) preview.hidden = !reviewReady;
+    root.querySelectorAll('[data-fpw-discard]').forEach(button => { button.hidden = !workDirty; });
+  };
+  /* H6 (2026-10-03 review): the per-line price legend must not keep claiming
+     «Precio guardado…» while the owner has typed or reference-applied a new
+     value. The legend switches to «Cambio sin guardar.» against the field's
+     own native defaultValue (the saved offer price the server rendered) — no
+     second money source — and the form's reset restores both field and legend. */
+  const PRICE_FIELD = /^fpw_work\[lines\]\[(\d+)\]\[price\]$/;
+  const syncPriceOrigin = (field) => {
+    const match = field && PRICE_FIELD.exec(String(field.name || ''));
+    if (!match) { return; }
+    const legend = root.querySelector(`[data-fpw-origin="${match[1]}"]`);
+    if (!legend) { return; }
+    if (legend.dataset.fpwSavedLegend === undefined) { legend.dataset.fpwSavedLegend = legend.textContent; }
+    legend.textContent = field.value === field.defaultValue ? legend.dataset.fpwSavedLegend : 'Cambio sin guardar.';
+  };
+  const resetPriceOrigins = () => {
+    root.querySelectorAll('[data-fpw-origin]').forEach(legend => {
+      if (legend.dataset.fpwSavedLegend !== undefined) { legend.textContent = legend.dataset.fpwSavedLegend; }
+    });
+  };
   work?.addEventListener('reset', () => {
+    setTimeout(syncPallets, 0);
     workDirty = false;
     if (status) status.textContent = savedStatus;
     if (dockTotal) dockTotal.textContent = savedTotal;
     root.querySelector('#fpw-summary')?.classList.remove('has-unsaved');
     root.querySelectorAll('[data-fpw-preview],[data-fpw-refresh]').forEach(button => { button.disabled = false; });
     root.querySelectorAll('[data-fpw-unsaved-warning]').forEach(notice => notice.remove());
-  });
-  tracking?.addEventListener('reset', () => {
-    trackingDirty = false;
-    root.querySelectorAll('[data-fpw-unsaved-warning]').forEach(notice => notice.remove());
+    resetPriceOrigins();
+    syncActions();
   });
   const setWorkDirty = () => {
     workDirty = true;
@@ -28,11 +67,21 @@
     const total = root.querySelector('[data-fpw-dock-total]');
     if (total) total.textContent = 'Sin guardar';
     root.querySelectorAll('[data-fpw-preview],[data-fpw-refresh]').forEach(button => { button.disabled = true; });
+    syncActions();
   };
-  if (work?.dataset.fpwUnsaved === '1') setWorkDirty();
-  root.querySelector('[data-fpw-discard-work]')?.addEventListener('click', () => { if (!trackingDirty) submitted = true; });
-  work?.addEventListener('input', setWorkDirty);
-  work?.addEventListener('change', setWorkDirty);
+  if (work?.dataset.fpwUnsaved === '1') {
+    setWorkDirty();
+    // The server-rendered unsaved screen carries rejected posted prices: every
+    // legend must admit those values are not the saved ones until reset/save.
+    root.querySelectorAll('[data-fpw-origin]').forEach(legend => {
+      if (legend.dataset.fpwSavedLegend === undefined) { legend.dataset.fpwSavedLegend = legend.textContent; }
+      legend.textContent = 'Cambio sin guardar.';
+    });
+  }
+  else syncActions();
+  root.querySelector('[data-fpw-discard-work]')?.addEventListener('click', () => { submitted = true; });
+  work?.addEventListener('input', (event) => { syncPallets(); setWorkDirty(); syncPriceOrigin(event.target); });
+  work?.addEventListener('change', (event) => { setWorkDirty(); syncPriceOrigin(event.target); });
   root.querySelectorAll('[data-fpw-apply-price]').forEach(button => {
     button.hidden = false;
     button.addEventListener('click', () => {
@@ -44,11 +93,9 @@
       field.focus();
     });
   });
-  tracking?.addEventListener('input', () => { trackingDirty = true; });
-  tracking?.addEventListener('change', () => { trackingDirty = true; });
   root.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', event => {
-      if ((workDirty && form !== work) || (trackingDirty && form !== tracking)) {
+      if (workDirty && form !== work) {
         event.preventDefault();
         let notice = form.querySelector('[data-fpw-unsaved-warning]');
         if (!notice) {
@@ -59,9 +106,7 @@
           notice.tabIndex = -1;
           form.prepend(notice);
         }
-        notice.textContent = workDirty && form !== work
-          ? 'Guarda los cambios del borrador antes de realizar otra acción.'
-          : 'Guarda los cambios del seguimiento antes de realizar otra acción.';
+        notice.textContent = 'Guarda los cambios del borrador antes de realizar otra acción.';
         notice.focus();
         return;
       }
@@ -71,7 +116,7 @@
     });
   });
   window.addEventListener('beforeunload', event => {
-    if (!submitted && (workDirty || trackingDirty)) {
+    if (!submitted && workDirty) {
       event.preventDefault();
       event.returnValue = '';
     }

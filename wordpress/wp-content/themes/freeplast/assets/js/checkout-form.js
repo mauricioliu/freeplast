@@ -122,6 +122,43 @@
   function endpoint(settings) {
     try { return new URL(settings.url, window.location.href).searchParams.get('wc-ajax'); } catch (error) { return null; }
   }
+  /* H5 (2026-10-03 review): the native blur validation marks an invalid email
+     with color and aria-invalid only. This adds the missing short Spanish
+     explanation beside the field, wired through aria-describedby, driven by
+     Woo's OWN verdict class — it never re-validates, never blocks submission
+     and never touches the server-side validation. */
+  function emailFormatErrorNode(row) {
+    return row && row.querySelector('[data-fp-email-error]');
+  }
+  function clearEmailFormatError(form) {
+    var email = form.querySelector('#billing_email');
+    var node = emailFormatErrorNode(email && email.closest('.form-row'));
+    if (!node) { return; }
+    node.remove();
+    if (!email) { return; }
+    var ids = (email.getAttribute('aria-describedby') || '').split(/\s+/).filter(function (id) { return id && id !== node.id; });
+    if (ids.length) { email.setAttribute('aria-describedby', ids.join(' ')); }
+    else { email.removeAttribute('aria-describedby'); }
+  }
+  function syncEmailFormatError(form) {
+    var email = form.querySelector('#billing_email');
+    if (!email) { return; }
+    var row = email.closest('.form-row');
+    if (!row) { return; }
+    if (!row.classList.contains('woocommerce-invalid-email')) { clearEmailFormatError(form); return; }
+    var node = emailFormatErrorNode(row);
+    if (!node) {
+      node = document.createElement('span');
+      node.className = 'fp-field-error';
+      node.id = 'fp-field-error-billing_email-format';
+      node.setAttribute('data-fp-field-error', '');
+      node.setAttribute('data-fp-email-error', '');
+      row.appendChild(node);
+      email.setAttribute('aria-describedby', ((email.getAttribute('aria-describedby') || '') + ' ' + node.id).trim());
+    }
+    node.textContent = 'Escribe un correo completo, como nombre@empresa.cl.';
+    if (!email.hasAttribute('aria-invalid')) { email.setAttribute('aria-invalid', 'true'); }
+  }
   function init() {
     var form = document.querySelector('form.checkout');
     if (!form || form.hasAttribute('data-fp-checkout-enhanced')) { return; }
@@ -131,6 +168,17 @@
     form.addEventListener('click', function (event) {
       if (event.target.closest('[data-fp-summary-details] summary') && desktop()) { event.preventDefault(); }
     });
+    var emailField = form.querySelector('#billing_email');
+    if (emailField) {
+      form.addEventListener('focusout', function (event) {
+        if (event.target !== emailField) { return; }
+        window.setTimeout(function () { syncEmailFormatError(form); }, 0); // read Woo's own blur verdict
+      });
+      emailField.addEventListener('input', function () {
+        var row = emailField.closest('.form-row');
+        if (row && row.classList.contains('woocommerce-invalid-email') && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailField.value)) { clearEmailFormatError(form); }
+      });
+    }
     form.addEventListener('change', function (event) {
       if (event.target.name === 'billing_fp_dispatch') { clearDispatchErrors(form, event.target.value); }
     });
@@ -192,6 +240,6 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
   }
   if (typeof module === 'object' && module.exports) {
-    module.exports = { syncSummary: syncSummary, enhanceErrors: enhanceErrors, markSending: markSending, restoreSending: restoreSending, buildErrorSummary: buildErrorSummary, UNCERTAIN_COPY: UNCERTAIN_COPY };
+    module.exports = { syncSummary: syncSummary, enhanceErrors: enhanceErrors, markSending: markSending, restoreSending: restoreSending, buildErrorSummary: buildErrorSummary, syncEmailFormatError: syncEmailFormatError, clearEmailFormatError: clearEmailFormatError, UNCERTAIN_COPY: UNCERTAIN_COPY };
   }
 })();

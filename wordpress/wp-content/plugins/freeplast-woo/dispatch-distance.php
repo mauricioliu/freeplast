@@ -206,7 +206,7 @@ function fpw_handle_distance_consult_request( $order, array $draft ): void {
 function fpw_handle_distance_consult(): void {
 	fpw_pending_distance_consult( null );   // a fresh request starts with no outcome
 	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) || empty( $_POST['fpw_distance_consult'] ) ) { return; }
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
+	if ( ! fpw_can_manage_quotations() ) { fpw_die_draft_forbidden(); }
 	$order = fpw_draft_screen_order();
 	$draft = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	if ( ! $draft ) { return; }

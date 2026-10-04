@@ -125,6 +125,33 @@ export async function runCheckoutFormTests() {
   form.querySelector('.fp-error-summary a').click();
   ok(doc.activeElement === nameInput, 'the actual summary link focuses the field');
 
+  /* H5 (2026-10-03 review): invalid email at blur gets the missing textual
+   * explanation, driven by Woo's own verdict class; correction removes it. */
+  const blurDom = boot(412);
+  const blurDoc = blurDom.window.document;
+  const blurForm = blurDoc.querySelector('form.checkout');
+  const emailRow = blurDoc.getElementById('billing_email_field');
+  const emailInput = blurDoc.getElementById('billing_email');
+  emailInput.value = 'correo-invalido';
+  emailRow.classList.add('validate-email', 'woocommerce-invalid', 'woocommerce-invalid-email'); // Woo's own blur verdict
+  emailInput.dispatchEvent(new blurDom.window.Event('focusout', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const emailError = blurForm.querySelector('[data-fp-email-error]');
+  ok(Boolean(emailError), 'blur with Woo\'s invalid-email verdict produces the textual explanation');
+  ok(emailError.textContent === 'Escribe un correo completo, como nombre@empresa.cl.', 'the message explains the expected format in Spanish');
+  ok(emailError.id.startsWith('fp-field-error-'), 'the message id is cleanup-compatible with the submit-time error rebuild');
+  ok((emailInput.getAttribute('aria-describedby') || '').includes(emailError.id), 'the message is associated with the input it explains');
+  ok(emailInput.getAttribute('aria-invalid') === 'true', 'the native invalid marking is preserved');
+  emailInput.value = 'cliente@empresa.cl';
+  emailInput.dispatchEvent(new blurDom.window.Event('input', { bubbles: true }));
+  ok(!blurForm.querySelector('[data-fp-email-error]') && emailInput.getAttribute('aria-describedby') === null, 'typing a structurally valid email removes the message and its association');
+  emailRow.classList.remove('woocommerce-invalid-email'); // Woo clears its verdict on the next validation pass
+  emailInput.value = 'correo-invalido';
+  emailInput.dispatchEvent(new blurDom.window.Event('focusout', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  ok(!blurForm.querySelector('[data-fp-email-error]'), 'a clean field never carries a stale format error');
+  blurDom.window.close();
+
   for (const instance of [mobile, desktop, dom, lost, definite, sendDom]) { instance.window.close(); }
   console.log(`checkout form: ${checks} A · Directa checkout enhancement checks passed (linked errors, honest ambiguity, busy submit)`);
   return checks;

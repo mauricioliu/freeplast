@@ -20,7 +20,19 @@
 
 defined( 'ABSPATH' ) || exit;
 
-do_action( 'woocommerce_before_checkout_form', $checkout );
+/* Quote-only journey (H2, 2026-10-03 review): Woo's purchase-coupon form hangs
+ * on this exact hook, and a discount action has no place in a request that shows
+ * no prices and never charges. The callback is removed for THIS render only —
+ * the option stays untouched for any other site surface, other callbacks on the
+ * hook still run, and nothing merely hidden remains operable: the form markup,
+ * its inputs and its JS trigger are simply never printed. */
+$fp_extensions = static function ( $hook, $callback ) {
+	$priority = has_action( $hook, $callback );
+	if ( false !== $priority ) { remove_action( $hook, $callback, $priority ); }
+	try { do_action( $hook, $checkout ); }
+	finally { if ( false !== $priority ) { add_action( $hook, $callback, $priority ); } }
+};
+$fp_extensions( 'woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form' );
 
 if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_required() && ! is_user_logged_in() ) {
 	echo esc_html( apply_filters( 'woocommerce_checkout_must_be_logged_in_message', __( 'You must be logged in to checkout.', 'woocommerce' ) ) );
@@ -28,13 +40,7 @@ if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_requir
 }
 
 $fp_billing = $checkout->get_checkout_fields( 'billing' );
-// Replace only native layout callbacks for this render, never extension hooks.
-$fp_extensions = static function ( $hook, $callback ) {
-	$priority = has_action( $hook, $callback );
-	if ( false !== $priority ) { remove_action( $hook, $callback, $priority ); }
-	try { do_action( $hook ); }
-	finally { if ( false !== $priority ) { add_action( $hook, $callback, $priority ); } }
-};
+/* Replace only native layout callbacks for this render, never extension hooks. */
 
 $fp_lines = 0;
 $fp_units = 0;

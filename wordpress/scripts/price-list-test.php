@@ -188,9 +188,15 @@ $order68 = new FPPW_Order( 68, array(
 
 /* Registration: the mantenedor is an unlisted wp-admin screen keyed on the
  * owner capability, and it hooks no public or checkout event. */
+$GLOBALS['fppw_caps'] = array( 'manage_woocommerce' => true );
 fpw_price_register_screen();
 $screen = $GLOBALS['fppw_submenu'];
-check( is_array( $screen ) && null === $screen['parent'] && FPW_PRICE_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'] && 'fpw_render_price_screen' === $screen['callback'], 'the mantenedor is a private (unlisted) wp-admin screen keyed on manage_woocommerce' );
+check( is_array( $screen ) && null === $screen['parent'] && FPW_PRICE_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'] && 'fpw_render_price_screen' === $screen['callback'], 'the mantenedor is a private (unlisted) wp-admin screen whose per-request registration cap admits the Woo manager' );
+$GLOBALS['fppw_caps'] = array( 'fpw_manage_data' => true );
+fpw_price_register_screen();
+$screen = $GLOBALS['fppw_submenu'];
+check( 'fpw_manage_data' === $screen['capability'], 'the same screen registers under the data cap for the dedicated data maintainer' );
+$GLOBALS['fppw_caps'] = array();
 check( isset( $registered_actions['admin_init'] ) && in_array( 'fpw_price_maybe_handle_save', $registered_actions['admin_init'], true ), 'the save is front-doored at admin_init, before wp-admin renders its header' );
 $public_hooks = array( 'woocommerce_checkout_order_created', 'woocommerce_checkout_order_processed', 'wp_enqueue_scripts', 'rest_api_init' );
 foreach ( $public_hooks as $hook ) {
@@ -198,7 +204,7 @@ foreach ( $public_hooks as $hook ) {
 }
 
 /* Empty state: no row, no invention. */
-check( fpw_price_list() === array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() ), 'an absent price row reads as an explicit empty list' );
+check( fpw_price_list() === array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array(), 'references' => array() ), 'an absent price row reads as an explicit empty list' );
 check( fpw_price_for( 22, 0 ) === null && fpw_price_for( 25, 310 ) === null, 'with nothing maintained, no identity has a suggestion' );
 
 /* Keys and resolution: the native identity is product id and variation id; an
@@ -455,4 +461,37 @@ check( str_contains( $page, 'Precios refrescados desde el mantenedor (revisión 
 check( str_contains( $page, 'se conservaron' ), 'the refresh notice states the manual choices were conserved' );
 check( str_contains( $page, 'name="fpw_work_revision" value="4"' ), 'the form re-renders from the refreshed revision' );
 
-echo "price list: $assertions offline checks passed (issue #52)\n";
+// Two volume references are manual choices, never quantity-based suggestions.
+$refs = array('p:22'=>array('units'=>70,'small'=>2400,'bulk'=>1900,'source'=>'Fixture','note'=>''), 'p:25'=>array('units'=>100,'small'=>4200,'bulk'=>3900), 'v:310'=>array('units'=>100,'small'=>null,'bulk'=>5100));
+$work_before = fpw_read_draft_work(68);
+$legacy_before = fpw_price_list()['prices'];
+fpw_price_save_entries($legacy_before, 'fixture', $refs);
+check(fpw_price_for(22,0) === ($legacy_before['p:22'] ?? null), 'volume references never become an automatic suggestion');
+check(fpw_price_reference_for(22)['bulk']===1900, 'both reference tiers are privately available');
+check(fpw_price_reference_for(25,311)['small']===4200, 'variation without its own record inherits parent references');
+check(fpw_price_reference_for(25,310)['small']===null, 'explicit missing variation tier never falls back to another price');
+check(fpw_price_reference_for(999)===array(), 'unknown product has no fabricated reference');
+check(fpw_read_draft_work(68)===$work_before, 'changing references never rewrites saved quotations');
+fpw_price_save_entries($legacy_before,'legacy-editor');
+check(fpw_price_list()['references']===$refs, 'legacy saves preserve volume references');
+$catalog=fpw_price_catalog();
+$valid=fpw_price_references_parse($catalog,['p:22'=>['units'=>'70','small'=>'2400','bulk'=>'1900']],$refs);
+check(!$valid['errors'] && $valid['entries']['p:22']['source']==='Fixture', 'unchanged fields retain source provenance');
+foreach (['0','-1','1.5','S/I','100000000',array('x')] as $bad) {
+ $parsed=fpw_price_references_parse($catalog,['p:22'=>['units'=>'70','small'=>$bad,'bulk'=>'1900']],$refs);
+ check(!empty($parsed['errors']), 'invalid reference amount rejects batch');
+}
+$empty=fpw_price_references_parse($catalog,['p:22'=>['units'=>'70','small'=>'','bulk'=>'']],$refs);
+check(!$empty['errors'] && $empty['entries']['p:22']['small']===null && $empty['entries']['p:22']['bulk']===null, 'S/I represented by empty fields stays pending, not zero');
+check(!empty(fpw_price_references_parse($catalog,['p:999'=>['units'=>'1','small'=>'1','bulk'=>'1']],[])['errors']), 'unknown native identity refused');
+$html=fpw_price_reference_editor('p:22',fpw_price_reference_normalize($refs['p:22']));
+check(str_contains($html,'1 a 4 pallets') && str_contains($html,'5 o más pallets') && str_contains($html,'Unidades por pallet'), 'maintainer renders both references and packaging');
+$_POST=['fpw_price_nonce'=>'offline-nonce','fpw_prices'=>['p:22'=>'1000'],'fpw_references'=>['p:22'=>['units'=>'70','small'=>'0','bulk'=>'1']]];
+$before=fpw_price_list(); $result=fpw_price_handle_save_request($catalog);
+check(!$result['ok'] && fpw_price_list()===$before, 'invalid references reject legacy and reference writes atomically');
+// The hub is an index of existing private screens, never a new authority.
+ob_start(); fpw_render_data_hub(); $hub=ob_get_clean();
+check(str_contains($hub,'Mantenedor de datos') && str_contains($hub,'Privado del dueño'), 'the hub names itself and its privacy');
+check(str_contains($hub,'href="'.fpw_price_screen_url().'"') && str_contains($hub,'href="'.fpw_sales_import_screen_url().'"'), 'the hub links prices and the sales import only');
+check(substr_count($hub,'fpw-data-row')>=4, 'every hub row is a direct link');
+echo "price list: $assertions offline checks passed (issue #52 + manual volume references)\n";

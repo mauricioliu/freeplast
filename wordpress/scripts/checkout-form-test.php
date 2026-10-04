@@ -79,6 +79,13 @@ add_action('woocommerce_checkout_billing', array($checkout, 'checkout_form_billi
 add_action('woocommerce_checkout_shipping', array($checkout, 'checkout_form_shipping'));
 add_action('woocommerce_checkout_billing', static function () { echo 'BILLING-EXTENSION'; }, 20);
 
+/* H2 (2026-10-03 review): the quote-only details form must carry no purchase-coupon
+ * invitation, field or action. Woo hangs its coupon form on this exact hook; the
+ * override removes that callback for its own render while other callbacks still run. */
+function woocommerce_checkout_coupon_form() { echo '<div class="woocommerce-form-coupon-toggle">COUPON-FORM-MARKER</div>'; }
+add_action('woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form', 10);
+add_action('woocommerce_before_checkout_form', static function ($checkout) { echo 'BEFORE-CHECKOUT-EXTENSION'; }, 11);
+
 ob_start();
 include __DIR__ . '/../wp-content/themes/freeplast/woocommerce/checkout/form-checkout.php';
 $html = (string) ob_get_clean();
@@ -91,6 +98,9 @@ function verify($condition, $message) {
 }
 
 verify(str_contains($html, 'REVIEW-EXTENSION') && str_contains($html, 'BILLING-EXTENSION'), 'native extension hooks still execute');
+verify(!str_contains($html, 'COUPON-FORM-MARKER') && stripos($html, 'coupon') === false, 'H2: no coupon invitation, field or action renders anywhere in the quote-only form');
+verify(str_contains($html, 'BEFORE-CHECKOUT-EXTENSION'), 'H2: other before-checkout callbacks keep running without the coupon form');
+verify(has_action('woocommerce_before_checkout_form', 'woocommerce_checkout_coupon_form') === 10, 'H2: the native coupon callback is restored for every other Woo surface');
 verify(has_action('woocommerce_checkout_order_review', 'woocommerce_checkout_payment') === 20 && has_action('woocommerce_checkout_billing', array($checkout, 'checkout_form_billing')) === 10, 'scoped native callbacks restored after rendering');
 verify(substr_count($html, '<form name="checkout"') === 1, 'exactly ONE classic checkout form');
 verify(str_contains($html, 'method="post"') && str_contains($html, 'class="checkout woocommerce-checkout"'), 'the native form contract (method/classes) is preserved');

@@ -77,3 +77,35 @@ export async function runCartPresentationTests() {
     return checks;
   } finally { dom.window.close(); }
 }
+
+/* H3 (2026-10-03 review): the cart page's Spanish control labels and
+ * variant-named items, through the public wp.i18n and wc.blocksCheckout seams. */
+export function runCartAccessibleNamesTests() {
+  let checks = 0;
+  const ok = (value, message) => { checks++; assert.ok(value, message); };
+  const source = readFileSync(new URL('../wp-content/themes/freeplast/assets/js/cart-accessible-names.js', import.meta.url), 'utf8');
+  const localeData = {};
+  const registered = [];
+  const dom = new JSDOM('<!doctype html><body class="woocommerce-cart"></body>', { url: 'https://example.test/cotizacion/', runScripts: 'outside-only' });
+  try {
+    const w = dom.window;
+    w.wp = { i18n: { setLocaleData(data) { Object.assign(localeData, data); } } };
+    w.wc = { blocksCheckout: { registerCheckoutFilters(namespace, filters) { registered.push({ namespace, filters }); } } };
+    w.eval(source);
+    ok(localeData['Quantity of %s in your cart.'][0] === 'Cantidad de %s en tu selección.', 'the quantity label ships Spanish through wp.i18n before the block renders');
+    ok(localeData['Remove %s from cart'][0] === 'Quitar %s de tu selección' && localeData['Products in cart'][0] === 'Productos en tu selección', 'remove and table labels ship Spanish too');
+    ok(localeData['Reduce quantity of %s'][0] === 'Reducir cantidad de %s' && localeData['Increase quantity of %s'][0] === 'Aumentar cantidad de %s', 'both stepper button labels ship Spanish');
+    ok(registered.length === 1 && registered[0].namespace === 'freeplast/variant-names' && typeof registered[0].filters.itemName === 'function', 'the variant context registers once through the checkout-filter API');
+    const itemName = registered[0].filters.itemName;
+    ok(itemName('Caja Universal Cerrada Color', {}, { cartItem: { variation: [{ attribute: 'color', value: 'Azul' }] } }) === 'Caja Universal Cerrada Color · Azul', 'an Azul variant line names its colour');
+    ok(itemName('Caja Universal Cerrada Color', {}, { cartItem: { variation: [{ attribute: 'color', value: 'Rojo' }] } }) === 'Caja Universal Cerrada Color · Rojo', 'the Rojo line of the same product gets a distinct name');
+    ok(itemName('Caja Cosechera 3/4', {}, { cartItem: { variation: [] } }) === 'Caja Cosechera 3/4', 'products without variation keep their own name untouched');
+    ok(itemName('Caja Cosechera 3/4', {}, {}) === 'Caja Cosechera 3/4' && itemName('X', {}, null) === 'X', 'missing cart data never breaks the name');
+    ok(itemName('Caja', {}, { cartItem: { variation: [{ attribute: 'color', value: '' }, { attribute: 'talla', value: null }] } }) === 'Caja', 'empty variation values add nothing');
+    /* Absent APIs degrade to Woo's own behavior without throwing. */
+    const bare = new JSDOM('<!doctype html><body></body>', { url: 'https://example.test/cotizacion/', runScripts: 'outside-only' });
+    try { bare.window.eval(source); ok(true, 'the script is inert without wp.i18n/wc.blocksCheckout'); } catch (error) { ok(false, 'the script must not throw without the block APIs'); } finally { bare.window.close(); }
+    console.log(`cart accessible names: ${checks} H3 checks passed (public seams; hydrated cart unrun)`);
+    return checks;
+  } finally { dom.window.close(); }
+}

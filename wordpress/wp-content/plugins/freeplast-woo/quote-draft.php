@@ -22,7 +22,7 @@
  * link rides the adapter's own request-email.php template for $sent_to_admin —
  * no second notification surface is registered, and folded attempts (whose
  * notification hook is already removed) never re-fire it. The link opens a
- * private wp-admin screen whose only key is the manage_woocommerce capability
+ * private wp-admin screen guarded by the quotation capability (or existing Woo management)
  * (Ventas' approved caps do not include it): knowing the link, the request id
  * or a nonce grants nothing. Cut 1 rendered GET-only — no state change, hence
  * no CSRF surface; cut 2's save action carries and verifies its own nonce.
@@ -542,7 +542,7 @@ function fpw_draft_dispatch_stale( ?array $work ): bool {
 /** The private screen: unlisted (the owner notice's link is the access), keyed on the owner capability. */
 add_action( 'admin_menu', 'fpw_quote_draft_register_screen' );
 function fpw_quote_draft_register_screen(): void {
-	add_submenu_page( null, 'Borrador de cotización', 'Borrador de cotización', 'manage_woocommerce', FPW_DRAFT_SCREEN, 'fpw_render_quote_draft_screen' );
+	add_submenu_page( null, 'Borrador de cotización', 'Borrador de cotización', fpw_quotation_screen_capability(), FPW_DRAFT_SCREEN, 'fpw_render_quote_draft_screen' );
 }
 
 /** The uniform denial: private to the owner, stated in Spanish, 403 — attributable to permissions, never to a nonce. */
@@ -675,7 +675,7 @@ function fpw_handle_draft_posted_action(): void {
 	if ( FPW_DRAFT_SCREEN !== (string) ( $_GET['page'] ?? '' ) ) { return; }
 	$action = fpw_draft_posted_action();
 	if ( null === $action ) { return; }
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
+	if ( ! fpw_can_manage_quotations() ) { fpw_die_draft_forbidden(); }
 	$order = fpw_draft_screen_order();
 	$draft = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	if ( ! $draft ) { return; }
@@ -753,7 +753,7 @@ function fpw_draft_outcome_notice( array $result ): array {
  * preview generation.
  */
 function fpw_render_quote_draft_screen(): void {
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_draft_forbidden(); }
+	if ( ! fpw_can_manage_quotations() ) { fpw_die_draft_forbidden(); }
 	$order    = fpw_draft_screen_order();
 	$draft    = $order ? fpw_read_request_draft( (int) $order->get_id() ) : null;
 	$work     = $order ? fpw_read_draft_work( (int) $order->get_id() ) : null;

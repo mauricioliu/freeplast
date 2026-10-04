@@ -289,7 +289,7 @@ register_shutdown_function( static function () {
 
     // Focused red/green entry point; the same seam also runs in the full suite.
     const { runOwnerWorkspaceTests } = await import('./owner-workspace-native.mjs');
-    await runOwnerWorkspaceTests({ makeCookieFetch, wpLogin, check, wpEval: code => sh(PHP,
+    await runOwnerWorkspaceTests({ makeCookieFetch, wpLogin, check, siteUrl: SITE_URL, wpEval: code => sh(PHP,
       [WPCLI, 'eval', code, `--path=${WP_DIR}`, `--url=${SITE_URL}`, '--user=1']) });
     const workspaceMail = existsSync(mailLog) ? readFileSync(mailLog, 'utf8') : '';
     check(workspaceMail.trim().split('\n').filter(Boolean).length === 1, 'workspace: exactly one intercepted quotation mail, no mails from saves or manual tracking');
@@ -1223,13 +1223,16 @@ register_shutdown_function( static function () {
         const mailsBeforePriceSave = mailCountNow();
         const savedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': saveNonce, [`fpw_prices[p:${catalog52.simple}]`]: amounts52.simple, [`fpw_prices[v:${varA}]`]: amounts52.varA, [`fpw_prices[v:${varB}]`]: amounts52.varB }).toString() });
         check(savedPrices.status === 200, `the price save must answer 200 (got ${savedPrices.status})`);
-        check((await savedPrices.text()).includes('Lista de precios guardada: 3 precios mantenidos'), 'the save banner reports its explicit outcome');
+        /* The maintainer now distinguishes base prices from optional references.
+           This run resets the whole row and submits only three base prices. */
+        check((await savedPrices.text()).includes('Lista de precios guardada: 3 precios base y 0 referencias por producto u opción.'), 'the save banner reports exactly three base prices and zero references');
         const priceRow52 = JSON.parse(wpEval(`
           global $wpdb;
           $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_price_list'));
           echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
         `).split('\n').pop());
-        check(priceRow52 && priceRow52.prices[`p:${catalog52.simple}`] === 14971 && priceRow52.prices[`v:${varA}`] === 21973 && priceRow52.prices[`v:${varB}`] === 23979, 'the maintained prices persist by native product/variation identity');
+        check(priceRow52 && Object.keys(priceRow52.prices).length === 3 && priceRow52.prices[`p:${catalog52.simple}`] === 14971 && priceRow52.prices[`v:${varA}`] === 21973 && priceRow52.prices[`v:${varB}`] === 23979, 'exactly three maintained prices persist by native product/variation identity');
+        check(priceRow52.references && Object.keys(priceRow52.references).length === 0, 'the saved reference count agrees with the explicit zero-reference banner');
         check(JSON.stringify(productFingerprint()) === JSON.stringify(fpBefore), 'saving prices mutated no product data: prices, meta and status all stand');
         check(mailCountNow() === mailsBeforePriceSave, 'saving prices sends no notification');
         const priceReopened = await (await owner(priceUrl)).text();

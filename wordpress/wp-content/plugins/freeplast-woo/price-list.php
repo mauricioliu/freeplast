@@ -31,6 +31,8 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+require_once __DIR__ . '/price-references.php';
+
 define( 'FPW_PRICE_SCREEN', 'fpw-price-list' );
 define( 'FPW_PRICE_ROW', 'fpw_price_list' );
 define( 'FPW_PRICE_NONCE_SAVE', 'fpw_price_save' );
@@ -48,7 +50,7 @@ function fpw_price_key( int $product_id, int $variation_id ): string {
 
 /** The list's explicit empty shape: an absent or unreadable row is no invention, never a guessed price. */
 function fpw_price_empty_list(): array {
-	return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array() );
+	return array( 'schema' => 1, 'updated_at' => 0, 'updated_by' => '', 'prices' => array(), 'references' => array() );
 }
 
 /** The maintained list, read straight from the database — never through the per-request options cache. Degrades to an explicit empty list without a database (read-only render paths in offline harnesses). */
@@ -64,6 +66,7 @@ function fpw_price_list(): array {
 		'updated_at' => (int) ( $payload['updated_at'] ?? 0 ),
 		'updated_by' => (string) ( $payload['updated_by'] ?? '' ),
 		'prices'     => $payload['prices'],
+		'references' => is_array( $payload['references'] ?? null ) ? $payload['references'] : array(),
 	);
 }
 
@@ -79,12 +82,13 @@ function fpw_price_write_row( array $payload ): void {
 }
 
 /** Replace the whole maintained map with one validated, provenance-stamped payload. */
-function fpw_price_save_entries( array $entries, string $actor ): array {
+function fpw_price_save_entries( array $entries, string $actor, ?array $references = null ): array {
 	$payload = array(
 		'schema'     => 1,
 		'updated_at' => time(),
 		'updated_by' => $actor,
 		'prices'     => $entries,
+		'references' => $references ?? fpw_price_list()['references'],
 	);
 	fpw_price_write_row( $payload );
 	return $payload;
@@ -211,28 +215,38 @@ function fpw_price_handle_save_request( array $catalog ): array {
 	}
 	$posted = isset( $_POST['fpw_prices'] ) && is_array( $_POST['fpw_prices'] ) ? wp_unslash( $_POST['fpw_prices'] ) : array();
 	$parsed = fpw_price_parse_input( $catalog, $posted );
+	$references = null;
+	if ( isset( $_POST['fpw_references'] ) ) {
+		if ( ! is_array( $_POST['fpw_references'] ) ) {
+			$parsed['errors'][] = 'El formato de las referencias no es válido.';
+		} else {
+			$reference_input = fpw_price_references_parse( $catalog, wp_unslash( $_POST['fpw_references'] ), fpw_price_list()['references'] );
+			$parsed['errors'] = array_merge( $parsed['errors'], $reference_input['errors'] );
+			$references = $reference_input['entries'];
+		}
+	}
 	if ( ! empty( $parsed['errors'] ) ) {
 		$extra = count( $parsed['errors'] ) > 1 ? ' (y ' . ( count( $parsed['errors'] ) - 1 ) . ' otros problemas.)' : '';
 		return array( 'ok' => false, 'message' => 'No se guardó nada: ' . $parsed['errors'][0] . $extra, 'errors' => $parsed['errors'] );
 	}
 	$count = count( $parsed['entries'] );
-	fpw_price_save_entries( $parsed['entries'], fpw_price_actor() );
+	fpw_price_save_entries( $parsed['entries'], fpw_price_actor(), $references );
 	return array(
 		'ok'      => true,
-		'message' => 'Lista de precios guardada: ' . $count . ' ' . ( 1 === $count ? 'precio mantenido' : 'precios mantenidos' ) . '. Los borradores ya guardados conservan sus importes.',
+		'message' => 'Lista de precios guardada: ' . $count . ' precios base y ' . count( fpw_price_list()['references'] ) . ' referencias por producto u opción. Los borradores ya guardados conservan sus importes.',
 		'count'   => $count,
 	);
 }
 
 /** The uniform denial: private to the owner, stated in Spanish, 403. */
 function fpw_die_price_forbidden(): void {
-	wp_die( 'El mantenedor de precios es privado del dueño: requiere una sesión con permisos de administración de WooCommerce.', '', array( 'response' => 403 ) );
+	wp_die( 'El mantenedor de precios es privado del dueño: requiere un rol autorizado.', '', array( 'response' => 403 ) );
 }
 
 /** The save front door, ahead of wp-admin's own header render: authorization first, then CSRF. */
 function fpw_price_maybe_handle_save(): void {
 	if ( FPW_PRICE_SCREEN !== (string) ( $_GET['page'] ?? '' ) || empty( $_POST['fpw_price_save'] ) ) { return; }
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_price_forbidden(); }
+	if ( ! fpw_can_manage_data() ) { fpw_die_price_forbidden(); }
 	fpw_pending_price_save( fpw_price_handle_save_request( fpw_price_catalog() ) );
 }
 add_action( 'admin_init', 'fpw_price_maybe_handle_save', 0 );
@@ -240,12 +254,12 @@ add_action( 'admin_init', 'fpw_price_maybe_handle_save', 0 );
 /** The private screen: unlisted, keyed on the owner capability. */
 add_action( 'admin_menu', 'fpw_price_register_screen' );
 function fpw_price_register_screen(): void {
-	add_submenu_page( null, 'Mantenedor de precios', 'Mantenedor de precios', 'manage_woocommerce', FPW_PRICE_SCREEN, 'fpw_render_price_screen' );
+	add_submenu_page( null, 'Mantenedor de precios', 'Mantenedor de precios', fpw_data_screen_capability(), FPW_PRICE_SCREEN, 'fpw_render_price_screen' );
 }
 
 /** The screen callback: capability first, then the stored state and the save outcome. */
 function fpw_render_price_screen(): void {
-	if ( ! current_user_can( 'manage_woocommerce' ) ) { fpw_die_price_forbidden(); }
+	if ( ! fpw_can_manage_data() ) { fpw_die_price_forbidden(); }
 	$banner = fpw_pending_price_save();
 	echo fpw_price_screen_markup( is_array( $banner ) ? $banner : array() );
 }
@@ -258,7 +272,8 @@ function fpw_price_input_html( string $key, ?int $value ): string {
 /** One catalog row: the identity beside its name, the input beside its maintained value. */
 function fpw_price_row_html( string $key, string $name, string $identity_note, ?int $value ): string {
 	return '<div class="fpw-prices__row"><div class="fpw-prices__who"><strong>' . esc_html( $name ) . '</strong><span class="fpw-prices__id">' . esc_html( $identity_note ) . '</span></div>'
-		. '<label class="fpw-prices__field">Precio neto unitario (CLP)' . fpw_price_input_html( $key, $value ) . '</label></div>';
+		. '<label class="fpw-prices__field">Precio base anterior · sin tramo (CLP)' . fpw_price_input_html( $key, $value ) . '</label></div>'
+		. fpw_price_reference_editor( $key, fpw_price_reference_normalize( fpw_price_list()['references'][ $key ] ?? null ) );
 }
 
 /** The mobile-first screen shell and its styles. */
@@ -277,6 +292,7 @@ function fpw_price_screen_shell( string $inner ): string {
 		. '.fpw-prices__field{display:grid;gap:4px;font-size:13px;font-weight:600;color:#60626d}'
 		. '.fpw-prices__field input{font-size:16px;padding:8px 10px;border:1px solid #c3c4c7;border-radius:4px;width:100%;max-width:16rem;box-sizing:border-box;background:#fff;font-family:inherit}'
 		. '.fpw-prices__note{color:#60626d;font-size:14px;margin:8px 0 0}'
+		. '.fpw-reference-editor{display:grid;gap:12px;margin:8px 0 20px;padding:12px;border:1px solid #dedfe6}.fpw-reference-editor legend{font-weight:600}.fpw-reference-editor input{min-height:44px}'
 		. '.fpw-prices__form{margin:12px 0 0}'
 		. '.fpw-prices form button{font-size:16px;font-weight:600;padding:10px 18px;border-radius:6px;cursor:pointer}'
 		. '.fpw-prices ul{margin:4px 0 0 18px}'
@@ -305,6 +321,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		. '<li>La identidad es la nativa de producto y variación; cada opción puede tener su propio precio. Ni una planilla externa ni el último precio histórico de venta sugieren valores aquí.</li>'
 		. '<li>Los precios técnicos 0 del catálogo son centinelas, no precios comerciales: este mantenedor nunca los publica ni los convierte en ofertas.</li>'
 		. '<li>Cambiar esta lista <strong>no reescribe</strong> los borradores ya guardados ni los documentos emitidos: cada borrador conserva sus importes hasta que el dueño refresque sus precios de forma explícita, y sus ajustes manuales se conservan siempre.</li>'
+		. '<li>Las referencias de 1 a 4 y de 5 o más pallets son netas por unidad. No prellenan ni seleccionan precios por cantidad: el dueño elige o escribe el precio en cada oferta. Un campo vacío es una referencia pendiente.</li>'
 		. '<li>Guardar aquí solo cambia esta lista privada: no toca productos, fotos, solicitudes, historial de ventas ni nada público.</li>'
 		. '</ul></section>';
 
@@ -350,7 +367,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 	return fpw_price_screen_shell(
 		'<h1>Mantenedor de precios</h1>'
 		. '<p class="fpw-prices__kicker">Lista de precios vigentes · netos CLP</p>'
-		. '<p class="fpw-prices__note">' . $updated . '</p>'
+		. '<p class="fpw-prices__note">' . $updated . ' · ' . count( $list['references'] ) . ' referencias de volumen.</p>'
 		. fpw_price_banner_html( $banner )
 		. $contract
 		. '<section><h2>Precios por producto y opción</h2>'

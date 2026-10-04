@@ -116,9 +116,14 @@ function fpws_make_order( int $id, string $rut ): object {
 $GLOBALS['fpws_draft_68'] = array( 'schema' => 1, 'order_id' => 68, 'identity' => array( 'rut' => '76.543.210-K' ) );
 
 /* --- Registration: owner-only unlisted screen, three nonce-bound actions --- */
+$GLOBALS['fpws_caps'] = array( 'manage_woocommerce' => true );
 fpw_sales_register_import_screen();
 $screen = $GLOBALS['fpws_submenu'];
-check( is_array( $screen ) && null === $screen['parent'] && FPW_SALES_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'], 'the import screen is private (unlisted) wp-admin keyed on manage_woocommerce' );
+check( is_array( $screen ) && null === $screen['parent'] && FPW_SALES_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'], 'the import screen is private (unlisted) wp-admin whose per-request cap admits the Woo manager' );
+$GLOBALS['fpws_caps'] = array( 'fpw_manage_data' => true );
+fpw_sales_register_import_screen();
+check( 'fpw_manage_data' === $GLOBALS['fpws_submenu']['capability'], 'the same import screen registers under the data cap for the dedicated data maintainer' );
+$GLOBALS['fpws_caps'] = array();
 check( 'fpw_render_sales_import_screen' === $screen['callback'], 'the screen callback renders the importer' );
 $string_hooks = array_values( array_filter( $registered_actions['woocommerce_checkout_order_created'] ?? array(), 'is_string' ) );
 check( array( 'fpw_create_request_draft' ) === $string_hooks, 'the importer hooks no checkout event: sales enter only through the owner file' );

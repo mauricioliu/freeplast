@@ -10,7 +10,7 @@ const php=process.env.PHP_BINARY || path.join(root,'.tools/php/php');
 if(!existsSync(php)) throw Error('PHP missing. Set PHP_BINARY to your PHP executable.');
 function walk(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);}
 function run(bin,args){const result=spawnSync(bin,args,{encoding:'utf8'});if(result.status!==0)throw Error(result.stderr||result.stdout);return result.stdout.trim();}
-const files=[...walk(path.join(root,'wp-content/plugins/freeplast-woo')),...walk(path.join(root,'wp-content/themes/freeplast')),...walk(path.join(root,'wp-content/mu-plugins')),...['migrate-to-woo.php','verify-woo-state.php','import-catalog-photos.php','lib/catalog-photos.php','lib/photo-release-state.php','record-state.php','migrate-catalog-photos-release.php','catalog-photos-native-test.php'].map(p=>path.join(root,'scripts',p))];
+const files=[...walk(path.join(root,'wp-content/plugins/freeplast-woo')),...walk(path.join(root,'wp-content/themes/freeplast')),...walk(path.join(root,'wp-content/mu-plugins')),...['migrate-to-woo.php','verify-woo-state.php','import-catalog-photos.php','lib/catalog-photos.php','lib/photo-release-state.php','record-state.php','migrate-catalog-photos-release.php','catalog-photos-native-test.php','local-review-mail-capture.php'].map(p=>path.join(root,'scripts',p))];
 let checks=0;
 for(const file of files){
  if(file.endsWith('.php')) {run(php,['-l',file]);checks++;}
@@ -92,6 +92,8 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
   checks+=await runCardControlsTests(); }
 { const {runCartPresentationTests}=await import('./cart-presentation-test.mjs');
   checks+=await runCartPresentationTests(); }
+{ const {runCartAccessibleNamesTests}=await import('./cart-presentation-test.mjs');
+  checks+=runCartAccessibleNamesTests(); }
 
 // Issue #44: A · Directa color controls over the single Woo variation form.
 { const {runProductColorTests}=await import('./product-color-test.mjs');
@@ -117,7 +119,12 @@ console.log(run(php,[path.join(root,'scripts/product-sheet-test.php')]));
 console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 // Issue #50 (cut 1 of #49): one private quotation draft per durably received request.
-console.log(run(php,[path.join(root,'scripts/quote-draft-test.php')]));
+// Includes the complete quote-draft offline suite plus frozen-document access and owner UI states.
+console.log(run(php,[path.join(root,'scripts/workspace-offer-test.php')]));
+console.log(run(php,[path.join(root,'scripts/quotation-access-test.php')]));
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/workspace-request-query-test.py')]));
+{ const {runOwnerWorkspaceJsTests}=await import('./owner-workspace-js-test.mjs');
+  checks+=runOwnerWorkspaceJsTests(); }
 // Issue #52 (cut 3 of #49): the private Price List (Mantenedor de precios) and the drafts it prefills.
 console.log(run(php,[path.join(root,'scripts/price-list-test.php')]));
 // Issue #60 (cut 11 of #49): dispatch-distance consultation from the private draft.
@@ -127,6 +134,10 @@ console.log(run(php,[path.join(root,'scripts/sales-register-test.php')]));
 // Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
+console.log(run(php,[path.join(root,'scripts/accessible-names-test.php')]));
+// H0 (2026-10-03 review): the TEST-ONLY local capture mu-plugin's offline self-test.
+// The file itself ships in scripts/ only; the lead installs it manually into a disposable copy.
+console.log(run(php,[path.join(root,'scripts/local-review-mail-capture-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));
 // Issue #36 final red-gate: the native plain-route helper's payload self-test

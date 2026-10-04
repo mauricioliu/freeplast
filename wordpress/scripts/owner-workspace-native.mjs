@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 
 // Agreed seam: authenticated WordPress screens and their real form actions.
 // Setup creates only run-owned synthetic native records; no customer/import data.
-export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin, check }) {
+export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin, check, siteUrl }) {
   const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const fixture = JSON.parse(wpEval(`
     $password = wp_generate_password(32, false);
@@ -20,11 +20,22 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     $order->update_meta_data('_billing_fp_dispatch', 'no'); $order->update_meta_data('_billing_fp_rut', '76.543.210-K');
     $order->add_product($product, 2); $order->save();
     do_action('woocommerce_checkout_order_created', $order);
-    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id()));
+    $legacy = wc_create_order(); $legacy->set_billing_company('Antigua ${suffix}');
+    $legacy->update_meta_data('_fp_request', 'yes'); $legacy->save();
+    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id(),'legacy'=>$legacy->get_id()));
   `));
   const owner = makeCookieFetch(), staff = makeCookieFetch(), guest = makeCookieFetch();
   const inbox = '/wp-admin/admin.php?page=fpw-quotations';
   const document = html => new JSDOM(html).window.document;
+  /* The fetch helpers take site-relative paths; JSDOM `.href` is absolute. Normalize
+     against the tested SITE_URL (single source, passed by the harness) and refuse
+     anything that is not same-origin before converting to pathname+search. */
+  const siteOrigin = new URL(siteUrl).origin;
+  const asSitePath = (href) => {
+    const url = new URL(href, siteUrl);
+    if (url.origin !== siteOrigin) { throw new Error('workspace link leaves the tested origin: ' + href); }
+    return url.pathname + url.search;
+  };
   try {
     check((await guest('/wp-content/database/.ht.sqlite')).status === 404, 'workspace: disposable database cannot be downloaded');
     check(await wpLogin(owner, `workspace-owner-${suffix}`, fixture.password) === 302, 'workspace: owner authenticates');
@@ -32,39 +43,35 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const page = await owner(inbox);
     check(page.status === 200, 'workspace: owner can open the quotation inbox');
     const doc = document(await page.text());
-    check(doc.querySelector('h1')?.textContent === 'Cotizaciones', 'workspace: visible quotation inbox heading');
+    check(doc.querySelector('h1')?.textContent === 'Solicitudes de clientes', 'workspace: visible quotation inbox heading');
     const link = [...doc.querySelectorAll('a')].find(a => a.textContent.includes(`Empresa workspace ${suffix}`));
     check(!!link, 'workspace: inbox links the real received request, not a demo');
+    const legacyPage = document(await (await owner(inbox + '&q=' + encodeURIComponent(`Antigua ${suffix}`))).text());
+    check(legacyPage.querySelectorAll('[data-fpw-request]').length === 1 && legacyPage.querySelector(`[data-fpw-request="${fixture.legacy}"]`), 'workspace: all requests includes and searches pre-draft native receipts');
+    check(wpEval(`echo fpw_read_request_draft(${fixture.legacy}) ? 'created' : 'absent';`) === 'absent', 'workspace: listing an old receipt never creates a draft');
     check((await staff(inbox)).status === 403, 'workspace: staff cannot read the inbox');
     check((await guest(inbox)).status === 302, 'workspace: guest must authenticate');
     const detailUrl = link.getAttribute('href').replace(/^https?:\/\/[^/]+/, '');
     const detail = document(await (await owner(detailUrl)).text());
-    const tracking = detail.querySelector('form[data-fpw-tracking]');
-    check(!!tracking, 'workspace: detail offers the independent commercial tracking form');
+    check(!detail.querySelector('form[data-fpw-tracking]') && !detail.body.textContent.includes('Seguimiento comercial'), 'workspace: no manual status selectors remain');
+    // Three-view contract (docs/reviews/owner-inbox-three-views-2026-10-02.md):
+    // exactly Pendientes / Enviadas / Todas, each linked to its own stage filter.
+    const views = [...doc.querySelectorAll('.fpw-request-views a')];
+    check(views.length === 3, 'workspace: exactly the three owner views are offered (Pendientes/Enviadas/Todas)');
+    check(views.some(a => a.textContent.trim() === 'Pendientes' && a.search.includes('stage=pendientes'))
+      && views.some(a => a.textContent.trim() === 'Enviadas' && a.search.includes('stage=sent-quotes'))
+      && views.some(a => a.textContent.trim() === 'Todas' && a.search.includes('stage=all'))
+      && new Set(views.map(a => a.search)).size === 3, 'workspace: each view is labeled in Spanish and targets a distinct stage filter');
+    check(views.find(a => a.getAttribute('aria-current') === 'page')?.textContent.trim() === 'Pendientes', 'workspace: the unfiltered inbox defaults to pending work');
+    const pendingDefault = document(await (await owner(inbox + '&q=' + encodeURIComponent(`workspace ${suffix}`))).text());
+    check(pendingDefault.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: the pending default view lists the new unsent request');
     const formValues = (form, submitter) => Object.fromEntries(new form.ownerDocument.defaultView.FormData(form, submitter));
     const post = (actor, fields) => actor(detailUrl, {method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields).toString()});
-    const original = formValues(tracking);
-    const paidOnly = {...original, 'fpw_tracking[paid][done]':'1', 'fpw_tracking[paid][date]':'2026-09-10'};
-    check((await post(owner, paidOnly)).status === 200, 'workspace: owner saves a paid milestone without prerequisites');
-    const reopened = document(await (await owner(detailUrl)).text());
-    check(reopened.querySelector('[name="fpw_tracking[paid][done]"]').checked, 'workspace: paid milestone survives reload');
-    check(!reopened.querySelector('[name="fpw_tracking[accepted][done]"]').checked && !reopened.querySelector('[name="fpw_tracking[dispatched][done]"]').checked, 'workspace: payment does not mark acceptance or dispatch');
-    check(reopened.querySelector('[data-fpw-milestone="sent"]').textContent.includes('Pendiente'), 'workspace: manual tracking cannot claim a quotation was sent');
-    const stale = document(await (await post(owner, original)).text());
-    check(stale.body.textContent.includes('seguimiento tiene una revisión más reciente'), 'workspace: stale tracking submission reports conflict');
-    check(stale.querySelector('[name="fpw_tracking[paid][done]"]').checked, 'workspace: stale submission preserves accepted tracking state');
-    const mintResponse = await staff('/wp-admin/admin-ajax.php?action=fpw_test_nonce&for=fpw-tracking-' + fixture.order);
-    const staffNonce = (await mintResponse.json()).data.nonce;
-    check((await post(staff, {...paidOnly, fpw_tracking_nonce:staffNonce})).status === 403, 'workspace: valid staff nonce grants no tracking power');
-    check((await post(owner, {...paidOnly, fpw_tracking_nonce:'forged'})).status === 403, 'workspace: forged tracking nonce refused');
-    const freshTracking = formValues(reopened.querySelector('form[data-fpw-tracking]'));
-    const invalid = document(await (await post(owner, {...freshTracking, 'fpw_tracking[paid][date]':'2026-02-31'})).text());
-    check(invalid.body.textContent.includes('Revisa las fechas') && invalid.querySelector('[name="fpw_tracking[paid][date]"]').value === '2026-09-10', 'workspace: invalid calendar date preserves saved data');
-    const corrected = document(await (await post(owner, {...freshTracking, 'fpw_tracking[paid][done]':''})).text());
-    check(!corrected.querySelector('[name="fpw_tracking[paid][done]"]').checked, 'workspace: owner can correct a milestone without changing the quotation');
-    const work = corrected.querySelector('form[data-fpw-work]');
+    const beforeSending = document(await (await owner(inbox + '&stage=sent-quotes&q=' + suffix)).text());
+    check(beforeSending.querySelectorAll('[data-fpw-request]').length === 0, 'workspace: received request is not automatically sent');
+    const work = detail.querySelector('form[data-fpw-work]');
     check(!!work, 'workspace: A exposes a real quotation editing form');
-    const values = {...formValues(work, corrected.querySelector('button[name="fpw_work_save"]')), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7'};
+    const values = {...formValues(work, detail.querySelector('button[name="fpw_work_save"]')), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7'};
     const saved = document(await (await post(owner, values)).text());
     check(saved.body.textContent.includes('Cambios guardados'), 'workspace: quotation save uses the existing guarded action');
     const fresh = document(await (await owner(detailUrl)).text());
@@ -98,9 +105,22 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     check(!!approval, 'workspace: reviewed preview offers the bound approval action');
     await post(owner, formValues(approval));
     const issued = document(await (await owner(detailUrl)).text());
-    check(issued.querySelector('[name="fpw_work[lines][0][price]"]').matches(':disabled'), 'workspace: issued price is read-only');
-    check(issued.querySelector('[data-fpw-milestone="sent"] time'), 'workspace: sent milestone comes from durable transport handoff');
-    check(!issued.querySelector('[name="fpw_tracking[accepted][done]"]').checked, 'workspace: transport acceptance is not customer acceptance');
+    check(!issued.querySelector('[data-fpw-work]') && issued.querySelector('[data-fpw-unit-price]')?.textContent === '1.500 CLP', 'workspace: issued price is a frozen fact, not an editable field');
+    const pdfUrl = issued.querySelector('a[href*="action=fpw_quotation_pdf"]')?.href;
+    check(!!pdfUrl, 'workspace: approved document has an authenticated download');
+    const pdfPath = asSitePath(pdfUrl);
+    const pdf = await owner(pdfPath);
+    check(pdf.status === 200 && pdf.headers.get('content-type') === 'application/pdf' && pdf.headers.get('cache-control').includes('no-store'), 'workspace: PDF is private and non-cacheable');
+    const frozenBytes = wpEval(`echo fpw_read_quotation_version(${fixture.order})['pdf_base64'];`);
+    check(Buffer.from(await pdf.arrayBuffer()).toString('base64') === frozenBytes, 'workspace: downloaded bytes exactly match the approved stored PDF');
+    check((await staff(pdfPath)).status === 403, 'workspace: PDF URL does not grant staff owner capability');
+    const forgedPdfUrl = new URL(pdfPath, siteUrl); forgedPdfUrl.searchParams.set('_wpnonce', 'forged');
+    check((await owner(asSitePath(forgedPdfUrl.href))).status === 403, 'workspace: forged download nonce refused');
+    const wrongVersionUrl = new URL(pdfPath, siteUrl); wrongVersionUrl.searchParams.set('version', '2');
+    check((await owner(asSitePath(wrongVersionUrl.href))).status === 403, 'workspace: PDF nonce is bound to the displayed version');
+    const issuedReview = document(await (await owner(detailUrl + '&review=1')).text());
+    check(!issuedReview.querySelector('[name="fpw_work_preview"], [name="fpw_work_approve"]') && !issuedReview.body.textContent.includes('nada fue aprobado'), 'workspace: issued review never offers draft actions or contradicts approval');
+    check(!issued.querySelector('[data-fpw-tracking], [name="fpw_tracking_save"]'), 'workspace: issued page does not reintroduce manual status controls');
     const dom = new JSDOM(fresh.documentElement.outerHTML, {runScripts:'outside-only'});
     try {
       dom.window.eval(readFileSync(new URL('../wp-content/plugins/freeplast-woo/assets/owner-workspace.js', import.meta.url), 'utf8'));
@@ -110,17 +130,18 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       check(dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved values cannot be mistaken for the preview');
       check(dom.window.document.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: quantity does not change offered price');
     } finally { dom.window.close(); }
-    const searched = document(await (await owner(inbox + '&q=' + encodeURIComponent(`workspace ${suffix}`))).text());
-    check(searched.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: server search finds this company across requests');
+    const searched = document(await (await owner(inbox + '&stage=all&q=' + encodeURIComponent(`workspace ${suffix}`))).text());
+    check(searched.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: server search finds this company across ALL requests (an issued request no longer sits in the pending default)');
     const empty = document(await (await owner(inbox + '&q=unmatched-' + suffix)).text());
     check(empty.body.textContent.includes('No hay coincidencias'), 'workspace: empty search offers recovery');
-    const accepting = document(await (await owner(inbox + '&stage=accepted&q=' + suffix)).text());
-    check(accepting.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: handed-off quotation filters as awaiting customer acceptance');
-    const notComplete = document(await (await owner(inbox + '&stage=complete&q=' + suffix)).text());
-    check(notComplete.querySelectorAll('[data-fpw-request]').length === 0, 'workspace: handoff alone is not a completed commercial journey');
+    const sent = document(await (await owner(inbox + '&stage=sent-quotes&q=' + suffix)).text());
+    check(sent.querySelectorAll('[data-fpw-request]').length === 1 && sent.querySelector('[data-fpw-request-state="sent"] time'), 'workspace: successful transport automatically puts the request in sent quotations');
+    wpEval(`update_option('fpw_tracking_${fixture.order}', wp_json_encode(array('events'=>array('paid'=>'2026-09-10','accepted'=>'2026-09-10','dispatched'=>'2026-09-10'))));`);
+    const stillSent = document(await (await owner(inbox + '&stage=sent-quotes&q=' + suffix)).text());
+    check(stillSent.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: historical manual marks do not remove sent quotations');
     wpEval(`$work = fpw_read_draft_work(${fixture.order}); $work['lines'][0]['price'] = 9999; update_option('fpw_draft_work_${fixture.order}', wp_json_encode($work));`);
     const frozen = document(await (await owner(detailUrl)).text());
-    check(frozen.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: issued fields read the approved projection, not later working data');
+    check(frozen.querySelector('[data-fpw-unit-price]')?.textContent === '1.500 CLP', 'workspace: issued facts read the approved projection, not later working data');
     wpEval(`$version=fpw_read_quotation_version(${fixture.order}); unset($version['projection']); update_option('fpw_quotation_${fixture.order}', wp_json_encode($version));`);
     const unavailable = document(await (await owner(detailUrl)).text());
     check(unavailable.body.textContent.includes('Versión aprobada no disponible') && !unavailable.querySelector('[data-fpw-work]'), 'workspace: unreadable approved projection never falls back to working amounts');
@@ -131,6 +152,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     wpEval(`
       require_once ABSPATH . 'wp-admin/includes/user.php';
       wp_delete_user(${fixture.owner}); wp_delete_user(${fixture.staff});
+      $legacy=wc_get_order(${fixture.legacy}); if($legacy){$legacy->delete(true);}
       $order = wc_get_order(${fixture.order}); if ($order) $order->delete(true);
       wp_delete_post(${fixture.product}, true);
       foreach (array('fpw_draft_', 'fpw_draft_work_', 'fpw_draft_preview_', 'fpw_quotation_', 'fpw_tracking_') as $prefix) delete_option($prefix . ${fixture.order});

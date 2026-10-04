@@ -32,10 +32,38 @@ export async function runCardControlsTests() {
   const minus = first.querySelector('.fp-qty-step--minus');
   const plus = first.querySelector('.fp-qty-step--plus');
   ok(Boolean(minus && plus), 'the stepper renders − and + buttons');
-  ok(minus.getAttribute('aria-label') === 'Reducir Caja X' && plus.getAttribute('aria-label') === 'Aumentar Caja X', 'stepper buttons carry descriptive names');
+  ok(minus.getAttribute('aria-label') === 'Reducir cantidad de Caja X' && plus.getAttribute('aria-label') === 'Aumentar cantidad de Caja X', 'stepper buttons carry descriptive Spanish names');
   const input = first.querySelector('input.qty');
   ok(input.closest('.fp-qty-control') === input.parentNode, 'the native input stays inside the stepper');
+  ok(input.getAttribute('aria-label') === 'Cantidad de Caja X', 'an already-specific Spanish label on the native input is respected');
   ok(minus.tabIndex === 0 && plus.tabIndex === 0, 'both named stepper buttons are keyboard reachable');
+
+  /* H3 (2026-10-03 review): loop cards with Woo's untranslated generic label
+     and a card title get product-named Spanish controls — no two cards share
+     an accessible name, and no English placeholder survives. */
+  const titleCard = (title, label = 'Product quantity') =>
+    `<li class="product-card"><div class="fpw-loop-add" data-fpw-loop-add><h2 class="woocommerce-loop-product__title">${title}</h2><div class="quantity"><input type="number" class="qty" inputmode="numeric" min="1" step="1" value="2" aria-label="${label}"></div><a class="button add_to_cart_button" href="/x" data-product_id="7" data-quantity="2">Agregar</a></div></li>`;
+  const namesDom = new JSDOM(`<!doctype html><body>${titleCard('Caja Universal Cerrada Color')}${titleCard('Caja Cosechera 3/4', 'Cantidad del producto')}</body>`, { url: 'https://example.test/tienda/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const namesApi = loadApi(namesDom.window, stepperSource);
+  namesApi.initSteppers(namesDom.window.document);
+  const [universal, harvester] = [...namesDom.window.document.querySelectorAll('[data-fpw-loop-add]')];
+  const universalInput = universal.querySelector('input.qty');
+  ok(universalInput.getAttribute('aria-label') === 'Cantidad de Caja Universal Cerrada Color', 'H3: the untranslated generic input label is replaced with the card title');
+  ok(universal.querySelector('.fp-qty-step--minus').getAttribute('aria-label') === 'Reducir cantidad de Caja Universal Cerrada Color' && universal.querySelector('.fp-qty-step--plus').getAttribute('aria-label') === 'Aumentar cantidad de Caja Universal Cerrada Color', 'H3: loop stepper buttons name their own product in Spanish');
+  ok(harvester.querySelector('input.qty').getAttribute('aria-label') === 'Cantidad de Caja Cosechera 3/4', 'H3: the adapter-translated generic (Cantidad del producto, via gettext) is ALSO replaced with the product name');
+  ok(universal.querySelector('.fp-qty-step--minus').getAttribute('aria-label') !== harvester.querySelector('.fp-qty-step--minus').getAttribute('aria-label'), 'H3: two different products never share identical control names');
+  /* No title and no specific label: honest Spanish fallback, still functional. */
+  const bareDom = new JSDOM('<!doctype html><body><li class="product-card"><div class="fpw-loop-add" data-fpw-loop-add><div class="quantity"><input type="number" class="qty" min="1" step="1" value="2" aria-label="Cantidad del producto"></div></div></li></body>', { url: 'https://example.test/tienda/', runScripts: 'outside-only', pretendToBeVisual: true });
+  loadApi(bareDom.window, stepperSource).initSteppers(bareDom.window.document);
+  ok(bareDom.window.document.querySelector('input.qty').getAttribute('aria-label') === 'Cantidad' && bareDom.window.document.querySelector('.fp-qty-step--plus').getAttribute('aria-label') === 'Aumentar cantidad', 'H3: without a resolvable title the controls stay usable Spanish, never English or a false product');
+  bareDom.window.close();
+  /* Single-product variation form: the sheet title names the controls. */
+  const sheetDom = new JSDOM(`<!doctype html><body><div class="product"><h1 class="product_title">Caja Universal Cerrada Color</h1><form class="cart"><div class="quantity"><input type="number" class="qty" min="1" step="1" value="12" aria-label="Product quantity"></div></form></div></body>`, { url: 'https://example.test/product/x/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const sheetApi = loadApi(sheetDom.window, stepperSource);
+  sheetApi.initSteppers(sheetDom.window.document);
+  const sheetInput = sheetDom.window.document.querySelector('form.cart input.qty');
+  ok(sheetInput.getAttribute('aria-label') === 'Cantidad de Caja Universal Cerrada Color' && sheetDom.window.document.querySelector('.fp-qty-step--minus').getAttribute('aria-label') === 'Reducir cantidad de Caja Universal Cerrada Color', 'H3: the product sheet stepper names the product from its own title');
+  namesDom.window.close(); sheetDom.window.close();
 
   stepper.stepValue(input, 1);
   ok(input.value === '3', '+ steps the native input');

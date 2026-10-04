@@ -41,18 +41,50 @@
     }
   }
 
+  /* H3 (2026-10-03 review): every stepper control must name its product in
+     Spanish. The name comes from the card/sheet title (loop title or single
+     product_title) — falling back to an existing Spanish quantity label — and
+     the GENERIC untranslated-or-translated placeholder labels Woo ships
+     ("Product quantity" before translations, "Cantidad del producto" after
+     this journey's own gettext map) are replaced with the same specific name.
+     Nothing else about the native input (value, min/max/step) is touched. */
+  var GENERIC_QUANTITY_LABEL = /^(Product quantity|Cantidad del producto)$/i;
+
+  function productName(input) {
+    var scopes = [];
+    var wrapper = input.closest('[data-fpw-loop-add]');
+    if (wrapper) { scopes.push(wrapper); }
+    var product = input.closest('.product');
+    if (product) { scopes.push(product); }
+    var sheetForm = input.closest('form.cart');
+    if (sheetForm && sheetForm.parentNode) { scopes.push(sheetForm.parentNode); }
+    var fromTitle = '';
+    for (var i = 0; i < scopes.length && !fromTitle; i++) {
+      var title = scopes[i].querySelector('.woocommerce-loop-product__title, .product_title');
+      fromTitle = title ? (title.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    }
+    if (fromTitle) { return fromTitle; }
+    var current = input.getAttribute('aria-label') || '';
+    if (GENERIC_QUANTITY_LABEL.test(current.trim())) { return ''; } // generic label names nothing
+    var fromLabel = current.replace(/^Cantidad (de|del)\s*/i, '').replace(/\s+/g, ' ').trim();
+    return fromLabel || '';
+  }
+
   function buildStepper(input) {
     if (!input || input.closest('.fp-qty-control')) { return; }
+    var name = productName(input);
+    var currentLabel = (input.getAttribute('aria-label') || '').trim();
+    if (!currentLabel || GENERIC_QUANTITY_LABEL.test(currentLabel)) {
+      input.setAttribute('aria-label', name ? 'Cantidad de ' + name : 'Cantidad');
+    }
     var minus = input.ownerDocument.createElement('button');
     minus.type = 'button';
     minus.className = 'fp-qty-step fp-qty-step--minus';
-    var label = (input.getAttribute('aria-label') || 'Cantidad') .replace(/^Cantidad de\s*/i, '');
-    if (!label) { label = 'Cantidad'; }
-    minus.setAttribute('aria-label', 'Reducir ' + label);
+    minus.setAttribute('aria-label', name ? 'Reducir cantidad de ' + name : 'Reducir cantidad');
     minus.textContent = '−';
     var plus = minus.cloneNode(true);
     plus.className = 'fp-qty-step fp-qty-step--plus';
-    plus.setAttribute('aria-label', 'Aumentar ' + label);
+    plus.setAttribute('aria-label', name ? 'Aumentar cantidad de ' + name : 'Aumentar cantidad');
     plus.textContent = '+';
     var wrap = input.ownerDocument.createElement('div');
     wrap.className = 'fp-qty-control';
