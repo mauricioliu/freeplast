@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-09T13:10:00Z",
+  "title": "Design System: Freeplast",
+  "extensions": {
+    "colorMeta": {
+      "blue": { "role": "primary", "displayName": "Azul Bodega", "canonical": "#100090", "tonalRamp": ["oklch(15% 0.2 282)", "oklch(25% 0.2 282)", "oklch(35% 0.2 282)", "oklch(45% 0.19 282)", "oklch(55% 0.17 282)", "oklch(68% 0.14 282)", "oklch(82% 0.08 282)", "oklch(95% 0.03 282)"] },
+      "blue-heading": { "role": "primary", "displayName": "Azul Profundo", "canonical": "#0b078c", "tonalRamp": ["oklch(15% 0.21 284)", "oklch(25% 0.21 284)", "oklch(35% 0.21 284)", "oklch(45% 0.2 284)", "oklch(55% 0.18 284)", "oklch(68% 0.14 284)", "oklch(82% 0.08 284)", "oklch(95% 0.03 284)"] },
+      "blue-soft": { "role": "primary", "displayName": "Azul Calmo", "canonical": "#eeedf8", "tonalRamp": ["oklch(30% 0.06 285)", "oklch(42% 0.06 285)", "oklch(54% 0.05 285)", "oklch(65% 0.05 285)", "oklch(75% 0.04 285)", "oklch(84% 0.03 285)", "oklch(91% 0.025 285)", "oklch(96% 0.02 285)"] },
+      "green": { "role": "secondary", "displayName": "Verde Reciclaje", "canonical": "#306020", "tonalRamp": ["oklch(18% 0.06 145)", "oklch(28% 0.07 145)", "oklch(38% 0.09 145)", "oklch(48% 0.09 145)", "oklch(58% 0.09 145)", "oklch(70% 0.08 145)", "oklch(84% 0.06 145)", "oklch(95% 0.03 145)"] },
+      "green-soft": { "role": "secondary", "displayName": "Verde Suave", "canonical": "#558948", "tonalRamp": ["oklch(20% 0.06 145)", "oklch(30% 0.07 145)", "oklch(40% 0.08 145)", "oklch(50% 0.09 145)", "oklch(60% 0.09 145)", "oklch(72% 0.08 145)", "oklch(85% 0.05 145)", "oklch(95% 0.03 145)"] },
+      "green-tint": { "role": "secondary", "displayName": "Verde Veladura", "canonical": "#eef5ea", "tonalRamp": ["oklch(30% 0.04 145)", "oklch(45% 0.04 145)", "oklch(58% 0.04 145)", "oklch(70% 0.035 145)", "oklch(80% 0.03 145)", "oklch(88% 0.025 145)", "oklch(93% 0.02 145)", "oklch(97% 0.015 145)"] },
+      "ink": { "role": "neutral", "displayName": "Tinta Producto", "canonical": "#17181c", "tonalRamp": ["oklch(15% 0.008 285)", "oklch(22% 0.008 285)", "oklch(32% 0.008 285)", "oklch(44% 0.007 285)", "oklch(56% 0.006 285)", "oklch(70% 0.005 285)", "oklch(84% 0.004 285)", "oklch(95% 0.003 285)"] },
+      "text": { "role": "neutral", "displayName": "Texto", "canonical": "#3a3a3a", "tonalRamp": ["oklch(18% 0.004 285)", "oklch(28% 0.004 285)", "oklch(38% 0.004 285)", "oklch(50% 0.003 285)", "oklch(62% 0.003 285)", "oklch(74% 0.003 285)", "oklch(86% 0.002 285)", "oklch(96% 0.002 285)"] },
+      "paper": { "role": "neutral", "displayName": "Papel", "canonical": "#ffffff", "tonalRamp": ["oklch(20% 0.002 285)", "oklch(32% 0.002 285)", "oklch(45% 0.002 285)", "oklch(58% 0.002 285)", "oklch(72% 0.002 285)", "oklch(85% 0.002 285)", "oklch(94% 0.002 285)", "oklch(100% 0 285)"] },
+      "tint": { "role": "neutral", "displayName": "Velo", "canonical": "#f4f5f7", "tonalRamp": ["oklch(22% 0.004 270)", "oklch(35% 0.004 270)", "oklch(48% 0.004 270)", "oklch(62% 0.004 270)", "oklch(75% 0.004 270)", "oklch(86% 0.004 270)", "oklch(93% 0.004 270)", "oklch(97.5% 0.004 270)"] },
+      "muted": { "role": "neutral", "displayName": "Gris Suspenso", "canonical": "#6b6b72", "tonalRamp": ["oklch(20% 0.008 285)", "oklch(30% 0.009 285)", "oklch(40% 0.01 285)", "oklch(50% 0.011 285)", "oklch(60% 0.01 285)", "oklch(72% 0.008 285)", "oklch(84% 0.006 285)", "oklch(95% 0.004 285)"] },
+      "chrome-line": { "role": "neutral", "displayName": "Filigrana", "canonical": "#dedfe6", "tonalRamp": ["oklch(25% 0.006 275)", "oklch(38% 0.006 275)", "oklch(52% 0.007 275)", "oklch(65% 0.007 275)", "oklch(77% 0.008 275)", "oklch(86% 0.008 275)", "oklch(92% 0.008 275)", "oklch(96% 0.006 275)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero H1 only; scales 36 → 48 (≥768px) → 60 (≥1280px)." },
+      "headline": { "displayName": "Headline", "purpose": "Page and section headings, always Azul Profundo #0b078c." },
+      "title": { "displayName": "Title", "purpose": "Card-group and dialog titles." },
+      "body": { "displayName": "Body", "purpose": "All copy; 1.5 corporate / 1.6 shared chrome; ~680px measure." },
+      "label": { "displayName": "Label", "purpose": "Nav links, small controls; small buttons 13px +0.06em." },
+      "kicker": { "displayName": "Kicker", "purpose": "Uppercase green category eyebrow on cards and product pages." }
+    },
+    "shadows": [
+      { "name": "dialog-overlay", "value": "0 20px 100px rgba(0, 0, 0, 0.2)", "purpose": "Native <dialog> surfaces only (mobile menu, help). Backdrop rgba(20,20,40,0.45) + blur(3px)." },
+      { "name": "island-glow", "value": "0 4px 24px rgba(16, 0, 144, 0.1)", "purpose": "Reserved from the v6 pill island; not part of the current chrome — do not apply elsewhere." }
+    ],
+    "motion": [
+      { "name": "ease-direct", "value": "cubic-bezier(0.32, 0.72, 0, 1) 200ms", "purpose": "Default easing/duration for control state transitions." },
+      { "name": "ease-section", "value": "cubic-bezier(0.32, 0.72, 0, 1) 700ms (slow 900ms)", "purpose": "v6 section-level motion; nonessential motion disabled under prefers-reduced-motion." },
+      { "name": "press", "value": "scale(0.98)", "purpose": "Active press on buttons and cards." },
+      { "name": "lift-button", "value": "translateY(-2px)", "purpose": "Button hover lift." },
+      { "name": "lift-card", "value": "translateY(-4px)", "purpose": "Card hover lift in v6-governed bodies only; A cards respond via border-color #aca7d1." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "600px" },
+      { "name": "md", "value": "768px" },
+      { "name": "nav", "value": "900px" },
+      { "name": "grid3", "value": "1000px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one voice of action: Agregar, Enviar, primary journeys. Blue, 44px, lifts one degree deeper on hover.",
+      "html": "<button class=\"ds-btn-primary\">Agregar a mi selección</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; background: #100090; border: none; border-radius: 8px; color: #fff; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 200ms cubic-bezier(0.32, 0.72, 0, 1), transform 200ms cubic-bezier(0.32, 0.72, 0, 1); } .ds-btn-primary:hover { background: #0b078c; transform: translateY(-2px); } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary journey actions on light ground; fills Azul Bodega on hover.",
+      "html": "<button class=\"ds-btn-ghost\">Ver catálogo</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; background: transparent; border: 1px solid rgba(16, 0, 144, 0.3); border-radius: 8px; color: #100090; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 200ms cubic-bezier(0.32, 0.72, 0, 1), color 200ms cubic-bezier(0.32, 0.72, 0, 1); } .ds-btn-ghost:hover { background: #100090; color: #fff; } .ds-btn-ghost:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Paper-ground alternative for secondary rows (confirmation actions).",
+      "html": "<button class=\"ds-btn-secondary\">Volver al catálogo</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 12px; background: #ffffff; border: 1px solid #b8b4d7; border-radius: 8px; color: #100090; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 200ms cubic-bezier(0.32, 0.72, 0, 1); } .ds-btn-secondary:hover { background: #eeedf8; } .ds-btn-secondary:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Form field with blue focus ring; 48px minimum, ink text on paper.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Tu nombre\" />",
+      "css": ".ds-input { box-sizing: border-box; width: 100%; min-height: 48px; padding: 12px 16px; background: #ffffff; border: 1px solid rgba(16, 0, 144, 0.14); border-radius: 8px; color: #17181c; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 16px; } .ds-input::placeholder { color: #6b6b72; } .ds-input:focus { outline: none; border-color: #100090; box-shadow: 0 0 0 3px rgba(16, 0, 144, 0.14); }"
+    },
+    {
+      "name": "Basket Pill",
+      "kind": "chip",
+      "refersTo": "basket-pill",
+      "description": "Signature \"Productos a Cotizar\" pill with the blue count badge; the accessible count is the readable text.",
+      "html": "<a class=\"ds-basket-pill\" href=\"#cotizacion\">Productos a Cotizar <span class=\"ds-basket-pill__badge\">2</span></a>",
+      "css": ".ds-basket-pill { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 14px; background: #eeedf8; border-radius: 9999px; color: #100090; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 700; text-decoration: none; } .ds-basket-pill__badge { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 2px 7px; background: #100090; color: #fff; border-radius: 9999px; font-size: 13px; font-weight: 800; line-height: 1.3; font-variant-numeric: tabular-nums; } .ds-basket-pill:hover { background: #dedcf2; } .ds-basket-pill:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Product Card",
+      "kind": "card",
+      "refersTo": "product-card",
+      "description": "The signature A · Directa card: photo well, green kicker, ink title, spec line, stepper + Agregar; hover shifts the border only.",
+      "html": "<article class=\"ds-card\">\n  <a class=\"ds-card__photo\" href=\"#\">Foto del producto</a>\n  <div class=\"ds-card__info\">\n    <span class=\"ds-card__kicker\">Agrícola</span>\n    <a class=\"ds-card__title\" href=\"#\">Caja Universal 480</a>\n    <p class=\"ds-card__spec\">480 × 360 × 250 mm · 1,8 kg</p>\n  </div>\n  <div class=\"ds-card__controls\">\n    <div class=\"ds-card__qty\"><button aria-label=\"Quitar una unidad\">−</button><span>1</span><button aria-label=\"Agregar una unidad\">+</button></div>\n    <button class=\"ds-card__add\">Agregar</button>\n  </div>\n</article>",
+      "css": ".ds-card { box-sizing: border-box; display: grid; grid-template-columns: 94px minmax(0, 1fr); column-gap: 16px; row-gap: 14px; padding: 16px; background: #ffffff; border: 1px solid #dedfe6; border-radius: 12px; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; line-height: 1.6; transition: border-color 150ms ease; } .ds-card:hover { border-color: #aca7d1; } .ds-card__photo { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; background: #f4f5f7; border-radius: 8px; color: #60626d; font-size: 12px; text-decoration: none; } .ds-card__info { display: flex; flex-direction: column; justify-content: center; align-items: start; gap: 7px; min-width: 0; } .ds-card__kicker { color: #306020; font-size: 11px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; } .ds-card__title { color: #17181c; font-size: 17px; line-height: 1.35; letter-spacing: -0.02em; font-weight: 750; text-decoration: none; } .ds-card__title:hover { color: #100090; } .ds-card__spec { margin: 0; color: #60626d; font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; } .ds-card__controls { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; } .ds-card__qty { display: inline-flex; align-items: center; border: 1px solid #b5b5c2; border-radius: 7px; overflow: hidden; } .ds-card__qty button { width: 44px; height: 44px; border: 0; background: #ffffff; color: #17181c; font-size: 20px; cursor: pointer; } .ds-card__qty span { min-width: 54px; padding: 0 8px; border-inline: 1px solid #dedfe6; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; } .ds-card__add { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 16px; background: #100090; color: #fff; border: none; border-radius: 8px; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; } .ds-card__add:hover { background: #0b078c; } .ds-card__title:focus-visible, .ds-card__add:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Empty State",
+      "kind": "custom",
+      "refersTo": "empty-state",
+      "description": "Tinted bordered panel that names the situation and offers the recovery path — the system's only allowed failure voice.",
+      "html": "<div class=\"ds-empty\">\n  <h2>Tu selección está vacía</h2>\n  <p>Explora el catálogo y agrega los productos que necesitas cotizar.</p>\n  <a class=\"ds-empty__link\" href=\"#\">Ver catálogo</a>\n</div>",
+      "css": ".ds-empty { box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; max-width: 680px; padding: 32px; background: #f4f5f7; border: 1px solid rgba(16, 0, 144, 0.14); border-radius: 6px; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; } .ds-empty h2 { margin: 0; color: #0b078c; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; } .ds-empty p { margin: 0; color: #6b6b72; font-size: 16px; line-height: 1.5; } .ds-empty__link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; background: transparent; border: 1px solid rgba(16, 0, 144, 0.3); border-radius: 8px; color: #100090; font-size: 15px; font-weight: 600; text-decoration: none; } .ds-empty__link:hover { background: #100090; color: #fff; } .ds-empty__link:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Note",
+      "kind": "custom",
+      "refersTo": "empty-state",
+      "description": "Added/confirmation vocabulary: tint panel, ink text, blue-tinted border — never red, never a toast.",
+      "html": "<p class=\"ds-note\"><span class=\"ds-note__check\">✓</span> 3 unidades agregadas</p>",
+      "css": ".ds-note { box-sizing: border-box; display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 16px; background: #f4f5f7; border: 1px solid rgba(16, 0, 144, 0.14); border-radius: 8px; color: #17181c; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; font-size: 15px; font-weight: 600; line-height: 1.5; } .ds-note__check { color: #306020; font-weight: 800; }"
+    },
+    {
+      "name": "Nav Links",
+      "kind": "nav",
+      "refersTo": "label",
+      "description": "A · Directa desktop navigation: 14px/650 links, 2px blue underline marks the current section.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\">Inicio</a><a href=\"#\" aria-current=\"page\">Catálogo</a><a href=\"#\">Contacto</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 22px; font-family: Manrope, ui-sans-serif, system-ui, sans-serif; } .ds-nav a { display: inline-flex; align-items: center; min-height: 44px; color: #17181c; font-size: 14px; font-weight: 650; text-decoration: none; border-bottom: 2px solid transparent; } .ds-nav a:hover { color: #100090; } .ds-nav a[aria-current=\"page\"] { color: #100090; border-bottom-color: #100090; } .ds-nav a:focus-visible { outline: 2px solid #100090; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "La Bodega Directa",
+    "overview": "Freeplast's interface behaves like an open wholesale warehouse: the product is visible, the facts are exact, and nothing decorative stands between a business buyer and their Solicitud de cotización. The buyer is on a phone, in a field or a fish plant, comparing crates by the pallet — so the system is thumb-honest (every target ≥44px), spec-forward, and built from real product photography on calm paper whites. Blue acts; green tells the recycled story; hairlines do the structural work that other systems delegate to shadows. The world is deliberately quiet so that the two living hues carry all the expression: Azul Bodega (#100090) owns every primary action and link, and Verde Reciclaje (#306020) marks categories, facts, and the added-to-basket state — the material story of \"plástico que vuelve a servir\". Manrope is the only voice, loaded locally with real weights only; numbers align in tabular figures because quantities are the product. Comfortable density, generous white space around tightly spec'd cards. Confirmed visual rejection: the obsolete v5 editorial direction (Newsreader/Outfit faces, square geometry, hairline paper grid) is hash-frozen as obsolete; the current chrome is the owner-selected A · Directa contract (compact 76/84px bar), which superseded the v6 glass pill island for shared navigation; v6 tokens still govern corporate page bodies.",
+    "keyCharacteristics": [
+      "Flat surfaces structured by hairlines; shadows reserved for dialog overlays and hover response",
+      "Two hues only — blue for action, green for the recycled accent — plus a strict neutral set",
+      "Manrope everywhere, tabular numerals, headings in deep blue (#0b078c)",
+      "44px minimum touch targets; visible 2px blue focus ring everywhere",
+      "Server-first: navigation and quoting work with JavaScript disabled",
+      "Real photography in white/tint wells; tinted bordered panels for every empty or failed state"
+    ],
+    "rules": [
+      { "name": "The No-New-Hues Rule", "body": "Every color derives from Azul Bodega, Verde Reciclaje, or the neutral set above. Tints and softs of those two hues are allowed; new hues are not. This is a frozen contract, not a preference.", "section": "colors" },
+      { "name": "The No-Red-Alarm Rule", "body": "Failure is never red-only: errors render as a tint panel with ink text and a blue-tinted border, inline validation uses blue/tint. The system never shouts in a color the brand does not own.", "section": "colors" },
+      { "name": "The One Voice Rule", "body": "Blue is the only primary-action color; green accents and reports (the ✓ added state) but never replaces the CTA.", "section": "colors" },
+      { "name": "The Tabular Rule", "body": "Quantities, measurements, and FP references render in tabular-nums — the numbers are the product; they must line up.", "section": "typography" },
+      { "name": "The Straight Weights Rule", "body": "Manrope loads with real weights only (font-synthesis: none); no faux-bold, no faux-light.", "section": "typography" },
+      { "name": "The Border-First Rule", "body": "Surfaces are flat at rest; a hairline structures, a border-color shift responds. If a resting element needs a shadow to be understood, the layout is wrong.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every hue inside Azul Bodega #100090, Verde Reciclaje #306020, and the neutral set; tints of those hues are the only stretching allowed.",
+      "Do reserve blue for actions and links; let green accent (kickers, facts, the ✓ added state) — it never leads the CTA.",
+      "Do keep every interactive target ≥44px with a visible 2px blue focus ring (offset 2px; Verde Suave on dark).",
+      "Do set quantities, measurements, and FP references in tabular-nums.",
+      "Do use real product photography only (assets/, the 2026 catalog PDF); missing photos get the tint placeholder well, honestly labeled.",
+      "Do write empty/error states as tinted bordered panels that name the situation and link the recovery path.",
+      "Do keep journeys server-first: navigation and quoting must work without JavaScript.",
+      "Do design at ~412px and adapt only with min-width media queries."
+    ],
+    "donts": [
+      "Don't introduce new hues, display faces, or the v5 editorial vocabulary (Newsreader/Outfit, square geometry, hairline paper grid) — rejected and hash-frozen.",
+      "Don't signal failure with red alone.",
+      "Don't put resting shadows on controls or cards; depth is hairlines plus hover response (dialog overlays excepted).",
+      "Don't invent prices, stock levels, testimonials, or product photos — none exist by design (PRODUCT.md).",
+      "Don't port one-page prototype behaviors (scroll-spy, scroll-reveal, parallax hero) — they have no multi-page equivalent and were deliberately not carried over.",
+      "Don't resurrect the v6 glass pill island or uppercase letter-spaced nav — the A · Directa compact bar superseded them for shared chrome."
+    ]
+  }
+}

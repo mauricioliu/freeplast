@@ -10,3 +10,12 @@ wordpress/.build/
 
 # wp-release driver state
 .build/wp-release/
+
+# Local agent sessions, review captures and disposable evidence (never deploy)
+.scratch/
+.impeccable/config.local.json
+.impeccable/live/
+.impeccable/review/
+# Keep the review report, not raw browser/network captures or local launchers.
+docs/reviews/interaction-quotation-2026-10-03/*
+!docs/reviews/interaction-quotation-2026-10-03/INFORME.md
