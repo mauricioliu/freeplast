@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.0
+ * Version: 1.12.1
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1488,16 +1488,22 @@ add_filter('woocommerce_product_single_add_to_cart_text', static fn() => 'Agrega
  * keeps WooCommerce's own anchor — its AJAX handler reads data-quantity from
  * the anchor's DOM dataset at click time (pinned Woo 11.1.0 add-to-cart.js
  * gives preference to data attributes) — and WooCommerce's own quantity input
- * rendered through woocommerce_quantity_input() with the product's own min,
- * max and step. assets/js/loop-add-to-cart-quantity.js mirrors the input into
- * the anchor's data-quantity; without JavaScript the anchor adds one unit,
- * exactly as before. Variable, grouped, unpurchasable and out-of-stock cards
+ * rendered through woocommerce_quantity_input() in batches of ten, preserving
+ * the product's maximum. assets/js/loop-add-to-cart-quantity.js mirrors the
+ * input into the anchor's data-quantity. Without JavaScript the native link
+ * keeps WooCommerce's fallback behavior. Variable, grouped, unpurchasable and out-of-stock cards
  * keep the native link to their product sheet, where Woo's own form owns the
  * quantity.
  */
+add_filter('woocommerce_loop_add_to_cart_args', static function($args,$product) {
+	if ( $product->is_type('simple') && $product->is_purchasable() && $product->is_in_stock() ) {
+		$args['quantity'] = 10;
+	}
+	return $args;
+}, 100, 2);
 add_filter('woocommerce_loop_add_to_cart_link', static function($html,$product,$args) {
 	if ( ! $product->is_type('simple') || ! $product->is_purchasable() || ! $product->is_in_stock() || ! function_exists('woocommerce_quantity_input') ) { return $html; }
-	$quantity = woocommerce_quantity_input( array(), $product, false );
+	$quantity = woocommerce_quantity_input( array( 'input_value' => 10, 'min_value' => 10, 'step' => 10 ), $product, false );
 	$lines = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_cart() : array();
 	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$quantity.$html.fpw_card_selection( $product->get_id(), $lines ).'</div>';
 }, 100, 3);

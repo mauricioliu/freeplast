@@ -20,7 +20,6 @@
     ]
   },
   "artifacts": ["freeplast-woo.zip", "freeplast-woo-theme.zip"],
-  "migration": { "source": "wordpress/scripts/staging-role-migration", "hook": "run.php" },
   "install": {
     "themes": [{ "slug": "freeplast", "artifact": "freeplast-woo-theme.zip" }],
     "plugins": [{ "slug": "freeplast-woo", "artifact": "freeplast-woo.zip" }]
@@ -32,7 +31,7 @@
   },
   "hooks": {
     "verifyState": "wordpress/scripts/verify-staging-release.php",
-    "recordFingerprint": "wordpress/scripts/staging-release-fingerprint.php"
+    "recordFingerprint": "wordpress/scripts/owner-workspace-fingerprint.php"
   },
   "rehearsalCheck": "echo count(get_posts(array('post_type'=>array('fp_product','product'),'post_status'=>'any','numberposts'=>-1,'fields'=>'ids'))) + (function_exists('wc_get_orders')?count(wc_get_orders(array('limit'=>-1,'return'=>'ids'))):0) + count(get_posts(array('post_type'=>'fp_quote','post_status'=>'any','numberposts'=>-1,'fields'=>'ids')));",
   "smoke": [

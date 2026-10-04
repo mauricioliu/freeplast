@@ -140,7 +140,7 @@ if (!class_exists('WC_Product_Attribute')) {
 }
 if (!function_exists('wc_attribute_label')) { function wc_attribute_label($name,$product='') { return 'Color'; } }
 if (!function_exists('wc_wp_theme_get_element_class_name')) { function wc_wp_theme_get_element_class_name($type) { return 'wp-element-button'; } }
-if (!function_exists('woocommerce_quantity_input')) { function woocommerce_quantity_input($args,$product=null) { echo '<input type="number" class="qty" />'; } }
+if (!function_exists('woocommerce_quantity_input')) { function woocommerce_quantity_input($args,$product=null) { $GLOBALS['fpw_test_quantity_args']=$args; echo '<input type="number" class="qty" />'; } }
 if (!function_exists('wc_stock_amount')) { function wc_stock_amount($value) { return $value; } }
 class FPW_Fake_Variable_Product {
     public function is_type(string $type): bool { return 'variable'===$type; }
@@ -625,10 +625,15 @@ if (!class_exists('FPW_Fake_Simple_Product')) {
         public function get_id(): int { return $this->id; }
     }
 }
-$anchor='<a href="/?add-to-cart=22" data-quantity="1" class="add_to_cart_button ajax_add_to_cart">Agregar a Cotización</a>';
+$loop_args=apply_filters('woocommerce_loop_add_to_cart_args',array('quantity'=>1),new FPW_Fake_Simple_Product(22));
+check($loop_args['quantity']===10,'Simple card links expose ten units as their default AJAX quantity');
+$variable_args=apply_filters('woocommerce_loop_add_to_cart_args',array('quantity'=>1),new FPW_Fake_Variable_Product());
+check($variable_args['quantity']===1,'Variable product links keep their native quantity');
+$anchor='<a href="/?add-to-cart=22" data-quantity="10" class="add_to_cart_button ajax_add_to_cart">Agregar a Cotización</a>';
 ob_start();
 $wrapped=apply_filters('woocommerce_loop_add_to_cart_link',$anchor,new FPW_Fake_Simple_Product(22),array());
 $echoed_input=ob_get_clean();
+check($GLOBALS['fpw_test_quantity_args']===array('input_value'=>10,'min_value'=>10,'step'=>10),'Card selectors start at ten and step in tens without overriding the stock maximum');
 check(str_contains($wrapped,'<div class="fpw-loop-add" data-fpw-loop-add>'),'Simple cards wrap the native anchor in the selector container');
 check(str_contains($wrapped,$anchor),'The native anchor markup passes through untouched by the filter');
 check(str_contains($echoed_input,'class="qty"'),'The quantity input renders through Woo\'s own hook beside the anchor');
