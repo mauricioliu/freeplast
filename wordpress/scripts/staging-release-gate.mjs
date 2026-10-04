@@ -39,6 +39,9 @@ try {
   for (const file of ['verify-staging-release.php','staging-release-fingerprint.php','staging-role-migration/run.php','staging-role-migration/role-policy.php']) {
     run(php,['-l',`wordpress/scripts/${file}`]);
   }
+  // Offline native-JS tests read Woo's pinned checkout bundle before the stack
+  // harness runs, so even a clean checkout must be provisioned first.
+  run(process.execPath,['wordpress/scripts/bootstrap.mjs']);
   run('npm',['test']); // Includes the role-migration regressions.
   run('npm',['run','test:photos']);
   console.log('release_gate: passed (fresh native stack, role migration, photos; no real mail)');
