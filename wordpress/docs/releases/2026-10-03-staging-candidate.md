@@ -1,8 +1,8 @@
 # Consolidated staging candidate — 2026-10-03
 
-**Status: local candidate verified; not deployed.**
+**Status: local candidate committed/pushed and verified; read-only target preflight completed; deployment blocked pending DATA-tier confirmation.**
 
-Owner instruction: «quiero que todo pase a staging, realiza un orden de todo. quiero que todo esté en staging, commited, pushed and deployed.» Target: **https://freeplast.mliu.site**, never freeplast.cl. Proposed tier: **logic** (permissions, private data maintenance, quotation issuance and public interaction changes). Explicit tier confirmation remains required by ADR-0002 before target contact. The release procedure also requires explicit invocation; local preparation does not bypass either gate.
+Owner instruction: «quiero que todo pase a staging, realiza un orden de todo. quiero que todo esté en staging, commited, pushed and deployed.» Target: **https://freeplast.mliu.site**, never freeplast.cl. Initial proposed tier: **logic**. The owner subsequently confirmed «Confirmo logic; usa wp-release para staging», authorizing the read-only target preflight. That preflight found an intentional protected-data delta: the new plugin creates two restricted roles absent on staging. Corrected minimum tier: **data**, pending owner confirmation under ADR-0002. No target mutations were made; do not bypass the protected role-policy fingerprint.
 
 ## Scope and order
 
@@ -42,4 +42,14 @@ Local logs: `.scratch/herd-quotation-fix/lead-evidence/{native,offline,photos}-r
 
 `wp-release.json` still describes **retired OpenClaw/Compose infrastructure and a historical photo migration**. It must not be run unchanged. Current target is SSH `hetzner-vps`, native `/var/www/freeplast`, MariaDB and dedicated PHP-FPM; see `2026-10-02-fresh-hetzner.md`.
 
-Before any remote contact: explicit logic-tier confirmation. Before installation: native-topology driver/config support, complete paired backup with verified restore, trial against restored MariaDB data, protected-record fingerprint equality and installed artifact integrity, rollback instructions, preservation of staging mail/noindex boundaries. Local SQLite tests do not substitute for this trial. Final physical-device and commercial acceptance remain human-owned.
+Before installation: explicit **data-tier** confirmation for the bounded role-policy migration, native-topology config support, complete paired backup with verified restore, trial against restored MariaDB data, protected-record fingerprint expected-delta verification and installed artifact integrity, rollback instructions, preservation of staging mail/noindex boundaries. Local SQLite tests do not substitute for this trial. Final physical-device and commercial acceptance remain human-owned.
+
+## Authorized read-only target preflight
+
+- SSH `hetzner-vps`: native `/var/www/freeplast`, home URL exactly `https://freeplast.mliu.site`, PHP8.5.4. Disk space sufficient (68GiB available). Existing cron must be coordinated during the maintenance window.
+- Installed: adapter1.6.8, theme1.0.18, WooCommerce11.1.0 and Quotes2.13, all active.17 products,10 variations,1 request; **HPOS enabled**, no historical legacy mappings. The historical CPT-only `record-state.php` and two-mapping `verify-woo-state.php` must not be used for this target.
+- Existing standalone `owner-workspace-fingerprint.php` protects both CPT and HPOS tables, commercial options, users and role policy; it is the suitable starting point. `wp-release.owner-workspace.json` also needs native-target and full plugin+theme scope adaptation; its current Compose runner is retired.
+- Existing staging mail MU shim matches recorded SHA-256 `71164446f3f7432311ed917e412c161f8076acda57a4b3eb02b095a63009d5f1`; mail suppression count2 and noindex intact. No emails sent, no writes or new accounts.
+- Staging roles currently include standard WordPress/Woo roles and `ventas_freeplast`, but neither `fpw_quotation_manager` nor `fpw_data_manager`. `quotation-access.php` registers both on `init`, with exactly `read` plus the respective single custom capability. Installation therefore changes the protected `user_roles` option, even without creating any users.
+- Required migration scope: those two exact role definitions only, preserving every other role and capability. Capture original policy, enforce release-owned maintenance, verify the exact expected delta, and retain full protected-record integrity. Do not drop roles from the fingerprint or replace the baseline after install. No catalog/photo/workbook/fiscal/customer-data import is proposed.
+- No release driver run, remote bundle transfer, backup mutation, maintenance hold or installation has begun. Local Docker29.7.2/Compose5.5.1 are available for isolated MariaDB rehearsal; `docker-axi` executable is absent. The release skill has an existing self-test receipt, not yet revalidated for a real run.
