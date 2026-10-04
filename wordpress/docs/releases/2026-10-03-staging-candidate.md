@@ -1,8 +1,8 @@
 # Consolidated staging candidate — 2026-10-03
 
-**Status: local candidate committed/pushed and verified; read-only target preflight completed; deployment blocked pending DATA-tier confirmation.**
+**Status: local candidate committed/pushed and verified; read-only target preflight completed; DATA tier subsequently confirmed (2026-10-04), release preparation in progress. This candidate document is not a deployment receipt.**
 
-Owner instruction: «quiero que todo pase a staging, realiza un orden de todo. quiero que todo esté en staging, commited, pushed and deployed.» Target: **https://freeplast.mliu.site**, never freeplast.cl. Initial proposed tier: **logic**. The owner subsequently confirmed «Confirmo logic; usa wp-release para staging», authorizing the read-only target preflight. That preflight found an intentional protected-data delta: the new plugin creates two restricted roles absent on staging. Corrected minimum tier: **data**, pending owner confirmation under ADR-0002. No target mutations were made; do not bypass the protected role-policy fingerprint.
+Owner instruction: «quiero que todo pase a staging, realiza un orden de todo. quiero que todo esté en staging, commited, pushed and deployed.» Target: **https://freeplast.mliu.site**, never freeplast.cl. Initial proposed tier: **logic**. The owner subsequently confirmed «Confirmo logic; usa wp-release para staging», authorizing the read-only target preflight. That preflight found an intentional protected-data delta: the new plugin creates two restricted roles absent on staging. Corrected minimum tier: **data**, confirmed by the owner's «confirmo» in response to the explicit bounded role-migration/deployment question. No target mutations were made during that preflight; do not bypass the protected role-policy fingerprint.
 
 ## Scope and order
 
@@ -40,7 +40,7 @@ Local logs: `.scratch/herd-quotation-fix/lead-evidence/{native,offline,photos}-r
 
 ## Remaining deployment gates
 
-`wp-release.json` still describes **retired OpenClaw/Compose infrastructure and a historical photo migration**. It must not be run unchanged. Current target is SSH `hetzner-vps`, native `/var/www/freeplast`, MariaDB and dedicated PHP-FPM; see `2026-10-02-fresh-hetzner.md`.
+The historical `wp-release.json` described retired OpenClaw/Compose infrastructure and a photo migration; it was not executed. The canonical config is now adapted to SSH `hetzner-vps`, native `/var/www/freeplast`, local isolated MariaDB rehearsal and the bounded role migration. The redundant plugin-only config is retired. See `native-staging-runbook.md` and `2026-10-02-fresh-hetzner.md`.
 
 Before installation: explicit **data-tier** confirmation for the bounded role-policy migration, native-topology config support, complete paired backup with verified restore, trial against restored MariaDB data, protected-record fingerprint expected-delta verification and installed artifact integrity, rollback instructions, preservation of staging mail/noindex boundaries. Local SQLite tests do not substitute for this trial. Final physical-device and commercial acceptance remain human-owned.
 

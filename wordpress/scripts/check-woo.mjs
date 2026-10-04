@@ -138,6 +138,8 @@ console.log(run(php,[path.join(root,'scripts/accessible-names-test.php')]));
 // H0 (2026-10-03 review): the TEST-ONLY local capture mu-plugin's offline self-test.
 // The file itself ships in scripts/ only; the lead installs it manually into a disposable copy.
 console.log(run(php,[path.join(root,'scripts/local-review-mail-capture-test.php')]));
+// Sealed staging role addition: exact policy delta, full HPOS/commercial fingerprint.
+console.log(run(php,[path.join(root,'scripts/staging-role-migration-test.php')]));
 console.log(run(php,[path.join(root,'scripts/confirmation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/native-chrome-test.php')]));
 // Issue #36 final red-gate: the native plain-route helper's payload self-test
