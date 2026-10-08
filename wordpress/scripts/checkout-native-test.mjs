@@ -18,6 +18,7 @@ const fields = load('../wp-content/plugins/freeplast-woo/fields.js');
 const nativeForm = execFileSync(fileURLToPath(new URL('../.tools/php/php', import.meta.url)), [fileURLToPath(new URL('./checkout-form-test.php', import.meta.url))], { encoding: 'utf8', env: { ...process.env, FREEPLAST_TEST_FORM_HTML: '1' } })
   .replace('HIDDEN-ATTEMPT-INPUT', '<input type="hidden" name="fpw_attempt" value="owned-original-attempt">')
   .replace('PAYMENT-BLOCK[#place_order]', '<div class="woocommerce-checkout-payment"><input type="radio" name="payment_method" id="payment_method_quotes-gateway" value="quotes-gateway" checked><button id="place_order" type="submit" name="woocommerce_checkout_place_order" value="Solicitar cotización">Solicitar cotización</button></div>');
+const validationFixtures = JSON.parse(execFileSync(fileURLToPath(new URL('../.tools/php/php', import.meta.url)), [fileURLToPath(new URL('./checkout-form-test.php', import.meta.url))], { encoding: 'utf8', env: { ...process.env, FREEPLAST_TEST_VALIDATION_JSON: '1' } }));
 const wait = () => new Promise(resolve => setTimeout(resolve, 30));
 async function environment(enhancement) {
   const dom = new JSDOM(`<!doctype html><body class="woocommerce-checkout">${nativeForm}</body>`, { url: 'https://example.test/checkout/', runScripts: 'outside-only' });
@@ -62,10 +63,66 @@ export async function runNativeCheckoutTests(enhancement = source) {
       ok(e.w.document.activeElement === no && !no.closest('.form-row').classList.contains('woocommerce-invalid'), 'correcting native radio error does not steal focus or leave stale invalid styling');
     }
     {
+      const e = await env(); e.submit(); await wait();
+      checkout(e).complete(200, 'OK', { text: JSON.stringify({ result: 'failure', messages: '<ul class="woocommerce-error"><li data-id="billing_fp_dispatch">Despacho: selecciona una opción.</li><li data-id="fpw_attempt">La sesión de solicitud no es válida.</li></ul>' }) }, 'Content-Type: application/json');
+      await wait(); e.form.querySelector('#billing_fp_dispatch_no').click();
+      const summary = e.form.querySelector('.fp-error-summary');
+      ok(summary.textContent.includes('La sesión de solicitud no es válida.') && !summary.textContent.includes('Puede que ya se haya guardado'), 'dispatch correction preserves remaining known identity rejection without inventing uncertainty');
+    }
+    for (const [name, fixture] of Object.entries(validationFixtures)) {
+      for (const shape of ['notices', 'block-notices']) {
+        const e = await env();
+        for (const [key, value] of Object.entries(fixture.values)) {
+          for (const input of e.form.querySelectorAll(`[name="${key}"]`)) {
+            if (input.type === 'radio') input.checked = input.value === value;
+            else input.value = value;
+          }
+        }
+        e.submit(); await wait();
+        checkout(e).complete(200, 'OK', { text: JSON.stringify({ result: 'failure', messages: fixture[shape] }) }, 'Content-Type: application/json');
+        await wait();
+        const summary = e.form.querySelector('.fp-error-summary');
+        ok(summary && !summary.textContent.includes('Puede que ya se haya guardado'), `${name}/${shape}: known validation, never uncertain receipt`);
+        ok(summary.querySelector('h2').textContent === `Revisa ${fixture.fields.length} ${fixture.fields.length === 1 ? 'campo' : 'campos'} para continuar.`, `${name}/${shape}: correct singular/plural count`);
+        ok(e.w.document.activeElement === summary, `${name}/${shape}: focused summary`);
+        for (const key of fixture.fields) {
+          const id = key === 'billing_fp_dispatch' ? key + '_si' : key;
+          const input = e.w.document.getElementById(id);
+          const link = summary.querySelector(`a[href="#${id}"]`);
+          ok(link && link.textContent.length > 10, `${name}/${shape}: actionable field link`);
+          link.click(); ok(e.w.document.activeElement === input, `${name}/${shape}: real focus target`);
+          const inline = e.form.querySelectorAll(`#${key}_field [data-fp-field-error]`);
+          ok(inline.length === 1 && inline[0].textContent === link.textContent, `${name}/${shape}: one coherent inline error`);
+          ok(input.getAttribute('aria-invalid') === 'true' && input.getAttribute('aria-describedby').includes(inline[0].id), `${name}/${shape}: error associated with control`);
+        }
+        for (const [key, value] of Object.entries(fixture.values)) {
+          const input = e.form.querySelector(`[name="${key}"]`);
+          if (input && input.type !== 'radio') ok(input.value === value, `${name}/${shape}: entered ${key} preserved`);
+        }
+        ok(e.form.querySelector('[name="fpw_attempt"]').value === 'owned-original-attempt', `${name}/${shape}: identity preserved`);
+        // Correction/retry goes through Woo again, retaining the same submitted identity.
+        if (name === 'billing_fp_giro') {
+          e.form.querySelector('#billing_fp_giro').value = 'Actividad corregida';
+          e.submit(); await wait();
+          const retry = e.requests.filter(r => r.options.url.endsWith('=checkout')).at(-1);
+          const posted = new URLSearchParams(retry.options.data);
+          ok(posted.get('billing_fp_giro') === 'Actividad corregida' && posted.get('fpw_attempt') === 'owned-original-attempt', `${shape}: correction and same attempt reach native retry`);
+          retry.complete(0, 'timeout', {}, ''); await wait();
+          ok(e.form.querySelector('.fp-error-summary').textContent.includes('Puede que ya se haya guardado'), `${shape}: subsequent timeout remains uncertain`);
+          ok(!e.form.querySelector('#billing_fp_giro').hasAttribute('aria-invalid') && !e.form.querySelector('#billing_fp_giro_field [data-fp-field-error]'), `${shape}: corrected Giro does not retain stale error`);
+        }
+      }
+    }
+    {
       const e = await env(); e.submit(); await wait(); checkout(e).complete(0, 'error', {}, ''); await wait();
       const summary = e.form.querySelector('.fp-error-summary');
       ok(summary?.textContent.toLowerCase().includes('puede que ya se haya guardado'), 'native DIV transport error remains explicitly uncertain');
       ok(!summary?.textContent.includes('No pudimos enviar'), 'uncertain outcome never receives a definite failed-send heading');
+      ok(summary.textContent.includes('Error processing checkout. Please try again.'), 'native DIV transport cause is retained rather than silently dropped');
+      e.submit(); await wait();
+      const retry = e.requests.filter(r => r.options.url.endsWith('=checkout')).at(-1);
+      ok(new URLSearchParams(retry.options.data).get('fpw_attempt') === 'owned-original-attempt', 'uncertain retry serializes the original attempt');
+      retry.complete(0, 'timeout', {}, ''); await wait();
       ok(e.form.querySelector('[name="fpw_attempt"]').value === 'owned-original-attempt', 'transport failure does not rotate the attempt');
     }
     {

@@ -40,6 +40,18 @@ if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_requir
 }
 
 $fp_billing = $checkout->get_checkout_fields( 'billing' );
+if ( isset( $fp_billing['billing_fp_address'] ) ) { $fp_billing['billing_fp_address']['required'] = 'si' === $checkout->get_value( 'billing_fp_dispatch' ); }
+$fp_errors = $GLOBALS['fpw_checkout_field_errors'] ?? array();
+$fp_field = static function ( $key, $args, $value ) use ( $fp_errors ) {
+	if ( empty( $fp_errors[$key] ) ) { woocommerce_form_field( $key, $args, $value ); return; }
+	$id = 'fp-field-error-' . $key;
+	$args['return'] = true;
+	$args['custom_attributes']['aria-invalid'] = 'true';
+	$args['custom_attributes']['aria-describedby'] = trim( ( $args['custom_attributes']['aria-describedby'] ?? '' ) . ' ' . $id );
+	$html = woocommerce_form_field( $key, $args, $value );
+	$error = '<span class="fp-field-error" data-fp-field-error id="' . esc_attr( $id ) . '">' . esc_html( implode( ' ', $fp_errors[$key] ) ) . '</span>';
+	echo preg_replace_callback( '/<\/p>$/', static function () use ( $error ) { return $error . '</p>'; }, $html ); // Native field row; dynamic error text escaped above.
+};
 /* Replace only native layout callbacks for this render, never extension hooks. */
 
 $fp_lines = 0;
@@ -84,7 +96,16 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 	</aside>
 
 	<div class="fp-checkout-form">
-	<p class="fp-required-hint fp-fine">Todos los campos son obligatorios, salvo Mensaje.</p>
+	<p class="fp-required-hint fp-fine">Los datos de contacto, empresa y la opción de despacho son obligatorios. La dirección, con comuna y región, solo se exige con despacho. Mensaje es opcional.</p>
+	<?php if ( $fp_errors ) : ?>
+	<div class="fp-error-summary" role="alert" tabindex="-1">
+		<h2><?php echo esc_html( 'Revisa ' . count( $fp_errors ) . ( 1 === count( $fp_errors ) ? ' campo' : ' campos' ) . ' para continuar.' ); ?></h2>
+		<p class="fp-fine">Los datos que completaste siguen en este formulario. Revisa los avisos antes de reintentar.</p>
+		<ul><?php foreach ( $fp_errors as $fp_key => $fp_messages ) : ?>
+			<li><a href="#<?php echo esc_attr( 'billing_fp_dispatch' === $fp_key ? 'billing_fp_dispatch_si' : $fp_key ); ?>"><?php echo esc_html( implode( ' ', $fp_messages ) ); ?></a></li>
+		<?php endforeach; ?></ul>
+	</div>
+	<?php endif; ?>
 
 	<?php $fp_extensions( 'woocommerce_checkout_billing', array( $checkout, 'checkout_form_billing' ) ); ?>
 	<?php do_action( 'woocommerce_before_checkout_billing_form', $checkout ); ?>
@@ -94,7 +115,7 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 			<?php
 			foreach ( array( 'billing_first_name', 'billing_phone', 'billing_email' ) as $fp_key ) {
 				if ( isset( $fp_billing[ $fp_key ] ) ) {
-					woocommerce_form_field( $fp_key, $fp_billing[ $fp_key ], $checkout->get_value( $fp_key ) );
+					$fp_field( $fp_key, $fp_billing[ $fp_key ], $checkout->get_value( $fp_key ) );
 				}
 			}
 			?>
@@ -108,7 +129,7 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 			<?php
 			foreach ( array( 'billing_company', 'billing_fp_rut', 'billing_fp_giro' ) as $fp_key ) {
 				if ( isset( $fp_billing[ $fp_key ] ) ) {
-					woocommerce_form_field( $fp_key, $fp_billing[ $fp_key ], $checkout->get_value( $fp_key ) );
+					$fp_field( $fp_key, $fp_billing[ $fp_key ], $checkout->get_value( $fp_key ) );
 				}
 			}
 			?>
@@ -121,14 +142,14 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 			<div class="fp-dispatch-options" id="fp-dispatch-options">
 				<?php
 				if ( isset( $fp_billing['billing_fp_dispatch'] ) ) {
-					woocommerce_form_field( 'billing_fp_dispatch', $fp_billing['billing_fp_dispatch'], $checkout->get_value( 'billing_fp_dispatch' ) );
+					$fp_field( 'billing_fp_dispatch', $fp_billing['billing_fp_dispatch'], $checkout->get_value( 'billing_fp_dispatch' ) );
 				}
 				?>
 			</div>
 			<div class="fp-address-slot">
 				<?php
 				if ( isset( $fp_billing['billing_fp_address'] ) ) {
-					woocommerce_form_field( 'billing_fp_address', $fp_billing['billing_fp_address'], $checkout->get_value( 'billing_fp_address' ) );
+					$fp_field( 'billing_fp_address', $fp_billing['billing_fp_address'], $checkout->get_value( 'billing_fp_address' ) );
 				}
 				?>
 			</div>

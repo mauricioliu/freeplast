@@ -49,8 +49,9 @@
     summary.querySelectorAll('li a').forEach(function (link) { if (ids.includes(link.getAttribute('href').slice(1))) link.closest('li').remove(); });
     if (!summary.querySelector('li')) { summary.remove(); return; }
     var count = new Set(Array.prototype.map.call(summary.querySelectorAll('li a'), function (link) { return link.getAttribute('href'); })).size;
-    summary.querySelector('h2').textContent = count ? 'Revisa ' + count + (count === 1 ? ' campo' : ' campos') + ' para continuar.' : 'No pudimos confirmar tu solicitud.';
-    if (!count) { summary.querySelector('.fp-fine').textContent = UNCERTAIN_COPY; }
+    var validation = summary.querySelector('[data-fp-error-id]');
+    summary.querySelector('h2').textContent = count ? 'Revisa ' + count + (count === 1 ? ' campo' : ' campos') + ' para continuar.' : (validation ? 'Revisa los avisos para continuar.' : 'No pudimos confirmar tu solicitud.');
+    if (!count && !validation) { summary.querySelector('.fp-fine').textContent = UNCERTAIN_COPY; }
   }
   function errorControl(form, id) {
     var input = document.getElementById(id);
@@ -63,14 +64,21 @@
     var existing = form.querySelector('.fp-error-summary');
     if (existing) { existing.remove(); }
     clearFieldErrors(form);
-    var items = Array.prototype.slice.call(group.querySelectorAll('li'));
+    // Woo's block notice puts a single error on the banner itself, not in a li.
+    var items = Array.prototype.slice.call(group.querySelectorAll('li, .wc-block-components-notice-banner[data-id]'));
+    if (!items.length) {
+      var content = group.querySelector('.wc-block-components-notice-banner__content, .woocommerce-error');
+      if (content) { items.push(content); }
+    }
     var summary = document.createElement('div');
     summary.className = 'fp-error-summary'; summary.setAttribute('role', 'alert'); summary.tabIndex = -1;
     var ul = document.createElement('ul'), linked = new Set();
+    var validation = items.some(function (item) { return Boolean(item.getAttribute('data-id')); });
     items.forEach(function (li, index) {
       var id = li.getAttribute('data-id');
       var input = id && errorControl(form, id);
       var entry = document.createElement('li');
+      if (id) { entry.setAttribute('data-fp-error-id', id); }
       var message = li.textContent.trim(); // keep the cause, not just <strong>Field</strong>
       if (input) {
         var link = document.createElement('a'); link.href = '#' + input.id; link.textContent = message;
@@ -90,10 +98,10 @@
       ul.appendChild(entry);
     });
     var heading = document.createElement('h2');
-    heading.textContent = linked.size ? 'Revisa ' + linked.size + (linked.size === 1 ? ' campo' : ' campos') + ' para continuar.' : 'No pudimos confirmar tu solicitud.';
+    heading.textContent = linked.size ? 'Revisa ' + linked.size + (linked.size === 1 ? ' campo' : ' campos') + ' para continuar.' : (validation ? 'Revisa los avisos para continuar.' : 'No pudimos confirmar tu solicitud.');
     summary.appendChild(heading);
     var note = document.createElement('p'); note.className = 'fp-fine';
-    note.textContent = linked.size ? 'Los datos que completaste siguen en este formulario. Revisa los avisos antes de reintentar.' : UNCERTAIN_COPY;
+    note.textContent = validation ? 'Los datos que completaste siguen en este formulario. Revisa los avisos antes de reintentar.' : UNCERTAIN_COPY;
     summary.appendChild(note);
     if (items.length) { summary.appendChild(ul); }
     var column = form.querySelector('.fp-checkout-form');
@@ -156,7 +164,7 @@
       row.appendChild(node);
       email.setAttribute('aria-describedby', ((email.getAttribute('aria-describedby') || '') + ' ' + node.id).trim());
     }
-    node.textContent = 'Escribe un correo completo, como nombre@empresa.cl.';
+    node.textContent = 'Email: escribe un correo completo, como nombre@empresa.cl.';
     if (!email.hasAttribute('aria-invalid')) { email.setAttribute('aria-invalid', 'true'); }
   }
   function init() {

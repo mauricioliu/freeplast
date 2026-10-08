@@ -94,10 +94,11 @@ export async function runCheckoutFormTests() {
   const definiteApi = definite.window.eval('(function(){ var module = { exports: {} };\n' + source + '\nreturn module.exports; })()');
   const definiteGroup = definite.window.document.createElement('div');
   definiteGroup.className = 'woocommerce-NoticeGroup woocommerce-error';
-  definiteGroup.innerHTML = '<ul class="woocommerce-error"><li>La sesión de solicitud no es válida.</li></ul>';
+  definiteGroup.innerHTML = '<ul class="woocommerce-error"><li data-id="fpw_attempt">La sesión de solicitud no es válida.</li></ul>';
   definite.window.document.querySelector('form.checkout').prepend(definiteGroup);
   definiteApi.enhanceErrors(definiteGroup);
   ok(definite.window.document.querySelector('.fp-error-summary').textContent.includes('La sesión de solicitud no es válida'), 'definite rejections keep their native wording');
+  ok(!definite.window.document.querySelector('.fp-error-summary').textContent.includes('Puede que ya se haya guardado'), 'known validation without a visible control does not become uncertain');
 
   /* Submit busy state + double activation. */
   const sendDom = boot(412);
@@ -138,7 +139,7 @@ export async function runCheckoutFormTests() {
   await new Promise(resolve => setTimeout(resolve, 5));
   const emailError = blurForm.querySelector('[data-fp-email-error]');
   ok(Boolean(emailError), 'blur with Woo\'s invalid-email verdict produces the textual explanation');
-  ok(emailError.textContent === 'Escribe un correo completo, como nombre@empresa.cl.', 'the message explains the expected format in Spanish');
+  ok(emailError.textContent === 'Email: escribe un correo completo, como nombre@empresa.cl.', 'the message explains the expected format in Spanish');
   ok(emailError.id.startsWith('fp-field-error-'), 'the message id is cleanup-compatible with the submit-time error rebuild');
   ok((emailInput.getAttribute('aria-describedby') || '').includes(emailError.id), 'the message is associated with the input it explains');
   ok(emailInput.getAttribute('aria-invalid') === 'true', 'the native invalid marking is preserved');

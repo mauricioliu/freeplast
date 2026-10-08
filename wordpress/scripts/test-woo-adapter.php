@@ -13,7 +13,12 @@ function sanitize_textarea_field($value) { return trim(strip_tags((string)$value
 class WP_Error {
     public array $codes=array();
     public array $messages=array();
-    public function add($code,$message,$data=null) { $this->codes[]=$code; $this->messages[]=$message; }
+    public function add($code,$message,$data=null) { $this->codes[]=$code; $this->messages[]=$message; $this->data[$code]=$data; }
+    public function get_error_codes() { return array_unique($this->codes); }
+    public function remove($code) { foreach ($this->codes as $i=>$value) { if ($value===$code) { unset($this->codes[$i],$this->messages[$i],$this->data[$code]); } } }
+    public array $data=array();
+    public function get_error_data($code) { return $this->data[$code] ?? null; }
+    public function get_error_messages($code) { return array_values(array_intersect_key($this->messages,array_filter($this->codes,fn($value)=>$value===$code))); }
     public function has_errors() { return (bool)$this->codes; }
 }
 require __DIR__.'/../wp-content/plugins/freeplast-woo/freeplast-woo.php';

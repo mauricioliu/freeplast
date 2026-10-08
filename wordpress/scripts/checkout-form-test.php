@@ -145,7 +145,7 @@ verify(!str_contains($html, 'El precio se confirma con ventas.'), 'summary does 
 verify(str_contains(file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/payment.php'), "wc_get_template( 'checkout/terms.php' )"), 'pinned native payment calls the exercised terms template');
 verify(!str_contains($html, 'checkbox') || !str_contains($html, 'consentimiento'), 'no consent checkbox invented');
 verify(!str_contains($html, 'registro') || !str_contains($html, 'Regístrate'), 'no registration requirement invented');
-verify(str_contains($html, 'Todos los campos son obligatorios, salvo Mensaje.'), 'the required-fields hint matches the real rules');
+verify(str_contains($html, 'Los datos de contacto, empresa y la opción de despacho son obligatorios.') && str_contains($html, 'La dirección, con comuna y región, solo se exige con despacho. Mensaje es opcional.'), 'the required-fields hint matches the conditional and optional rules');
 
 /* Steps: step 2 active. */
 verify(str_contains($html, 'aria-current="step"') && str_contains($html, 'step-number">2<'), 'the details step is current');
@@ -157,5 +157,95 @@ verify(str_contains($functions, 'checkout-form.js'), 'the checkout enhancement s
 $adapter = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
 verify(str_contains($adapter, "'1.0.4'"), 'fields.js enqueue version follows its radio change');
 
-if ('1' === getenv('FREEPLAST_TEST_FORM_HTML')) { echo $html; }
+/* Native server validation + both native notice shapes, without WP storage/HTTP. */
+require_once __DIR__ . '/../.build/wp/wp-includes/class-wp-error.php';
+$native_checkout = file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/includes/class-wc-checkout.php');
+preg_match('/\tprotected function validate_posted_data\(.*?\n\t\}/s', $native_checkout, $native_validation);
+verify(!empty($native_validation[0]), 'pinned native field validator found');
+eval('class NativeValidationBoundary {' . $native_validation[0] . '}');
+$formatting = file_get_contents(__DIR__ . '/../.build/wp/wp-includes/formatting.php');
+foreach (array('is_email', 'sanitize_email') as $function) {
+	preg_match('/function ' . $function . '\(.*?\n\}/s', $formatting, $match);
+	eval($match[0]);
+}
+foreach (array('fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_validate_checkout') as $function) {
+	preg_match('/function ' . $function . '\(.*?\n\}/s', $adapter_source, $match);
+	eval($match[0]);
+}
+add_filter('woocommerce_checkout_required_field_notice', 'fpw_checkout_required_notice', 10, 3);
+function _x($text, $context, $domain = null) { return $text; }
+function esc_html_e($text, $domain = null) { echo esc_html($text); }
+function wc_kses_notice($message) { return $message; }
+function wc_get_notice_data_attr($notice) { return isset($notice['data']['id']) ? ' data-id="' . esc_attr($notice['data']['id']) . '"' : ''; }
+class NativeFieldValidation extends NativeValidationBoundary {
+	public function __construct() {}
+	public function get_checkout_fields($fieldset = '') { return fpw_checkout_fields(array()); }
+	protected function maybe_skip_fieldset($fieldset_key, $data) { return false; }
+	public function validate($data) {
+		$errors = new WP_Error();
+		$this->validate_posted_data($data, $errors);
+		fpw_validate_checkout($data, $errors);
+		return $errors;
+	}
+}
+$validator = new NativeFieldValidation();
+$valid = array('billing_first_name'=>'Persona Prueba', 'billing_phone'=>'+56 9 0000 0000', 'billing_email'=>'prueba@example.invalid', 'billing_company'=>'Empresa Sintética', 'billing_fp_rut'=>'RUT de prueba', 'billing_fp_giro'=>'Actividad de prueba', 'billing_fp_dispatch'=>'no', 'billing_fp_address'=>'', 'order_comments'=>'', 'payment_method'=>'quotes-gateway');
+verify(!$validator->validate($valid)->has_errors(), 'complete fixture and empty optional message accepted; no invented RUT/phone rules');
+$validation_fixtures = array();
+$invalid_cases = array();
+foreach ($required as $key) { $invalid_cases[$key] = array($key=>''); }
+$invalid_cases['address'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'   ');
+$invalid_cases['dispatch-invalid'] = array('billing_fp_dispatch'=>'otra');
+$invalid_cases['email-format'] = array('billing_email'=>'correo-invalido');
+$invalid_cases['multiple'] = array('billing_first_name'=>'', 'billing_fp_giro'=>'', 'billing_fp_dispatch'=>'si', 'billing_fp_address'=>'');
+foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key) {
+	$invalid_cases[$key . '-long'] = array($key=>'billing_email' === $key ? str_repeat('a', 225) . '@example.invalid' : str_repeat('a', 'billing_fp_address' === $key ? 801 : 241));
+	if ('billing_fp_address' === $key) { $invalid_cases[$key . '-long']['billing_fp_dispatch'] = 'si'; }
+}
+foreach ($invalid_cases as $case=>$overrides) {
+	$data = array_replace($valid, $overrides);
+	$errors = $validator->validate($data);
+	$notices = array();
+	foreach ($errors->get_error_codes() as $code) {
+		foreach ($errors->get_error_messages($code) as $message) { $notices[] = array('notice'=>$message, 'data'=>$errors->get_error_data($code)); }
+	}
+	verify(count($notices) === ('multiple' === $case ? 3 : 1), 'one message per rejected field: ' . $case);
+	foreach ($notices as $notice) {
+		$key = $notice['data']['id'];
+		verify(str_contains($notice['notice'], $billing[$key]['label']) || ('billing_fp_dispatch' === $key && str_contains($notice['notice'], 'Despacho:')), 'named actionable message: ' . $case);
+	}
+	$fixture = array('values'=>$data, 'fields'=>array_keys($GLOBALS['fpw_checkout_field_errors']));
+	foreach (array('notices', 'block-notices') as $shape) {
+		ob_start(); include __DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/' . $shape . '/error.php';
+		$fixture[$shape] = ob_get_clean();
+	}
+	$checkout->draft = $data;
+	ob_start(); include __DIR__ . '/../wp-content/themes/freeplast/woocommerce/checkout/form-checkout.php';
+	$rejected_html = ob_get_clean();
+	verify(str_contains($rejected_html, 'Revisa ' . count($notices) . (count($notices) === 1 ? ' campo' : ' campos')), 'no-JS summary singular/plural: ' . $case);
+	foreach ($fixture['fields'] as $key) {
+		verify(str_contains($rejected_html, 'href="#' . ('billing_fp_dispatch' === $key ? $key . '_si' : $key) . '"'), 'no-JS error link: ' . $key);
+		verify(str_contains($rejected_html, 'aria-describedby="fp-field-error-' . $key . '"') && str_contains($rejected_html, 'id="fp-field-error-' . $key . '"'), 'no-JS inline association: ' . $key);
+	}
+	verify(str_contains($rejected_html, 'aria-invalid="true"') && !str_contains($rejected_html, 'Puede que ya se haya guardado'), 'no-JS known validation, never uncertain: ' . $case);
+	verify(substr_count($rejected_html, 'HIDDEN-ATTEMPT-INPUT') === 1, 'no-JS attempt still native: ' . $case);
+	preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $rejected_html, $address_input);
+	verify(str_contains($address_input[0], 'aria-required="true"') === ('si' === $data['billing_fp_dispatch']), 'no-JS address required semantics follow dispatch: ' . $case);
+	verify(str_contains($rejected_html, 'value="' . esc_attr($data['billing_company']) . '"'), 'no-JS keeps entered company: ' . $case);
+	$validation_fixtures[$case] = $fixture;
+}
+foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key) {
+	$limit = 'billing_fp_address' === $key ? 800 : 240;
+	$value = 'billing_email' === $key ? str_repeat('a', $limit - 16) . '@example.invalid' : str_repeat('a', $limit);
+	$base = 'billing_fp_address' === $key ? array_replace($valid, array('billing_fp_dispatch'=>'si')) : $valid;
+	verify(!$validator->validate(array_replace($base, array($key=>$value)))->has_errors(), 'existing byte limit accepts boundary: ' . $key);
+	$errors = $validator->validate(array_replace($base, array($key=>'a' . $value)));
+	verify(str_contains($errors->get_error_message($key), $billing[$key]['label'] . ': el texto es demasiado largo. Acórtalo'), 'overlength names field and correction: ' . $key);
+}
+verify(!$validator->validate(array_replace($valid, array('billing_fp_address'=>str_repeat('a', 801))))->has_errors(), 'no-dispatch ignores an unused overlong address draft rather than blocking on a hidden field');
+verify(!$validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors(), 'manual complete destination accepted without new structured/geocoding rules');
+verify(!$validator->validate($valid)->has_errors() && !$GLOBALS['fpw_checkout_field_errors'], 'correction/retry clears request-local errors');
+
+if ('1' === getenv('FREEPLAST_TEST_VALIDATION_JSON')) { echo json_encode($validation_fixtures, JSON_UNESCAPED_UNICODE); }
+elseif ('1' === getenv('FREEPLAST_TEST_FORM_HTML')) { echo $html; }
 else { echo "checkout form: $checks PHP checks passed\n"; }

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.2
+ * Version: 1.12.3
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -228,14 +228,44 @@ function fpw_checkout_fields( $fields ) {
 }
 add_filter( 'woocommerce_checkout_fields', 'fpw_checkout_fields', 20000 );
 
+function fpw_checkout_required_notice( $message, $label, $key ) {
+	$messages = array(
+		'billing_first_name' => 'Nombre: escribe tu nombre.',
+		'billing_phone' => 'Teléfono: escribe un número de contacto.',
+		'billing_email' => 'Email: escribe tu correo de contacto.',
+		'billing_company' => 'Nombre de empresa: escribe el nombre o razón social.',
+		'billing_fp_rut' => 'RUT empresa: escribe el RUT de la empresa.',
+		'billing_fp_giro' => 'Giro: escribe la actividad de la empresa, por ejemplo, producción agrícola.',
+		'billing_fp_dispatch' => 'Despacho: selecciona Con despacho o Sin despacho.',
+	);
+	return $messages[$key] ?? $message;
+}
+add_filter( 'woocommerce_checkout_required_field_notice', 'fpw_checkout_required_notice', 10, 3 );
+
 function fpw_validate_checkout( $data, $errors ) {
-	$dispatch = $data['billing_fp_dispatch'] ?? '';
-	if ( ! in_array( $dispatch, array('si','no'), true ) ) { $errors->add('billing_fp_dispatch', 'Selecciona si necesitas despacho.', array('id'=>'billing_fp_dispatch')); }
-	if ( 'si' === $dispatch && '' === trim( $data['billing_fp_address'] ?? '' ) ) { $errors->add('billing_fp_address', 'Indica la dirección completa de despacho.', array('id'=>'billing_fp_address')); }
-	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key ) {
-		if ( strlen( $data[$key] ?? '' ) > ( 'billing_fp_address' === $key ? 800 : 240 ) ) { $errors->add($key, 'El campo es demasiado largo.', array('id'=>$key)); }
+	// Keep Woo's email verdict; replace only its wording, not its validation rule.
+	if ( in_array( 'billing_email_validation', $errors->get_error_codes(), true ) ) {
+		$errors->remove( 'billing_email_validation' );
+		$errors->add( 'billing_email_validation', 'Email: escribe un correo completo, como nombre@empresa.cl.', array('id'=>'billing_email') );
 	}
-	if ( 'quotes-gateway' !== ( $data['payment_method'] ?? '' ) ) { $errors->add('payment_method', 'Este sitio recibe solicitudes de cotización, no pagos.'); }
+	$dispatch = $data['billing_fp_dispatch'] ?? '';
+	if ( ! in_array( $dispatch, array('si','no'), true ) ) {
+		$errors->remove( 'billing_fp_dispatch_required' );
+		$errors->add('billing_fp_dispatch', 'Despacho: selecciona Con despacho o Sin despacho.', array('id'=>'billing_fp_dispatch'));
+	}
+	if ( 'si' === $dispatch && '' === trim( $data['billing_fp_address'] ?? '' ) ) { $errors->add('billing_fp_address', 'Dirección de despacho: escribe calle, número, comuna y región.', array('id'=>'billing_fp_address')); }
+	$fields = fpw_checkout_fields( array() );
+	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key ) {
+		if ( 'billing_fp_address' === $key && 'si' !== $dispatch ) { continue; } // No destination is saved without dispatch.
+		if ( strlen( $data[$key] ?? '' ) > ( 'billing_fp_address' === $key ? 800 : 240 ) ) { $errors->add($key, $fields['billing'][$key]['label'] . ': el texto es demasiado largo. Acórtalo y vuelve a intentarlo.', array('id'=>$key)); }
+	}
+	if ( 'quotes-gateway' !== ( $data['payment_method'] ?? '' ) ) { $errors->add('payment_method', 'Este sitio recibe solicitudes de cotización, no pagos. Recarga el formulario antes de reintentar.', array('id'=>'payment_method')); }
+	// Request-local copy: Woo prints/consumes POST notices before rendering the no-JS form.
+	$GLOBALS['fpw_checkout_field_errors'] = array();
+	foreach ( $errors->get_error_codes() as $code ) {
+		$key = $errors->get_error_data( $code )['id'] ?? '';
+		if ( isset( $fields['billing'][$key] ) ) { $GLOBALS['fpw_checkout_field_errors'][$key] = array_merge( $GLOBALS['fpw_checkout_field_errors'][$key] ?? array(), $errors->get_error_messages( $code ) ); }
+	}
 }
 add_action( 'woocommerce_after_checkout_validation', 'fpw_validate_checkout', 10, 2 );
 
