@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.1
+ * Version: 1.12.2
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1482,6 +1482,21 @@ add_filter('woocommerce_product_add_to_cart_text', static function($text,$produc
 // never passes add_to_cart_text() — it needs its own label surface (and the
 // native filter sits on the translated string, so it outranks any translation).
 add_filter('woocommerce_product_single_add_to_cart_text', static fn() => 'Agregar a Cotización', 1000);
+
+/** Product-sheet quantity controls use the same batches as catalog cards. */
+add_filter('woocommerce_quantity_input_args', static function($args,$product) {
+	if ( ! is_product() || ! $product || $product->is_sold_individually() ) { return $args; }
+	$args['min_value'] = 10;
+	$args['step'] = 10;
+	$args['input_value'] = max( 10, (int) $args['input_value'] );
+	return $args;
+}, 100, 2);
+// Woo's variation script overwrites the input minimum whenever a color changes.
+// Supply the same minimum in both embedded and AJAX variation responses.
+add_filter('woocommerce_available_variation', static function($data,$product,$variation) {
+	if ( ! $variation->is_sold_individually() ) { $data['min_qty'] = 10; }
+	return $data;
+}, 100, 3);
 
 /**
  * Quantity selector on product cards. Presentation only (ADR-0001): the loop

@@ -649,6 +649,26 @@ check(str_contains($loop_quantity_source,'data-quantity'),'The mirror writes the
 check(str_contains($loop_quantity_source,'[data-fpw-loop-add]'),'The mirror scopes to the adapter\'s card wrapper');
 check(str_contains($woo_css,'fpw-loop-add'),'The card selector row is styled');
 
+// Product sheets share the ten-unit controls, including Woo color changes.
+function is_product() { return $GLOBALS['fpw_test_is_product'] ?? false; }
+$quantity_product = new class {
+    public bool $individual = false;
+    public function is_sold_individually() { return $this->individual; }
+};
+$quantity_args = array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1);
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Basket and other non-product routes keep their quantity rules');
+$GLOBALS['fpw_test_is_product']=true;
+$sheet_args=apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product);
+check($sheet_args===array('input_value'=>10,'min_value'=>10,'max_value'=>100,'step'=>10),'Product sheets start at ten and step in tens, preserving maximum');
+$quantity_args['input_value']=30;
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===30,'Submitted sheet quantities are not reset to ten');
+$variation_data=array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false);
+check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>10,'max_qty'=>100,'is_sold_individually'=>false),'Selecting or switching colors retains the ten-unit minimum and native maximum');
+$quantity_product->individual=true;
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Individually sold products retain native quantity controls');
+check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===$variation_data,'Individually sold variations retain native limits');
+$GLOBALS['fpw_test_is_product']=false;
+
 // Issue #24 (WA-01): one attempt, one Quote Request. The claim is an atomic per-attempt options row
 // (plain INSERT against the unique option_name); the loser recovers the winner's order through Woo's
 // own woocommerce_create_order short-circuit. State machine over a fake wpdb with unique-key semantics.
