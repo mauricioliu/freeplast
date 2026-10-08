@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-10-08 UTC: MENSAJES DE VALIDACIÓN DESPLEGADOS.** Adaptador **1.12.3**, tema **1.0.21**, fuente `e5a4a77`. Release `20261008T191746Z-1e969b`: campos obligatorios y dirección condicional con mensajes específicos, resumen/inline/ARIA y fallback sin JS. Gate completo, backup/restore/trial y nueve smokes correctos; verificación independiente en navegador y POST nativo. Fingerprint intacto incluso después de pruebas. [Registro](docs/releases/2026-10-08-logic-1e969b.md).
+
 > **2026-10-08 UTC: FICHAS DE PRODUCTO DE 10 EN 10 DESPLEGADAS.** Adaptador **1.12.2**, tema **1.0.20**, fuente `8a83478`. Release `20261008T183535Z-e68eb7`, nivel lógica, sin migraciones. Respaldo, restore/trial, fingerprint y nueve smokes correctos. Chrome verificó pasos de 10 en ficha simple y al elegir, cambiar y limpiar color. Cron restaurado; producción intacta. [Registro](docs/releases/2026-10-08-logic-e68eb7.md).
 
 > **2026-10-04 UTC: SELECTORES DE 10 EN 10 DESPLEGADOS.** Adaptador **1.12.1**, tema **1.0.20**, fuente `42b7ef3`. Release `20261004T213112Z-b66726`, nivel lógica, sin migraciones y con fingerprint preservado. Respaldo, restauración, trial, hashes y nueve smokes correctos. Chrome verificó 10 → 20 → 30 y decrementos en las ocho tarjetas de inicio. Cron restaurado; producción intacta. [Registro](docs/releases/2026-10-04-logic-b66726.md).

@@ -1,5 +1,9 @@
 # Validación de Solicitar Cotización · 2026-10-08
 
+## Verificación posterior del lead
+
+Desplegado en staging mediante release `20261008T191746Z-1e969b`, fuente `e5a4a77`. Lead repitió suite offline y gate completo aislado. En navegador independiente verificó cada campo requerido vacío, despacho/dirección condicional, errores múltiples y Giro con foco/ARIA; capturas 412px/1440px revisadas sin overflow horizontal. POST no-AJAX devolvió resumen e inline servidor con Giro vacío. Fingerprint protegido posterior a las pruebas idéntico al backup. Detalle y límites: `wordpress/docs/releases/2026-10-08-logic-1e969b.md`. Producción intacta. El estado siguiente documenta la entrega original del worker, antes de esta verificación.
+
 ## Estado
 
 Implementación local; **UI cambiada, no validada visualmente**. Sin commit, push, despliegue, servicios, navegador real, dispositivos, solicitudes reales, correo ni escrituras remotas. Lead conserva gates nativos aislados, revisión UI y despliegue.
