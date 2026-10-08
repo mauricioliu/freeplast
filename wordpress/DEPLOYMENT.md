@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-10-08 UTC: FICHAS DE PRODUCTO DE 10 EN 10 DESPLEGADAS.** Adaptador **1.12.2**, tema **1.0.20**, fuente `8a83478`. Release `20261008T183535Z-e68eb7`, nivel lógica, sin migraciones. Respaldo, restore/trial, fingerprint y nueve smokes correctos. Chrome verificó pasos de 10 en ficha simple y al elegir, cambiar y limpiar color. Cron restaurado; producción intacta. [Registro](docs/releases/2026-10-08-logic-e68eb7.md).
+
 > **2026-10-04 UTC: SELECTORES DE 10 EN 10 DESPLEGADOS.** Adaptador **1.12.1**, tema **1.0.20**, fuente `42b7ef3`. Release `20261004T213112Z-b66726`, nivel lógica, sin migraciones y con fingerprint preservado. Respaldo, restauración, trial, hashes y nueve smokes correctos. Chrome verificó 10 → 20 → 30 y decrementos en las ocho tarjetas de inicio. Cron restaurado; producción intacta. [Registro](docs/releases/2026-10-04-logic-b66726.md).
 
 > **2026-10-04 UTC: PANEL Y FLUJO COMPLETOS DESPLEGADOS EN STAGING.** Tema **1.0.20**, adaptador **1.12.0**, fuente `59fa378`. Release `20261004T170723Z-bbc521` mediante `wp-release.json` adaptado al Hetzner nativo: backup/restauración/trial MariaDB,391 hashes instalados, fingerprint protegido,20 checks de estado y9 smokes verdes. Solo se añadieron los dos roles restringidos; registros y HPOS preservados. Cron restaurado, correo bloqueado y noindex. Producción intacta. [Registro completo y rollback](docs/releases/2026-10-04-data-bbc521.md) · [Runbook actual](docs/releases/native-staging-runbook.md).
