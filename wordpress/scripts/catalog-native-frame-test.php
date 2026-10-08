@@ -62,7 +62,10 @@ foreach(['shop','category','search'] as $route) {
   verify(str_contains($html,'EXTENSION'),"$route: extension hooks preserved");
   verify(str_contains($html,$populated?'NATIVE PRODUCT':'empty-state'),"$route: native loop/empty path kept");
   if($populated)verify(substr_count($html,'NATIVE PAGINATION')===1,'native pagination retained');
-  if(!$populated&&is_search())verify(str_contains($html,'sin &lt;coincidencias&gt;'),'empty query is escaped');
+  if(!$populated) {
+   verify(preg_match('/<div class="results-toolbar">.*woocommerce-result-count.*woocommerce-ordering.*<\/div>\s*<div class="empty-state">/s', $html) === 1, 'empty results group native floats before the recovery panel');
+   if(is_search())verify(str_contains($html,'sin &lt;coincidencias&gt;'),'empty query is escaped');
+  }
   // The classic PHP fallback uses the same frame rather than a second copy.
   $GLOBALS['iteration']=0; ob_start(); include __DIR__.'/../wp-content/themes/freeplast/woocommerce/archive-product.php'; $fallback=ob_get_clean();
   verify(substr_count($fallback,'class="fp-shell fp-catalog"')===1&&substr_count($fallback,'id="fp-catalog-search"')===1,'classic fallback has one shared frame');

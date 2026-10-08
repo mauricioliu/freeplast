@@ -115,6 +115,8 @@ console.log(run(php,[path.join(root,'scripts/card-selection-test.php')]));
 console.log(run(php,[path.join(root,'scripts/card-theme-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-tools-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-native-frame-test.php')]));
+{ const {runDesktopVisualTests}=await import('./desktop-visual-test.mjs');
+  checks+=runDesktopVisualTests(); }
 console.log(run(php,[path.join(root,'scripts/product-sheet-test.php')]));
 console.log(run(php,[path.join(root,'scripts/cart-page-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));

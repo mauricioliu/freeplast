@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.21
+Version: 1.0.22
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -1592,7 +1592,7 @@ body.woocommerce .fp-catalog .fp-catalog-ordering select {
 }
 
 /* A's no-results state. */
-body.woocommerce .fp-catalog .empty-state {
+body:is(.woocommerce, .woocommerce-cart) .fp-catalog .empty-state {
   padding: 40px 22px;
   border: 1px dashed #c5c3d4;
   border-radius: 16px;
@@ -1603,7 +1603,7 @@ body.woocommerce .fp-catalog .empty-state {
   background: #fafafb;
 }
 
-body.woocommerce .fp-catalog .empty-state .empty-icon {
+body:is(.woocommerce, .woocommerce-cart) .fp-catalog .empty-state .empty-icon {
   width: 64px;
   height: 64px;
   display: grid;
@@ -1613,19 +1613,20 @@ body.woocommerce .fp-catalog .empty-state .empty-icon {
   color: var(--fp-blue);
 }
 
-body.woocommerce .fp-catalog .empty-state h2 {
+body:is(.woocommerce, .woocommerce-cart) .fp-catalog .empty-state h2 {
   font-size: 24px;
   max-width: 400px;
   color: var(--fp-blue-heading);
+  overflow-wrap: anywhere;
 }
 
-body.woocommerce .fp-catalog .empty-state p {
+body:is(.woocommerce, .woocommerce-cart) .fp-catalog .empty-state p {
   max-width: 400px;
   color: var(--fp-chrome-muted);
   font-size: 15px;
 }
 
-body.woocommerce .fp-catalog .empty-state.large {
+body:is(.woocommerce, .woocommerce-cart) .fp-catalog .empty-state.large {
   min-height: 360px;
 }
 
@@ -1881,6 +1882,11 @@ body.woocommerce .fp-product-shell .product-options form.cart {
 
 body.woocommerce .fp-product-shell .product-options form.cart .variations {
   width: 100%;
+}
+
+/* The enhanced color row leaves an empty native table with margin and flex gaps. */
+body.woocommerce .fp-product-shell form.cart .variations:has([data-fp-color-superseded]):not(:has(tr:not([hidden]))) {
+  display: none;
 }
 
 body.woocommerce .fp-product-shell .product-options form.cart .fp-color-fieldset {
@@ -2212,6 +2218,10 @@ body:is(.woocommerce, .woocommerce-cart, .woocommerce-checkout) .wp-site-blocks 
 }
 @media (min-width: 600px) {
   .fp-cart-page, .fp-checkout-page { width: min(1200px, calc(100% - 48px)); }
+}
+
+.fp-cart-page:has(> .fp-steps), .fp-checkout-page {
+  padding-top: 24px;
 }
 
 .fp-steps {
@@ -3400,19 +3410,23 @@ body.fpw-has-dock.fpw-has-selection {
 
 .fp-checkout-page .fp-fields .form-row.woocommerce-invalid input.input-text,
 .fp-checkout-page .fp-fields .form-row.woocommerce-invalid textarea {
-  border-color: #a84337;
+  border-color: var(--fp-blue);
+}
+
+body.woocommerce-checkout .fp-checkout-page form .form-row.woocommerce-invalid label {
+  color: var(--fp-ink);
 }
 
 .fp-checkout-page .fp-fields .form-row input[aria-invalid="true"],
 .fp-checkout-page .fp-fields .form-row textarea[aria-invalid="true"] {
-  border: 2px solid #a84337;
+  border: 2px solid var(--fp-blue);
   padding: 11px 13px;
 }
 
-.fp-field-error {
+.fp-checkout-page .fp-fields .form-row .fp-field-error {
   display: block;
   font-size: 13px;
-  color: #90332b;
+  color: var(--fp-blue);
   margin-top: 7px;
   line-height: 1.5;
 }
@@ -3432,9 +3446,10 @@ body.fpw-has-dock.fpw-has-selection {
   margin-bottom: 10px;
 }
 
-.fp-checkout-page .fp-dispatch-options label.radio {
+.fp-checkout-page .fp-fields .fp-dispatch-options label.radio {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 9px;
   min-height: 64px;
   border: 1px solid var(--fp-chrome-border);
@@ -3501,22 +3516,22 @@ body.fpw-has-dock.fpw-has-selection {
 .fp-error-summary {
   grid-column: 1 / -1;
   order: -1;
-  background: #fcf2f0;
-  border: 1px solid #deb5af;
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-line-strong);
   border-radius: 10px;
   padding: 18px;
   margin: 0 0 24px;
-  color: #742c25;
+  color: var(--fp-ink);
 }
 
 .fp-error-summary h2 {
   font-size: 18px;
-  color: #742c25;
+  color: var(--fp-blue-heading);
   margin-bottom: 8px;
 }
 
 .fp-error-summary .fp-fine {
-  color: #742c25;
+  color: var(--fp-text);
   margin-bottom: 8px;
 }
 
@@ -3527,7 +3542,7 @@ body.fpw-has-dock.fpw-has-selection {
 }
 
 .fp-error-summary a {
-  color: #742c25;
+  color: var(--fp-blue);
 }
 
 .fp-error-summary:focus-visible {
@@ -3576,6 +3591,7 @@ body.fpw-has-dock.fpw-has-selection {
 
 /* The native review table rendered inside the summary reads as A mini-lines. */
 .fp-checkout-summary table.shop_table.woocommerce-checkout-review-order-table {
+  border: 0;
   border-collapse: collapse;
   width: 100%;
   font-size: 14px;
@@ -3737,7 +3753,8 @@ body.woocommerce-checkout .fp-checkout-page #payment ul.wc_payment_methods {
   }
 
   .fp-checkout-page .fp-fields .form-row-wide,
-  .fp-checkout-page .fp-fields .form-row.fp-field-full {
+  .fp-checkout-page .fp-fields .form-row.fp-field-full,
+  .fp-checkout-page .fp-fields #order_comments_field {
     grid-column: 1 / -1;
   }
 }
