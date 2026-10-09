@@ -1,15 +1,14 @@
 <?php
 /** Owner workspace A. Presentation composes the existing draft/preview/issuance interfaces. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+require_once __DIR__ . '/workspace-chrome.php';
 require_once __DIR__ . '/workspace-offer.php';
 require_once __DIR__ . '/workspace-requests.php';
 
 add_action( 'admin_menu', 'fpw_workspace_register' );
 function fpw_workspace_register(): void {
-	if ( fpw_quotation_only_user() ) {
-		add_menu_page( 'Solicitudes de clientes', 'Cotizaciones', 'fpw_manage_quotations', 'fpw-quotations', 'fpw_render_workspace', 'dashicons-media-document' );
-	} else {
-		add_submenu_page( 'woocommerce', 'Solicitudes de clientes', 'Solicitudes', 'manage_woocommerce', 'fpw-quotations', 'fpw_render_workspace' );
+	if ( fpw_can_manage_quotations() ) {
+		add_menu_page( 'Solicitudes de clientes', 'Cotizaciones', fpw_quotation_screen_capability(), 'fpw-quotations', 'fpw_render_workspace', 'dashicons-media-document' );
 	}
 }
 
@@ -18,25 +17,21 @@ function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quo
 /** Assets and chrome changes are confined to these two owner surfaces. */
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
-	$page = $_GET['page'] ?? '';
-	if ( ! fpw_can_manage_quotations() || ( 'fpw-quotations' !== $page && ( FPW_DRAFT_SCREEN !== $page || '1' !== ( $_GET['workspace'] ?? '' ) ) ) ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.11.3' );
-	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.11.3', true );
+	if ( ! fpw_workspace_surface() ) { return; }
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.4' );
+	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.4', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
 add_filter( 'admin_title', static function ( $title ) {
 	return fpw_can_manage_quotations() && FPW_DRAFT_SCREEN === ( $_GET['page'] ?? '' ) && '1' === ( $_GET['workspace'] ?? '' ) ? 'Cotización · Freeplast' : $title;
 } );
 add_filter( 'admin_body_class', static function ( $classes ) {
-	if ( fpw_can_manage_quotations() && ( 'fpw-quotations' === ( $_GET['page'] ?? '' ) || ( FPW_DRAFT_SCREEN === ( $_GET['page'] ?? '' ) && '1' === ( $_GET['workspace'] ?? '' ) ) ) ) { $classes .= ' fpw-workspace-page'; }
+	if ( fpw_workspace_surface() ) { $classes .= ' fpw-workspace-page'; }
 	return $classes;
 } );
 
 function fpw_workspace_shell( string $body, ?int $id = null, ?int $total = null, bool $editable = false ): string {
-	$account_link = fpw_quotation_only_user()
-		? '<a href="' . esc_url( wp_logout_url( wp_login_url() ) ) . '">Cerrar sesión</a>'
-		: '<a href="' . esc_url( admin_url() ) . '">Administración</a>';
-	$header = '<header class="fpw-workspace-header"><a href="' . esc_url( fpw_workspace_url() ) . '" aria-label="Freeplast · Solicitudes"><img src="' . esc_url( plugins_url( 'assets/brand.webp', __FILE__ ) ) . '" alt="Freeplast" width="108" height="64"></a><span>Área del dueño</span>' . $account_link . '</header>';
+	$header = fpw_workspace_header() . fpw_workspace_navigation();
 	$nav = $editable ? '<nav class="fpw-workspace-dock" aria-label="Preparar cotización"><a href="#fpw-summary">Total guardado<strong data-fpw-dock-total>' . fpw_workspace_money( $total ) . '</strong></a><button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" data-fpw-dock-save>Guardar borrador</button><button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview data-fpw-dock-preview hidden>Revisar cotización</button></nav>' : '';
 	return '<div class="fpw-workspace' . ( $editable ? ' fpw-workspace-editable' : '' ) . '">' . $header . '<div class="fpw-workspace-body">' . $body . '</div>' . $nav . '</div>';
 }

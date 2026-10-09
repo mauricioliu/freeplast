@@ -252,16 +252,16 @@ function fpw_price_maybe_handle_save(): void {
 add_action( 'admin_init', 'fpw_price_maybe_handle_save', 0 );
 
 /** The private screen: unlisted, keyed on the owner capability. */
-add_action( 'admin_menu', 'fpw_price_register_screen' );
+add_action( 'admin_menu', 'fpw_price_register_screen', 30 );
 function fpw_price_register_screen(): void {
-	add_submenu_page( null, 'Mantenedor de precios', 'Mantenedor de precios', fpw_data_screen_capability(), FPW_PRICE_SCREEN, 'fpw_render_price_screen' );
+	add_submenu_page( fpw_workspace_menu_parent(), 'Mantenedor de precios', 'Mantenedor de precios', fpw_data_screen_capability(), FPW_PRICE_SCREEN, 'fpw_render_price_screen' );
 }
 
 /** The screen callback: capability first, then the stored state and the save outcome. */
 function fpw_render_price_screen(): void {
 	if ( ! fpw_can_manage_data() ) { fpw_die_price_forbidden(); }
 	$banner = fpw_pending_price_save();
-	echo fpw_price_screen_markup( is_array( $banner ) ? $banner : array() );
+	echo fpw_workspace_shell( fpw_price_screen_markup( is_array( $banner ) ? $banner : array() ) );
 }
 
 /** One price input as the owner edits it: plain integer, empty means not maintained. */

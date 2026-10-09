@@ -36,7 +36,10 @@ function esc_url( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTE
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
-function wp_get_current_user() { return (object) array( 'user_login' => $GLOBALS['fpws_actor'] ); }
+function wp_get_current_user() { return (object) array( 'user_login' => $GLOBALS['fpws_actor'], 'roles' => current_user_can('manage_woocommerce') ? array('administrator') : array('fpw_data_manager') ); }
+function plugins_url($path, $file) { return '/plugin/' . $path; }
+function wp_login_url() { return '/wp-login.php'; }
+function wp_logout_url($redirect) { return '/logout'; }
 $GLOBALS['fpws_actor'] = 'dueño';
 $GLOBALS['fpws_filters'] = array();
 function apply_filters( $tag, $value ) { return $GLOBALS['fpws_filters'][ $tag ] ?? $value; }
@@ -119,7 +122,7 @@ $GLOBALS['fpws_draft_68'] = array( 'schema' => 1, 'order_id' => 68, 'identity' =
 $GLOBALS['fpws_caps'] = array( 'manage_woocommerce' => true );
 fpw_sales_register_import_screen();
 $screen = $GLOBALS['fpws_submenu'];
-check( is_array( $screen ) && null === $screen['parent'] && FPW_SALES_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'], 'the import screen is private (unlisted) wp-admin whose per-request cap admits the Woo manager' );
+check( is_array( $screen ) && 'fpw-quotations' === $screen['parent'] && FPW_SALES_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'], 'the private import screen lives under Cotizaciones and admits the Woo manager' );
 $GLOBALS['fpws_caps'] = array( 'fpw_manage_data' => true );
 fpw_sales_register_import_screen();
 check( 'fpw_manage_data' === $GLOBALS['fpws_submenu']['capability'], 'the same import screen registers under the data cap for the dedicated data maintainer' );

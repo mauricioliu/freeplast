@@ -39,6 +39,10 @@ function esc_attr( $value ) { return htmlspecialchars( (string) $value, ENT_QUOT
 function esc_url( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function esc_textarea( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function get_current_user_id(): int { return 1; }
+function wp_get_current_user() { return (object) array( 'roles' => current_user_can('manage_woocommerce') ? array('administrator') : array('fpw_data_manager') ); }
+function wp_login_url() { return '/wp-login.php'; }
+function wp_logout_url($redirect) { return '/logout'; }
+function plugins_url($path, $file) { return '/plugin/' . $path; }
 $GLOBALS['fppw_nonce_ok'] = true;
 function wp_create_nonce( $action = -1 ) { return 'offline-nonce'; }
 function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $echo = true ) {
@@ -191,11 +195,11 @@ $order68 = new FPPW_Order( 68, array(
 $GLOBALS['fppw_caps'] = array( 'manage_woocommerce' => true );
 fpw_price_register_screen();
 $screen = $GLOBALS['fppw_submenu'];
-check( is_array( $screen ) && null === $screen['parent'] && FPW_PRICE_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'] && 'fpw_render_price_screen' === $screen['callback'], 'the mantenedor is a private (unlisted) wp-admin screen whose per-request registration cap admits the Woo manager' );
+check( is_array( $screen ) && 'fpw-quotations' === $screen['parent'] && FPW_PRICE_SCREEN === $screen['slug'] && 'manage_woocommerce' === $screen['capability'] && 'fpw_render_price_screen' === $screen['callback'], 'the private mantenedor lives under Cotizaciones and admits the Woo manager' );
 $GLOBALS['fppw_caps'] = array( 'fpw_manage_data' => true );
 fpw_price_register_screen();
 $screen = $GLOBALS['fppw_submenu'];
-check( 'fpw_manage_data' === $screen['capability'], 'the same screen registers under the data cap for the dedicated data maintainer' );
+check( 'fpw_manage_data' === $screen['capability'] && 'fpw-data' === $screen['parent'], 'the same screen registers under the data cap for the dedicated data maintainer' );
 $GLOBALS['fppw_caps'] = array();
 check( isset( $registered_actions['admin_init'] ) && in_array( 'fpw_price_maybe_handle_save', $registered_actions['admin_init'], true ), 'the save is front-doored at admin_init, before wp-admin renders its header' );
 $public_hooks = array( 'woocommerce_checkout_order_created', 'woocommerce_checkout_order_processed', 'wp_enqueue_scripts', 'rest_api_init' );

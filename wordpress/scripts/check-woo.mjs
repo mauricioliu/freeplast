@@ -124,6 +124,7 @@ console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 // Includes the complete quote-draft offline suite plus frozen-document access and owner UI states.
 console.log(run(php,[path.join(root,'scripts/workspace-offer-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-access-test.php')]));
+console.log(run(php,[path.join(root,'scripts/workspace-chrome-test.php')]));
 console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/workspace-request-query-test.py')]));
 { const {runOwnerWorkspaceJsTests}=await import('./owner-workspace-js-test.mjs');
   checks+=runOwnerWorkspaceJsTests(); }

@@ -12,6 +12,10 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     $staff = wp_create_user('workspace-staff-${suffix}', $password, 'staff-${suffix}@example.invalid');
     (new WP_User($owner))->set_role('shop_manager');
     (new WP_User($staff))->set_role('ventas_freeplast');
+    $data = wp_create_user('workspace-data-${suffix}', $password, 'data-${suffix}@example.invalid');
+    $quote = wp_create_user('workspace-quote-${suffix}', $password, 'quote-${suffix}@example.invalid');
+    (new WP_User($data))->set_role('fpw_data_manager');
+    (new WP_User($quote))->set_role('fpw_quotation_manager');
     $product = new WC_Product_Simple(); $product->set_name('Caja prueba workspace ${suffix}');
     $product->set_regular_price('0'); $product->save();
     $order = wc_create_order(); $order->set_billing_company('Empresa workspace ${suffix}');
@@ -22,7 +26,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     do_action('woocommerce_checkout_order_created', $order);
     $legacy = wc_create_order(); $legacy->set_billing_company('Antigua ${suffix}');
     $legacy->update_meta_data('_fp_request', 'yes'); $legacy->save();
-    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id(),'legacy'=>$legacy->get_id()));
+    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'data'=>$data,'quote'=>$quote,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id(),'legacy'=>$legacy->get_id()));
   `));
   const owner = makeCookieFetch(), staff = makeCookieFetch(), guest = makeCookieFetch();
   const inbox = '/wp-admin/admin.php?page=fpw-quotations';
@@ -43,6 +47,39 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const page = await owner(inbox);
     check(page.status === 200, 'workspace: owner can open the quotation inbox');
     const doc = document(await page.text());
+    // Submenus must register AFTER their parent: native WP derives callback hooks
+    // from the parent's title. Offline rendering alone cannot prove this seam.
+    for (const [slug, active, field] of [
+      ['fpw-data', 'Mantenedores', '.fpw-data-row'],
+      ['fpw-price-list', 'Precios', '[name="fpw_price_nonce"]'],
+      ['fpw-sales-import', 'Ventas Históricas', '[name="fpw_sales_nonce"]'],
+    ]) {
+      const response = await owner('/wp-admin/admin.php?page=' + slug);
+      check(response.status === 200, 'workspace: native maintenance submenu opens: ' + slug);
+      const screen = document(await response.text());
+      check(screen.querySelectorAll('.fpw-workspace-header').length === 1 && screen.querySelector('.fpw-workspace-header img')?.getAttribute('src') === doc.querySelector('.fpw-workspace-header img')?.getAttribute('src'), 'workspace: same banner on ' + slug);
+      check(screen.querySelector('.fpw-workspace-navigation [aria-current="page"]')?.textContent === active, 'workspace: maintenance active navigation ' + slug);
+      check(!!screen.querySelector(field), 'workspace: native maintenance callback and form render: ' + slug);
+      check([...screen.querySelectorAll('.fpw-workspace-navigation a')].some(a => asSitePath(a.href) === inbox), 'workspace: maintenance links back to inbox ' + slug);
+      check((await staff('/wp-admin/admin.php?page=' + slug)).status === 403, 'workspace: unrelated sales staff stays denied ' + slug);
+    }
+    const dataActor = makeCookieFetch(), quoteActor = makeCookieFetch();
+    check(await wpLogin(dataActor, `workspace-data-${suffix}`, fixture.password) === 302, 'workspace: data maintainer authenticates');
+    check(await wpLogin(quoteActor, `workspace-quote-${suffix}`, fixture.password) === 302, 'workspace: quotation manager authenticates');
+    for (const slug of ['fpw-data', 'fpw-price-list', 'fpw-sales-import']) {
+      const response = await dataActor('/wp-admin/admin.php?page=' + slug);
+      check(response.status === 200, 'workspace: data-only account opens native submenu ' + slug);
+      const screen = document(await response.text());
+      check(screen.querySelector('.fpw-workspace-header')?.textContent.includes('Cerrar sesión') && !screen.querySelector('.fpw-workspace-navigation a[href$="page=fpw-quotations"]'), 'workspace: data-only navigation stays within permissions ' + slug);
+      check((await quoteActor('/wp-admin/admin.php?page=' + slug)).status === 403, 'workspace: quotation-only account denied data screen ' + slug);
+    }
+    check((await dataActor(inbox)).status === 403, 'workspace: data-only account denied quotations');
+    const quotePage = await quoteActor(inbox);
+    check(quotePage.status === 200, 'workspace: quotation-only inbox remains reachable');
+    const quoteDoc = document(await quotePage.text());
+    check(!quoteDoc.querySelector('.fpw-workspace-maintenance') && quoteDoc.querySelectorAll('.fpw-workspace-navigation a').length === 1, 'workspace: quotation-only inbox offers no forbidden maintenance links');
+    check(!doc.querySelector('.fpw-workspace-maintenance') && doc.querySelectorAll('.fpw-workspace-navigation > a').length === 1 && doc.querySelectorAll('.fpw-maintenance-menu').length === 1, 'workspace: inbox has one maintenance dropdown, no duplicate sidebar or top-level price links');
+    check(doc.querySelectorAll('.fpw-maintenance-options a').length === 2 && !doc.querySelector('.fpw-maintenance-menu').hasAttribute('open'), 'workspace: exactly two maintenance options start collapsed');
     check(doc.querySelector('h1')?.textContent === 'Solicitudes de clientes', 'workspace: visible quotation inbox heading');
     const link = [...doc.querySelectorAll('a')].find(a => a.textContent.includes(`Empresa workspace ${suffix}`));
     check(!!link, 'workspace: inbox links the real received request, not a demo');
@@ -152,6 +189,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     wpEval(`
       require_once ABSPATH . 'wp-admin/includes/user.php';
       wp_delete_user(${fixture.owner}); wp_delete_user(${fixture.staff});
+      wp_delete_user(${fixture.data}); wp_delete_user(${fixture.quote});
       $legacy=wc_get_order(${fixture.legacy}); if($legacy){$legacy->delete(true);}
       $order = wc_get_order(${fixture.order}); if ($order) $order->delete(true);
       wp_delete_post(${fixture.product}, true);

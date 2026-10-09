@@ -62,6 +62,30 @@ export function runOwnerWorkspaceJsTests() {
       check(originLegend.textContent === 'Precio guardado para esta oferta.', 'H6: reset restores the price legend together with the native fields');
     } finally { dom.window.close(); }
   }
+  const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas Históricas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
+  try {
+    const {document,Event,MouseEvent,KeyboardEvent} = menuDom.window;
+    menuDom.window.eval(source);
+    const menu = document.querySelector('details'), summary = menu.querySelector('summary');
+    const pointer = (type,pointerType) => { const event=new Event(type); Object.defineProperty(event,'pointerType',{value:pointerType}); menu.dispatchEvent(event); };
+    check(!menu.open && summary.getAttribute('aria-expanded')==='false','maintenance starts collapsed');
+    pointer('pointerenter','touch');
+    check(!menu.open,'touch does not trigger hover opening');
+    pointer('pointerenter','mouse');
+    check(menu.open,'mouse hover opens maintenance');
+    pointer('pointerleave','mouse');
+    check(!menu.open,'hover departure closes unpinned menu');
+    pointer('pointerenter','mouse');
+    const click=new MouseEvent('click',{bubbles:true,cancelable:true}); summary.dispatchEvent(click);
+    check(click.defaultPrevented && menu.open,'click on hover-open trigger pins instead of hiding choices');
+    pointer('pointerleave','mouse');
+    check(menu.open,'pinned menu survives pointer departure');
+    menu.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    check(!menu.open && document.activeElement===summary,'Escape closes and returns keyboard focus');
+    menu.open=true;
+    document.body.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+    check(!menu.open,'outside click dismisses dropdown');
+  } finally { menuDom.window.close(); }
   console.log(`owner workspace JS: ${checks} checks passed`);
   return checks;
 }

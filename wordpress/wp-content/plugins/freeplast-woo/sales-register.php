@@ -381,9 +381,9 @@ function fpw_die_sales_import_forbidden(): void {
 }
 
 /** The private screen: unlisted, keyed on the owner capability. */
-add_action( 'admin_menu', 'fpw_sales_register_import_screen' );
+add_action( 'admin_menu', 'fpw_sales_register_import_screen', 30 );
 function fpw_sales_register_import_screen(): void {
-	add_submenu_page( null, 'Importar ventas', 'Importar ventas', fpw_data_screen_capability(), FPW_SALES_SCREEN, 'fpw_render_sales_import_screen' );
+	add_submenu_page( fpw_workspace_menu_parent(), 'Importar ventas', 'Importar ventas', fpw_data_screen_capability(), FPW_SALES_SCREEN, 'fpw_render_sales_import_screen' );
 }
 
 /**
@@ -402,7 +402,7 @@ function fpw_sales_maybe_handle_actions(): void {
 function fpw_render_sales_import_screen(): void {
 	if ( ! fpw_can_manage_data() ) { fpw_die_sales_import_forbidden(); }
 	$banner = fpw_sales_handle_actions();
-	echo fpw_sales_import_markup( $banner );
+	echo fpw_workspace_shell( fpw_sales_import_markup( $banner ) );
 }
 
 /**

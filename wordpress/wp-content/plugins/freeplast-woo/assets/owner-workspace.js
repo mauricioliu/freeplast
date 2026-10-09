@@ -2,6 +2,36 @@
   'use strict';
   const root = document.querySelector('.fpw-workspace');
   if (!root) return;
+  // Native details remains click/keyboard operable without JavaScript.
+  const maintenance = root.querySelector('.fpw-maintenance-menu');
+  if (maintenance) {
+    const trigger = maintenance.querySelector('summary');
+    let hoverOpened = false;
+    const closeMenu = () => { maintenance.open = false; hoverOpened = false; };
+    maintenance.addEventListener('pointerenter', event => {
+      if (event.pointerType !== 'mouse' || maintenance.open) return;
+      maintenance.open = true;
+      hoverOpened = true;
+    });
+    maintenance.addEventListener('pointerleave', event => {
+      if (event.pointerType === 'mouse' && hoverOpened && !maintenance.contains(document.activeElement)) closeMenu();
+    });
+    trigger.addEventListener('click', event => {
+      // Clicking a hover-open trigger pins it instead of immediately closing it.
+      if (hoverOpened) { event.preventDefault(); hoverOpened = false; }
+    });
+    maintenance.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(maintenance.open)));
+    trigger.setAttribute('aria-expanded', String(maintenance.open));
+    document.addEventListener('click', event => { if (!maintenance.contains(event.target)) closeMenu(); });
+    maintenance.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && maintenance.open) {
+        event.preventDefault(); closeMenu(); trigger.focus();
+      }
+    });
+    maintenance.addEventListener('focusout', () => {
+      setTimeout(() => { if (!maintenance.contains(document.activeElement)) closeMenu(); }, 0);
+    });
+  }
   const work = root.querySelector('[data-fpw-work]');
   let workDirty = false, submitted = false;
   const status = root.querySelector('[data-fpw-save-state]');
