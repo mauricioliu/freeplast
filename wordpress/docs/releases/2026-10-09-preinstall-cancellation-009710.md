@@ -2,7 +2,9 @@
 
 Target: **https://freeplast.mliu.site only**. Production `freeplast.cl` untouched.
 
-**Status: cancellation completed at 2026-10-09 03:43:07 UTC. Staging reopened on theme 1.0.21 / adapter 1.12.3; cron restored.** This is not a successful deployment record. Theme 1.0.22 remains unpublished.
+**Status at recovery: cancellation completed at 2026-10-09 03:43:07 UTC. Staging reopened on theme 1.0.21 / adapter 1.12.3; cron restored.** This is not a successful deployment record; this operation did not publish theme 1.0.22.
+
+Subsequent separately authorized deployment: [release 20261009T105510Z-476ef3](2026-10-09-logic-476ef3.md) published theme 1.0.22 through a new, complete ceremony.
 
 ## Why installation stopped
 
