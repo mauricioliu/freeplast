@@ -61,6 +61,10 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace input::placeholder,.fpw-workspace textarea::placeholder{color:var(--muted);opacity:1}
 .fpw-workspace [hidden]{display:none!important}
 .fpw-workspace details{border-top:1px solid var(--line);padding:8px 0;margin-top:16px}
+.fpw-history-scroll{max-width:100%;overflow-x:auto}
+.fpw-history-scroll:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+.fpw-history-scroll table{min-width:680px}
+.fpw-history-scroll .fpw-numeric{white-space:nowrap}
 .fpw-workspace summary{cursor:pointer;min-height:44px;padding:10px 0;font-size:14px;font-weight:650;color:var(--blue)}
 .fpw-workspace details[open]>summary{margin-bottom:12px}
 .fpw-workspace dl{margin:0}

@@ -70,7 +70,8 @@ function fpw_sales_normalize_rut( string $raw ): string {
  * never consulted and never touched here. Required columns: id_venta (the
  * source identity), fecha (strict AAAA-MM-DD), rut (its VALUE may be empty or
  * unusable: the sale imports, the association stays unresolved). Optional:
- * total (integer CLP, thousands dots tolerated). Unknown columns are reported
+ * producto (source label/code), total_cajas (or Total Cajas), precio, neto,
+ * total (integer CLP/quantities, thousands dots tolerated). Unknown columns are reported
  * and ignored; malformed rows are reported individually and never imported;
  * a duplicated in-file identity is a conflict — BOTH copies drop instead of
  * guessing a winner. The whole file is refused (nothing staged) when it is
@@ -97,10 +98,10 @@ function fpw_sales_parse_csv( string $content ): array {
 	}
 	$map = array();
 	$ignored = array();
-	foreach ( str_getcsv( $header_line, $delim ) as $index => $cell ) {
+	foreach ( str_getcsv( $header_line, $delim, '"', '' ) as $index => $cell ) {
 		$name = function_exists( 'mb_strtolower' ) ? mb_strtolower( trim( (string) $cell ) ) : strtolower( trim( (string) $cell ) );
 		if ( '' === $name ) { continue; }
-		if ( in_array( $name, array( 'id_venta', 'fecha', 'rut', 'total' ), true ) ) { $map[ $name ] = (int) $index; }
+		if ( in_array( $name, array( 'id_venta', 'fecha', 'rut', 'producto', 'total cajas', 'total_cajas', 'precio', 'neto', 'total' ), true ) ) { $map[ 'total cajas' === $name ? 'total_cajas' : $name ] = (int) $index; }
 		else { $ignored[] = $name; }
 	}
 	$missing = array_diff( array( 'id_venta', 'fecha', 'rut' ), array_keys( $map ) );
@@ -118,7 +119,7 @@ function fpw_sales_parse_csv( string $content ): array {
 			return array( 'ok' => false, 'error' => 'El archivo supera el máximo de ' . FPW_SALES_MAX_ROWS . ' filas por carga: divídelo en lotes menores.' );
 		}
 		$line_no = $i + 2;
-		$cells = str_getcsv( $line, $delim );
+		$cells = str_getcsv( $line, $delim, '"', '' );
 		$get = static function ( string $name ) use ( $map, $cells ): string {
 			$index = $map[ $name ] ?? null;
 			return null === $index ? '' : mb_substr( trim( (string) ( $cells[ $index ] ?? '' ) ), 0, FPW_SALES_MAX_CELL );
@@ -126,21 +127,23 @@ function fpw_sales_parse_csv( string $content ): array {
 		$id = $get( 'id_venta' );
 		$date_raw = $get( 'fecha' );
 		$rut_raw = $get( 'rut' );
-		$total_raw = $get( 'total' );
 		if ( '' === $id ) { $errores[] = array( 'line' => $line_no, 'reason' => 'id_venta vacío: la identidad de cada venta debe venir del archivo y nunca se inventa' ); continue; }
 		if ( mb_strlen( $id ) > FPW_SALES_MAX_ID ) { $errores[] = array( 'line' => $line_no, 'reason' => 'id_venta demasiado largo (máximo ' . FPW_SALES_MAX_ID . ' caracteres)' ); continue; }
 		if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_raw ) || ! checkdate( (int) substr( $date_raw, 5, 2 ), (int) substr( $date_raw, 8, 2 ), (int) substr( $date_raw, 0, 4 ) ) ) {
 			$errores[] = array( 'line' => $line_no, 'reason' => 'fecha inválida: el contrato pide AAAA-MM-DD' ); continue;
 		}
-		$total = null;
-		if ( '' !== $total_raw ) {
-			if ( preg_match( '/^\d{1,3}(\.\d{3})+$/', $total_raw ) ) { $total = (int) str_replace( '.', '', $total_raw ); }
-			elseif ( preg_match( '/^\d{1,9}$/', $total_raw ) ) { $total = (int) $total_raw; }
-			else { $errores[] = array( 'line' => $line_no, 'reason' => 'total ilegible: usa enteros de pesos (los puntos de miles son opcionales) y deja vacío lo que no esté en el archivo' ); continue; }
+		$detail = array( 'producto' => $get( 'producto' ) );
+		foreach ( array( 'total_cajas', 'precio', 'neto', 'total' ) as $field ) {
+			$raw = $get( $field );
+			$detail[ $field ] = null;
+			if ( '' === $raw ) { continue; }
+			if ( preg_match( '/^\d{1,3}(\.\d{3})+$/', $raw ) && strlen( str_replace( '.', '', $raw ) ) <= 9 ) { $detail[ $field ] = (int) str_replace( '.', '', $raw ); }
+			elseif ( preg_match( '/^\d{1,9}$/', $raw ) ) { $detail[ $field ] = (int) $raw; }
+			else { $errores[] = array( 'line' => $line_no, 'reason' => $field . ' ilegible: usa enteros (los puntos de miles son opcionales) y deja vacío lo que no esté en el archivo' ); continue 2; }
 		}
 		$rut_norm = fpw_sales_normalize_rut( $rut_raw );
 		if ( '' === $rut_norm ) { $sin_asociacion[] = array( 'line' => $line_no, 'rut' => $rut_raw ); }
-		$rows[] = array( 'line' => $line_no, 'id' => $id, 'date' => $date_raw, 'rut' => $rut_raw, 'rut_norm' => $rut_norm, 'total' => $total );
+		$rows[] = array( 'line' => $line_no, 'id' => $id, 'date' => $date_raw, 'rut' => $rut_raw, 'rut_norm' => $rut_norm ) + $detail;
 	}
 	$counts = array_count_values( array_column( $rows, 'id' ) );
 	$dups = array_keys( array_filter( $counts, static fn( $n ) => $n > 1 ) );
@@ -295,6 +298,10 @@ function fpw_sales_confirm( string $token ): array {
 		$same = ( (string) ( $prev['date'] ?? '' ) === (string) ( $row['date'] ?? '' ) )
 			&& ( (string) ( $prev['rut'] ?? '' ) === (string) ( $row['rut_norm'] ?? '' ) )
 			&& ( ( $prev['total'] ?? null ) === ( $row['total'] ?? null ) );
+		foreach ( array( 'producto', 'total_cajas', 'precio', 'neto' ) as $field ) {
+			$empty = 'producto' === $field ? '' : null;
+			$same = $same && ( ( $prev[ $field ] ?? $empty ) === ( $row[ $field ] ?? $empty ) );
+		}
 		if ( $same ) { $ya++; } else { $conflictos[] = $id; }
 	}
 	$max_sales = (int) apply_filters( 'fpw_sales_max_sales', FPW_SALES_MAX_SALES );
@@ -325,6 +332,10 @@ function fpw_sales_confirm( string $token ): array {
 			'id'          => $id,
 			'rut'         => (string) ( $row['rut_norm'] ?? '' ),
 			'date'        => (string) ( $row['date'] ?? '' ),
+			'producto'    => $row['producto'] ?? '',
+			'total_cajas' => $row['total_cajas'] ?? null,
+			'precio'      => $row['precio'] ?? null,
+			'neto'        => $row['neto'] ?? null,
 			'total'       => $row['total'] ?? null,
 			'batch'       => $token,
 			'imported_at' => $now,
@@ -523,7 +534,9 @@ function fpw_sales_pending_preview_html(): string {
 		$rut  = (string) ( $row['rut'] ?? '' );
 		$norm = (string) ( $row['rut_norm'] ?? '' );
 		$preview .= '<tr><td>' . (int) ( $row['line'] ?? 0 ) . '</td><td><code>' . esc_html( (string) ( $row['id'] ?? '' ) ) . '</code></td><td>' . esc_html( (string) ( $row['date'] ?? '' ) ) . '</td><td>' . esc_html( $rut )
-			. ( '' !== $norm && $norm !== $rut ? '<br><code>' . esc_html( $norm ) . '</code>' : '' ) . '</td><td>' . esc_html( fpw_sales_format_clp( $row['total'] ?? null ) ) . '</td></tr>';
+			. ( '' !== $norm && $norm !== $rut ? '<br><code>' . esc_html( $norm ) . '</code>' : '' ) . '</td><td>' . esc_html( '' === ( $row['producto'] ?? '' ) ? '—' : $row['producto'] ) . '</td><td>' . esc_html( null === ( $row['total_cajas'] ?? null ) ? '—' : number_format( (int) $row['total_cajas'], 0, ',', '.' ) ) . '</td>';
+		foreach ( array( 'precio', 'neto', 'total' ) as $field ) { $preview .= '<td>' . esc_html( fpw_sales_format_clp( $row[ $field ] ?? null ) ) . '</td>'; }
+		$preview .= '</tr>';
 	}
 	$errores_html = '';
 	foreach ( ( is_array( $pending['errores'] ?? null ) ? $pending['errores'] : array() ) as $e ) {
@@ -541,7 +554,7 @@ function fpw_sales_pending_preview_html(): string {
 		. '<p>' . count( $rows ) . ' filas candidatas · ' . (int) ( $pending['errores_total'] ?? 0 ) . ' filas con error · ' . $sin_total . ' ' . esc_html( 1 === $sin_total ? 'asociación sin resolver' : 'asociaciones sin resolver' )
 		. ( ! empty( $pending['ignored_columns'] ) ? ' · columnas ignoradas: ' . esc_html( implode( ', ', (array) $pending['ignored_columns'] ) ) : '' ) . '</p>';
 	if ( '' !== $preview ) {
-		$html .= '<table><thead><tr><th scope="col">Línea</th><th scope="col">id_venta</th><th scope="col">Fecha</th><th scope="col">RUT</th><th scope="col">Total</th></tr></thead><tbody>' . $preview . '</tbody></table>';
+		$html .= '<table><thead><tr><th scope="col">Línea</th><th scope="col">id_venta</th><th scope="col">Fecha</th><th scope="col">RUT</th><th scope="col">Producto</th><th scope="col">Total Cajas</th><th scope="col">Precio</th><th scope="col">Neto</th><th scope="col">Total</th></tr></thead><tbody>' . $preview . '</tbody></table>';
 		if ( count( $rows ) > FPW_SALES_PREVIEW_ROWS ) {
 			$html .= '<p class="fpw-sales__note">Mostrando las primeras ' . FPW_SALES_PREVIEW_ROWS . ' de ' . count( $rows ) . ' filas.</p>';
 		}
@@ -587,6 +600,9 @@ function fpw_sales_import_markup( array $banner = array() ): string {
 		. '<dl><dt><code>id_venta</code></dt><dd>Identificador de la venta en tu registro: LA identidad de cada fila. Nunca se usa el RUT solo ni una combinación de fecha e importe como identidad, y una fila sin este identificador no se importa.</dd>'
 		. '<dt><code>fecha</code></dt><dd>Formato AAAA-MM-DD.</dd>'
 		. '<dt><code>rut</code></dt><dd>RUT de empresa del comprador. Sin RUT o con un RUT ilegible la venta se importa <strong>sin asociación resuelta</strong>.</dd>'
+		. '<dt><code>producto</code> (opcional)</dt><dd>Nombre o código tal como aparece en el registro.</dd>'
+		. '<dt><code>total_cajas</code> o <code>Total Cajas</code> (opcional)</dt><dd>Cantidad total de cajas, en enteros.</dd>'
+		. '<dt><code>precio</code> y <code>neto</code> (opcionales)</dt><dd>Importes en pesos enteros, sin calcular valores ausentes.</dd>'
 		. '<dt><code>total</code> (opcional)</dt><dd>Importe total de la transacción en pesos enteros. Si la columna no viene, la vista no muestra montos.</dd></dl>'
 		. '<p class="fpw-sales__note">Las columnas no soportadas se informan y se ignoran. Las ventas importadas nunca tocan la lista de precios, los borradores ni los documentos emitidos, y las solicitudes de cotización jamás aparecen como ventas.</p>'
 		. '<p class="fpw-sales__note"><strong>El contrato definitivo (columnas, identidad y semántica de actualización) se acordará con la muestra real del Registro de ventas.</strong></p></section>';

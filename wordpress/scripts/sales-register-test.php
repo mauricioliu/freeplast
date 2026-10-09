@@ -151,7 +151,7 @@ $parsed = fpw_sales_parse_csv( $csv );
 check( $parsed['ok'] === true, 'a representative contract-v1 file parses' );
 $batch = $parsed['batch'];
 check( count( $batch['rows'] ) === 4, 'every well-formed row becomes an importable candidate' );
-check( $batch['rows'][0] === array( 'line' => 2, 'id' => 'V-0001', 'date' => '2026-03-15', 'rut' => '76123456-7', 'rut_norm' => '761234567', 'total' => 1250000 ), 'the row snapshot keeps the source id verbatim, the ISO date, the written RUT plus its normalized key and the parsed integer total' );
+check( $batch['rows'][0] === array( 'line' => 2, 'id' => 'V-0001', 'date' => '2026-03-15', 'rut' => '76123456-7', 'rut_norm' => '761234567', 'producto' => '', 'total_cajas' => null, 'precio' => null, 'neto' => null, 'total' => 1250000 ), 'the row snapshot keeps the source id verbatim, the ISO date, the written RUT plus its normalized key and the parsed integer total' );
 check( $batch['rows'][1]['rut_norm'] === '761234567' && $batch['rows'][1]['total'] === 890000, 'an equivalently formatted RUT collapses to the same key; thousands dots are presentation' );
 check( $batch['rows'][2]['rut_norm'] === '' && $batch['rows'][2]['total'] === 450000, 'a sale without RUT stays importable but WITHOUT a resolved association' );
 check( $batch['rows'][3]['total'] === null, 'an empty total is an absent value, never zero' );
@@ -337,5 +337,38 @@ check( str_contains( $page, 'pendiente.csv' ) && str_contains( $page, 'Confirmar
 check( str_contains( $page, $applied['receipt']['token'] ), 'the applied receipts are consultable on the screen with their token' );
 check( str_contains( $page, '@media (min-width: 782px)' ), 'the screen is authored mobile-first with a desktop enhancement' );
 check( str_contains( $page, 'muestra real' ), 'the screen names the standing external blocker: the definitive contract awaits the real Sales Register sample' );
+
+function wp_date( $format, $timestamp ) { return date( $format, $timestamp ); }
+
+/* Product detail travels through preview, persistence and the owner history. */
+$detail_csv = "id_venta;Fecha;RUT;Producto;Total Cajas;Precio;Neto;Total\nD-1;2026-09-03;76123456-7;CO;140;1.400;196.000;233.240\nD-2;2026-09-02;76123456-7;<script>alert(1)</script>;0;0;0;0\n";
+fpw_sales_process_upload_string( $detail_csv, 'detalle.csv' );
+$preview = fpw_sales_pending_preview_html();
+check( str_contains( $preview, 'Total Cajas' ) && str_contains( $preview, '196.000 CLP' ) && str_contains( $preview, 'CO' ), 'the confirmation preview includes every new source field' );
+$detail_result = fpw_sales_confirm( fpw_sales_pending_batch()['token'] );
+check( 2 === $detail_result['receipt']['aplicadas'], 'detailed rows import on explicit confirmation' );
+$sale = array_column( fpw_sales_register()['sales'], null, 'id' )['D-1'];
+check( 'CO' === $sale['producto'] && 140 === $sale['total_cajas'] && 1400 === $sale['precio'] && 196000 === $sale['neto'], 'product, boxes, price and net persist verbatim without calculations' );
+$history_html = fpw_workspace_history( array( 'identity' => array( 'rut' => '76123456-7' ) ) );
+check( ! str_contains( $history_html, '>Registro<' ) && ! str_contains( $history_html, 'Total registrado' ) && ! str_contains( $history_html, '>D-1<' ), 'history removes source IDs and the old total heading' );
+foreach ( array( 'Fecha', 'Producto', 'Total Cajas', 'Precio', 'Neto', 'Total' ) as $label ) {
+	check( str_contains( $history_html, '>' . $label . '</th>' ), 'history shows column ' . $label );
+}
+check( str_contains( $history_html, '>CO</th>' ) && str_contains( $history_html, '>140</td>' ) && str_contains( $history_html, '1.400 CLP' ) && str_contains( $history_html, '196.000 CLP' ) && str_contains( $history_html, '233.240 CLP' ), 'history renders source detail in Chilean numeric format' );
+check( str_contains( $history_html, '>—</th>' ) && str_contains( $history_html, '>—</td>' ) && str_contains( $history_html, '>0</td>' ) && str_contains( $history_html, '>0 CLP</td>' ), 'legacy missing fields stay absent while explicit zero stays zero' );
+check( ! str_contains( $history_html, '<script>' ) && str_contains( $history_html, '&lt;script&gt;' ), 'source product labels are escaped, never executed' );
+check( str_contains( $history_html, 'aria-label="Compras registradas" tabindex="0"' ), 'the wide history has a named keyboard-scrollable region' );
+fpw_sales_process_upload_string( $detail_csv, 'detalle-repetido.csv' );
+check( 2 === fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt']['ya_importadas'], 'identical detailed re-import is still a no-op' );
+foreach ( array( 'CO;141;1.400;196.000', 'ME;140;1.400;196.000', 'CO;140;1.500;196.000', 'CO;140;1.400;197.000' ) as $changed ) {
+	fpw_sales_process_upload_string( str_replace( 'CO;140;1.400;196.000', $changed, $detail_csv ), 'detalle-cambiado.csv' );
+	check( 1 === fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt']['conflictos_total'], 'changed detail is an explicit conflict, never silently overwritten' );
+}
+foreach ( array( 'total_cajas', 'precio', 'neto' ) as $field ) {
+	$invalid = fpw_sales_parse_csv( "id_venta,fecha,rut,$field\nX,2026-01-01,76123456-7,abc\n" );
+	check( empty( $invalid['batch']['rows'] ) && 1 === $invalid['batch']['errores_total'], 'invalid ' . $field . ' rejects the row rather than guessing' );
+}
+$empty_history = fpw_workspace_history( array( 'identity' => array( 'rut' => '11111111-1' ) ) );
+check( str_contains( $empty_history, 'Sin historial asociado' ) && ! str_contains( $empty_history, '<table>' ), 'empty history retains its honest existing state' );
 
 echo "sales register: $assertions offline checks passed (issue #54)\n";
