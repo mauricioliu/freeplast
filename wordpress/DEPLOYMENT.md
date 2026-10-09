@@ -1,5 +1,7 @@
 # Freeplast staging — deployment record (issue #14)
 
+> **2026-10-09 UTC: DETALLE EN HISTORIAL DE COMPRAS DESPLEGADO.** Adaptador **1.12.5**, tema **1.0.22**, fuente `518ad9c`. Release `20261009T215647Z-3d3631`, nivel lógica: Fecha, Producto, Total Cajas, Precio, Neto y Total, con soporte CSV opcional y tabla desplazable. Gate completo, respaldo/restauración/trial, hashes, fingerprint y nueve smokes correctos; renderizado de historial verificado por WP-CLI de solo lectura. Cron restaurado; no se importaron ventas ni se tocó producción. [Registro](docs/releases/2026-10-09-logic-3d3631.md).
+
 > **2026-10-08 UTC: MENSAJES DE VALIDACIÓN DESPLEGADOS.** Adaptador **1.12.3**, tema **1.0.21**, fuente `e5a4a77`. Release `20261008T191746Z-1e969b`: campos obligatorios y dirección condicional con mensajes específicos, resumen/inline/ARIA y fallback sin JS. Gate completo, backup/restore/trial y nueve smokes correctos; verificación independiente en navegador y POST nativo. Fingerprint intacto incluso después de pruebas. [Registro](docs/releases/2026-10-08-logic-1e969b.md).
 
 > **2026-10-08 UTC: FICHAS DE PRODUCTO DE 10 EN 10 DESPLEGADAS.** Adaptador **1.12.2**, tema **1.0.20**, fuente `8a83478`. Release `20261008T183535Z-e68eb7`, nivel lógica, sin migraciones. Respaldo, restore/trial, fingerprint y nueve smokes correctos. Chrome verificó pasos de 10 en ficha simple y al elegir, cambiar y limpiar color. Cron restaurado; producción intacta. [Registro](docs/releases/2026-10-08-logic-e68eb7.md).
