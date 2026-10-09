@@ -37,3 +37,7 @@
 Validación móvil emulada, no hardware físico. Sin despliegue. Paso 7 completado para el alcance local.
 
 Archivos XLSX no rastreados del usuario intactos.
+
+## Publicación posterior autorizada
+
+Usuario: «logic, despliega». Release `20261009T174924Z-5bd21d` completada en `https://freeplast.mliu.site`, adapter1.12.4/theme1.0.22. Gate, backup, rehearse, trial, install, verify, smoke y record verdes. Datos protegidos sin cambios y cron restaurado. Registro: `wordpress/docs/releases/2026-10-09-logic-5bd21d.md`. Las menciones anteriores a «sin despliegue» describen la fase de implementación y revisión local, previa a esta autorización.
