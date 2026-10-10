@@ -371,4 +371,99 @@ foreach ( array( 'total_cajas', 'precio', 'neto' ) as $field ) {
 $empty_history = fpw_workspace_history( array( 'identity' => array( 'rut' => '11111111-1' ) ) );
 check( str_contains( $empty_history, 'Sin historial asociado' ) && ! str_contains( $empty_history, '<table>' ), 'empty history retains its honest existing state' );
 
+/* --- Legacy history enrichment: explicit, identity-bound, never destructive --- */
+$legacy = static fn( string $id, string $date, string $rut, ?int $total, array $extra = array() ): array => array(
+	'id' => $id, 'rut' => $rut, 'date' => $date, 'total' => $total, 'batch' => 'legacy-batch', 'imported_at' => 1700000000,
+) + $extra;
+$GLOBALS['fpws_table'] = array();
+fpw_sales_write_row( FPW_SALES_REGISTER_ROW, array( 'schema' => 1, 'sales' => array(
+	$legacy( 'E-1', '2025-02-11', '961234567', 174930 ),                                   // fields absent entirely
+	$legacy( 'E-2', '2025-01-14', '961234567', 4474400, array( 'producto' => '', 'total_cajas' => null, 'precio' => null, 'neto' => null ) ),
+	$legacy( 'E-3', '2025-03-01', '961234567', 1000, array( 'producto' => 'CO', 'total_cajas' => 0, 'precio' => null, 'neto' => null ) ),
+	$legacy( 'E-4', '2025-04-01', '961234567', 2000 ),
+	$legacy( 'E-5', '2025-05-01', '961234567', 3000 ),
+	$legacy( 'E-6', '2025-06-01', '961234567', 4000 ),
+) ) );
+$reg_by_id = static fn(): array => array_column( fpw_sales_register()['sales'], null, 'id' );
+$before_json = wp_json_encode( fpw_sales_register() );
+$enrich_csv = "id_venta,fecha,rut,producto,total_cajas,precio,neto,total\n"
+	. "E-1,2025-02-11,96.123.456-7,CO,70,2100,147000,174930\n"          // fills everything
+	. "E-2,2025-01-14,96123456-7,CO,2000,1880,3760000,4474400\n"
+	. "E-3,2025-03-01,96123456-7,CO,0,0,0,1000\n"                          // zero fills null; stored 0 equal; producto equal
+	. "E-4,2025-04-01,96123456-7,CO,5,100,500,2001\n"                       // core total mismatch
+	. "E-5,2025-05-02,96123456-7,CO,5,100,500,3000\n"                       // core date mismatch
+	. "E-6,2025-06-01,96654321-0,CO,5,100,500,4000\n"                       // core rut mismatch
+	. "E-7,2025-07-01,96123456-7,CO,1,2,3,4\n";                             // new id appends
+fpw_sales_process_upload_string( $enrich_csv, 'enrich.csv' );
+$preview = fpw_sales_pending_preview_html();
+check( wp_json_encode( fpw_sales_register() ) === $before_json, 'enrichment preview does not touch the register' );
+check( str_contains( $preview, 'Enriquecimiento' ) && str_contains( $preview, 'E-1' ) && str_contains( $preview, '2.100 CLP' ), 'preview lists enrichment before confirmation with the proposed values' );
+check( 3 === count( fpw_sales_plan( fpw_sales_register()['sales'], fpw_sales_pending_batch()['rows'] )['enrich'] ), 'preview classifies three rows as enrichable' );
+$cancel = fpw_sales_cancel( fpw_sales_pending_batch()['token'] );
+check( $cancel['ok'] && wp_json_encode( fpw_sales_register() ) === $before_json && null === fpw_sales_pending_batch(), 'cancelling an enrichment preview is harmless' );
+
+fpw_sales_process_upload_string( $enrich_csv, 'enrich.csv' );
+$token = fpw_sales_pending_batch()['token'];
+$res = fpw_sales_confirm( $token );
+$r = $res['receipt'];
+check( $res['ok'] && 1 === $r['aplicadas'] && 3 === $r['enriquecidas'] && 0 === $r['ya_importadas'] && 3 === $r['conflictos_total'], 'receipt counts new, enriched and conflicting rows separately' );
+check( 10 === $r['campos_enriquecidos'] && 3 === count( $r['cambios'] ) && 'E-1' === $r['cambios'][0]['id'] && 70 === $r['cambios'][0]['campos']['total_cajas'], 'receipt records per-row before/after changes (after values; before was missing)' );
+$by = $reg_by_id();
+check( 7 === count( $by ), 'enrichment never duplicates rows; the new id appends' );
+check( 'CO' === $by['E-1']['producto'] && 70 === $by['E-1']['total_cajas'] && 2100 === $by['E-1']['precio'] && 147000 === $by['E-1']['neto'] && 174930 === $by['E-1']['total'], 'legacy row gains product, boxes, price and net' );
+check( 'legacy-batch' === $by['E-1']['batch'] && 1700000000 === $by['E-1']['imported_at'], 'original import provenance is preserved' );
+check( $token === $by['E-1']['enriched'][0]['batch'] && $r['at'] === $by['E-1']['enriched'][0]['at'] && array( 'producto', 'total_cajas', 'precio', 'neto' ) === $by['E-1']['enriched'][0]['fields'], 'enrichment provenance is tracked separately per batch' );
+check( 3760000 === $by['E-2']['neto'] && 1880 === $by['E-2']['precio'], 'a null/empty stored row fills from the workbook values' );
+check( 0 === $by['E-3']['total_cajas'] && 0 === $by['E-3']['precio'] && 0 === $by['E-3']['neto'] && array( 'precio', 'neto' ) === $by['E-3']['enriched'][0]['fields'], 'incoming zero populates a null field and an equal stored zero is not re-enriched' );
+foreach ( array( 'E-4' => 2000, 'E-5' => 3000, 'E-6' => 4000 ) as $id => $total ) {
+	check( ! isset( $by[ $id ]['producto'] ) && ! isset( $by[ $id ]['enriched'] ) && $total === $by[ $id ]['total'], 'core mismatch leaves ' . $id . ' completely unchanged' );
+}
+check( 'E-7' === $by['E-7']['id'] && $token === $by['E-7']['batch'] && ! isset( $by['E-7']['enriched'] ), 'a new id appends with ordinary import provenance' );
+$after_json = wp_json_encode( fpw_sales_register() );
+$again = fpw_sales_confirm( $token );
+check( ! $again['ok'] && wp_json_encode( fpw_sales_register() ) === $after_json, 'a second confirmation of the same batch applies nothing' );
+fpw_sales_process_upload_string( $enrich_csv, 'enrich-repeat.csv' );
+$rep = fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt'];
+check( 0 === $rep['aplicadas'] && 0 === $rep['enriquecidas'] && 4 === $rep['ya_importadas'] && 3 === $rep['conflictos_total'], 'repeating the enrichment file is a no-op for applied rows' );
+check( wp_json_encode( fpw_sales_register() ) === $after_json, 'repeat leaves the register byte-identical' );
+$page = fpw_sales_receipts_html();
+check( str_contains( $page, '>Enriquecidas<' ) && str_contains( $page, '<td>3</td>' ), 'receipts table exposes enrichment counts' );
+
+/* Conflict beats partial fill; absent incoming fields never erase. */
+fpw_sales_process_upload_string( "id_venta,fecha,rut,producto,total_cajas,precio,neto,total\nE-3,2025-03-01,96123456-7,CO,0,99,0,1000\nE-1,2025-02-11,96123456-7,,,,,174930\n", 'mix.csv' );
+$mix = fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt'];
+check( 1 === $mix['conflictos_total'] && 0 === $mix['enriquecidas'] && 1 === $mix['ya_importadas'], 'a populated mismatch is a conflict and an absent-only row is a no-op' );
+check( 0 === $reg_by_id()['E-3']['precio'] && 70 === $reg_by_id()['E-1']['total_cajas'] && 'CO' === $reg_by_id()['E-1']['producto'], 'conflicts do not overwrite and absent values never erase stored ones' );
+$partial = "id_venta,fecha,rut,producto,total_cajas,precio,neto,total\nE-4,2025-04-01,96123456-7,CO,5,100,500,2000\n";
+fpw_sales_process_upload_string( $partial, 'p1.csv' );
+fpw_sales_confirm( fpw_sales_pending_batch()['token'] );
+fpw_sales_process_upload_string( str_replace( ',CO,5,100,500,', ',ME,5,100,501,', $partial ), 'p2.csv' );
+$part = fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt'];
+check( 1 === $part['conflictos_total'] && 5 === $reg_by_id()['E-4']['total_cajas'] && 'CO' === $reg_by_id()['E-4']['producto'] && 500 === $reg_by_id()['E-4']['neto'], 'a fully populated row with one mismatching field is a conflict and stays unchanged' );
+/* Correct seam for no-partial-fill: stored rows with ONE populated field and other fields still missing. */
+fpw_sales_write_row( FPW_SALES_REGISTER_ROW, array( 'schema' => 1, 'sales' => array_merge( fpw_sales_register()['sales'], array(
+	$legacy( 'PF-1', '2025-08-01', '961234567', 10, array( 'producto' => 'CO' ) ),
+	$legacy( 'PF-2', '2025-08-02', '961234567', 20, array( 'precio' => 100, 'total_cajas' => null, 'neto' => null, 'producto' => '' ) ),
+) ) ) );
+$pf_before = array_intersect_key( $reg_by_id(), array( 'PF-1' => 1, 'PF-2' => 1 ) );
+fpw_sales_process_upload_string( "id_venta,fecha,rut,producto,total_cajas,precio,neto,total\nPF-1,2025-08-01,96123456-7,ME,5,9,8,10\nPF-2,2025-08-02,96123456-7,CO,5,101,8,20\n", 'pf.csv' );
+check( 2 === count( fpw_sales_plan( fpw_sales_register()['sales'], fpw_sales_pending_batch()['rows'] )['conflicts'] ), 'preview classifies both mixed rows as conflicts, not enrichments' );
+$pf = fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt'];
+check( 2 === $pf['conflictos_total'] && 0 === $pf['enriquecidas'] && 0 === $pf['campos_enriquecidos'], 'one conflicting present field rejects the row although other fields were fillable' );
+check( $pf_before === array_intersect_key( $reg_by_id(), array( 'PF-1' => 1, 'PF-2' => 1 ) ) && ! isset( $reg_by_id()['PF-1']['total_cajas'] ) && null === $reg_by_id()['PF-2']['neto'], 'the whole row stays byte-identical: no field was partially filled and no provenance was added' );
+fpw_sales_process_upload_string( "id_venta,fecha,rut,precio,total\nE-5,2025-05-01,96123456-7,7,3000\n", 'only-price.csv' );
+fpw_sales_confirm( fpw_sales_pending_batch()['token'] );
+fpw_sales_process_upload_string( "id_venta,fecha,rut,precio\nE-6,2025-06-01,96123456-7,7\n", 'no-total.csv' );
+check( 1 === fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt']['conflictos_total'], 'a core field (total) absent from the file is not an exact match: conflict' );
+check( 7 === $reg_by_id()['E-5']['precio'] && ! isset( $reg_by_id()['E-5']['total_cajas'] ) && array( 'precio' ) === $reg_by_id()['E-5']['enriched'][0]['fields'], 'only present incoming fields fill' );
+
+/* A batch staged before this feature (old row shape, no counts) still confirms. */
+fpw_sales_write_row( FPW_SALES_PENDING_ROW, array( 'token' => 'oldtoken', 'filename' => 'old.csv', 'actor' => 'x', 'at' => 1, 'rows' => array(
+	array( 'line' => 2, 'id' => 'E-6', 'date' => '2025-06-01', 'rut' => '96123456-7', 'rut_norm' => '961234567', 'total' => 4000, 'producto' => 'CO' ),
+) ) );
+check( str_contains( fpw_sales_pending_preview_html(), 'old.csv' ), 'an old pending batch still previews' );
+$old = fpw_sales_confirm( 'oldtoken' )['receipt'];
+check( 1 === $old['enriquecidas'] && 'CO' === $reg_by_id()['E-6']['producto'], 'an old pending batch enriches on explicit confirmation' );
+check( ! isset( fpw_sales_receipt( 'oldtoken' )['cambios'][0]['campos']['neto'] ), 'old batch receipt lists only fields it carried' );
+
 echo "sales register: $assertions offline checks passed (issue #54)\n";

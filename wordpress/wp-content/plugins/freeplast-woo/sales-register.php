@@ -270,6 +270,40 @@ function fpw_sales_process_upload_string( string $content, string $filename ): a
 }
 
 /**
+ * Classify incoming rows against the stored sales BY SOURCE ID ONLY. Same id:
+ * date, normalized RUT and total must match exactly, else conflict. Then each
+ * detail field present in the file fills a missing stored value (null/'' —
+ * zero is populated) or conflicts when populated and different; absent incoming
+ * values never erase. Any conflict rejects the whole row (no partial fill).
+ *
+ * @return array{new:array,same:int,enrich:array<string,array>,conflicts:array}
+ */
+function fpw_sales_plan( array $sales, array $rows ): array {
+	$by_id = array_column( $sales, null, 'id' );
+	$plan = array( 'new' => array(), 'same' => 0, 'enrich' => array(), 'conflicts' => array() );
+	foreach ( $rows as $row ) {
+		$id   = (string) ( $row['id'] ?? '' );
+		$prev = $by_id[ $id ] ?? null;
+		if ( null === $prev ) { $plan['new'][] = $row; continue; }
+		$ok = ( (string) ( $prev['date'] ?? '' ) === (string) ( $row['date'] ?? '' ) )
+			&& ( (string) ( $prev['rut'] ?? '' ) === (string) ( $row['rut_norm'] ?? '' ) )
+			&& ( ( $prev['total'] ?? null ) === ( $row['total'] ?? null ) );
+		$fill = array();
+		foreach ( array( 'producto', 'total_cajas', 'precio', 'neto' ) as $field ) {
+			$new = $row[ $field ] ?? null;
+			$old = $prev[ $field ] ?? null;
+			if ( null === $new || '' === $new ) { continue; }
+			if ( null === $old || '' === $old ) { $fill[ $field ] = $new; }
+			elseif ( $old !== $new ) { $ok = false; }
+		}
+		if ( ! $ok ) { $plan['conflicts'][] = $id; }
+		elseif ( $fill ) { $plan['enrich'][ $id ] = $fill; }
+		else { $plan['same']++; }
+	}
+	return $plan;
+}
+
+/**
  * Apply the reviewed batch exactly once. The pending slot must still hold the
  * token the owner previewed (a replaced or consumed batch is a stale result,
  * never an apply), the register cap bounds the merge, and the receipt INSERT
@@ -287,23 +321,10 @@ function fpw_sales_confirm( string $token ): array {
 		return array( 'ok' => false, 'message' => 'El lote revisado ya no está disponible: la vista previa fue reemplazada por una carga posterior. Vuelve a revisar y confirmar la carga actual.' );
 	}
 	$register = fpw_sales_register();
-	$by_id = array_column( $register['sales'], null, 'id' );
-	$aplicadas = 0;
-	$ya = 0;
-	$conflictos = array();
-	foreach ( ( $pending['rows'] ?? array() ) as $row ) {
-		$id   = (string) ( $row['id'] ?? '' );
-		$prev = $by_id[ $id ] ?? null;
-		if ( null === $prev ) { $aplicadas++; continue; }
-		$same = ( (string) ( $prev['date'] ?? '' ) === (string) ( $row['date'] ?? '' ) )
-			&& ( (string) ( $prev['rut'] ?? '' ) === (string) ( $row['rut_norm'] ?? '' ) )
-			&& ( ( $prev['total'] ?? null ) === ( $row['total'] ?? null ) );
-		foreach ( array( 'producto', 'total_cajas', 'precio', 'neto' ) as $field ) {
-			$empty = 'producto' === $field ? '' : null;
-			$same = $same && ( ( $prev[ $field ] ?? $empty ) === ( $row[ $field ] ?? $empty ) );
-		}
-		if ( $same ) { $ya++; } else { $conflictos[] = $id; }
-	}
+	$plan = fpw_sales_plan( $register['sales'], is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
+	$aplicadas = count( $plan['new'] );
+	$ya = $plan['same'];
+	$conflictos = $plan['conflicts'];
 	$max_sales = (int) apply_filters( 'fpw_sales_max_sales', FPW_SALES_MAX_SALES );
 	if ( count( $register['sales'] ) + $aplicadas > $max_sales ) {
 		return array( 'ok' => false, 'message' => 'Aplicar este lote superaría el máximo de ' . $max_sales . ' ventas almacenadas: el lote sigue pendiente y nada fue aplicado.' );
@@ -319,17 +340,23 @@ function fpw_sales_confirm( string $token ): array {
 		'ya_importadas'     => $ya,
 		'conflictos'        => array_slice( $conflictos, 0, 50 ),
 		'conflictos_total'  => count( $conflictos ),
+		'enriquecidas'      => count( $plan['enrich'] ),
+		'campos_enriquecidos' => array_sum( array_map( 'count', $plan['enrich'] ) ),
+		'cambios'           => array_slice( array_map( static fn( $id, $fields ) => array( 'id' => $id, 'campos' => $fields ), array_keys( $plan['enrich'] ), $plan['enrich'] ), 0, 50 ),
 		'sin_asociacion'    => (int) ( $pending['sin_asociacion_total'] ?? 0 ),
 		'errores_total'     => (int) ( $pending['errores_total'] ?? 0 ),
 	);
 	if ( ! fpw_sales_insert_receipt( $token, $receipt ) ) {
 		return array( 'ok' => false, 'message' => 'Esta carga ya fue aplicada (su recibo existe): no se aplicará dos veces. El historial queda como está.' );
 	}
-	foreach ( ( $pending['rows'] ?? array() ) as $row ) {
-		$id = (string) ( $row['id'] ?? '' );
-		if ( in_array( $id, $conflictos, true ) || isset( $by_id[ $id ] ) ) { continue; }
+	foreach ( $register['sales'] as $i => $sale ) {
+		$fields = $plan['enrich'][ (string) ( $sale['id'] ?? '' ) ] ?? null;
+		if ( null === $fields ) { continue; }
+		$register['sales'][ $i ] = array_merge( $sale, $fields, array( 'enriched' => array_merge( (array) ( $sale['enriched'] ?? array() ), array( array( 'batch' => $token, 'at' => $receipt['at'], 'fields' => array_keys( $fields ) ) ) ) ) );
+	}
+	foreach ( $plan['new'] as $row ) {
 		$register['sales'][] = array(
-			'id'          => $id,
+			'id'          => (string) $row['id'],
 			'rut'         => (string) ( $row['rut_norm'] ?? '' ),
 			'date'        => (string) ( $row['date'] ?? '' ),
 			'producto'    => $row['producto'] ?? '',
@@ -344,7 +371,7 @@ function fpw_sales_confirm( string $token ): array {
 	fpw_sales_write_row( FPW_SALES_REGISTER_ROW, $register );
 	fpw_sales_clear_pending();
 	fpw_sales_sweep_receipts();
-	$message = 'Importación aplicada: ' . $aplicadas . ' ventas nuevas, ' . $ya . ' ya importadas (sin duplicar), '
+	$message = 'Importación aplicada: ' . $aplicadas . ' ventas nuevas, ' . $receipt['enriquecidas'] . ' enriquecidas con detalle, ' . $ya . ' ya importadas (sin duplicar), '
 		. count( $conflictos ) . ' en conflicto (se conservó lo importado), ' . $receipt['sin_asociacion']
 		. ' asociaciones sin resolver, ' . $receipt['errores_total'] . ' filas con error.';
 	return array( 'ok' => true, 'message' => $message, 'receipt' => $receipt );
@@ -547,6 +574,13 @@ function fpw_sales_pending_preview_html(): string {
 		$sin_html .= '<li>Línea ' . (int) ( $s['line'] ?? 0 ) . ': RUT «' . esc_html( (string) ( $s['rut'] ?? '' ) ) . '» sin asociación resuelta.</li>';
 	}
 
+	$plan = fpw_sales_plan( fpw_sales_register()['sales'], $rows );
+	$enrich_html = '';
+	foreach ( array_slice( $plan['enrich'], 0, FPW_SALES_PREVIEW_ROWS, true ) as $id => $fields ) {
+		$cells = array();
+		foreach ( $fields as $field => $value ) { $cells[] = esc_html( $field . ': — → ' . ( 'producto' === $field ? $value : number_format( (int) $value, 0, ',', '.' ) ) ); }
+		$enrich_html .= '<tr><td><code>' . esc_html( (string) $id ) . '</code></td><td>' . implode( '<br>', $cells ) . '</td></tr>';
+	}
 	$token     = (string) ( $pending['token'] ?? '' );
 	$sin_total = (int) ( $pending['sin_asociacion_total'] ?? 0 );
 	$html = '<section><h2>Vista previa pendiente</h2>'
@@ -558,6 +592,10 @@ function fpw_sales_pending_preview_html(): string {
 		if ( count( $rows ) > FPW_SALES_PREVIEW_ROWS ) {
 			$html .= '<p class="fpw-sales__note">Mostrando las primeras ' . FPW_SALES_PREVIEW_ROWS . ' de ' . count( $rows ) . ' filas.</p>';
 		}
+	}
+	$html .= '<p><strong>Enriquecimiento del historial (según la identidad id_venta):</strong> ' . count( $plan['new'] ) . ' nuevas · ' . count( $plan['enrich'] ) . ' por enriquecer con detalle · ' . $plan['same'] . ' ya importadas · ' . count( $plan['conflicts'] ) . ' en conflicto (se rechazan completas, sin cambios).</p>';
+	if ( '' !== $enrich_html ) {
+		$html .= '<table><thead><tr><th scope="col">id_venta</th><th scope="col">Antes → después (solo campos vacíos)</th></tr></thead><tbody>' . $enrich_html . '</tbody></table><p class="fpw-sales__note">Solo se completan campos vacíos con valores presentes en el archivo; nada se sobrescribe ni se borra.</p>';
 	}
 	if ( '' !== $errores_html ) {
 		$html .= '<h3 style="font-size:14px">Filas con error (no se importan)</h3><table><tbody>' . $errores_html . '</tbody></table>';
@@ -582,11 +620,11 @@ function fpw_sales_receipts_html(): string {
 	foreach ( $receipts as $receipt ) {
 		$conflictos = (int) ( $receipt['conflictos_total'] ?? 0 );
 		$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td><td>' . esc_html( (string) ( $receipt['filename'] ?? '' ) ) . '</td>'
-			. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
+			. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['enriquecidas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
 			. '<td><code>' . esc_html( (string) ( $receipt['token'] ?? '' ) ) . '</code></td></tr>';
 	}
 	return '<section><h2>Importaciones aplicadas</h2>'
-		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Archivo</th><th scope="col">Nuevas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th><th scope="col">Lote</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
+		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Archivo</th><th scope="col">Nuevas</th><th scope="col">Enriquecidas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th><th scope="col">Lote</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
 		. '<p class="fpw-sales__note">Cada lote aplicado deja este recibo de procedencia: es la frescura que verás junto al historial en cada borrador.</p></section>';
 }
 

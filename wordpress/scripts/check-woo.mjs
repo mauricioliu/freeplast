@@ -134,6 +134,8 @@ console.log(run(php,[path.join(root,'scripts/price-list-test.php')]));
 console.log(run(php,[path.join(root,'scripts/dispatch-distance-test.php')]));
 // Issue #54 (cut 5 of #49): manual Sales Register import + Purchase History by normalized RUT.
 console.log(run(php,[path.join(root,'scripts/sales-register-test.php')]));
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/sales-history-workbook-test.py')]));
+console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php')]));
 // Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));

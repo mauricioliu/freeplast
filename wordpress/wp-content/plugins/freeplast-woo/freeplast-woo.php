@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.5
+ * Version: 1.12.6
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */

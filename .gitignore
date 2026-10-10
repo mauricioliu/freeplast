@@ -10,6 +10,8 @@ wordpress/.build/
 
 # wp-release driver state
 .build/wp-release/
+# Private, sealed sales-enrichment payload (contains source sales, never commit)
+.build/sales-enrichment-migration/
 
 # Local agent sessions, review captures and disposable evidence (never deploy)
 .scratch/

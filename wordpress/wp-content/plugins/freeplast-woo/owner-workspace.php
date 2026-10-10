@@ -18,8 +18,8 @@ function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quo
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.5' );
-	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.5', true );
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.6' );
+	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.6', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
 add_filter( 'admin_title', static function ( $title ) {
