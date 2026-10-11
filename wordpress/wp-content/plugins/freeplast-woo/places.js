@@ -1,27 +1,20 @@
-/* Dispatch-address assistance (issue #59, cut 10 of #49): the official Google
-   Places autocomplete widget joins the address slot ABOVE the native textarea —
-   never replacing it. Manual entry stays valid with Google absent, quota-hit or
-   failed: the assistant is an aid, not a dependency. A selection fills the
-   textarea with the composed address and records a CLAIM (place id + match
-   scope) in the adapter's registered carriers; editing or clearing the text —
-   or choosing «Sin despacho» — invalidates it. The widget itself carries no
-   name, so the native POST serialization is untouched, and nothing but the
-   typed address ever reaches Google (no RUT, email, history or products). */
+/* Google selection is mandatory for dispatch; the server confirms the ID.
+   Only the search query reaches the widget, never the separate delivery notes. */
 (function () {
   'use strict';
   var config = window.FPW_PLACES || {};
   var TEXTS = {
     confirmed: 'Dirección confirmada con el asistente de direcciones.',
-    broad: 'El asistente encontró una coincidencia amplia (calle o comuna). Complementa tu dirección; si la editas, queda ingresada manualmente.',
-    manual: 'Editaste tu dirección: se ingresa manualmente, sin asociación al asistente.',
-    unconfirmed: 'El asistente no confirmó esa dirección. Escríbela manualmente: tu solicitud sigue siendo válida.',
-    empty: 'Busca tu dirección con el asistente o escríbela manualmente.',
-    failed: 'No pudimos cargar el asistente de direcciones (proveedor, cuota o clave). Escribe tu dirección manualmente: tu solicitud sigue siendo válida.'
+    broad: 'Seleccionaste una calle o sector. Puedes agregar referencias para llegar debajo de la dirección.',
+    manual: 'La búsqueda cambió. Selecciona otra sugerencia de Google.',
+    unconfirmed: 'Google no confirmó esa dirección. Selecciona otra sugerencia o recarga y vuelve a intentarlo.',
+    empty: 'Busca tu dirección y selecciona una sugerencia de Google.',
+    failed: 'Google no está disponible. No podemos recibir solicitudes con despacho sin confirmar la dirección. Recarga y vuelve a intentarlo.'
   };
   /* A route, commune or region is a REFERENCE, not a certified delivery point:
      the recorded scope lets the private review judge it (no access claim). */
   var EXACT_TYPES = ['street_address', 'premise', 'subpremise', 'establishment', 'point_of_interest'];
-  var state = { widget: null, loading: false, failed: false, provenance: false };
+  var state = { widget: null, loading: false, failed: false, provenance: false, revision: 0 };
 
   function announce(status, message) {
     if (!status) { return; }
@@ -45,6 +38,9 @@
   }
 
   function clearProvenance(form) {
+    state.revision += 1;
+    var field = form.querySelector('#billing_fp_address');
+    if (field) { field.value = ''; }
     var fields = carriers(form);
     if (!fields.id || !fields.scope) { return; }
     fields.id.value = '';
@@ -61,6 +57,7 @@
     }
     return new Promise(function (resolve, reject) {
       var settled = false;
+      var timer = window.setTimeout(function () { settle(reject, new Error('maps-timeout')); }, 10000);
       var script = document.createElement('script');
       script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(config.key || '')
         + '&libraries=places&v=' + encodeURIComponent(config.version || 'weekly')
@@ -69,6 +66,7 @@
       function settle(fn, error) {
         if (settled) { return; }
         settled = true;
+        window.clearTimeout(timer);
         delete window.fpwPlacesLoaded;
         fn(error);
       }
@@ -96,18 +94,27 @@
 
   function buildWidget(PlaceAutocompleteElement, context) {
     var widget = new PlaceAutocompleteElement({ includedRegionCodes: [context.region] });
-    /* Suggestion aid only: the region filter never defines Freeplast's
-       coverage policy, and a rural address outside the suggestions stays a
-       valid manual entry. */
+    // Broad street/rural matches remain valid; references are separate.
     widget.setAttribute('data-fpw-places-widget', '');
     widget.setAttribute('aria-label', 'Buscar una dirección');
+    widget.addEventListener('input', function () {
+      clearProvenance(context.form);
+      announce(context.status, TEXTS.manual);
+    });
+    widget.addEventListener('gmp-error', function () {
+      clearProvenance(context.form);
+      announce(context.status, TEXTS.failed);
+    });
     widget.addEventListener('gmp-select', function (event) {
+      clearProvenance(context.form);
+      var revision = state.revision;
       var prediction = event && event.placePrediction;
       if (!prediction || typeof prediction.toPlace !== 'function') { return; }
       Promise.resolve().then(function () {
         var place = prediction.toPlace();
         return place.fetchFields({ fields: ['id', 'formattedAddress', 'types'] }).then(function () { return place; });
       }).then(function (place) {
+        if (revision !== state.revision || !wantsDispatch(context.form)) { return; }
         var id = place.id || place.place_id || '';
         var formatted = place.formattedAddress || place.formatted_address || '';
         if (!id || !formatted) { announce(context.status, TEXTS.unconfirmed); return; }
@@ -116,10 +123,16 @@
         setProvenance(context.form, id, scope);
         announce(context.status, 'exacta' === scope ? TEXTS.confirmed : TEXTS.broad);
       }).catch(function () {
+        if (revision !== state.revision || !wantsDispatch(context.form)) { return; }
         announce(context.status, TEXTS.unconfirmed);
       });
     });
     return widget;
+  }
+
+  function wantsDispatch(form) {
+    var checked = form.querySelector('input[name="billing_fp_dispatch"]:checked');
+    return Boolean(checked) && checked.value === 'si';
   }
 
   function init() {
@@ -139,6 +152,17 @@
     if (row && row.parentNode === slot) { slot.insertBefore(host, row); } else { slot.insertBefore(host, slot.firstChild); }
     if (row && row.nextSibling) { slot.insertBefore(status, row.nextSibling); } else { slot.appendChild(status); }
     var context = { form: form, field: field, status: status, region: (config.region || 'CL').toUpperCase() };
+    field.readOnly = true;
+    field.rows = 2;
+    clearProvenance(form);
+    form.addEventListener('submit', function (event) {
+      if (wantsDispatch(form) && !carriers(form).id.value) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        announce(status, TEXTS.empty);
+        if (state.widget) { state.widget.focus(); }
+      }
+    }, true);
 
     field.addEventListener('input', function () {
       if (!state.provenance) { return; }
@@ -166,6 +190,7 @@
         host.appendChild(state.widget);
         host.hidden = false;
         state.loading = false;
+        state.widget.disabled = !wantsDispatch(form);
       }).catch(function () {
         state.loading = false;
         state.failed = true;

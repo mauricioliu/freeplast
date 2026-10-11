@@ -40,7 +40,7 @@ $cases=array(
     array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'no'),false),
     array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'si','billing_fp_address'=>''),true),
     array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'si','billing_fp_address'=>'   '),true),
-    array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'si','billing_fp_address'=>'Camino de prueba, Mostazal'),false),
+    array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'si','billing_fp_address'=>'Camino de prueba, Mostazal'),true),
     array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'otra'),true),
     array(array('payment_method'=>'bacs','billing_fp_dispatch'=>'no'),true),
     array(array('payment_method'=>'quotes-gateway','billing_fp_dispatch'=>'no','billing_fp_rut'=>str_repeat('1',241)),true),

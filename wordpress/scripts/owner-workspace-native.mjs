@@ -45,7 +45,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     check(await wpLogin(owner, `workspace-owner-${suffix}`, fixture.password) === 302, 'workspace: owner authenticates');
     check(await wpLogin(staff, `workspace-staff-${suffix}`, fixture.password) === 302, 'workspace: restricted staff authenticates');
     const page = await owner(inbox);
-    check(page.status === 200, 'workspace: owner can open the quotation inbox');
+    check(page.status === 200, `workspace: owner can open the quotation inbox (HTTP ${page.status}; redirect path ${page.headers.get('location') ? new URL(page.headers.get('location'), siteUrl).pathname : 'none'})`);
     const doc = document(await page.text());
     // Submenus must register AFTER their parent: native WP derives callback hooks
     // from the parent's title. Offline rendering alone cannot prove this seam.

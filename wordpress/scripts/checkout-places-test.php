@@ -20,7 +20,11 @@ function sanitize_textarea_field( $value ) { return trim( strip_tags( (string) $
 function apply_filters( $tag, $value, ...$args ) { global $registered_filters; foreach ( $registered_filters[ $tag ] ?? array() as $callback ) { $value = $callback( $value, ...$args ); } return $value; }
 class WP_Error {
 	public array $codes = array();
-	public function add( $code, $message, $data = null ) { $this->codes[] = $code; }
+	public array $details = array();
+	public function add( $code, $message, $data = null ) { $this->codes[] = $code; $this->details[$code] = array($message, $data); }
+	public function get_error_codes() { return $this->codes; }
+	public function get_error_data($code) { return $this->details[$code][1]; }
+	public function get_error_messages($code) { return array($this->details[$code][0]); }
 }
 /* A minimal WC() session so the adapter's attempt-token hook actually renders. */
 class FPWP_Fake_Session {
@@ -139,28 +143,48 @@ function fpwp_create( array $data ): FPWP_Fake_Order {
 	foreach ( $create_callbacks as $callback ) { $callback( $order, $data ); }
 	return $order;
 }
+check( fpw_confirm_place( 'ChIJfixture-place-id_0000' ) === array(), 'missing server credential fails closed' );
+define( 'FREEPLAST_GOOGLE_PLACES_SERVER_KEY', 'server-fixture' );
+$GLOBALS['transport_status'] = 200;
+$GLOBALS['transport_place'] = array( 'id'=>'ChIJfixture-place-id_0000', 'formattedAddress'=>'Canonical Google address, Chile', 'types'=>array('street_address'), 'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country'))) );
+$GLOBALS['transport_calls'] = array();
+function wp_remote_get( $url, $args ) { $GLOBALS['transport_calls'][] = array($url, $args); if ( $GLOBALS['transport_status'] === 'network' ) { return new WP_Error(); } return array('response'=>array('code'=>$GLOBALS['transport_status']), 'body'=>json_encode($GLOBALS['transport_place'])); }
+function is_wp_error( $response ) { return $response instanceof WP_Error; }
+function wp_remote_retrieve_response_code( $response ) { return $response['response']['code']; }
+function wp_remote_retrieve_body( $response ) { return $response['body']; }
 $order = fpwp_create( array(
 	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Camino de prueba 123, Mostazal',
-	'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro', 'fpw_place_id' => 'ChIJfixture-place-id_0000', 'fpw_place_scope' => 'exacta',
+	'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro', 'fpw_place_id' => 'ChIJfixture-place-id_0000', 'fpw_place_scope' => 'amplia', 'billing_fp_references' => 'Portón azul',
 ) );
+check( $order->meta['_billing_fp_address'] === 'Canonical Google address, Chile', 'forged address replaced with canonical response' );
+check( $order->meta['_billing_fp_references'] === 'Portón azul' && $order->meta['_fp_submitted_details']['billing_fp_references'] === 'Portón azul', 'references saved separately in native and submitted details' );
+check( ! str_contains(json_encode($GLOBALS['transport_calls']), 'Portón azul'), 'references never reach provider' );
+foreach (array(800, 801) as $length) {
+	$errors = new WP_Error();
+	fpw_validate_checkout(array('billing_fp_dispatch'=>'si', 'fpw_place_id'=>'ChIJfixture-place-id_0000', 'billing_fp_references'=>str_repeat('a', $length), 'payment_method'=>'quotes-gateway'), $errors);
+	check(in_array('billing_fp_references', $errors->codes, true) === ($length > 800), 'reference length boundary validated: ' . $length);
+}
+$posted = apply_filters('woocommerce_checkout_posted_data', array('billing_fp_dispatch'=>'si', 'fpw_place_id'=>'ChIJfixture-place-id_0000', 'billing_fp_address'=>'Forged', 'fpw_place_scope'=>'amplia'));
+check($posted['billing_fp_address'] === 'Canonical Google address, Chile' && $posted['fpw_place_scope'] === 'exacta', 'registered Woo posted-data filter canonicalizes before validation');
 check( ( $order->meta['_billing_fp_address_source'] ?? '' ) === 'asistida', 'an assisted confirmation records its provenance' );
 check( ( $order->meta['_billing_fp_place_id'] ?? '' ) === 'ChIJfixture-place-id_0000', 'the allowed place identification persists' );
 check( ( $order->meta['_billing_fp_place_scope'] ?? '' ) === 'exacta', 'the reported match scope persists' );
 check( ! str_contains( wp_json_encode( $order->meta ), '-33.123456' ), 'coordinates are never persisted' );
 check( ! str_contains( wp_json_encode( $order->meta ), 'forged' ), 'raw provider responses are never persisted' );
 
-$order_manual = fpwp_create( array(
-	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Camino rural sin asistente, Mostazal',
-	'fpw_place_id' => 'no space allowed', 'fpw_place_scope' => 'exacta',
-) );
-check( ( $order_manual->meta['_billing_fp_address_source'] ?? '' ) === 'manual', 'a degraded payload records a plainly manual address' );
-check( ! isset( $order_manual->meta['_billing_fp_place_id'] ) && ! isset( $order_manual->meta['_billing_fp_place_scope'] ), 'a degraded payload persists no place identification' );
+$rejected = false;
+try {
+	fpwp_create( array( 'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Forged address', 'fpw_place_id' => 'no space allowed' ) );
+} catch ( Exception $e ) { $rejected = true; }
+check( $rejected, 'manual dispatch is rejected even at creation' );
 
 $order_none = fpwp_create( array(
-	'billing_fp_dispatch' => 'no', 'billing_fp_address' => '', 'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro',
+	'billing_fp_dispatch' => 'no', 'billing_fp_address' => 'Stale address', 'billing_fp_references' => 'Stale notes', 'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro',
 	'fpw_place_id' => 'ChIJfixture-place-id_0000', 'fpw_place_scope' => 'exacta',
 ) );
 check( ( $order_none->meta['_billing_fp_address'] ?? 'x' ) === '', '«Sin despacho» persists no destination (existing rule intact)' );
+check( $order_none->meta['_billing_fp_references'] === '' && $order_none->meta['_fp_submitted_details']['billing_fp_references'] === '', 'no-dispatch excludes references everywhere' );
+check( in_array('billing_fp_references', fpw_draft_keys(), true), 'references included in session draft keys' );
 check( ! isset( $order_none->meta['_billing_fp_address_source'] ) && ! isset( $order_none->meta['_billing_fp_place_id'] ) && ! isset( $order_none->meta['_billing_fp_place_scope'] ), '«Sin despacho» persists no provenance at all, even with stale place fields posted' );
 
 /* The draft: destination provenance joins the receipt snapshot (schema 2) and
@@ -189,7 +213,7 @@ $assisted = new FPWP_Order( array(
 $GLOBALS['fpwp_caps'] = array( 'manage_woocommerce' => true );
 $draft = fpw_build_request_draft_payload( $assisted );
 check( $draft['schema'] === 2, 'the draft schema marks the destination-provenance shape' );
-check( $draft['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'source' => 'asistida', 'place_id' => $place_id_evil, 'scope' => 'amplia' ), 'the snapshot carries the recorded provenance exactly as the record kept it' );
+check( $draft['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'references' => '', 'source' => 'asistida', 'place_id' => $place_id_evil, 'scope' => 'amplia' ), 'the snapshot carries the recorded provenance exactly as the record kept it' );
 $html = fpw_quote_draft_markup( $assisted, $draft );
 check( str_contains( $html, 'Procedencia de la dirección' ) && str_contains( $html, 'Confirmada con el asistente de direcciones' ), 'the assisted provenance renders for the private review' );
 check( str_contains( $html, 'Coincidencia amplia — revisar número y comuna' ), 'a broad match is named as needing review, never as a certified delivery point' );
@@ -221,6 +245,40 @@ $none_draft = fpw_build_request_draft_payload( $none_order );
 check( $none_draft['destination']['dispatch'] === 'no' && $none_draft['destination']['source'] === '', 'a no-dispatch record carries no destination provenance' );
 $html_none = fpw_quote_draft_markup( $none_order, $none_draft );
 check( str_contains( $html_none, 'no pide despacho' ) && ! str_contains( $html_none, 'Procedencia' ), 'the no-dispatch section renders no provenance row' );
+
+$canonical = $GLOBALS['transport_place'];
+foreach ( array(401, 403, 404, 429, 500, 'network') as $status ) {
+	$GLOBALS['transport_status'] = $status;
+	$id = 'ChIJfailure-' . $status;
+	check( fpw_confirm_place($id) === array(), 'provider failure closes dispatch: ' . $status );
+	$count = count($GLOBALS['transport_calls']);
+	check( fpw_confirm_place($id) === array() && count($GLOBALS['transport_calls']) === $count, 'no duplicate failed lookup within submission' );
+}
+$GLOBALS['transport_status'] = 200;
+foreach ( array('foreign', 'unsafe', 'empty', 'mismatch', 'missing-types', 'oversize') as $case ) {
+	$id = 'ChIJinvalid-' . $case;
+	$GLOBALS['transport_place'] = array_replace($canonical, array('id'=>$id));
+	if ('foreign' === $case) { $GLOBALS['transport_place']['addressComponents'][0]['shortText'] = 'AR'; }
+	if ('unsafe' === $case) { $GLOBALS['transport_place']['formattedAddress'] = '<script>bad</script>'; }
+	if ('empty' === $case) { $GLOBALS['transport_place']['formattedAddress'] = ''; }
+	if ('mismatch' === $case) { $GLOBALS['transport_place']['id'] = 'ChIJdifferent'; }
+	if ('missing-types' === $case) { unset($GLOBALS['transport_place']['types']); }
+	if ('oversize' === $case) { $GLOBALS['transport_place']['formattedAddress'] = str_repeat('a', 801); }
+	check( fpw_confirm_place($id) === array(), 'invalid provider response rejected: ' . $case );
+}
+$GLOBALS['transport_place'] = array_replace($canonical, array('id'=>'ChIJboundary-offline', 'formattedAddress'=>str_repeat('a', 800)));
+check(strlen(fpw_confirm_place('ChIJboundary-offline')['address']) === 800, 'canonical address accepts 800-byte boundary');
+$GLOBALS['transport_place'] = array_replace($canonical, array('id'=>'ChIJbroad-offline', 'types'=>array('route')));
+check( fpw_confirm_place('ChIJbroad-offline')['scope'] === 'amplia', 'CL street without number accepted' );
+$call = $GLOBALS['transport_calls'][0];
+check( $call[0] === 'https://places.googleapis.com/v1/places/ChIJfixture-place-id_0000' && $call[1]['redirection'] === 0 && $call[1]['timeout'] === 8, 'fixed endpoint, no redirects, bounded timeout' );
+$count = count($GLOBALS['transport_calls']);
+foreach (array('', '../elsewhere', 'http://evil', array('bad')) as $id) { check(fpw_confirm_place($id) === array(), 'malformed ID rejected before transport'); }
+check( count($GLOBALS['transport_calls']) === $count, 'malformed IDs never reach transport' );
+$notes_draft = fpw_build_request_draft_payload(new FPWP_Order($order->meta));
+check( $notes_draft['destination']['references'] === 'Portón azul', 'native references survive receipt snapshot' );
+check( str_contains(fpw_draft_facts_html(array(), $notes_draft['destination'], true), 'Portón azul'), 'private facts show notes' );
+check( !str_contains(fpw_draft_facts_html(array(), $notes_draft['destination'], false), 'Portón azul'), 'no-dispatch facts hide notes' );
 
 define( 'FREEPLAST_GOOGLE_API_KEY', 'constant-browser-key-fixture' );
 check( fpw_places_config() === array( 'key' => 'constant-browser-key-fixture', 'region' => 'CL', 'version' => 'weekly' ), 'deployment constant configures Chile without embedding a key in the plugin' );

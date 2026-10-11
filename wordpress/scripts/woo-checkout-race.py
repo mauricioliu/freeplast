@@ -377,7 +377,7 @@ messages = first_try.get('messages')
 ok('correct_error_names_address',
    not isinstance(messages, dict) or any('dirección' in str(message).lower() for message in messages.get('error', [])),
    str(messages)[:120])
-correct_values.update({'billing_fp_address': 'Camino de prueba 1, Mostazal, VI Región'})
+correct_values.update({'billing_fp_address': 'Camino de prueba 1, Mostazal, VI Región', 'fpw_place_id': 'ChIJcorrect-stack-fixture'})
 corrected = post_checkout(session, correct_values)
 ok('correct_second_success', corrected.get('result') == 'success', str(corrected)[:120])
 correct_order = order_of(corrected) if corrected.get('result') == 'success' else None
@@ -629,7 +629,7 @@ other_values.update({
     'billing_first_name': 'PRUEBA LOCAL OTRA SESION', 'billing_phone': '+56 9 8765 4321',
     'billing_email': 'otra-local@example.invalid', 'billing_company': 'OTRA PRUEBA NO COMERCIAL',
     'billing_fp_rut': '76.999.999-9', 'billing_fp_giro': 'Otra prueba',
-    'billing_fp_dispatch': 'si', 'billing_fp_address': 'Calle Falsa 123, Mostazal, VI Región',
+    'billing_fp_dispatch': 'si', 'billing_fp_address': 'Calle Falsa 123, Mostazal, VI Región', 'fpw_place_id': 'ChIJother-stack-fixture',
     'payment_method': 'quotes-gateway', 'order_comments': ''})
 submitted = post_checkout(other, other_values)
 ok('isolate_success', submitted.get('result') == 'success', str(submitted)[:120])

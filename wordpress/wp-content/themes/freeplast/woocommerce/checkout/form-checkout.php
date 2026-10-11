@@ -150,6 +150,8 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 				<?php
 				if ( isset( $fp_billing['billing_fp_address'] ) ) {
 					$fp_field( 'billing_fp_address', $fp_billing['billing_fp_address'], $checkout->get_value( 'billing_fp_address' ) );
+					$fp_field( 'billing_fp_references', $fp_billing['billing_fp_references'], $checkout->get_value( 'billing_fp_references' ) );
+					echo '<p>Selecciona una sugerencia de Google para solicitar despacho. Si no carga, recarga la página y vuelve a intentarlo.</p>';
 				}
 				?>
 			</div>

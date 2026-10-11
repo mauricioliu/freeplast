@@ -105,5 +105,6 @@ th{text-align:left;font-size:9pt;border-bottom:1pt solid #306020;padding:8pt 4pt
 		. '<table><colgroup><col style="width:43%"><col style="width:11%"><col style="width:23%"><col style="width:23%"></colgroup><thead><tr><th>Producto</th><th class="number">Cantidad</th><th class="number">Precio neto</th><th class="number">Total línea</th></tr></thead><tbody>' . $rows . '</tbody></table>'
 		. '<table class="summary">' . $summary . '</table><div class="conditions">'
 		. ( $p['dispatch_requested'] ? '<h2>Destino de la oferta</h2><p>' . $esc( $p['destination'] ) . '</p>' : '' )
+		. ( $p['dispatch_requested'] && ! empty( $p['references'] ) ? '<p>Referencias para llegar: ' . $esc( $p['references'] ) . '</p>' : '' )
 		. '<p><strong>Vigencia de la oferta: ' . (int) $p['validity_days'] . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p></div></body></html>';
 }

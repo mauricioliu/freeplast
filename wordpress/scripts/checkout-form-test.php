@@ -168,7 +168,8 @@ foreach (array('is_email', 'sanitize_email') as $function) {
 	preg_match('/function ' . $function . '\(.*?\n\}/s', $formatting, $match);
 	eval($match[0]);
 }
-foreach (array('fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_validate_checkout') as $function) {
+require_once __DIR__ . '/../wp-content/plugins/freeplast-woo/places-validation.php';
+foreach (array('fpw_is_place_id', 'fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_validate_checkout') as $function) {
 	preg_match('/function ' . $function . '\(.*?\n\}/s', $adapter_source, $match);
 	eval($match[0]);
 }
@@ -209,7 +210,7 @@ foreach ($invalid_cases as $case=>$overrides) {
 	foreach ($errors->get_error_codes() as $code) {
 		foreach ($errors->get_error_messages($code) as $message) { $notices[] = array('notice'=>$message, 'data'=>$errors->get_error_data($code)); }
 	}
-	verify(count($notices) === ('multiple' === $case ? 3 : 1), 'one message per rejected field: ' . $case);
+	verify(count($notices) === ('multiple' === $case ? 3 : 1),  'one message per rejected field: ' . $case);
 	foreach ($notices as $notice) {
 		$key = $notice['data']['id'];
 		verify(str_contains($notice['notice'], $billing[$key]['label']) || ('billing_fp_dispatch' === $key && str_contains($notice['notice'], 'Despacho:')), 'named actionable message: ' . $case);
@@ -234,7 +235,7 @@ foreach ($invalid_cases as $case=>$overrides) {
 	verify(str_contains($rejected_html, 'value="' . esc_attr($data['billing_company']) . '"'), 'no-JS keeps entered company: ' . $case);
 	$validation_fixtures[$case] = $fixture;
 }
-foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key) {
+foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email') as $key) {
 	$limit = 'billing_fp_address' === $key ? 800 : 240;
 	$value = 'billing_email' === $key ? str_repeat('a', $limit - 16) . '@example.invalid' : str_repeat('a', $limit);
 	$base = 'billing_fp_address' === $key ? array_replace($valid, array('billing_fp_dispatch'=>'si')) : $valid;
@@ -243,7 +244,8 @@ foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_
 	verify(str_contains($errors->get_error_message($key), $billing[$key]['label'] . ': el texto es demasiado largo. Acórtalo'), 'overlength names field and correction: ' . $key);
 }
 verify(!$validator->validate(array_replace($valid, array('billing_fp_address'=>str_repeat('a', 801))))->has_errors(), 'no-dispatch ignores an unused overlong address draft rather than blocking on a hidden field');
-verify(!$validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors(), 'manual complete destination accepted without new structured/geocoding rules');
+verify($validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors(), 'manual destination cannot bypass Google confirmation');
+verify(str_contains($html, 'readonly="readonly"'), 'canonical address renders readonly even without JavaScript');
 verify(!$validator->validate($valid)->has_errors() && !$GLOBALS['fpw_checkout_field_errors'], 'correction/retry clears request-local errors');
 
 if ('1' === getenv('FREEPLAST_TEST_VALIDATION_JSON')) { echo json_encode($validation_fixtures, JSON_UNESCAPED_UNICODE); }

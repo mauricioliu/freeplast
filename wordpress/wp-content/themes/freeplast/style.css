@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.22
+Version: 1.0.23
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -3401,6 +3401,11 @@ body.fpw-has-dock.fpw-has-selection {
 .fp-checkout-page .fp-fields .form-row textarea {
   min-height: 98px;
   resize: vertical;
+}
+
+.fp-checkout-page .fp-fields .form-row #billing_fp_address {
+  min-height: 0;
+  height: calc(3em + 26px);
 }
 
 .fp-checkout-page .fp-fields .form-row input::placeholder,

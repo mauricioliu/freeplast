@@ -32,6 +32,7 @@ $fp_details = $order->get_meta( '_fp_submitted_details' );
 $fp_details = is_array( $fp_details ) ? $fp_details : array();
 $fp_dispatch = (string) ( $fp_details['billing_fp_dispatch'] ?? $order->get_meta( '_billing_fp_dispatch' ) );
 $fp_address = 'si' === $fp_dispatch ? (string) ( $fp_details['billing_fp_address'] ?? $order->get_meta( '_billing_fp_address' ) ) : '';
+$fp_references = 'si' === $fp_dispatch ? (string) ( $fp_details['billing_fp_references'] ?? $order->get_meta( '_billing_fp_references' ) ) : '';
 $fp_name = (string) ( $fp_details['billing_first_name'] ?? '' );
 $fp_email = (string) ( $fp_details['billing_email'] ?? '' );
 ?>
@@ -65,7 +66,7 @@ $fp_email = (string) ( $fp_details['billing_email'] ?? '' );
 <li><span><?php echo esc_html( $fp_item->get_name() ); ?><?php echo wp_kses_post( wc_display_item_meta( $fp_item, array( 'before' => ' · ', 'after' => '', 'separator' => ' · ', 'label_before' => '', 'label_after' => ': ', 'echo' => false ) ) ); ?></span><b>× <?php echo esc_html( (string) $fp_item->get_quantity() ); ?></b></li>
 <?php endforeach; ?>
 </ul>
-<p class="fp-fine"><?php echo 'si' === $fp_dispatch ? ( '' !== $fp_address ? 'Despacho solicitado: ' . esc_html( $fp_address ) . '.' : 'Despacho solicitado; dirección por confirmar.' ) : ( 'no' === $fp_dispatch ? 'Solicitud sin despacho.' : 'Despacho por confirmar con ventas.' ); ?><?php if ( '' !== $fp_email ) { echo ' Email de contacto: ' . esc_html( $fp_email ) . '.'; } ?></p>
+<p class="fp-fine"><?php echo 'si' === $fp_dispatch ? ( '' !== $fp_address ? 'Despacho solicitado: ' . esc_html( $fp_address ) . '.' : 'Despacho solicitado; dirección por confirmar.' ) : ( 'no' === $fp_dispatch ? 'Solicitud sin despacho.' : 'Despacho por confirmar con ventas.' ); ?><?php if ( '' !== $fp_references ) { echo ' Referencias para llegar: ' . esc_html( $fp_references ) . '.'; } ?><?php if ( '' !== $fp_email ) { echo ' Email de contacto: ' . esc_html( $fp_email ) . '.'; } ?></p>
 <p class="fp-fine">Esta solicitud no es una compra ni reserva stock. Ventas confirmará precios, disponibilidad y condiciones.</p>
 </div>
 </div>

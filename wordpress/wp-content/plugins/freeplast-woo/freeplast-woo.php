@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.8
+ * Version: 1.12.9
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -203,7 +203,8 @@ function fpw_checkout_fields( $fields ) {
 		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-first'), 'priority'=>50 ),
 		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
 		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
-		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Calle, número, comuna y región', 'class'=>array('form-row-wide'), 'priority'=>80 ),
+		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Selecciona una sugerencia de Google', 'custom_attributes'=>array('readonly'=>'readonly', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
+		'billing_fp_references' => array( 'label'=>'Referencias para llegar', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Portón azul, entrada por el camino lateral', 'custom_attributes'=>array('maxlength'=>'800', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>90 ),
 	);
 	$fields['shipping'] = array();
 	$fields['order']['order_comments']['label'] = 'Mensaje';
@@ -253,11 +254,11 @@ function fpw_validate_checkout( $data, $errors ) {
 		$errors->remove( 'billing_fp_dispatch_required' );
 		$errors->add('billing_fp_dispatch', 'Despacho: selecciona Con despacho o Sin despacho.', array('id'=>'billing_fp_dispatch'));
 	}
-	if ( 'si' === $dispatch && '' === trim( $data['billing_fp_address'] ?? '' ) ) { $errors->add('billing_fp_address', 'Dirección de despacho: escribe calle, número, comuna y región.', array('id'=>'billing_fp_address')); }
+	if ( 'si' === $dispatch && ! fpw_confirm_place( $data['fpw_place_id'] ?? '' ) ) { $errors->add('billing_fp_address', 'Dirección de despacho: selecciona una sugerencia de Google. Si Google no responde, recarga y vuelve a intentarlo; no podemos recibir solicitudes con despacho sin confirmar la dirección.', array('id'=>'billing_fp_address')); }
+	if ( 'si' === $dispatch && strlen( $data['billing_fp_references'] ?? '' ) > 800 ) { $errors->add('billing_fp_references', 'Referencias para llegar: el texto es demasiado largo (máximo 800).', array('id'=>'billing_fp_references')); }
 	$fields = fpw_checkout_fields( array() );
-	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key ) {
-		if ( 'billing_fp_address' === $key && 'si' !== $dispatch ) { continue; } // No destination is saved without dispatch.
-		if ( strlen( $data[$key] ?? '' ) > ( 'billing_fp_address' === $key ? 800 : 240 ) ) { $errors->add($key, $fields['billing'][$key]['label'] . ': el texto es demasiado largo. Acórtalo y vuelve a intentarlo.', array('id'=>$key)); }
+	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email') as $key ) {
+		if ( strlen( $data[$key] ?? '' ) > 240 ) { $errors->add($key, $fields['billing'][$key]['label'] . ': el texto es demasiado largo. Acórtalo y vuelve a intentarlo.', array('id'=>$key)); }
 	}
 	if ( 'quotes-gateway' !== ( $data['payment_method'] ?? '' ) ) { $errors->add('payment_method', 'Este sitio recibe solicitudes de cotización, no pagos. Recarga el formulario antes de reintentar.', array('id'=>'payment_method')); }
 	// Request-local copy: Woo prints/consumes POST notices before rendering the no-JS form.
@@ -270,15 +271,17 @@ function fpw_validate_checkout( $data, $errors ) {
 add_action( 'woocommerce_after_checkout_validation', 'fpw_validate_checkout', 10, 2 );
 
 add_action( 'woocommerce_checkout_create_order', static function ( $order, $data ) {
+	$data = fpw_canonical_checkout_address( $data );
+	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && '' === $data['billing_fp_address'] ) { throw new Exception( 'Selecciona una dirección de Google y vuelve a intentarlo.' ); }
 	$order->update_meta_data( '_qwc_quote', '1' );
 	$order->update_meta_data( '_quote_status', 'quote-pending' );
 	$order->update_meta_data( '_fp_request', 'yes' );
-	foreach ( array('rut','giro','dispatch','address') as $field ) {
+	foreach ( array('rut','giro','dispatch','address','references') as $field ) {
 		$value = $data['billing_fp_'.$field] ?? '';
-		if ( 'address' === $field && 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { $value = ''; }
+		if ( in_array( $field, array('address','references'), true ) && 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { $value = ''; }
 		$order->update_meta_data( '_billing_fp_'.$field, sanitize_textarea_field( $value ) );
 	}
-	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch')) ) + array('billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
+	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch')) ) + array('billing_fp_references'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? sanitize_textarea_field($data['billing_fp_references'] ?? '') : '', 'billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
 	// Issue #59: the address provenance the record may keep — see
 	// fpw_address_provenance(). Only the confirmed address plus its allowed
 	// identification persist; never coordinates, never raw provider responses,
@@ -291,6 +294,8 @@ add_action( 'woocommerce_checkout_create_order', static function ( $order, $data
 	}
 }, 20, 2 );
 
+require_once __DIR__ . '/places-validation.php';
+
 /** The match scopes the enhancement reports: an exact place vs a road/commune-level broad match. */
 const FPW_PLACE_SCOPES = array( 'exacta', 'amplia' );
 
@@ -300,14 +305,9 @@ function fpw_is_place_id( string $value ): bool {
 }
 
 /**
- * The Delivery Address provenance the record may keep (issue #59): with
- * despacho requested, an assistant-confirmed address keeps the place
- * identification the browser reported — a CLAIM recorded for the private
- * review, never verified evidence. Every malformed, contradictory or missing
- * piece (and any arbitrary hidden field beyond the two registered carriers)
- * degrades to a plainly manual address instead of rejecting an otherwise
- * valid request; «Sin despacho» excludes the destination AND every place
- * association.
+ * Serialize address provenance, including legacy manual records. New checkout
+ * writes first pass server confirmation in fpw_canonical_checkout_address();
+ * this serializer alone does not authorize a dispatch request.
  *
  * @return array{source:string, place_id:string, scope:string}
  */
@@ -328,7 +328,7 @@ function fpw_address_provenance( array $data ): array {
  * FREEPLAST_GOOGLE_API_KEY constant — a browser key with
  * HTTP-referrer restrictions, quotas and terms arranged SEPARATELY from the
  * code (external prerequisite still pending; ADR-0007). Absent configuration
- * means the assistant never loads and manual entry serves alone.
+ * means the assistant never loads and dispatch submissions fail closed.
  *
  * @return array{key:string, region:string, version:string}
  */
@@ -365,12 +365,10 @@ add_action( 'woocommerce_cart_emptied', static function () {
 add_action( 'wp_enqueue_scripts', static function () {
 	if ( function_exists('is_checkout') && is_checkout() && ! is_order_received_page() ) {
 		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.4', true);
-		// Issue #59: the dispatch-address assistant loads only with a delivered
-		// Places configuration; without it the script never ships and manual
-		// entry serves alone (the server keeps the same provenance contract).
+		// Without browser configuration, no Google script ships; dispatch fails closed.
 		$places = fpw_places_config();
 		if ( $places ) {
-			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.0.1', true);
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.1.0', true);
 			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}
@@ -1443,6 +1441,7 @@ function fpw_details( $order ) {
 		'Giro' => $order->get_meta('_billing_fp_giro'),
 		'Despacho' => 'si' === $order->get_meta('_billing_fp_dispatch') ? 'Con despacho' : 'Sin despacho',
 		'Dirección de despacho' => $order->get_meta('_billing_fp_address'),
+		'Referencias para llegar' => $order->get_meta('_billing_fp_references'),
 	);
 }
 add_action( 'woocommerce_admin_order_data_after_billing_address', static function ( $order ) {

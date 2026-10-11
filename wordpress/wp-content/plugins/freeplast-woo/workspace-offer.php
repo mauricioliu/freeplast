@@ -67,6 +67,7 @@ function fpw_workspace_offer_html( array $projection ): string {
 	$html .= '</div>' . fpw_workspace_totals_html( $projection );
 	$html .= '<p><strong>Vigencia: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días desde la aprobación.</strong></p>';
 	$html .= ! empty( $projection['dispatch_requested'] ) ? '<p>Destino: ' . esc_html( $projection['destination'] ?? '' ) . '</p>' : '<p>Sin despacho solicitado. No incluye flete.</p>';
+	if ( ! empty( $projection['dispatch_requested'] ) && ! empty( $projection['references'] ) ) { $html .= '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>'; }
 	return $html;
 }
 
