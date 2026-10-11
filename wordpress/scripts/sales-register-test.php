@@ -327,16 +327,17 @@ $_REQUEST = array();
 check( str_contains( $page, 'Importación aplicada: 1 ventas nuevas' ) && str_contains( $page, 'banner.csv' ), 'a confirmed POST renders the explicit result with its counts and source' );
 check( fpw_sales_pending_batch() === null, 'the POSTed confirm consumed the pending slot' );
 
-/* The owner's screen: contract, CSRF-carrying forms, pending review, receipts. */
+/* The owner's screen: upload, CSRF-carrying forms, pending review, receipts. */
 fpw_sales_process_upload_string( "id_venta,fecha,rut,total\nP-1,2026-09-01,76123456-7,5000\n", 'pendiente.csv' );
 ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Importar ventas' ) && str_contains( $page, 'id_venta' ), 'the owner renders the import screen with its contract' );
+check( str_contains( $page, 'Importar ventas' ) && str_contains( $page, 'Cargar CSV' ), 'the owner retains the import screen and neighboring CSV upload' );
 check( str_contains( $page, 'name="fpw_sales_nonce"' ) && str_contains( $page, 'multipart/form-data' ), 'the upload form carries its CSRF nonce' );
 check( substr_count( $page, 'fpw_sales_nonce' ) >= 3, 'upload, confirm and cancel each carry their own nonce' );
 check( str_contains( $page, 'pendiente.csv' ) && str_contains( $page, 'Confirmar e importar' ) && str_contains( $page, 'Cancelar sin efectos' ), 'the pending preview renders its review, confirm and cancel actions' );
 check( str_contains( $page, $applied['receipt']['token'] ), 'the applied receipts are consultable on the screen with their token' );
 check( str_contains( $page, '@media (min-width: 782px)' ), 'the screen is authored mobile-first with a desktop enhancement' );
-check( str_contains( $page, 'muestra real' ), 'the screen names the standing external blocker: the definitive contract awaits the real Sales Register sample' );
+check( str_contains( $page, 'grid-template-columns:1fr;' ) && ! str_contains( $page, 'grid-template-columns:1fr 1fr;' ), 'desktop upload occupies the remaining grid without an empty explanatory column' );
+check( ! str_contains( $page, 'Contrato de importación (v1)' ) && ! str_contains( $page, 'muestra real' ) && ! str_contains( $page, 'Columnas exactas:' ), 'the entire import explanation is absent without removing upload, review or receipts' );
 
 function wp_date( $format, $timestamp ) { return date( $format, $timestamp ); }
 

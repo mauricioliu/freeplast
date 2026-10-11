@@ -61,7 +61,16 @@ check( ! str_contains( $detail, 'Seguimiento comercial' ) && str_contains( $deta
 $id = 195; $draft = fpw_read_request_draft( $id ); $work = fpw_read_draft_work( $id ); $preview = fpw_read_draft_preview( $id );
 $detail = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, null );
 check( str_contains( $detail, 'id="fpw-products"' ) && ! str_contains( $detail, 'data-fpw-tracking' ) && ! str_contains( $detail, 'Seguimiento comercial' ), 'draft keeps products and removes manual tracking entirely' );
-check( str_contains( $detail, 'fpw-price-references' ), 'stable price maintenance is secondary, still available' );
+check( str_contains( $detail, 'fpw-price-references' ), 'per-offer volume references remain available' );
+$dispatch_draft = $draft; $dispatch_draft['destination']['dispatch'] = 'si';
+$dispatch_detail = fpw_workspace_detail_markup( wc_get_order( $id ), $dispatch_draft, $work, null );
+$no_dispatch_draft = $draft; $no_dispatch_draft['destination']['dispatch'] = 'no';
+foreach ( array( $dispatch_detail, fpw_workspace_detail_markup( wc_get_order( $id ), $no_dispatch_draft, $work, null ) ) as $simplified ) {
+	check( ! str_contains( $simplified, '<summary>Mantenimiento de precios</summary>' ) && ! str_contains( $simplified, 'class="fpw-distance"' ) && ! str_contains( $simplified, 'Consultar distancia de despacho' ), 'quotation omits only the two requested secondary accordions, with or without dispatch' );
+	check( str_contains( $simplified, 'Datos de contacto y solicitud original' ) && str_contains( $simplified, 'Historial de compras' ) && str_contains( $simplified, 'Opciones de precios' ), 'neighboring contact, history and price options remain' );
+	check( str_contains( $simplified, 'page=fpw-price-list' ) && str_contains( $simplified, 'page=fpw-sales-import' ), 'independent maintenance screens stay reachable through navigation' );
+}
+check( str_contains( $dispatch_detail, 'name="fpw_work[destination]"' ) && str_contains( $dispatch_detail, 'name="fpw_work[dispatch_amount]"' ), 'removing distance disclosure preserves the editable destination and freight amount' );
 check( str_contains( $detail, 'data-fpw-origin="0"' ) && str_contains( $detail, 'Precio guardado para esta oferta.' ), 'H6: each price line ships its origin legend bound for unsaved-value feedback' );
 check( str_contains( $detail, 'data-fpw-dock-save' ) && str_contains( $detail, 'form="fpw-work-form"' ), 'mobile save submits the existing guarded native form' );
 $review = fpw_workspace_preview_html( $draft, $work, $preview );

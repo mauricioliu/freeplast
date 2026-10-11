@@ -533,7 +533,7 @@ function fpw_sales_screen_shell( string $inner ): string {
 		. '.fpw-sales .button{margin-right:8px}'
 		. '.fpw-sales__note{color:#60626d;font-size:14px;margin:8px 0 0}'
 		. '.fpw-sales__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}'
-		. '@media (min-width: 782px){.fpw-sales__grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.fpw-sales__grid section{margin:0}}'
+		. '@media (min-width: 782px){.fpw-sales__grid{display:grid;grid-template-columns:1fr;gap:16px}.fpw-sales__grid section{margin:0}}'
 		. '</style>' . $inner . '<!-- fpw-sales:end -->';
 }
 
@@ -628,22 +628,10 @@ function fpw_sales_receipts_html(): string {
 		. '<p class="fpw-sales__note">Cada lote aplicado deja este recibo de procedencia: es la frescura que verás junto al historial en cada borrador.</p></section>';
 }
 
-/** The screen markup: contract, upload, pending preview, applied receipts. */
+/** The screen markup: upload, pending preview, applied receipts. */
 function fpw_sales_import_markup( array $banner = array() ): string {
 	$url          = fpw_sales_import_screen_url();
 	$nonce_upload = wp_nonce_field( FPW_SALES_NONCE_UPLOAD, 'fpw_sales_nonce', true, false );
-
-	$contract = '<section><h2>Contrato de importación (v1)</h2>'
-		. '<p>Una fila por venta completada, en CSV de texto UTF-8 (hasta 2 MB, ' . FPW_SALES_MAX_ROWS . ' filas). Columnas exactas:</p>'
-		. '<dl><dt><code>id_venta</code></dt><dd>Identificador de la venta en tu registro: LA identidad de cada fila. Nunca se usa el RUT solo ni una combinación de fecha e importe como identidad, y una fila sin este identificador no se importa.</dd>'
-		. '<dt><code>fecha</code></dt><dd>Formato AAAA-MM-DD.</dd>'
-		. '<dt><code>rut</code></dt><dd>RUT de empresa del comprador. Sin RUT o con un RUT ilegible la venta se importa <strong>sin asociación resuelta</strong>.</dd>'
-		. '<dt><code>producto</code> (opcional)</dt><dd>Nombre o código tal como aparece en el registro.</dd>'
-		. '<dt><code>total_cajas</code> o <code>Total Cajas</code> (opcional)</dt><dd>Cantidad total de cajas, en enteros.</dd>'
-		. '<dt><code>precio</code> y <code>neto</code> (opcionales)</dt><dd>Importes en pesos enteros, sin calcular valores ausentes.</dd>'
-		. '<dt><code>total</code> (opcional)</dt><dd>Importe total de la transacción en pesos enteros. Si la columna no viene, la vista no muestra montos.</dd></dl>'
-		. '<p class="fpw-sales__note">Las columnas no soportadas se informan y se ignoran. Las ventas importadas nunca tocan la lista de precios, los borradores ni los documentos emitidos, y las solicitudes de cotización jamás aparecen como ventas.</p>'
-		. '<p class="fpw-sales__note"><strong>El contrato definitivo (columnas, identidad y semántica de actualización) se acordará con la muestra real del Registro de ventas.</strong></p></section>';
 
 	$upload = '<section><h2>Cargar CSV</h2><form action="' . esc_url( $url ) . '" method="post" enctype="multipart/form-data">'
 		. '<input type="hidden" name="fpw_sales_action" value="upload">' . $nonce_upload
@@ -655,7 +643,7 @@ function fpw_sales_import_markup( array $banner = array() ): string {
 		'<h1>Importar ventas</h1>'
 		. '<p class="fpw-sales__kicker">Registro de ventas · historial de compras por RUT de empresa</p>'
 		. fpw_sales_banner_html( $banner )
-		. '<div class="fpw-sales__grid">' . $contract . $upload . '</div>'
+		. '<div class="fpw-sales__grid">' . $upload . '</div>'
 		. fpw_sales_pending_preview_html()
 		. fpw_sales_receipts_html()
 	);

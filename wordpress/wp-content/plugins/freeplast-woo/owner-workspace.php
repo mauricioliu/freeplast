@@ -18,8 +18,8 @@ function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quo
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.6' );
-	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.6', true );
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.7' );
+	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.7', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
 add_filter( 'admin_title', static function ( $title ) {
@@ -225,7 +225,6 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Guarda los cambios y revisa la oferta. Solo se envía al aprobar.</p>'
 			. '<details><summary>Opciones de precios</summary><p>Refresca desde la lista actual conservando ajustes manuales. Guarda o descarta antes cualquier cambio pendiente.</p><button type="submit" name="fpw_price_refresh" value="1" form="fpw-work-form" data-fpw-refresh class="fpw-secondary">Refrescar precios</button></details>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
-		. $contact . ( current_user_can( 'manage_woocommerce' ) ? '<details><summary>Mantenimiento de precios</summary><a class="fpw-button" href="' . esc_url( fpw_price_screen_url() ) . '">Abrir lista de precios</a></details>' : '' )
-		. ( fpw_draft_requests_dispatch( $draft ) ? '<details class="fpw-distance"><summary>Consultar distancia de despacho</summary>' . fpw_draft_distance_section_html( $draft, $work ) . '</details>' : '' ) . fpw_workspace_history( $draft );
+		. $contact . fpw_workspace_history( $draft );
 	return fpw_workspace_shell( $body, $id, $projection['total'] ?? null, true );
 }

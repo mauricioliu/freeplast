@@ -308,29 +308,18 @@ function fpw_price_banner_html( array $banner ): string {
 }
 
 /**
- * The mantenedor screen markup: the contract (authority, privacy, stability,
- * mutation boundary), then one editable row per native identity.
+ * The mantenedor screen markup: one editable row per native identity.
  */
 function fpw_price_screen_markup( array $banner = array() ): string {
 	$catalog = fpw_price_catalog();
 	$list    = fpw_price_list();
 	$nonce   = wp_nonce_field( FPW_PRICE_NONCE_SAVE, 'fpw_price_nonce', true, false );
 
-	$contract = '<section><h2>Cómo funciona esta lista</h2><ul>'
-		. '<li>Estos precios son <strong>privados</strong> y son la autoridad vigente en WordPress: prellenan los borradores de cotización y jamás aparecen en páginas públicas, endpoints, confirmaciones ni correos del comprador.</li>'
-		. '<li>La identidad es la nativa de producto y variación; cada opción puede tener su propio precio. Ni una planilla externa ni el último precio histórico de venta sugieren valores aquí.</li>'
-		. '<li>Los precios técnicos 0 del catálogo son centinelas, no precios comerciales: este mantenedor nunca los publica ni los convierte en ofertas.</li>'
-		. '<li>Cambiar esta lista <strong>no reescribe</strong> los borradores ya guardados ni los documentos emitidos: cada borrador conserva sus importes hasta que el dueño refresque sus precios de forma explícita, y sus ajustes manuales se conservan siempre.</li>'
-		. '<li>Las referencias de 1 a 4 y de 5 o más pallets son netas por unidad. No prellenan ni seleccionan precios por cantidad: el dueño elige o escribe el precio en cada oferta. Un campo vacío es una referencia pendiente.</li>'
-		. '<li>Guardar aquí solo cambia esta lista privada: no toca productos, fotos, solicitudes, historial de ventas ni nada público.</li>'
-		. '</ul></section>';
-
 	if ( empty( $catalog ) ) {
 		return fpw_price_screen_shell(
 			'<h1>Mantenedor de precios</h1>'
 			. '<p class="fpw-prices__kicker">Lista de precios vigentes · netos CLP</p>'
 			. fpw_price_banner_html( $banner )
-			. $contract
 			. '<section><h2>Catálogo</h2><p>El catálogo no tiene productos publicados todavía: cuando los haya, cada identidad nativa aparecerá aquí con su campo de precio.</p></section>'
 		);
 	}
@@ -369,7 +358,6 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		. '<p class="fpw-prices__kicker">Lista de precios vigentes · netos CLP</p>'
 		. '<p class="fpw-prices__note">' . $updated . ' · ' . count( $list['references'] ) . ' referencias de volumen.</p>'
 		. fpw_price_banner_html( $banner )
-		. $contract
 		. '<section><h2>Precios por producto y opción</h2>'
 		. '<form class="fpw-prices__form" method="post" action="' . esc_url( fpw_price_screen_url() ) . '">'
 		. '<input type="hidden" name="fpw_price_save" value="1" />'

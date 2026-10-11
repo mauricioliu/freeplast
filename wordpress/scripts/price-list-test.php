@@ -271,9 +271,8 @@ check( preg_match( '/name="fpw_prices\[v:310\]"[^>]*value="2190"/', $markup ) ==
 check( preg_match( '/name="fpw_prices\[v:312\]"[^>]*value=""/', $markup ) === 1, 'an unmaintained option renders an empty input even when its product carries a price' );
 check( str_contains( $markup, 'sugerirá el precio del producto (1.990 CLP neto)' ), 'an unmaintained option names the product price it would inherit' );
 check( str_contains( $markup, 'name="fpw_price_nonce"' ) && str_contains( $markup, 'name="fpw_price_save"' ), 'the save action carries its CSRF nonce' );
-check( str_contains( $markup, 'no toca productos' ), 'the screen states it never mutates products or public data' );
-check( str_contains( $markup, 'no reescribe' ) && str_contains( $markup, 'conserva sus importes' ), 'the screen states list changes never rewrite saved drafts' );
-check( str_contains( $markup, 'jamás aparecen en páginas públicas' ), 'the screen states the prices stay private' );
+check( ! str_contains( $markup, 'Cómo funciona esta lista' ) && ! str_contains( $markup, 'jamás aparecen en páginas públicas' ), 'the complete explanatory price-list block is absent' );
+check( str_contains( $markup, 'Precios por producto y opción' ) && str_contains( $markup, 'Guardar lista de precios' ), 'the neighboring price editor and save action remain' );
 check( str_contains( $markup, 'Caja Cosechera 3/4' ), 'the catalog renders by name' );
 check( str_contains( $markup, 'Color — Azul' ), 'the variation rows name their option' );
 check( str_contains( $markup, '@media (min-width: 782px)' ), 'the layout is authored mobile-first with a desktop enhancement' );
@@ -286,6 +285,7 @@ check( str_contains( $with_banner, 'Lista de precios guardada' ), 'the save bann
 $GLOBALS['fppw_product_ids'] = array();
 $no_catalog = fpw_price_screen_markup();
 check( str_contains( $no_catalog, 'catálogo' ) && ! str_contains( $no_catalog, 'name="fpw_prices[' ), 'an empty catalog offers no inputs and says so' );
+check( ! str_contains( $no_catalog, 'Cómo funciona esta lista' ), 'the empty catalog also omits the explanatory block' );
 $GLOBALS['fppw_product_ids'] = array( 22, 25 );
 
 /* Boundaries: ventas (its exact four approved caps) is denied the screen and
