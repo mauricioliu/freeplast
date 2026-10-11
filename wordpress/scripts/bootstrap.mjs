@@ -300,6 +300,8 @@ function seedVariantProduct() {
     off on EVERY bootstrap — fresh installs and wp-content re-syncs alike — so the public
     pages under regression are always the real cart/checkout surfaces. */
 function pinComingSoonOff() {
+  // Fresh activation must not divert the first owner request into Woo onboarding.
+  wp(['transient', 'delete', '_wc_activation_redirect']);
   wp(['option', 'update', 'woocommerce_coming_soon', 'no']);
   wp(['option', 'update', 'woocommerce_store_pages_only', 'no']);
   wp(['option', 'update', 'woocommerce_private_link', 'no']);

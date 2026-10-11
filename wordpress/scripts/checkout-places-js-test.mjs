@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
  * official Places widget loads ONLY when configured and dispatch is wanted,
  * a selection records its claim (place id + match scope) beside the native
  * textarea, any edit or the «Sin despacho» choice invalidates it, and every
- * provider failure leaves a fully valid manual entry. The Google transport is
+ * provider failure blocks dispatch without blocking no-dispatch. Google transport is
  * simulated (real credentials are a separate authorization); the native
  * serialization is asserted untouched. */
 const source = readFileSync(new URL('../wp-content/plugins/freeplast-woo/places.js', import.meta.url), 'utf8');
@@ -45,10 +45,14 @@ function boot({ config = { key: 'browser-key-fixture', region: 'CL', version: 'w
   const w = dom.window;
   w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
   w.FPW_PLACES = config;
+  if (google === 'timeout') {
+    const schedule = w.setTimeout.bind(w);
+    w.setTimeout = (callback, delay) => schedule(callback, delay === 10000 ? 0 : delay);
+  }
   const created = [];
   if (google === 'quota') {
     w.google = { maps: { importLibrary: () => Promise.reject(new Error('quota exceeded')) } };
-  } else if (google === 'script-error') {
+  } else if (google === 'script-error' || google === 'timeout') {
     /* neither google nor a loader: the injected maps script must be observed */
   } else if (google) {
     w.google = { maps: { importLibrary: (library) => {
@@ -63,6 +67,8 @@ function boot({ config = { key: 'browser-key-fixture', region: 'CL', version: 'w
             ...place,
             fetchFields: async ({ fields }) => {
               assert.deepEqual(Array.from(fields), ['id', 'formattedAddress', 'types']);
+              if (place.wait) { await place.wait; }
+              if (place.fail) { throw new Error('fetch failed'); }
             }
           }) };
           el.dispatchEvent(event);
@@ -88,9 +94,8 @@ export async function runCheckoutPlacesTests() {
     input.dispatchEvent(new e.w.Event('change', { bubbles: true }));
   };
   const type = (e, text) => {
-    const field = e.form.querySelector('#billing_fp_address');
-    field.value = text;
-    field.dispatchEvent(new e.w.Event('input', { bubbles: true }));
+    const widget = e.form.querySelector('gmp-place-autocomplete');
+    if (widget) { widget.dispatchEvent(new e.w.Event('input', { bubbles: true })); }
   };
   const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
   const serializeForm = (e) => {
@@ -110,7 +115,7 @@ export async function runCheckoutPlacesTests() {
     ok(!e.form.hasAttribute('data-fpw-places'), 'no configuration means no enhancement marker on the form');
     ok(!e.w.document.querySelector('.fpw-places-host'), 'no configuration means no widget host');
     ok(!e.created.length, 'no configuration means no Google library request');
-    ok(serializeForm(e).filter(([name]) => name === 'billing_fp_address').length === 1, 'manual entry keeps its native serialization');
+    ok(serializeForm(e).filter(([name]) => name === 'billing_fp_address').length === 1, 'address keeps its native serialization');
   }
 
   /* Configured + dispatch=si: the official library loads once, the widget joins
@@ -142,7 +147,7 @@ export async function runCheckoutPlacesTests() {
     const widget = e.w.document.querySelector('gmp-place-autocomplete');
     widget.select(PLACE_EXACT); await flush();
     const field = e.form.querySelector('#billing_fp_address');
-    ok(field.value === PLACE_EXACT.formattedAddress, 'the confirmed place composes the native textarea (the customer sees and keeps control)');
+    ok(field.value === PLACE_EXACT.formattedAddress && field.readOnly && field.rows === 2, 'selection fills copyable two-line readonly textarea');
     const values = Object.fromEntries(serializeForm(e));
     ok(values.fpw_place_id === PLACE_EXACT.id && values.fpw_place_scope === 'exacta', 'an exact selection records its place id and exact scope');
     const status = e.w.document.querySelector('.fpw-places-status');
@@ -153,13 +158,13 @@ export async function runCheckoutPlacesTests() {
     type(e, 'Camino El Arrayán 52 depto 3'); await flush();
     const edited = Object.fromEntries(serializeForm(e));
     ok(edited.fpw_place_id === '' && edited.fpw_place_scope === '', 'editing the address invalidates the previous Place ID: only manual remains');
-    ok(status.textContent.includes('manualmente'), 'the status names the manual turn');
+    ok(status.textContent.includes('búsqueda'), 'the status requests a new selection');
 
     /* A broad match after an edit records amplia, honestly. */
     widget.select(PLACE_BROAD); await flush();
     const broad = Object.fromEntries(serializeForm(e));
     ok(field.value === PLACE_BROAD.formattedAddress && broad.fpw_place_id === PLACE_BROAD.id && broad.fpw_place_scope === 'amplia', 'a road-level match records its broad scope');
-    ok(status.textContent.includes('amplia') || status.textContent.includes('coincidencia amplia'), 'the status distinguishes the broad match from a certified point');
+    ok(status.textContent.includes('calle o sector'), 'the status distinguishes the broad match from a certified point');
 
     /* Clearing the field invalidates too. */
     type(e, ''); await flush();
@@ -167,17 +172,20 @@ export async function runCheckoutPlacesTests() {
     ok(cleared.fpw_place_id === '' && cleared.fpw_place_scope === '', 'clearing the address invalidates the association as well');
   }
 
-  /* Provider failure: manual entry stays fully valid and honestly announced. */
+  /* Provider failure blocks dispatch and offers explicit retry instructions. */
   {
     const e = await env({ google: 'quota' });
     chooseDispatch(e, 'si'); await flush();
     const status = e.w.document.querySelector('.fpw-places-status');
-    ok(status.hidden === false && status.textContent.includes('Escribe tu dirección manualmente'), 'a quota/key failure announces the manual path');
-    ok(status.textContent.includes('sigue siendo válida'), 'the failure never invalidates the customer\'s request');
+    ok(status.hidden === false && status.textContent.includes('Google no está disponible'), 'a quota/key failure announces the blocked path');
+    ok(status.textContent.includes('Recarga'), 'the failure offers retry instructions');
     ok(!e.w.document.querySelector('.fpw-places-host gmp-place-autocomplete'), 'no half-built widget remains after the failure');
     type(e, 'Camino rural sin asistente, Mostazal'); await flush();
     const values = Object.fromEntries(serializeForm(e));
-    ok(values.billing_fp_address === 'Camino rural sin asistente, Mostazal' && values.fpw_place_id === '' && values.fpw_place_scope === '', 'manual entry stays serializable and carries no claim');
+    ok(values.billing_fp_address === '' && values.fpw_place_id === '' && values.fpw_place_scope === '', 'failure keeps no selection');
+    ok(!e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'unconfirmed dispatch cannot submit');
+    chooseDispatch(e, 'no');
+    ok(e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'no-dispatch can submit during failure');
   }
 
   /* Script-level transport failure (network): same honest outcome. */
@@ -191,7 +199,14 @@ export async function runCheckoutPlacesTests() {
     script.dispatchEvent(new e.w.Event('error'));
     await flush();
     const status = e.w.document.querySelector('.fpw-places-status');
-    ok(status.hidden === false && status.textContent.includes('Escribe tu dirección manualmente'), 'a failed load announces the manual path');
+    ok(status.hidden === false && status.textContent.includes('Google no está disponible'), 'a failed load announces the blocked path');
+  }
+
+  {
+    const e = env({ google: 'timeout' });
+    chooseDispatch(e, 'si'); await flush();
+    ok(e.form.querySelector('.fpw-places-status').textContent.includes('Google no está disponible'), 'loader timeout gives actionable failure');
+    ok(!e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'loader timeout blocks dispatch');
   }
 
   /* «Sin despacho»: the claim is dropped, not merely hidden. */
@@ -203,10 +218,33 @@ export async function runCheckoutPlacesTests() {
     chooseDispatch(e, 'no'); await flush();
     const values = Object.fromEntries(serializeForm(e));
     ok(values.fpw_place_id === '' && values.fpw_place_scope === '', 'choosing no dispatch drops the place association');
-    ok(e.form.querySelector('#billing_fp_address').value === PLACE_EXACT.formattedAddress, 'the typed draft itself stays (the server owns the exclusion)');
+    ok(e.form.querySelector('#billing_fp_address').value === '', 'no-dispatch clears the selected address');
     chooseDispatch(e, 'si'); await flush();
     const revived = Object.fromEntries(serializeForm(e));
     ok(revived.fpw_place_id === '', 'returning to dispatch never resurrects a stale claim');
+  }
+
+  /* Late detail responses cannot resurrect an edited or abandoned selection. */
+  {
+    const e = env({ google: true });
+    chooseDispatch(e, 'si'); await flush();
+    const widget = e.form.querySelector('gmp-place-autocomplete');
+    const field = e.form.querySelector('#billing_fp_address');
+    for (const invalidate of ['edit', 'toggle', 'replacement']) {
+      let release;
+      widget.select({ ...PLACE_EXACT, wait: new Promise(resolve => { release = resolve; }) });
+      await flush();
+      if (invalidate === 'edit') { type(e, 'other'); }
+      if (invalidate === 'toggle') { chooseDispatch(e, 'no'); chooseDispatch(e, 'si'); }
+      if (invalidate === 'replacement') { widget.select(PLACE_BROAD); await flush(); }
+      release(); await flush();
+      ok(field.value === (invalidate === 'replacement' ? PLACE_BROAD.formattedAddress : ''), `stale detail ignored after ${invalidate}`);
+    }
+    widget.select({ ...PLACE_EXACT, fail: true }); await flush();
+    ok(field.value === '' && !e.form.querySelector('[name="fpw_place_id"]').value, 'failed replacement clears previous valid selection');
+    widget.select(PLACE_EXACT); await flush();
+    widget.dispatchEvent(new e.w.Event('gmp-error'));
+    ok(field.value === '' && !e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'provider error invalidates selection and blocks dispatch');
   }
 
   /* Re-init is inert: a second run never duplicates hosts or listeners. */
@@ -219,6 +257,6 @@ export async function runCheckoutPlacesTests() {
   }
 
   for (const e of instances) { e.dom.window.close(); }
-  console.log(`checkout places: ${checks} A · Directa dispatch-assistance checks passed (simulated Places transport; manual entry always valid)`);
+  console.log(`checkout places: ${checks} A · Directa dispatch-assistance checks passed (simulated Places transport; dispatch requires selection)`);
   return checks;
 }

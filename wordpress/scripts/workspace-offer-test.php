@@ -2,6 +2,24 @@
 /** Reuse the quotation contract's WordPress stubs and real, frozen PDF fixtures. */
 require __DIR__ . '/quote-draft-test.php';
 $start = $assertions;
+$notes_draft = fpw_read_request_draft(91);
+$notes_draft['destination']['references'] = 'Portón azul <entrada>';
+$notes_projection = fpw_quotation_projection($notes_draft, fpw_read_draft_work(91));
+check($notes_projection['references'] === 'Portón azul <entrada>', 'references join frozen projection independently of destination');
+check(str_contains(fpw_draft_dispatch_html(true, 'Working address', 1000, false, $notes_projection['references']), 'Referencias para llegar (cliente)</dt><dd>Portón azul &lt;entrada&gt;'), 'working destination shows original references distinctly');
+$notes_version = fpw_read_quotation_version(91);
+$notes_version['projection'] = $notes_projection;
+foreach (array(
+	fpw_workspace_offer_html($notes_projection),
+	fpw_quotation_email_html($notes_version),
+	fpw_quotation_document_html($notes_version, '', 'sans-serif'),
+) as $surface) {
+	check(str_contains($surface, 'Referencias para llegar: Portón azul &lt;entrada&gt;'), 'offer/email/PDF source escapes and labels references separately');
+}
+$notes_draft['destination']['dispatch'] = 'no';
+check(!isset(fpw_quotation_projection($notes_draft, null)['references']), 'no-dispatch projection excludes references');
+$legacy_projection = fpw_quotation_projection(fpw_read_request_draft(91), fpw_read_draft_work(91));
+check(!isset($legacy_projection['references']), 'old previews keep original projection shape, no backfill');
 if ( ! function_exists( 'plugins_url' ) ) { function plugins_url( $path, $file = '' ) { return 'https://freeplast.test/plugins/' . $path; } }
 if ( ! function_exists( 'wc_get_product' ) ) { function wc_get_product( $id ) { return false; } }
 if ( ! function_exists( 'add_query_arg' ) ) {

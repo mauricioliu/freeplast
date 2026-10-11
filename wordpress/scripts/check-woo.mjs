@@ -177,7 +177,9 @@ checks+=7;
 // Issue #1 (Woo-side ports of #24/#27): boot the disposable WP+Woo stack and exercise the
 // delivered Home card contract (WA-04) and the concurrent-checkout attempt claim (WA-01)
 // over real HTTP — loopback only; the port is refused if a foreign server owns it.
-{const {runStackHarness}=await import('./woo-stack-harness.mjs');
+{const {runBootstrapOnboardingTests}=await import('./bootstrap-onboarding-test.mjs');
+ checks+=runBootstrapOnboardingTests();
+ const {runStackHarness}=await import('./woo-stack-harness.mjs');
  checks+=await runStackHarness();}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);
 console.log(process.env.FREEPLAST_SKIP_STACK === '1'

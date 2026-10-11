@@ -251,6 +251,28 @@ add_filter( 'pre_http_request', static function ( $preempt, $parsed_args, $url )
 `,
   );
 
+  writeFileSync(join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-places.php'), `<?php
+/** Disposable transport fixture only: never permits a live Places request. */
+if ( ! defined('ABSPATH') ) { exit; }
+define('FREEPLAST_GOOGLE_PLACES_SERVER_KEY', 'stack-places-server-fixture');
+add_filter('pre_http_request', static function ($preempt, $args, $url) {
+  if (!str_starts_with($url, 'https://places.googleapis.com/')) { return $preempt; }
+  $places = array(
+    'ChIJfreesideQ9fXhZplaces-fixture' => array('Camino El Arrayán 52, San Francisco de Mostazal', 'street_address'),
+    'ChIJbroad-stack-fixture' => array('Camino rural, Mostazal', 'route'),
+    'ChIJcorrect-stack-fixture' => array('Camino de prueba 1, Mostazal, VI Región', 'street_address'),
+    'ChIJother-stack-fixture' => array('Calle Falsa 123, Mostazal, VI Región', 'street_address'),
+    'ChIJprices-stack-fixture' => array('Camino de precios 123, Mostazal', 'street_address'),
+  );
+  $id = basename($url);
+  if ($url !== 'https://places.googleapis.com/v1/places/' . $id || !isset($places[$id])) { return new WP_Error('fixture_unknown_place', 'Unknown fixture'); }
+  return array('response'=>array('code'=>200), 'body'=>wp_json_encode(array(
+    'id'=>$id, 'formattedAddress'=>$places[$id][0], 'types'=>array($places[$id][1]),
+    'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country'))),
+  )));
+}, 10, 3);
+`);
+
   /* 2. Serve (multi-worker so two checkout POSTs can genuinely overlap). The
      spawn is detached so the whole process GROUP (master + every worker) can
      be signalled: a plain master SIGTERM has been observed to leave workers
@@ -532,12 +554,9 @@ register_shutdown_function( static function () {
       const zeroPage = await (await jarFetch('/')).text();
       check(headerCount(zeroPage) === 0, `the empty selection server-renders the zero state (got ${headerCount(zeroPage)})`);
 
-      /* Issue #59 journey: the dispatch-address assistance over the REAL native
-         POST. An assisted confirmation keeps ONLY its recorded claim, a payload
-         with a malformed place id degrades to a plainly manual address, and
-         «Sin despacho» excludes the destination AND every place association.
-         No Google exists on this stack: the server's provenance contract is
-         what's under test, exactly as the criteria require. */
+      /* Native POST with mocked Places transport: reject missing/forged IDs,
+         persist canonical exact/broad CL matches and separate references,
+         exclude all destination data without dispatch. No real Google calls. */
       const placesAddress = 'Camino El Arrayán 52, San Francisco de Mostazal';
       const hiddenValues = (html) => {
         const values = {};
@@ -548,7 +567,7 @@ register_shutdown_function( static function () {
         }
         return values;
       };
-      const placesJourney = async (fields, label) => {
+      const placesJourney = async (fields, label, rejected = false) => {
         const jar = makeCookieFetch();
         const add = await jar('/?wc-ajax=add_to_cart', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'product_id=' + journeyId + '&quantity=2' });
         check(add.status === 200, `places journey ${label}: the add must answer 200 (got ${add.status})`);
@@ -563,12 +582,15 @@ register_shutdown_function( static function () {
           ...fields };
         const response = await jar('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted).toString() });
         const payload = await response.json();
+        if (rejected) { check(payload.result === 'failure' && !payload.redirect, `places journey ${label}: unconfirmed dispatch rejected`); return null; }
         check(payload && payload.result === 'success' && /\/order-received\/(\d+)/.test(String(payload.redirect || '')), `places journey ${label}: a valid request lands natively (got ${JSON.stringify(payload).slice(0, 140)})`);
         return Number((String(payload.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
       };
+      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, fpw_place_id: 'no space allowed' }, 'forged', true);
+      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress }, 'missing', true);
       placesJourneyIds = {
-        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
-        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Camino rural sin asistente, Mostazal', fpw_place_id: 'no space allowed', fpw_place_scope: 'exacta' }, 'degradada'),
+        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Forged client address', billing_fp_references: 'Portón azul', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
+        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Forged rural address', fpw_place_id: 'ChIJbroad-stack-fixture', fpw_place_scope: 'exacta' }, 'amplia'),
         sindespacho: await placesJourney({ billing_fp_dispatch: 'no', billing_fp_address: '', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'amplia' }, 'sin-despacho'),
       };
 
@@ -789,6 +811,7 @@ register_shutdown_function( static function () {
           'id' => $id,
           'dispatch' => (string) $order->get_meta('_billing_fp_dispatch'),
           'address' => (string) $order->get_meta('_billing_fp_address'),
+          'references' => (string) $order->get_meta('_billing_fp_references'),
           'source' => (string) $order->get_meta('_billing_fp_address_source'),
           'place_id' => (string) $order->get_meta('_billing_fp_place_id'),
           'scope' => (string) $order->get_meta('_billing_fp_place_scope'),
@@ -805,10 +828,11 @@ register_shutdown_function( static function () {
       check(!assisted.all_meta.includes('coordinates') && !/-33\./.test(assisted.all_meta), 'no coordinate ever persists');
       check(assisted.draft_destination && assisted.draft_destination.source === 'asistida' && assisted.draft_destination.place_id === 'ChIJfreesideQ9fXhZplaces-fixture', 'the draft snapshot carries the recorded provenance');
       const degraded = placesState.degradada;
-      check(degraded.source === 'manual' && degraded.place_id === '' && degraded.scope === '', `a malformed place id degrades to a plainly manual record (got ${JSON.stringify([degraded.source, degraded.place_id, degraded.scope])})`);
-      check(degraded.address === 'Camino rural sin asistente, Mostazal', 'the degraded record keeps the valid manual address: the request was never lost');
+      check(degraded.source === 'asistida' && degraded.place_id === 'ChIJbroad-stack-fixture' && degraded.scope === 'amplia', 'broad CL match accepted with server-derived scope');
+      check(degraded.address === 'Camino rural, Mostazal', 'broad address is canonical, not posted text');
       check(!degraded.all_meta.includes('no space allowed'), 'the malformed value never reaches the record');
-      check(degraded.draft_destination && degraded.draft_destination.source === 'manual' && degraded.draft_destination.place_id === '', 'the degraded draft names the manual provenance');
+      check(degraded.draft_destination && degraded.draft_destination.scope === 'amplia', 'broad scope survives draft snapshot');
+      check(assisted.references === 'Portón azul' && assisted.draft_destination.references === 'Portón azul', 'references survive native order and draft separately');
       const none = placesState.sindespacho;
       check(none.dispatch === 'no' && none.address === '', '«Sin despacho» keeps no destination (existing rule intact over the real POST)');
       check(none.source === '' && none.place_id === '' && none.scope === '', '«Sin despacho» keeps no place association, even with stale place fields posted');
@@ -845,14 +869,13 @@ register_shutdown_function( static function () {
       const region = (html) => { const start = html.indexOf('<div class="wrap fpw-draft">'); const end = html.indexOf('<!-- fpw-draft:end -->'); return start >= 0 && end > start ? html.slice(start, end) : null; };
       check(region(reread) !== null && region(reread) === region(screenHtml), 'the private read is stable: the draft screen markup changes nothing');
 
-      /* Issue #59: the private review reads the destination provenance — the
-         assisted claim named for what it is, the degraded request plainly
-         manual, and the dispatch estimate still pending (no routes here). */
+      /* Private review preserves exact/broad scope and references. */
       const assistedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.asistida}`)).text();
       check(assistedScreen.includes('Procedencia de la dirección') && assistedScreen.includes('Confirmada con el asistente de direcciones'), 'the private reading names the assisted provenance (issue #59)');
       check(assistedScreen.includes('Coincidencia exacta') && assistedScreen.includes('ChIJfreesideQ9fXhZplaces-fixture'), 'the private reading shows the claim and its scope');
       const degradedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.degradada}`)).text();
-      check(degradedScreen.includes('Ingresada manualmente') && !degradedScreen.includes('Place ID'), 'the degraded request reads as plainly manual, with no invented place row (issue #59)');
+      check(degradedScreen.includes('Coincidencia amplia') && degradedScreen.includes('ChIJbroad-stack-fixture'), 'broad match remains explicit in sales');
+      check(assistedScreen.includes('Portón azul'), 'sales renders references separately');
 
       /* Negative permission with a VALID session (no nonce applies to a GET
          read): ventas' exact approved caps never open the private draft. */
@@ -1294,7 +1317,7 @@ register_shutdown_function( static function () {
           billing_email: 'precios-52@example.invalid', billing_company: 'PRUEBA NO COMERCIAL',
           billing_fp_rut: '76.876.543-4', billing_fp_giro: 'Prueba local',
           payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
-          billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal' };
+          billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal', fpw_place_id: 'ChIJprices-stack-fixture' };
         const response52 = await jar52('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted52).toString() });
         const payload52 = await response52.json();
         check(payload52 && payload52.result === 'success' && /\/order-received\/(\d+)/.test(String(payload52.redirect || '')), `the price-journey request lands natively (got ${JSON.stringify(payload52).slice(0, 140)})`);

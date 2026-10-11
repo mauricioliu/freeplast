@@ -143,6 +143,7 @@ function fpw_build_request_draft_payload( $order ): array {
 		'destination'       => array(
 			'dispatch' => (string) $order->get_meta( '_billing_fp_dispatch' ),
 			'address'  => (string) $order->get_meta( '_billing_fp_address' ),
+			'references' => (string) $order->get_meta( '_billing_fp_references' ),
 			'source'   => (string) $order->get_meta( '_billing_fp_address_source' ),
 			'place_id' => (string) $order->get_meta( '_billing_fp_place_id' ),
 			'scope'    => (string) $order->get_meta( '_billing_fp_place_scope' ),
@@ -820,7 +821,10 @@ function fpw_draft_facts_html( array $identity, array $destination, bool $with_d
 		array( 'Correo', (string) ( $identity['email'] ?? '' ) ),
 		array( 'Despacho', $with_dispatch ? 'Con despacho' : 'Sin despacho' ),
 	);
-	if ( $with_dispatch ) { $facts[] = array( 'Dirección de despacho', (string) ( $destination['address'] ?? '' ) ); }
+	if ( $with_dispatch ) {
+		$facts[] = array( 'Dirección de despacho', (string) ( $destination['address'] ?? '' ) );
+		$facts[] = array( 'Referencias para llegar', (string) ( $destination['references'] ?? '' ) );
+	}
 	$html = '';
 	foreach ( $facts as [ $label, $value ] ) {
 		if ( '' !== $value ) { $html .= fpw_draft_fact_html( $label, $value ); }
@@ -1031,7 +1035,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 		'total'                   => $total,
 		'missing'                 => $missing,
 		'complete'                => empty( $missing ),
-	);
+	) + ( $with_dispatch && ! empty( $draft['destination']['references'] ) ? array( 'references' => (string) $draft['destination']['references'] ) : array() );
 }
 
 /** One amount as the owner entered it: plain integer input, pending placeholder when absent. */
@@ -1130,13 +1134,14 @@ function fpw_draft_items_html( array $items, array $values ): string {
 }
 
 /** The dispatch block: the working destination and amount for a requested dispatch; the explicit no-dispatch contract otherwise. */
-function fpw_draft_dispatch_html( bool $with_dispatch, string $destination, ?int $amount, bool $stale ): string {
+function fpw_draft_dispatch_html( bool $with_dispatch, string $destination, ?int $amount, bool $stale, string $references = '' ): string {
 	if ( ! $with_dispatch ) {
 		return '<p>La solicitud no pide despacho. Sin despacho es distinto de despacho aún no valorizado: la oferta de trabajo no incluye destino de entrega ni flete; los detalles originales se conservan.</p>';
 	}
 	return '<dl>'
 		. '<div class="fpw-draft__fact"><dt>Destino de trabajo</dt><dd><label class="fpw-draft__field">Destino de entrega (trabajo)<textarea name="fpw_work[destination]" maxlength="800" rows="2" placeholder="Calle, número, comuna y región">' . esc_textarea( $destination ) . '</textarea></label>'
 		. '<span class="fpw-draft__origin">Ajuste manual del dueño: la dirección original de la solicitud se conserva histórica arriba.</span></dd></div>'
+		. ( '' !== $references ? fpw_draft_fact_html( 'Referencias para llegar (cliente)', $references ) : '' )
 		. '<div class="fpw-draft__fact"><dt>Monto de despacho</dt><dd>' . fpw_draft_amount_value_html( $amount, 'despacho aún no valorizado' )
 		. ( $stale ? '<em class="fpw-draft__stale">Requiere revisión: el destino o las cantidades cambiaron después de guardar este monto; revísalo antes de ofrecerlo.</em>' : '' )
 		. '<label class="fpw-draft__field">Monto de despacho (CLP neto)' . fpw_draft_amount_input_html( 'fpw_work[dispatch_amount]', $amount ) . '</label>'
@@ -1334,6 +1339,7 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 		. '</tbody></table>';
 	if ( ! empty( $projection['dispatch_requested'] ) && '' !== (string) ( $projection['destination'] ?? '' ) ) {
 		$html .= '<p class="fpw-draft__preview-dest">Destino de la oferta: ' . esc_html( (string) $projection['destination'] ) . '</p>';
+		if ( ! empty( $projection['references'] ) ) { $html .= '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>'; }
 	}
 	$html .= '<p class="fpw-draft__preview-validity"><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 	$html .= '<p class="fpw-draft__aside-note">Esta vista previa no incluye historial de compras, notas internas, costos de transportista ni el desglose interno de la estimación de despacho. No es un documento emitido: nada fue aprobado ni enviado al comprador.</p>'
@@ -1406,7 +1412,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
-		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale ) . '</section>'
+		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale, (string) ( $destination['references'] ?? '' ) ) . '</section>'
 		. '<section><h2>Vigencia de la oferta</h2><label class="fpw-draft__field">Días de vigencia (1 a ' . FPW_DRAFT_MAX_VALIDITY_DAYS . ')' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label>'
 		. '<p class="fpw-draft__origin">Los precios ofrecidos valen por estos días a contar de la aprobación de la oferta. La vigencia por defecto es de ' . fpw_quotation_default_validity_days() . ' días.</p></section>'
 		. $save_section

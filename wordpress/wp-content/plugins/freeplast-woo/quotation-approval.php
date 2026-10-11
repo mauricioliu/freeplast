@@ -227,6 +227,7 @@ function fpw_quotation_email_html( array $version ): string {
 	return '<p>Enviamos la cotización de la solicitud ' . esc_html( (string) ( $version['reference'] ?? '' ) ) . ' (versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ') en el documento PDF adjunto.</p>'
 		. '<table cellspacing="0" cellpadding="8" border="1" style="width:100%;border-collapse:collapse"><caption>Productos ofertados</caption><thead><tr><th scope="col">Producto</th><th scope="col">Cantidad</th><th scope="col">Precio neto</th><th scope="col">Total línea</th></tr></thead><tbody>' . $rows . '</tbody></table>'
 		. $destination
+		. ( ! empty( $projection['dispatch_requested'] ) && ! empty( $projection['references'] ) ? '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>' : '' )
 		. '<p><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 }
 
