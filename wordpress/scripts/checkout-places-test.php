@@ -222,4 +222,9 @@ check( $none_draft['destination']['dispatch'] === 'no' && $none_draft['destinati
 $html_none = fpw_quote_draft_markup( $none_order, $none_draft );
 check( str_contains( $html_none, 'no pide despacho' ) && ! str_contains( $html_none, 'Procedencia' ), 'the no-dispatch section renders no provenance row' );
 
+define( 'FREEPLAST_GOOGLE_API_KEY', 'constant-browser-key-fixture' );
+check( fpw_places_config() === array( 'key' => 'constant-browser-key-fixture', 'region' => 'CL', 'version' => 'weekly' ), 'deployment constant configures Chile without embedding a key in the plugin' );
+$GLOBALS['registered_filters']['fpw_places_config'] = array( static function ( $config ) { return array(); } );
+check( fpw_places_config() === array(), 'filter can disable assistance even with a deployment constant' );
+
 echo "checkout places: $assertions offline checks passed (issue #59: provenance claim handling, persistence boundary, draft rendering)\n";

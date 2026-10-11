@@ -57,7 +57,16 @@ function boot({ config = { key: 'browser-key-fixture', region: 'CL', version: 'w
         const el = w.document.createElement('gmp-place-autocomplete');
         el.options = options;
         el.disabled = false;
-        el.select = (place) => { const event = new w.Event('gmp-placeselect'); event.place = place; el.dispatchEvent(event); };
+        el.select = (place) => {
+          const event = new w.Event('gmp-select');
+          event.placePrediction = { toPlace: () => ({
+            ...place,
+            fetchFields: async ({ fields }) => {
+              assert.deepEqual(Array.from(fields), ['id', 'formattedAddress', 'types']);
+            }
+          }) };
+          el.dispatchEvent(event);
+        };
         created.push(el);
         return el;
       } });

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.7
+ * Version: 1.12.8
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -324,7 +324,8 @@ function fpw_address_provenance( array $data ): array {
 
 /**
  * Places configuration seam (issue #59): the official widget loads ONLY with a
- * deliberate configuration delivered through this filter — a browser key with
+ * deliberate configuration delivered through this filter or the deployment's
+ * FREEPLAST_GOOGLE_API_KEY constant — a browser key with
  * HTTP-referrer restrictions, quotas and terms arranged SEPARATELY from the
  * code (external prerequisite still pending; ADR-0007). Absent configuration
  * means the assistant never loads and manual entry serves alone.
@@ -332,7 +333,8 @@ function fpw_address_provenance( array $data ): array {
  * @return array{key:string, region:string, version:string}
  */
 function fpw_places_config(): array {
-	$config = apply_filters( 'fpw_places_config', array() );
+	$default = defined( 'FREEPLAST_GOOGLE_API_KEY' ) ? array( 'key' => FREEPLAST_GOOGLE_API_KEY, 'region' => 'CL' ) : array();
+	$config = apply_filters( 'fpw_places_config', $default );
 	if ( ! is_array( $config ) || ! isset( $config['key'] ) || ! is_string( $config['key'] ) || '' === trim( $config['key'] ) ) { return array(); }
 	return array(
 		'key'     => trim( $config['key'] ),
@@ -368,7 +370,7 @@ add_action( 'wp_enqueue_scripts', static function () {
 		// entry serves alone (the server keeps the same provenance contract).
 		$places = fpw_places_config();
 		if ( $places ) {
-			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.0.0', true);
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.0.1', true);
 			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}

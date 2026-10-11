@@ -101,14 +101,13 @@
        valid manual entry. */
     widget.setAttribute('data-fpw-places-widget', '');
     widget.setAttribute('aria-label', 'Buscar una dirección');
-    widget.addEventListener('gmp-placeselect', function (event) {
-      var place = event && event.place;
-      if (!place) { return; }
-      Promise.resolve(
-        typeof place.fetchFields === 'function'
-          ? place.fetchFields({ fields: ['id', 'formattedAddress', 'types'] })
-          : null
-      ).then(function () {
+    widget.addEventListener('gmp-select', function (event) {
+      var prediction = event && event.placePrediction;
+      if (!prediction || typeof prediction.toPlace !== 'function') { return; }
+      Promise.resolve().then(function () {
+        var place = prediction.toPlace();
+        return place.fetchFields({ fields: ['id', 'formattedAddress', 'types'] }).then(function () { return place; });
+      }).then(function (place) {
         var id = place.id || place.place_id || '';
         var formatted = place.formattedAddress || place.formatted_address || '';
         if (!id || !formatted) { announce(context.status, TEXTS.unconfirmed); return; }
