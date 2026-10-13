@@ -59,6 +59,8 @@ function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}
 $GLOBALS['fpwd_options'] = array( 'date_format' => 'j F Y' );
 function get_option( $name, $default = false ) { return $GLOBALS['fpwd_options'][ $name ] ?? $default; }
+$GLOBALS['fpwd_post_meta'] = array();
+function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fpwd_post_meta'][ (int) $id ][ $key ] ?? ''; }
 $GLOBALS['fpwd_caps'] = array();
 function current_user_can( string $cap ): bool { return ! empty( $GLOBALS['fpwd_caps'][ $cap ] ); }
 function add_submenu_page( $parent, $page_title, $menu_title, $capability, $slug, $callback ) { return $slug; }

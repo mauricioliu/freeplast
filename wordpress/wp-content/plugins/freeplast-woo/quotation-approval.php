@@ -49,6 +49,8 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+require_once __DIR__ . '/quotation-sequence.php';
+
 define( 'FPW_QUOTATION_ROW_PREFIX', 'fpw_quotation_' );
 
 /** The approved-version row name of one request: unique option_name → one first version, ever. */
@@ -112,12 +114,16 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	require_once __DIR__ . '/quotation-document.php';
 	try { $issuer = fpw_quotation_issuer_snapshot( ! empty( $preview['projection']['dispatch_requested'] ) ); }
 	catch ( Throwable ) { return array( 'state' => 'storage-failed', 'version' => null ); }
+	/* Step 7: the commercial number is allocated BEFORE the durable version write and frozen into it. A version-write failure burns the number (documented gap, never reused); an allocation failure leaves nothing written. */
+	$commercial_number = fpw_quotation_allocate_number();
+	if ( null === $commercial_number ) { return array( 'state' => 'storage-failed', 'version' => null ); }
 	$identity = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
 	$version  = array(
 		'schema'        => 1,
 		'order_id'      => $order_id,
 		'version'       => 1,
 		'reference'     => (string) ( $draft['reference'] ?? '' ),
+		'commercial'    => array( 'number' => $commercial_number, 'allocated_at' => time() ),
 		'attempt'       => (string) ( $draft['attempt'] ?? '' ),
 		'work_revision' => max( 0, (int) ( $preview['revision'] ?? 0 ) ),
 		'approved_at'   => time(),
@@ -187,7 +193,7 @@ function fpw_quotation_deliver( array $version ): string {
 		try {
 			$sent = wp_mail(
 				$to,
-				'Cotización ' . (string) ( $version['reference'] ?? '' ) . ' · versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ),
+				'Cotización' . ( isset( $version['commercial']['number'] ) ? ' Nº ' . (int) $version['commercial']['number'] : '' ) . ' ' . (string) ( $version['reference'] ?? '' ) . ' · versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ),
 				fpw_quotation_email_html( $version ),
 				array( 'Content-Type: text/html; charset=UTF-8' ),
 				array( $path )
@@ -228,7 +234,7 @@ function fpw_quotation_email_html( array $version ): string {
 	$destination = ! empty( $projection['dispatch_requested'] ) && '' !== (string) ( $projection['destination'] ?? '' )
 		? '<p>Destino de la oferta: ' . esc_html( (string) $projection['destination'] ) . '</p>'
 		: '';
-	return '<p>Enviamos la cotización de la solicitud ' . esc_html( (string) ( $version['reference'] ?? '' ) ) . ' (versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ') en el documento PDF adjunto.</p>'
+	return '<p>Enviamos la cotización' . ( isset( $version['commercial']['number'] ) ? ' Nº ' . (int) $version['commercial']['number'] : '' ) . ' de la solicitud ' . esc_html( (string) ( $version['reference'] ?? '' ) ) . ' (versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ') en el documento PDF adjunto.</p>'
 		. '<table cellspacing="0" cellpadding="8" border="1" style="width:100%;border-collapse:collapse"><caption>Productos ofertados</caption><thead><tr><th scope="col">Producto</th><th scope="col">Cantidad</th><th scope="col">Precio neto</th><th scope="col">Total línea</th></tr></thead><tbody>' . $rows . '</tbody></table>'
 		. $destination
 		. ( ! empty( $projection['dispatch_requested'] ) && ! empty( $projection['references'] ) ? '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>' : '' )
@@ -287,7 +293,7 @@ function fpw_quotation_delivery_state_html( array $delivery ): string {
 	return 'Pendiente';
 }
 
-/** The standing approved version in one state line for the status board. */
+/** The standing approved version in one state line for the status board: the frozen commercial number first (legacy versions keep their original wording). */
 function fpw_quotation_version_state_html( array $version ): string {
 	$document = 'ready' === ( $version['document'] ?? '' ) ? 'documento listo' : 'documento pendiente';
 	$mail = match ( $version['delivery']['state'] ?? null ) {
@@ -296,7 +302,7 @@ function fpw_quotation_version_state_html( array $version ): string {
 		'unknown'  => 'desconocido',
 		default    => 'pendiente',
 	};
-	return 'Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ' · ' . $document . ' · correo ' . $mail;
+	return ( isset( $version['commercial']['number'] ) ? 'Cotización Nº ' . (int) $version['commercial']['number'] . ' · ' : '' ) . 'Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ' · ' . $document . ' · correo ' . $mail;
 }
 
 /** The approved-version section: what stands, its document and its delivery — recovery operates on exactly this. */
@@ -306,6 +312,7 @@ function fpw_quotation_version_section_html( ?array $version ): string {
 		? 'Generado con los valores aprobados'
 		: 'Pendiente — no se intentó enviar ninguna oferta sin su documento';
 	return '<section class="fpw-draft__version"><h2>Versión aprobada</h2><dl>'
+		. ( isset( $version['commercial']['number'] ) ? '<div class="fpw-draft__fact"><dt>Cotización comercial</dt><dd>Nº ' . (int) $version['commercial']['number'] . ' · serie propia confirmada por el propietario, distinta de la referencia de solicitud</dd></div>' : '' )
 		. '<div class="fpw-draft__fact"><dt>Versión</dt><dd>Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ' · aprobada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $version['approved_at'] ?? 0 ) ) ) . ' sobre la revisión ' . max( 0, (int) ( $version['work_revision'] ?? 0 ) ) . ' del trabajo</dd></div>'
 		. '<div class="fpw-draft__fact"><dt>Documento</dt><dd>' . esc_html( $document ) . '</dd></div>'
 		. '<div class="fpw-draft__fact"><dt>Correo al comprador</dt><dd>' . fpw_quotation_delivery_state_html( is_array( $version['delivery'] ?? null ) ? $version['delivery'] : array() ) . '</dd></div>'

@@ -59,6 +59,8 @@ function do_action( ...$args ): void {}
 function apply_filters( $tag, $value ) { return $value; }
 $GLOBALS['fppw_options'] = array( 'date_format' => 'j F Y' );
 function get_option( $name, $default = false ) { return $GLOBALS['fppw_options'][ $name ] ?? $default; }
+$GLOBALS['fppw_post_meta'] = array();
+function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fppw_post_meta'][ (int) $id ][ $key ] ?? ''; }
 $GLOBALS['fppw_caps'] = array();
 function current_user_can( string $cap ): bool { return ! empty( $GLOBALS['fppw_caps'][ $cap ] ); }
 $GLOBALS['fppw_submenu'] = null;

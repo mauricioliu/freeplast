@@ -20,7 +20,12 @@ function absint( $value ) { return abs( (int) $value ); }
 function sanitize_textarea_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 class WP_Error {
 	public array $codes = array();
-	public function add( $code, $message, $data = null ) { $this->codes[] = $code; }
+	public array $messages = array();
+	public function __construct( $code = '', $message = '' ) { if ( '' !== (string) $code ) { $this->add( $code, $message ); } }
+	public function add( $code, $message, $data = null ) { $this->codes[] = $code; $this->messages[ $code ][] = $message; }
+	public function get_error_code() { return $this->codes[0] ?? ''; }
+	public function get_error_messages( $code = '' ) { return '' === $code ? array_merge( ...array_values( $this->messages ) ) : ( $this->messages[ $code ] ?? array() ); }
+	public function get_error_message( $code = '' ) { return $this->get_error_messages( $code )[0] ?? ''; }
 }
 require __DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php';
 
@@ -90,22 +95,43 @@ $GLOBALS['fpwd_attr_labels'] = array( 'pa_color' => 'Color' );
 function wc_attribute_label( $name, $product = '' ) { return $GLOBALS['fpwd_attr_labels'][ $name ] ?? $name; }
 $GLOBALS['fpwd_orders'] = array();
 function wc_get_order( $id ) { return $GLOBALS['fpwd_orders'][ (int) $id ] ?? null; }
+/* Step 3/7 stubs: native product meta (minimums), titles, notices and sequence helpers. */
+$GLOBALS['fpwd_post_meta'] = array();
+function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fpwd_post_meta'][ (int) $id ][ $key ] ?? ''; }
+$GLOBALS['fpwd_titles'] = array( 22 => 'Caja Cosechera 3/4', 25 => 'Caja Universal Cerrada Color' );
+function get_the_title( $id = 0 ) { return $GLOBALS['fpwd_titles'][ (int) $id ] ?? ( 'Producto ' . (int) $id ); }
+$GLOBALS['fpwd_notices'] = array();
+function wc_add_notice( $message, $notice_type = 'notice' ) { $GLOBALS['fpwd_notices'][] = array( 'message' => $message, 'type' => $notice_type ); }
+function is_product() { return false; }
+function is_cart() { return false; }
 
 /* Fake wpdb with the unique option_name semantics of the real one (the INSERT
  * that hits an existing name loses; reads bypass the per-request cache). */
 class FPWD_Fake_wpdb {
 	public string $prefix = 'fp_';
 	public string $options = 'wp_options';
+	public int $insert_id = 0;
 	public function suppress_errors( $set = null ) { return false; }
 	public function esc_like( $text ) { return addcslashes( $text, '_%\\' ); }
 	public function prepare( $sql, ...$args ) {
-		foreach ( $args as $arg ) { $pos = strpos( $sql, '%s' ); $sql = substr( $sql, 0, $pos ) . "'" . $arg . "'" . substr( $sql, $pos + 2 ); }
+		foreach ( $args as $arg ) {
+			$dpos = strpos( $sql, '%d' ); $spos = strpos( $sql, '%s' );
+			if ( false !== $dpos && ( false === $spos || $dpos < $spos ) ) { $sql = substr( $sql, 0, $dpos ) . (int) $arg . substr( $sql, $dpos + 2 ); continue; }
+			$pos = strpos( $sql, '%s' ); $sql = substr( $sql, 0, $pos ) . "'" . $arg . "'" . substr( $sql, $pos + 2 );
+		}
 		return $sql;
 	}
 	public function query( $sql ) {
 		if ( isset( $GLOBALS['fpwd_query_fault'] ) ) {
 			$result = ( $GLOBALS['fpwd_query_fault'] )( $sql );
 			if ( null !== $result ) { return $result; }
+		}
+		if ( str_starts_with( $sql, 'CREATE TABLE IF NOT EXISTS ' ) && str_contains( $sql, 'fpw_quotation_sequence' ) ) { return 1; }
+		if ( str_contains( $sql, 'INSERT INTO fp_fpw_quotation_sequence' ) ) {
+			$this->insert_id = $GLOBALS['fpwd_sequence_next'] ?? FPW_QUOTATION_SEQUENCE_START;
+			$GLOBALS['fpwd_sequence_allocations'][] = $this->insert_id;
+			$GLOBALS['fpwd_sequence_next'] = $this->insert_id + 1;
+			return 1;
 		}
 		if ( preg_match( "/INSERT INTO \{?\w*options\}? \( option_name, option_value, autoload \) VALUES \( '(.+?)', '(.*)', 'off' \)$/s", $sql, $m ) ) {
 			if ( array_key_exists( $m[1], $GLOBALS['fpwd_table'] ) ) { return false; }
@@ -253,6 +279,21 @@ check( ! str_contains( $html, '$' ), 'no price amounts anywhere on the draft' );
 check( str_contains( $html, 'Sin historial asociado' ) && ! str_contains( $html, 'Cliente nuevo' ), 'with the importer live (issue #54), no matched history reads as unresolved — never as a customer verdict' );
 check( str_contains( $html, 'cotización emitida' ), 'the draft states it is not an issued quotation' );
 check( str_contains( $html, 'Camino de prueba 123, Mostazal' ), 'the stored destination renders' );
+/* Step 3: the private owner review names each line's minimum status — confirmed (covered/missing) or explicitly pending, never a silent 1. */
+$GLOBALS['fpwd_post_meta'][22]['_fp_quote_min_qty'] = '70';
+$html = fpw_quote_draft_markup( $order68, $payload );
+check( str_contains( $html, 'Mínimo por solicitud: 70 unidades — cubierto' ), 'a confirmed minimum renders covered when the request meets it' );
+check( str_contains( $html, 'Mínimo por confirmar: revisa la cantidad' ) && ! str_contains( $html, 'Mínimo por solicitud: 1 ' ), 'an unknown minimum renders as the owner review point, never as a confirmed 1' );
+$GLOBALS['fpwd_post_meta'][25]['_fp_quote_min_qty'] = '100';
+$html = fpw_quote_draft_markup( $order68, $payload );
+check( str_contains( $html, 'Mínimo por solicitud: 100 unidades — el pedido pide 25' ) && str_contains( $html, 'Mínimo por solicitud: 70 unidades — cubierto' ), 'a below-minimum line names the confirmed minimum and the requested quantity' );
+/* Step 3 server boundary of "agregar productos": the native add-to-cart validation refuses below-minimum adds, unknowns pass, quantities above the minimum need no multiples. */
+$add_validation = $registered_filters['woocommerce_add_to_cart_validation'][0];
+$notices_before = count( $GLOBALS['fpwd_notices'] );
+check( false === $add_validation( true, 22, 69, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 1 && str_contains( (string) end( $GLOBALS['fpwd_notices'] )['message'], 'el mínimo por solicitud es 70' ), 'a below-minimum add is refused with a named notice' );
+check( true === $add_validation( true, 22, 70, 0 ) && true === $add_validation( true, 22, 71, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 1, 'the exact minimum and any higher non-multiple quantity are accepted' );
+check( false === $add_validation( true, 25, 25, 310 ) && str_contains( (string) end( $GLOBALS['fpwd_notices'] )['message'], 'el mínimo por solicitud es 100' ), 'a variation inherits its parent product minimum' );
+check( true === $add_validation( true, 999, 1, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 2, 'an unknown minimum never blocks adding: one unit stays requestable' );
 check( str_contains( $html, 'compras@prueba.invalid' ), 'the stored identity renders' );
 check( str_contains( $html, 'Datos originales recibidos' ), 'Submitted Details stay available beside the draft' );
 check( str_contains( $html, 'post.php?post=68' ), 'the native request record stays reachable' );
@@ -857,6 +898,8 @@ check( $version['projection'] === fpw_read_draft_preview( 91 )['projection'], 't
 check( $version['buyer'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'email' => 'compras@prueba.invalid' ), 'the version freezes the buyer identity for delivery' );
 check( 'ready' === $version['document'] && 'accepted' === ( $version['delivery']['state'] ?? '' ) && is_int( $version['delivery']['at'] ?? null ), 'document ready and mail accepted are recorded on the version' );
 check( 1 === (int) ( $version['approved_by'] ?? 0 ) && ( $version['approved_at'] ?? 0 ) > 0, 'the approval records its actor and time' );
+check( ( $version['commercial']['number'] ?? 0 ) === 1761 && ( $version['commercial']['allocated_at'] ?? 0 ) > 0, 'the version freezes the first commercial number of the owner-confirmed series (next after 1760)' );
+check( $GLOBALS['fpwd_sequence_allocations'] === array( 1761 ), 'exactly one number was allocated for one approval' );
 
 /* Inspect the actual frozen attachment through an independent PDF reader. */
 require_once __DIR__ . '/lib/pdf-probe.php';
@@ -878,13 +921,15 @@ foreach ( $bounds->getElementsByTagName( 'page' ) as $sheet ) {
 }
 check( 0 === $overflow && $bounds->getElementsByTagName( 'word' )->length > 20, 'independently decoded document text stays within its pages (not visual acceptance)' );
 check( str_contains( $text, 'IVA (19%' ), 'the PDF names the confirmed rate it applied' );
+check( str_contains( $text, 'Cotización Nº 1761' ) && str_contains( $text, 'FP-2026-000091' ), 'the PDF freezes the commercial number next to the separate request reference' );
 check( str_contains( $text, 'Vigencia de la oferta: 15' ), 'the PDF freezes the effective validity (the default fifteen days here)' );
 check( ! str_contains( $text, 'Historial' ) && ! str_contains( $text, 'sugerido' ) && ! str_contains( $text, 'ingreso manual' ), 'the buyer document carries no history or internal price origins' );
 
 /* The buyer mail: addressed to the frozen identity, carrying exactly the frozen bytes. */
 $mail = $GLOBALS['fpwd_mail_calls'][ count( $GLOBALS['fpwd_mail_calls'] ) - 1 ];
 check( 'compras@prueba.invalid' === $mail['to'], 'the buyer mail addresses the frozen buyer identity' );
-check( str_contains( $mail['subject'], 'Cotización FP-2026-000091' ) && str_contains( $mail['subject'], 'versión 1' ), 'the mail subject names the quotation and its version' );
+check( str_contains( $mail['subject'], 'Cotización Nº 1761 FP-2026-000091' ) && str_contains( $mail['subject'], 'versión 1' ), 'the mail subject names the frozen commercial number, the quotation and its version' );
+check( str_contains( $mail['message'], 'cotización Nº 1761' ), 'the mail body names the frozen commercial number' );
 check( 1 === count( $mail['attachments'] ) && str_contains( basename( (string) $mail['attachments'][0] ), 'FP-2026-000091' ), 'the mail carries exactly one document named after the version' );
 check( ( $mail['attachment_bytes'][0] ?? null ) === $pdf, 'the attached file is byte-for-byte the frozen document' );
 check( array( 0700 ) === $mail['attachment_dir_modes'], 'the transport reads its attachment from an owner-only directory even with a permissive host umask' );
@@ -898,6 +943,8 @@ $row56 = $GLOBALS['fpwd_table']['fpw_quotation_91'];
 $page = fpwd_approve_and_render( 91 );
 check( str_contains( $page, 'ya tiene su primera versión aprobada' ) && ! str_contains( $page, 'Cotización aprobada y enviada' ), 'a repeated approval of the same draft answers with the standing version' );
 check( $GLOBALS['fpwd_table']['fpw_quotation_91'] === $row56 && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the repeated approval stored nothing new and mailed nobody' );
+check( $GLOBALS['fpwd_sequence_allocations'] === array( 1761 ), 'the repeated approval allocated no second commercial number' );
+check( str_contains( $page, 'Cotización Nº 1761' ), 'the private screen names the frozen commercial number of the standing version' );
 
 /* A failed document approves the version but never mails an incomplete offer. */
 $GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array( fn() => 'esto no es un documento' );

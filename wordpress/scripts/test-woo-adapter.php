@@ -94,6 +94,7 @@ check(!str_contains($woo_css,'woocommerce-checkout-review-order-table'),'No CSS 
 
 // Offline render of the override with a controlled cart: one simple product, one colour variant.
 if (!function_exists('esc_html')) { function esc_html($text) { return htmlspecialchars((string)$text,ENT_QUOTES); } }
+if (!function_exists('get_post_meta')) { $GLOBALS['fpw_post_meta'] = array(); function get_post_meta($id,$key,$single=false) { return $GLOBALS['fpw_post_meta'][(int)$id][$key] ?? ''; } }
 if (!function_exists('esc_attr')) { function esc_attr($text) { return htmlspecialchars((string)$text,ENT_QUOTES); } }
 if (!function_exists('wp_kses_post')) { function wp_kses_post($text) { return (string)$text; } }
 if (!function_exists('do_action')) { function do_action(...$args) {} }
@@ -630,15 +631,18 @@ if (!class_exists('FPW_Fake_Simple_Product')) {
         public function get_id(): int { return $this->id; }
     }
 }
+$GLOBALS['fpw_post_meta'][22]['_fp_quote_min_qty'] = '70';
 $loop_args=apply_filters('woocommerce_loop_add_to_cart_args',array('quantity'=>1),new FPW_Fake_Simple_Product(22));
-check($loop_args['quantity']===10,'Simple card links expose ten units as their default AJAX quantity');
+check($loop_args['quantity']===70,'Simple card links expose the confirmed request minimum as their default AJAX quantity');
+$unknown_args=apply_filters('woocommerce_loop_add_to_cart_args',array('quantity'=>1),new FPW_Fake_Simple_Product(23));
+check($unknown_args['quantity']===1,'Unknown-minimum cards floor at one unit and stay requestable');
 $variable_args=apply_filters('woocommerce_loop_add_to_cart_args',array('quantity'=>1),new FPW_Fake_Variable_Product());
 check($variable_args['quantity']===1,'Variable product links keep their native quantity');
 $anchor='<a href="/?add-to-cart=22" data-quantity="10" class="add_to_cart_button ajax_add_to_cart">Agregar a Cotización</a>';
 ob_start();
 $wrapped=apply_filters('woocommerce_loop_add_to_cart_link',$anchor,new FPW_Fake_Simple_Product(22),array());
 $echoed_input=ob_get_clean();
-check($GLOBALS['fpw_test_quantity_args']===array('input_value'=>10,'min_value'=>10,'step'=>10),'Card selectors start at ten and step in tens without overriding the stock maximum');
+check($GLOBALS['fpw_test_quantity_args']===array('input_value'=>70,'min_value'=>70,'step'=>1),'Card selectors start at the confirmed minimum and step by one without overriding the stock maximum');
 check(str_contains($wrapped,'<div class="fpw-loop-add" data-fpw-loop-add>'),'Simple cards wrap the native anchor in the selector container');
 check(str_contains($wrapped,$anchor),'The native anchor markup passes through untouched by the filter');
 check(str_contains($echoed_input,'class="qty"'),'The quantity input renders through Woo\'s own hook beside the anchor');
@@ -654,21 +658,33 @@ check(str_contains($loop_quantity_source,'data-quantity'),'The mirror writes the
 check(str_contains($loop_quantity_source,'[data-fpw-loop-add]'),'The mirror scopes to the adapter\'s card wrapper');
 check(str_contains($woo_css,'fpw-loop-add'),'The card selector row is styled');
 
-// Product sheets share the ten-unit controls, including Woo color changes.
+// Product sheets share the confirmed-minimum controls, including Woo color changes.
 function is_product() { return $GLOBALS['fpw_test_is_product'] ?? false; }
+function is_cart() { return $GLOBALS['fpw_test_is_cart'] ?? false; }
 $quantity_product = new class {
     public bool $individual = false;
     public function is_sold_individually() { return $this->individual; }
+    public function get_id(): int { return 22; }
 };
 $quantity_args = array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1);
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Basket and other non-product routes keep their quantity rules');
 $GLOBALS['fpw_test_is_product']=true;
 $sheet_args=apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product);
-check($sheet_args===array('input_value'=>10,'min_value'=>10,'max_value'=>100,'step'=>10),'Product sheets start at ten and step in tens, preserving maximum');
+check($sheet_args===array('input_value'=>70,'min_value'=>70,'max_value'=>100,'step'=>1),'Product sheets start at the confirmed minimum and step by one, preserving maximum');
+$quantity_args['input_value']=90;
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===90,'Submitted sheet quantities above the minimum are not reset');
 $quantity_args['input_value']=30;
-check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===30,'Submitted sheet quantities are not reset to ten');
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===70,'A submitted quantity below the minimum floors back to it');
+$unknown_product = new class {
+    public function is_sold_individually() { return false; }
+    public function get_id(): int { return 23; }
+};
+check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1),$unknown_product)===array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1),'An unknown minimum keeps the native one-unit rules — never reinterpreted as more');
+$GLOBALS['fpw_test_is_cart']=true;
+check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),$quantity_product)===array('input_value'=>30,'min_value'=>30,'max_value'=>100,'step'=>1),'A persisted below-floor classic-basket line keeps its own quantity as floor: no silent rewrite to 70');
+$GLOBALS['fpw_test_is_cart']=false;
 $variation_data=array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false);
-check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>10,'max_qty'=>100,'is_sold_individually'=>false),'Selecting or switching colors retains the ten-unit minimum and native maximum');
+check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>70,'max_qty'=>100,'is_sold_individually'=>false),'Selecting or switching colors retains the inherited minimum and native maximum');
 $quantity_product->individual=true;
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Individually sold products retain native quantity controls');
 check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===$variation_data,'Individually sold variations retain native limits');

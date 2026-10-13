@@ -61,6 +61,8 @@ function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}
 $GLOBALS['fpwp_options'] = array( 'date_format' => 'j F Y' );
 function get_option( $name, $default = false ) { return $GLOBALS['fpwp_options'][ $name ] ?? $default; }
+$GLOBALS['fpwp_post_meta'] = array();
+function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fpwp_post_meta'][ (int) $id ][ $key ] ?? ''; }
 $GLOBALS['fpwp_caps'] = array();
 function current_user_can( string $cap ): bool { return ! empty( $GLOBALS['fpwp_caps'][ $cap ] ); }
 function add_submenu_page( $parent, $page_title, $menu_title, $capability, $slug, $callback ) { return $slug; }

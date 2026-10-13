@@ -1118,9 +1118,17 @@ function fpw_draft_items_html( array $items, array $values ): string {
 		$suggested   = $values['lines'][ $i ]['suggested'] ?? null;
 		$source      = (string) ( $values['lines'][ $i ]['price_source'] ?? 'pending' );
 		$input_value = null !== $work_price ? $work_price : $suggested;
+		/* Step 3: the owner's line review names the confirmed minimum (or its explicit unknown) against the requested quantity — a pending minimum is the owner's review point, never a confirmed 1. */
+		$minimum     = fpw_quote_minimum( (int) ( $line['product_id'] ?? 0 ) );
+		$minimum_html = null === $minimum
+			? '<em class="fpw-draft__minimum fpw-draft__minimum--unknown">Mínimo por confirmar: revisa la cantidad con el comprador antes de aprobar la oferta.</em>'
+			: ( $quantity >= $minimum
+				? '<span class="fpw-draft__minimum">Mínimo por solicitud: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' unidades — cubierto.</span>'
+				: '<em class="fpw-draft__minimum fpw-draft__minimum--missing">Mínimo por solicitud: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' unidades — el pedido pide ' . esc_html( number_format( $quantity, 0, ',', '.' ) ) . '.</em>' );
 		$html .= '<li><strong>' . esc_html( (string) ( $line['name'] ?? '' ) ) . '</strong>'
 			. ( '' !== $options ? '<div>' . trim( $options ) . '</div>' : '' )
 			. '<div class="fpw-draft__line"><span class="fpw-draft__qty">Pedido: ' . $quantity . ' ' . esc_html( 1 === $quantity ? 'unidad' : 'unidades' ) . '</span><span>Precio: ' . fpw_draft_line_price_html( $work_price, $suggested, $source ) . '</span></div>'
+			. $minimum_html
 			. ( null !== $work_price && null !== $suggested && $work_price !== $suggested
 				? '<em class="fpw-draft__suggest">La lista sugiere hoy: ' . esc_html( number_format( $suggested, 0, ',', '.' ) ) . ' CLP neto</em>' : '' )
 			. '<div class="fpw-draft__edit">'

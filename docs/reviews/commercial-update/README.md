@@ -56,8 +56,31 @@ La página vive en la base (sembrada por el plugin retirado, migración 5) y sig
 
 Nota de gate: `check.mjs` 14.3/14.5 ahora exigen el estado aprobado; el gate de stack exige aplicar esta migración antes de pasar.
 
+## Paso 3 — Mínimos consistentes en el flujo público y privado
+
+Fuente: `fpw_quote_minimum()` lee la meta nativa `_fp_quote_min_qty` (entregada por la migración one-shot ya revisada, aún no aplicada a staging); ausente = **desconocido** (null), jamás 1 confirmado. `fpw_quote_minimum_parent_id()` resuelve SIEMPRE la identidad del padre: las variaciones no tienen meta propia.
+
+**Superficies vivas** (la canasta es el bloque nativo Cart de Woo 11.1.0, Store API):
+- **Ficha**: `woocommerce_single_product_summary` → «Mínimo por solicitud: N unidades» o «Mínimo por confirmar…» explícito.
+- **Canasta (bloque Cart)**: `woocommerce_get_item_data` — el seam nativo de presentación por línea que el bloque renderiza (CartItemSchema) — agrega la fila «Mínimo por solicitud: N unidades» / «Mínimo: por confirmar…».
+- **Pisos de cantidad**: clásicos (`woocommerce_quantity_input_args` en ficha/canasta clásica, `woocommerce_available_variation`, selectores del loop) con paso 1 y mínimo resuelto del padre. En canasta clásica, una línea histórica bajo el piso conserva su propia cantidad como piso del input: nunca se reescribe silenciosamente hacia arriba.
+- **Store API (el seam real del bloque)**: `woocommerce_store_api_product_quantity_minimum` alimenta tanto `quantity_limits` (UI) como `validate_cart_item_quantity` (update-item): el piso de la línea es SIEMPRE el resto del mínimo del producto tras sus líneas hermanas (agregación prospectiva entre variaciones), SIN relajación para líneas históricas bajo mínimo — leer conserva la cantidad almacenada intacta (el schema fijado la reporta verbatim; el seam solo entrega un mínimo), pero una actualización explícita bajo el piso se rechaza y al mínimo se acepta.
+- **Servidor, agregar**: `woocommerce_add_to_cart_validation` decide por el agregado RESULTANTE (reposición de 1 sobre canasta satisfecha 70/70 pasa; canasta histórica insatisfecha no puede quedar bajo el mínimo al agregar).
+- **Servidor, modificar (clásico)**: `woocommerce_update_cart_validation` usa el payload nativo `cart[clave]['qty']` (mapa por clave de ítem; la identidad de fila es la clave del array) — cantidades publicadas prospectivas para las hermanas y la entrante de la propia fila, nunca cantidades rancias.
+- **Servidor, enviar**: `fpw_validate_checkout` valida la canasta completa agregada por producto entre variaciones (sin relajar).
+- **Borrador privado**: cada línea muestra mínimo cubierto / faltante con cantidad pedida / «Mínimo por confirmar: revisa la cantidad con el comprador antes de aprobar».
+- Registros enviados e históricos intactos; propiedad nativa Woo (meta nativa + filtros nativos).
+
+**Pruebas con el código fijado real**: `storeapi-minimums-test.php` ejecuta el StoreApi PINNADO 11.1.0 (QuantityLimits + CartController + wc_get_quantity_input_args, copiados byte a byte a `.build`, hashes en el manifiesto) contra el plugin cargado: validación real de update-item (rechaza bajo mínimo con `invalid_quantity`, acepta exacto y no múltiplos superiores), agregación prospectiva entre hermanas (5+60<70 rechazado EN el seam, sin mutar la cantidad persistida), piso de padre para variación, histórica 30 con piso completo 70: 35 y 30 rechazados sin mutación, 70 aceptado, lectura conserva 30 por construcción (schema fijado reporta verbatim; el seam no contiene relajación a persistida), desconocidos nativos, límites de agregado al agregar (reposiciones), multi-fila clásica nativa cart[clave][qty] (35+65=100 pasa; 35+60=95 rechazado; línea sola 100 pasa/99 rechaza), y presentación por línea vía `woocommerce_get_item_data` (con prueba de que el CartItemSchema fijado realmente invoca ese seam). Ciclo rojo→verde: la suite falló primero en el hook no cableado, luego del cambio de runtime pasó.
+
+## Paso 7 — Correlativo comercial
+
+- `quotation-sequence.php`: serie entera propia, arranque 1761 (último usado 1760, confirmado), en tabla dedicada `{$prefix}fpw_quotation_sequence` AUTO_INCREMENT. `CREATE TABLE IF NOT EXISTS` jamás toca un contador existente: **un redeploy no reseedea** y ninguna ruta de código reescribe el valor.
+- **Asignación**: un solo INSERT — el motor serializa la clave; aprobaciones concurrentes, doble clic y reintentos jamás toman el mismo número (sin ventana transaccional que custodiar). Un fallo del INSERT de la versión tras asignar consume el número (hueco documentado, nunca reutilizado ni renumerado); un fallo de asignación no deja nada escrito (state storage-failed) y el reintento asigna uno nuevo.
+- **Congelado**: el número viaja dentro de la versión emitida — PDF («Cotización Nº 1761» junto a la referencia FP-YYYY-NNNNNN separada), asunto y cuerpo del correo, y pantallas privadas («Cotización Nº 1761 · serie propia confirmada por el propietario, distinta de la referencia de solicitud»). Las versiones históricas sin número no se renumeran ni rellenan.
+- **Prueba sustantiva de concurrencia** (`quotation-sequence-test.php`): **prueba semántica SQLite con procesos reales, NO verificación MySQL nativa** — 8 procesos PHP reales contra un motor SQLite real (WAL): 48 números únicos y contiguos desde 1761, exactamente un ganador de la fila de versión por orden compartido (los perdedores no escriben segunda versión), redeploy posterior continúa la serie. Más: fallos inyectados de allocator/bootstrap → null sin estado parcial y la serie solo avanza. El patrón SQL (INSERT de autoincremento + fila de versión con nombre único) es el mismísimo que corre el adaptador `$wpdb`/MySQL; la verificación sobre MySQL nativo queda como paso de integración con stack.
+
 ## Pendientes fuera de alcance
 
-- Paso 3 (mostrar mínimos y validar en el flujo) y paso 7 (correlativo comercial) sin implementar: sus prerrequisitos aún no están integrados.
-- **Ejecución** de la migración /contacto/ en staging y decisión sobre el origen de despachos: pendientes de aprobación del propietario (la vía y su rollback ya están listos, ver arriba).
-- Paso 5 sigue bloqueado por reproducición exacta; cobertura preventiva de doble envío ya en el árbol.
+- Ejecución en staging de las migraciones (mínimos, /contacto/) y decisión sobre el origen de despachos: pendientes de aprobación del propietario.
+- Paso 5 sigue bloqueado por reproducición exacta; cobertura preventiva de doble envío ya en el árbol. Paso 8 (validación y publicación) fuera de este alcance.
