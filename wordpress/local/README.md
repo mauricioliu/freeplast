@@ -57,6 +57,25 @@ npm run local -- stop --execute      # conserva BD, archivos, capturas
 npm run local -- up --execute        # no vuelve a sembrar ni modifica datos
 ```
 
+### Recuperación automática y parada manual
+
+WordPress y MariaDB usan `restart: unless-stopped`: si estaban activos, Docker los recupera
+tras una caída del proceso o un reinicio del equipo/daemon. Requiere que Docker arranque
+con el equipo; esta configuración no modifica servicios del sistema. La CLI auxiliar no
+se reinicia automáticamente.
+
+`npm run local -- stop --execute` conserva datos y deja ambos servicios detenidos, incluso
+tras reiniciar el equipo. Para reanudarlos explícitamente: `npm run local -- up --execute`.
+No hace falta repetir `seed`, `init` ni `reset`. El proxy Tailscale queda configurado y
+puede responder 502 mientras el sitio esté detenido o recuperándose.
+
+Para aplicar esta política a contenedores existentes, el operador ejecuta `up --execute`
+desde el checkout/estado propietario después de integrar el cambio; editar Compose por sí
+solo no actualiza los contenedores. Puede recrearlos brevemente, conservando los volúmenes.
+Tras un reboot, esperar a que ambos estén saludables: Docker no reaplica la espera
+`depends_on` de Compose al reiniciar contenedores. La política reacciona a salidas del
+proceso, no a un contenedor que permanezca vivo pero `unhealthy`.
+
 Admin: `local-admin`, contraseña en la ruta `password_file` mostrada por `init`/`seed`.
 Acceso: `http://mliu:8131/wp-admin/` tras habilitar el endpoint privado descrito abajo.
 La CLI nunca imprime la contraseña. Estado por defecto:
