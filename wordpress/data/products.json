@@ -2,7 +2,7 @@
   "version": 2,
   "source": {
     "name": "freeplast-catalog",
-    "provenance": "2026 Freeplast PDF catalog union per PRD #1 (four Caja Universal configurations, Traversa para Bins Tipo Romano, Caja Paltera) + freeplast.cl product pages and contact form, captured 2026-09-03. Raster PDF facts not transcribable in this environment render as Consultar pending review.",
+    "provenance": "Historical website reference captured 2026-09-03, enriched from Catálogo Freeplast 2026 detailed pages 6–20. Per-field PDF pages in review.spec_sources; transcription and conflicts in wordpress/docs/catalog-pdf-2026/. WooCommerce remains catalog authority; this file is not an ongoing synchronizer.",
     "retrieved_at": "2026-09-03T00:00:00Z"
   },
   "products": [
@@ -15,8 +15,8 @@
         "/producto/caja-cosechera-3-4/"
       ],
       "title": "Caja Cosechera 3/4",
-      "excerpt": "Caja cosechera 3/4 de PEAD reciclado para cosecha de uva y frutas en general.",
-      "description": "Caja cosechera 3/4. Fabricada de Polietileno de alta densidad reciclado. Sus medidas son 600 x 400 x 180 mm. Tiene un peso aproximado de 1.250 gramos. Destaca su buena resistencia. Posee múltiples usos, cosecha de uva y frutas en general.",
+      "excerpt": "Caja Cosechera 3/4 apilable para cosecha de fruta, uva y paltas.",
+      "description": "Caja Cosechera 3/4 de PEAD reciclado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1250 g. Apilable, para cosecha de fruta, uva y paltas.",
       "category": "agricola",
       "image": {
         "file": "media/fp-caja-cosechera-3-4.webp",
@@ -30,8 +30,13 @@
         "material": "Polietileno de alta densidad reciclado",
         "material_short": "PEAD reciclado",
         "dimensions": "600 x 400 x 180 mm",
-        "weight": "1.250 gramos aprox.",
-        "use": "Cosecha de uva y frutas en general",
+        "weight": "1250 g",
+        "use": "Cosecha de fruta, uva, paltas, etc.",
+        "capacity": null,
+        "interior_dimensions": "570 x 370 x 170 mm",
+        "color": "Negro",
+        "features": "Apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.60 m",
         "units_per_pallet": 70,
         "minimum_quantity": null,
         "quantity_step": null
@@ -47,10 +52,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose minus the “Cantidad mínima de compra” sentence: units per pallet are packaging facts and the commercial minimum is unconfirmed (PRD #1).",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.7 supplies detailed facts; material and exterior retained from summary p.2. Capacity absent. Packaging is not a commercial minimum.",
           "Image derives from the prototype asset (live-site ficha crop); original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 2, "material_short": 2, "dimensions": 2, "weight": 7, "use": 7, "interior_dimensions": 7, "color": 7, "features": 7, "units_per_pallet": 7, "pallet_dimensions": 7}
       }
     },
     {
@@ -62,8 +67,8 @@
         "/producto/caja-universal-negro/"
       ],
       "title": "Caja Universal Cerrada Negra",
-      "excerpt": "Caja Universal cerrada de PEAD reciclado, 625 x 445 x 226 mm exteriores y 46 litros de capacidad, apilable y anidable.",
-      "description": "Caja Universal cerrada en color negro. Fabricada de polietileno de alta densidad (PEAD) reciclado. Sus medidas exteriores son de 625 x 445 x 226 mm. Tiene una capacidad de 46 lts. Destaca su gran resistencia. Son apilables y anidables. Posee múltiples usos como transporte de carne, pescado, cecinas, nueces, etc…",
+      "excerpt": "Caja Universal Cerrada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+      "description": "Caja Universal Cerrada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1480 g. Capacidad: 46 l. Anidable y apilable, para logística, productos del mar, cecinas y carnes.",
       "category": "otros",
       "image": {
         "file": "media/fp-universal.webp",
@@ -76,10 +81,15 @@
       "specs": {
         "material": "Polietileno de alta densidad (PEAD) reciclado",
         "material_short": "PEAD reciclado",
-        "dimensions": "625 x 445 x 226 mm (exteriores)",
-        "weight": "Consultar",
-        "use": "Transporte de carne, pescado, cecinas, nueces, entre otros usos",
-        "units_per_pallet": null,
+        "dimensions": "625 x 444 x 226 mm",
+        "weight": "1480 g",
+        "use": "Logística, productos del mar, cecinas, carnes, etc.",
+        "capacity": "46 l",
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": "Anidable y apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
+        "units_per_pallet": 100,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -94,10 +104,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "The old site published one Caja Universal page; PRD #1 splits it into four distinct configurations (cerrada/ventilada × negra/color). This record carries the published page’s facts; the old “Cantidad. mínima de compra: 100 unidades” sentence is not presented (commercial minimum unconfirmed).",
-          "Weight and units per pallet were never published; they render as Consultar pending client confirmation.",
+          "PDF p.8 overrides summary p.2 and web width 445 mm with detailed width 444 mm. Interior absent; category conflict held for approval. Packaging is not a commercial minimum.",
           "Photography shows the black configuration and is shared provisionally by the four Universal records; per-configuration original media is pending."
-        ]
+        ],
+        "spec_sources": {"material": 8, "material_short": 8, "dimensions": 8, "weight": 8, "use": 8, "capacity": 8, "color": 8, "features": 8, "units_per_pallet": 8, "pallet_dimensions": 8}
       }
     },
     {
@@ -107,8 +117,8 @@
       "slug": "caja-universal-ventilada-negra",
       "legacy_paths": [],
       "title": "Caja Universal Ventilada Negra",
-      "excerpt": "Caja Universal ventilada en color negro. Especificaciones detalladas pendientes de confirmación.",
-      "description": "Caja Universal ventilada en color negro, de construcción Freeplast. Sus especificaciones detalladas están pendientes de confirmación con el cliente.",
+      "excerpt": "Caja Universal Ventilada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+      "description": "Caja Universal Ventilada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1800 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes.",
       "category": "otros",
       "image": {
         "file": "media/fp-universal.webp",
@@ -119,12 +129,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "Consultar",
-        "use": "Consultar",
-        "units_per_pallet": null,
+        "material": "Polietileno de alta densidad (PEAD) reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "625 x 444 x 226 mm",
+        "weight": "1800 g",
+        "use": "Productos que requieren ventilación, como productos del mar, cecinas y carnes",
+        "capacity": "46 l",
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": "Anidable y apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
+        "units_per_pallet": 100,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -139,10 +154,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Configuration created per PRD #1 (four distinct Caja Universal products); no published page or confirmed specs exist for it yet.",
-          "Neutral description derived from the configuration name only; every unconfirmed fact renders as Consultar.",
+          "PDF p.10 supplies detailed specifications. Width 444 mm overrides summary p.2 (445 mm). Interior absent; category conflict held for approval.",
           "Shares the old Universal photograph provisionally; original per-configuration media is pending."
-        ]
+        ],
+        "spec_sources": {"material": 10, "material_short": 10, "dimensions": 10, "weight": 10, "use": 10, "capacity": 10, "color": 10, "features": 10, "units_per_pallet": 10, "pallet_dimensions": 10}
       }
     },
     {
@@ -152,8 +167,8 @@
       "slug": "caja-universal-cerrada-color",
       "legacy_paths": [],
       "title": "Caja Universal Cerrada Color",
-      "excerpt": "Caja Universal cerrada en configuración de color: blanco, rojo, amarillo, azul o verde, sujetos a disponibilidad.",
-      "description": "Caja Universal cerrada en configuración de color. Los colores disponibles — blanco, rojo, amarillo, azul y verde — están sujetos a confirmación del cliente, al igual que sus especificaciones detalladas.",
+      "excerpt": "Caja Universal Cerrada Color de PEAD virgen, anidable y apilable, de 46 l.",
+      "description": "Caja Universal Cerrada Color de PEAD virgen. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1520 g. Capacidad: 46 l. Anidable y apilable, para logística, productos del mar, cecinas y carnes. Colores: blanco, rojo, amarillo, azul y verde.",
       "category": "otros",
       "image": {
         "file": "media/fp-universal.webp",
@@ -164,12 +179,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "Consultar",
-        "use": "Consultar",
-        "units_per_pallet": null,
+        "material": "Polietileno de alta densidad (PEAD) virgen",
+        "material_short": "PEAD virgen",
+        "dimensions": "625 x 444 x 226 mm",
+        "weight": "1520 g",
+        "use": "Logística, productos del mar, cecinas, carnes, etc.",
+        "capacity": "46 l",
+        "interior_dimensions": null,
+        "color": "Blanco, Rojo, Amarillo, Azul y Verde",
+        "features": "Anidable y apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
+        "units_per_pallet": 100,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -210,10 +230,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Color options are restricted to the supported vocabulary (blanco, rojo, amarillo, azul, verde) per PRD #1; availability remains subject to client confirmation.",
-          "No published page or confirmed specs exist for this configuration yet; every unconfirmed fact renders as Consultar.",
+          "PDF p.9 supplies detailed specifications and matches existing five color options; availability policy unchanged. Width 444 mm overrides p.2. Interior absent; category held for approval.",
           "Shares the old Universal photograph provisionally; original per-configuration media is pending."
-        ]
+        ],
+        "spec_sources": {"material": 9, "material_short": 9, "dimensions": 9, "weight": 9, "use": 9, "capacity": 9, "color": 9, "features": 9, "units_per_pallet": 9, "pallet_dimensions": 9}
       }
     },
     {
@@ -223,8 +243,8 @@
       "slug": "caja-universal-ventilada-color",
       "legacy_paths": [],
       "title": "Caja Universal Ventilada Color",
-      "excerpt": "Caja Universal ventilada en configuración de color: blanco, rojo, amarillo, azul o verde, sujetos a disponibilidad.",
-      "description": "Caja Universal ventilada en configuración de color. Los colores disponibles — blanco, rojo, amarillo, azul y verde — están sujetos a confirmación del cliente, al igual que sus especificaciones detalladas.",
+      "excerpt": "Caja Universal Ventilada Color de PEAD virgen, anidable y apilable, de 46 l.",
+      "description": "Caja Universal Ventilada Color de PEAD virgen. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1870 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes. Colores: blanco, rojo, amarillo, azul y verde.",
       "category": "otros",
       "image": {
         "file": "media/fp-universal.webp",
@@ -235,12 +255,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "Consultar",
-        "use": "Consultar",
-        "units_per_pallet": null,
+        "material": "Polietileno de alta densidad (PEAD) virgen",
+        "material_short": "PEAD virgen",
+        "dimensions": "625 x 444 x 226 mm",
+        "weight": "1870 g",
+        "use": "Productos que requieren ventilación, como productos del mar, cecinas y carnes",
+        "capacity": "46 l",
+        "interior_dimensions": null,
+        "color": "Blanco, Rojo, Amarillo, Azul y Verde",
+        "features": "Anidable y apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
+        "units_per_pallet": 100,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -281,10 +306,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Color options are restricted to the supported vocabulary (blanco, rojo, amarillo, azul, verde) per PRD #1; availability remains subject to client confirmation.",
-          "No published page or confirmed specs exist for this configuration yet; every unconfirmed fact renders as Consultar.",
+          "PDF p.11 supplies detailed specifications and matches existing five color options; availability policy unchanged. Width 444 mm overrides p.2. Interior absent; category held for approval.",
           "Shares the old Universal photograph provisionally; original per-configuration media is pending."
-        ]
+        ],
+        "spec_sources": {"material": 11, "material_short": 11, "dimensions": 11, "weight": 11, "use": 11, "capacity": 11, "color": 11, "features": 11, "units_per_pallet": 11, "pallet_dimensions": 11}
       }
     },
     {
@@ -296,8 +321,8 @@
         "/producto/caja-tomatera/"
       ],
       "title": "Caja Tomatera",
-      "excerpt": "Caja Tomatera de PP virgen y reciclado, 470 x 340 x 270 mm, 840 grms y resistencia de hasta 18 kgs.",
-      "description": "Caja Tomatera de material PP virgen y reciclado, sus medidas son 470 x 340 x 270 mm. Pesa 840 grms y resiste hasta 18 kgs. Ideal para el transporte de tomates, paltas, frutas y verduras en general.",
+      "excerpt": "Caja Tomatera de polipropileno, apilable, de 38 l para frutas y verduras.",
+      "description": "Caja Tomatera de polipropileno (PP). Medidas exteriores: 470 x 340 x 270 mm; interiores: 450 x 320 x 260 mm. Peso: 840 g. Capacidad: 38 l. Color negro. Apilable, para frutas y verduras en general.",
       "category": "agricola",
       "image": {
         "file": "media/fp-tomatera.webp",
@@ -308,12 +333,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Polipropileno (PP) virgen y reciclado",
-        "material_short": "PP virgen y reciclado",
+        "material": "Polipropileno (PP)",
+        "material_short": "PP",
         "dimensions": "470 x 340 x 270 mm",
-        "weight": "840 grms",
-        "use": "Transporte de tomates, paltas, frutas y verduras en general",
-        "units_per_pallet": null,
+        "weight": "840 g",
+        "use": "Frutas y verduras en general",
+        "capacity": "38 l",
+        "interior_dimensions": "450 x 320 x 260 mm",
+        "color": "Negro",
+        "features": "Apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
+        "units_per_pallet": 128,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -328,10 +358,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose minus the price note and the “Cantidad mínima de compra: 128 unidades” sentence (commercial minimum unconfirmed per PRD #1).",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.12 supplies detailed facts. PP origin unspecified in detailed sheet; virgin/recycled and 18 kg summary claims are not repeated. Packaging is not a commercial minimum.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 12, "material_short": 12, "dimensions": 12, "weight": 12, "use": 12, "capacity": 12, "interior_dimensions": 12, "color": 12, "features": 12, "units_per_pallet": 12, "pallet_dimensions": 12}
       }
     },
     {
@@ -343,8 +373,8 @@
         "/producto/caja-frutillera-2/"
       ],
       "title": "Caja Frutillera",
-      "excerpt": "Caja frutillera de polipropileno reciclado, 500 x 300 x 110 mm aprox., para cosecha de frutillas.",
-      "description": "Caja frutillera. Fabricada de Polipropileno reciclado. Sus medidas son 500 x 300 x 110 mm aprox. Utilizada principalmente para la cosecha de frutillas.",
+      "excerpt": "Caja Frutillera de polipropileno reciclado para cosecha de frutillas.",
+      "description": "Caja Frutillera de polipropileno reciclado. Medidas exteriores: 500 x 300 x 110 mm; interiores: 480 x 280 x 85 mm. Peso: 300 g aprox. Color negro. Para cosecha de frutillas.",
       "category": "agricola",
       "image": {
         "file": "media/fp-frutillera.webp",
@@ -357,10 +387,15 @@
       "specs": {
         "material": "Polipropileno reciclado",
         "material_short": "PP reciclado",
-        "dimensions": "500 x 300 x 110 mm aprox.",
-        "weight": "Consultar",
+        "dimensions": "500 x 300 x 110 mm",
+        "weight": "300 g aprox.",
         "use": "Cosecha de frutillas",
-        "units_per_pallet": null,
+        "capacity": null,
+        "interior_dimensions": "480 x 280 x 85 mm",
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": "1.00 x 1.20 x 2.50 m",
+        "units_per_pallet": 200,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -375,10 +410,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose; weight and units per pallet were never published and render as Consultar.",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.13 supplies detailed facts, including approximate weight; capacity and characteristics absent.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 13, "material_short": 13, "dimensions": 13, "weight": 13, "use": 13, "interior_dimensions": 13, "color": 13, "units_per_pallet": 13, "pallet_dimensions": 13}
       }
     },
     {
@@ -390,8 +425,8 @@
         "/producto/caja-frutera/"
       ],
       "title": "Caja Frutera",
-      "excerpt": "Caja frutera de 44 lts y 1,45 kgs aprox., para transporte de frutas y hortalizas.",
-      "description": "Caja frutera de 44 lts. Peso aproximado de 1,45 kgs. Especial para el transporte de frutas y hortalizas.",
+      "excerpt": "Caja Frutera de PEAD reciclado para transporte de frutas y hortalizas.",
+      "description": "Caja Frutera de PEAD reciclado. Medidas exteriores: 600 x 400 x 210 mm. Peso: 1450 g. Color negro. Especial para el transporte de frutas y hortalizas.",
       "category": "agricola",
       "image": {
         "file": "media/fp-frutera.webp",
@@ -402,11 +437,16 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "1,45 kgs aprox.",
+        "material": "Polietileno de alta densidad (PEAD) reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "600 x 400 x 210 mm",
+        "weight": "1450 g",
         "use": "Transporte de frutas y hortalizas",
+        "capacity": "44 l",
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
         "units_per_pallet": 65,
         "minimum_quantity": null,
         "quantity_step": null
@@ -422,10 +462,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose minus the “Cantidad mínima de compra un pallet de 65 unidades” sentence: 65 units per pallet is kept as the packaging fact and the commercial minimum stays unconfirmed (PRD #1).",
-          "Material and dimensions were never published; they render as Consultar.",
+          "PDF p.14 supplies detailed facts. Capacity 44 l retained from summary p.3 and prior web copy, not present in detailed sheet; confirm with manufacturer. Interior and characteristics absent. Packaging is not a commercial minimum.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 14, "material_short": 14, "dimensions": 14, "weight": 14, "use": 14, "capacity": 3, "color": 14, "units_per_pallet": 14, "pallet_dimensions": 14}
       }
     },
     {
@@ -435,8 +475,8 @@
       "slug": "caja-paltera",
       "legacy_paths": [],
       "title": "Caja Paltera",
-      "excerpt": "Caja Paltera Freeplast. Especificaciones y fotografía pendientes de revisión con el cliente.",
-      "description": "Caja Paltera Freeplast. El producto figura en el formulario actual de freeplast.cl sin ficha publicada; sus especificaciones están pendientes de revisión con el cliente.",
+      "excerpt": "Caja Paltera plegable de polietileno de alta densidad virgen, transparente.",
+      "description": "Caja Paltera de polietileno de alta densidad virgen. Medidas exteriores: 500 x 300 x 150 mm. Peso: 330 g aprox. Capacidad indicada en catálogo: 30 l. Color transparente. Plegable.",
       "category": "agricola",
       "image": {
         "file": "media/fp-caja-paltera.png",
@@ -447,12 +487,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "Consultar",
+        "material": "Polietileno de alta densidad virgen",
+        "material_short": "PEAD virgen",
+        "dimensions": "500 x 300 x 150 mm",
+        "weight": "330 g aprox.",
         "use": "Consultar",
-        "units_per_pallet": null,
+        "capacity": "30 l",
+        "interior_dimensions": null,
+        "color": "Transparente",
+        "features": "Plegable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
+        "units_per_pallet": 540,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -467,10 +512,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "The product is named in the current freeplast.cl contact form but has no published product page; the 2026 PDF sheet was not transcribable in this environment, so every fact renders as Consultar.",
-          "Neutral description derived from the product name only; client review pending.",
+          "PDF p.15 supplies detailed facts. Capacity 30 l retained literally, not recomputed from exterior dimensions; manufacturer validation pending. Use and interior absent.",
           "No photography exists; a neutral placeholder is used and visibly tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 15, "material_short": 15, "dimensions": 15, "weight": 15, "capacity": 15, "color": 15, "features": 15, "units_per_pallet": 15, "pallet_dimensions": 15}
       }
     },
     {
@@ -482,8 +527,8 @@
         "/producto/caja-merlucera/"
       ],
       "title": "Caja Merlucera",
-      "excerpt": "Caja Merlucera de PEAD virgen y reciclado para el transporte de merluza y peces en general.",
-      "description": "Caja Merlucera de material Polietileno de alta densidad virgen y reciclado. Posee múltiples usos, ideal para el transporte de merluza y peces en general.",
+      "excerpt": "Caja Merlucera de PEAD reciclado, apilable, de 40 l para pescados y otros productos del mar.",
+      "description": "Caja Merlucera de PEAD reciclado. Medidas exteriores: 660 x 445 x 145 mm. Peso: 2260 g. Capacidad: 40 l. Color negro. Apilable, para transporte de pescados y otros productos del mar.",
       "category": "otros",
       "image": {
         "file": "media/fp-merlucera.webp",
@@ -494,12 +539,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Polietileno de alta densidad virgen y reciclado",
-        "material_short": "PEAD virgen y reciclado",
-        "dimensions": "Consultar",
-        "weight": "Consultar",
-        "use": "Transporte de merluza y peces en general",
-        "units_per_pallet": null,
+        "material": "Polietileno de alta densidad (PEAD) reciclado",
+        "material_short": "PEAD reciclado",
+        "dimensions": "660 x 445 x 145 mm",
+        "weight": "2260 g",
+        "use": "Transporte de pescados y otros productos del mar",
+        "capacity": "40 l",
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": "Apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.30 m",
+        "units_per_pallet": 75,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -514,10 +564,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose minus the price note; dimensions, weight and units per pallet were never published and render as Consultar.",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.20 supplies detailed facts; recycled PEAD supersedes web virgin/recycled wording. Interior absent.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 20, "material_short": 20, "dimensions": 20, "weight": 20, "use": 20, "capacity": 20, "color": 20, "features": 20, "units_per_pallet": 20, "pallet_dimensions": 20}
       }
     },
     {
@@ -529,8 +579,8 @@
         "/producto/base-para-pediluvio/"
       ],
       "title": "Caja Pollera",
-      "excerpt": "Caja Pollera de PEAD reciclado en negro, 600 x 400 x 170 mm exteriores, para transporte de carnes, pollo y cecinas.",
-      "description": "Caja Pollera hecha de polietileno de alta densidad reciclado, disponible en color negro. Sus medidas exteriores son de 600 x 400 x 170 y se usan principalmente para el transporte de carnes, pollo, cecinas, etc…",
+      "excerpt": "Caja Pollera de HDPE recuperado, apilable, para transporte de pollo, carnes y cecinas.",
+      "description": "Caja Pollera de HDPE recuperado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1350 g aprox. Color negro. Apilable, para transporte de pollo, carnes y cecinas.",
       "category": "otros",
       "image": {
         "file": "media/fp-pollera.webp",
@@ -541,12 +591,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Polietileno de alta densidad reciclado",
-        "material_short": "PEAD reciclado",
-        "dimensions": "600 x 400 x 170 mm (exteriores)",
-        "weight": "Consultar",
-        "use": "Transporte de carnes, pollo, cecinas",
-        "units_per_pallet": null,
+        "material": "HDPE recuperado",
+        "material_short": "HDPE recuperado",
+        "dimensions": "600 x 400 x 180 mm",
+        "weight": "1350 g aprox.",
+        "use": "Transporte de pollo, carnes y cecinas",
+        "capacity": null,
+        "interior_dimensions": "570 x 370 x 170 mm",
+        "color": "Negro",
+        "features": "Apilable",
+        "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
+        "units_per_pallet": 90,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -561,10 +616,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose (the product page lives at the historical slug base-para-pediluvio); weight and units per pallet were never published and render as Consultar.",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.19 supersedes conflicting summary p.5 and web exterior height 170 mm: 600 x 400 x 180 mm, 1350 g approx. Legacy URL retained. Capacity absent.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 19, "material_short": 19, "dimensions": 19, "weight": 19, "use": 19, "interior_dimensions": 19, "color": 19, "features": 19, "units_per_pallet": 19, "pallet_dimensions": 19}
       }
     },
     {
@@ -576,8 +631,8 @@
         "/producto/totem/"
       ],
       "title": "Tote",
-      "excerpt": "Tote de PEAD color negro, 800 gramos y 500 x 280 x 190 mm exteriores.",
-      "description": "Tote fabricado de polietileno de alta densidad en color negro y peso de 800 gramos. Medidas exteriores: 500 x 280x 190 mm.",
+      "excerpt": "Tote de PEAD reciclado, de 21 l, para cosecha de cerezas y otras frutas.",
+      "description": "Tote de PEAD reciclado. Medidas exteriores: 500 x 280 x 190 mm. Peso: 800 g. Capacidad: 21 l. Color negro. Para cosecha de cerezas y otras frutas.",
       "category": "otros",
       "image": {
         "file": "media/fp-tote.webp",
@@ -588,12 +643,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Polietileno de alta densidad",
-        "material_short": "PEAD",
+        "material": "Polietileno de alta densidad (PEAD) reciclado",
+        "material_short": "PEAD reciclado",
         "dimensions": "500 x 280 x 190 mm (exteriores)",
-        "weight": "800 gramos",
-        "use": "Consultar",
-        "units_per_pallet": null,
+        "weight": "800 g",
+        "use": "Cosecha de cerezas y otras frutas",
+        "capacity": "21 l",
+        "interior_dimensions": "475 x 260 x 175 (unidad no indicada en PDF)",
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": "1.00 x 1.20 x 2.30 m",
+        "units_per_pallet": 120,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -608,10 +668,11 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose, including its original spacing around the measures; use and units per pallet were never published and render as Consultar.",
+          "PDF p.6 supplies detailed facts. Exterior mm retained from prior web reference; PDF omits dimension units. Interior unit remains explicitly unknown. Characteristics absent; category held for approval.",
           "Canonical slug is the product name “tote”; the legacy path /producto/totem/ is retained for the future cutover.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 6, "material_short": 6, "dimensions": "p.6 values; mm from prior web reference", "weight": 6, "use": 6, "capacity": 6, "interior_dimensions": 6, "color": 6, "units_per_pallet": 6, "pallet_dimensions": 6}
       }
     },
     {
@@ -623,8 +684,8 @@
         "/producto/traversas-para-bines/"
       ],
       "title": "Traversa para Bins Tipo UPC",
-      "excerpt": "Traversa para reposición de patas de bins reutilizables; 2,02 kgs, gruesa y firme.",
-      "description": "Producto hecho para reposición de patas de los bines que pueden ser reutilizados. Las traversas son de muy buena calidad, gruesas y firmes. El peso de la traversa es de 2,02 kgs lo que la hace firme y maciza.",
+      "excerpt": "Traversa Tipo UPC de PP reciclado para reposición de traversas dañadas.",
+      "description": "Traversa Tipo UPC de polipropileno reciclado. Largo: 1220 mm; alto: 129 mm. Peso: 2050 g. Color negro. Para reposición de traversas dañadas.",
       "category": "otros",
       "image": {
         "file": "media/fp-traversa-upc.webp",
@@ -635,12 +696,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "2,02 kgs",
-        "use": "Reposición de patas de bins reutilizables",
-        "units_per_pallet": null,
+        "material": "Polipropileno (PP) reciclado",
+        "material_short": "PP reciclado",
+        "dimensions": "Largo 1220 mm; alto 129 mm",
+        "weight": "2050 g",
+        "use": "Reposición de traversas dañadas",
+        "capacity": null,
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": "1.00 x 1.20 x 1.90 m",
+        "units_per_pallet": 132,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -654,10 +720,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose; material, dimensions and units per pallet were never published and render as Consultar.",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.18 supplies detailed facts; weight 2050 g overrides web 2.02 kg. Width absent; category held for approval.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 18, "material_short": 18, "dimensions": 18, "weight": 18, "use": 18, "color": 18, "units_per_pallet": 18, "pallet_dimensions": 18}
       }
     },
     {
@@ -669,8 +735,8 @@
         "/producto/traversas-para-bins-tipo-w/"
       ],
       "title": "Traversa para Bins Tipo G1",
-      "excerpt": "Traversa para reposición de patas de bins reutilizables; 2,5 kgs, gruesa y firme.",
-      "description": "Traversas para reposición de patas de bins que pueden ser reutilizados. Producto de muy buena calidad. Las traversas son gruesas y firmes para resistir el embate de grúas y movimientos de bins. Su peso es de 2,5 kgs, lo que las hace macizas y firmes.",
+      "excerpt": "Traversa Tipo G1 de PP reciclado para reposición de traversas dañadas.",
+      "description": "Traversa Tipo G1 de polipropileno reciclado. Largo: 1215 mm; alto: 136 mm. Peso: 2520 g. Color negro. Para reposición de traversas dañadas.",
       "category": "otros",
       "image": {
         "file": "media/fp-traversa-g1.webp",
@@ -681,12 +747,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
-        "weight": "2,5 kgs",
-        "use": "Reposición de patas de bins reutilizables",
-        "units_per_pallet": null,
+        "material": "Polipropileno (PP) reciclado",
+        "material_short": "PP reciclado",
+        "dimensions": "Largo 1215 mm; alto 136 mm",
+        "weight": "2520 g",
+        "use": "Reposición de traversas dañadas",
+        "capacity": null,
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": "1.00 x 1.20 x 1.90 m",
+        "units_per_pallet": 132,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -700,10 +771,10 @@
       "review": {
         "description_approved": false,
         "notes": [
-          "Description reproduces the published freeplast.cl prose (the page lives at the historical slug traversas-para-bins-tipo-w); material, dimensions and units per pallet were never published and render as Consultar.",
-          "Excerpt is a neutral derivation from confirmed specifications; client review pending.",
+          "PDF p.16 supplies detailed facts; weight 2520 g overrides web 2.5 kg. Historical URL retained. Width absent; category held for approval.",
           "Image derives from the live-site product card; original unwatermarked photography is pending, so the media is tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 16, "material_short": 16, "dimensions": 16, "weight": 16, "use": 16, "color": 16, "units_per_pallet": 16, "pallet_dimensions": 16}
       }
     },
     {
@@ -713,8 +784,8 @@
       "slug": "traversa-para-bins-tipo-romano",
       "legacy_paths": [],
       "title": "Traversa para Bins Tipo Romano",
-      "excerpt": "Traversa para bins Tipo Romano. Nombre provisional; alias de revisión: Traversa Tipo G2.",
-      "description": "Traversa para bins Tipo Romano de Freeplast. El nombre detallado es provisional: se conserva «Traversa Tipo G2» como alias de revisión hasta que el cliente resuelva la designación. Sus especificaciones están pendientes de confirmación.",
+      "excerpt": "Traversa para Bins Tipo Romano de PP reciclado para reposición de traversas dañadas.",
+      "description": "Traversa para Bins Tipo Romano de polipropileno reciclado. Largo: 1220 mm; alto: 107 mm. Color negro. Para reposición de traversas dañadas.",
       "category": "otros",
       "image": {
         "file": "media/fp-traversa-romano.png",
@@ -725,12 +796,17 @@
         "provisional": true
       },
       "specs": {
-        "material": "Consultar",
-        "material_short": "Consultar",
-        "dimensions": "Consultar",
+        "material": "Polipropileno (PP) reciclado",
+        "material_short": "PP reciclado",
+        "dimensions": "Largo 1220 mm; alto 107 mm",
         "weight": "Consultar",
-        "use": "Consultar",
-        "units_per_pallet": null,
+        "use": "Reposición de traversas dañadas",
+        "capacity": null,
+        "interior_dimensions": null,
+        "color": "Negro",
+        "features": null,
+        "pallet_dimensions": null,
+        "units_per_pallet": 200,
         "minimum_quantity": null,
         "quantity_step": null
       },
@@ -745,9 +821,10 @@
         "description_approved": false,
         "notes": [
           "PRD #1: the detailed name “Traversa para Bins Tipo Romano” is provisional and “Traversa Tipo G2” is retained as a review alias until the client resolves the conflict.",
-          "Weight and pallet dimensions are pending client facts; the 2026 PDF sheet was not transcribable in this environment, so every fact renders as Consultar.",
+          "PDF p.17 supplies detailed facts for Romano only; equivalence to G2 p.4 remains unresolved. Weight, width and pallet dimensions absent. Category held for approval.",
           "No photography exists; a neutral placeholder is used and visibly tracked as provisional."
-        ]
+        ],
+        "spec_sources": {"material": 17, "material_short": 17, "dimensions": 17, "use": 17, "color": 17, "units_per_pallet": 17}
       }
     },
     {

@@ -118,6 +118,17 @@ export async function runStackHarness() {
     sh('bash', [join(HERE, 'fetch-tools.sh')], { stdio: 'inherit' });
   }
 
+  /* -1. A leftover fpw-stack-guard-off.php means a previous run DIED between
+     installing it (positive-controls phase) and its finally-cleanup — the
+     disposable stack currently runs with the ventas guards REMOVED. Never
+     bootstrap, serve or test on that weakened state, and never delete the
+     remnant silently: fail explicitly so a human decides (it is a
+     disposable-stack-only file). */
+  const staleGuardOff = join(WP_DIR, 'wp-content', 'mu-plugins', 'fpw-stack-guard-off.php');
+  if (existsSync(staleGuardOff)) {
+    throw Error(`stack harness: ${staleGuardOff} is present — a crashed previous run left the ventas guards REMOVED on the disposable stack. Refusing to bootstrap/start on a weakened stack; inspect and remove it deliberately, then re-run.`);
+  }
+
   /* 0. The port must not be owned by a foreign server before we bind it. */
   {
     const code = await fetchCode('/');

@@ -110,6 +110,19 @@ verify(str_contains($sheet, 'no una cantidad mínima de solicitud'), 'pallet siz
 verify(str_contains($sheet, 'RELATED-BLOCK'), 'related products render through the native block');
 verify(!str_contains($sheet, 'price') && !str_contains($sheet, 'clp'), 'no price surface on the sheet');
 
+/* PDF facts extend only the disclosure; empty additions stay absent. */
+$extended = $base;
+$extended['attribute_map'] += array('Capacidad' => '46 l', 'Medidas interiores' => '570 x 370 x 170 mm', 'Color' => 'Rojo', 'Características' => 'Anidable & apilable', 'Medidas del pallet' => '1.00 x 1.20 x 2.10 m');
+$extendedSheet = render_sheet($extended);
+foreach (array('Capacidad', 'Medidas interiores', 'Color', 'Características', 'Medidas del pallet') as $label) {
+    verify(str_contains($extendedSheet, '<th scope="row">' . $label . '</th>'), 'PDF disclosure includes ' . $label);
+    verify(!str_contains($extendedSheet, '<dt>' . $label . '</dt>'), 'compact summary unchanged for ' . $label);
+}
+verify(str_contains($extendedSheet, 'Anidable &amp; apilable'), 'PDF attributes escaped');
+verify(!str_contains($sheet, '<th scope="row">Capacidad</th>'), 'absent optional facts omitted');
+$extended['attribute_map']['Capacidad'] = 'Consultar';
+verify(!str_contains(render_sheet($extended), '<th scope="row">Capacidad</th>'), 'unknown optional fact omitted');
+
 /* Pending photo honesty. */
 $noPhoto = render_card_helper(array_merge($base, array('image_id' => 0)));
 verify(str_contains($noPhoto, 'Fotografía pendiente') && str_contains($noPhoto, 'La fotografía de este producto está por confirmar.'), 'a missing photo renders the honest pending state');
