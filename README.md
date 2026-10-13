@@ -44,6 +44,15 @@ for proposal 2, `http://mliu:4173/propuesta-industrial/` for proposal 3,
 `http://mliu:4173/propuesta-textos-originales/` for the approved direction with current copy
 and `http://mliu:4173/product-page-prototype/?variant=A` for the product-page prototype.
 
+## WordPress local persistente
+
+`npm run local` muestra el estado sin iniciar servicios. `npm run local -- plan` valida
+la configuración; `init`, `up`, `seed` y `stop` requieren `--execute`.
+Tema/adaptador se montan desde este checkout; editar y recargar, sin desplegar.
+Datos propios, correos capturados y HTTP externo bloqueado. No toca staging ni el puerto
+8091 existente. Instrucciones, reset explícito y gates pendientes de PC/teléfono:
+[`wordpress/local/README.md`](wordpress/local/README.md).
+
 ## Agent runbook
 
 **Current WordPress implementation (2026-09-05):** WooCommerce + free Quotes for WooCommerce + a small Freeplast adapter. Start at `wordpress/WOO-MIGRATION.md` and `docs/adr/0001-woocommerce-quote-only.md`. The custom catalog/basket implementation is retired under `wordpress/legacy/`.

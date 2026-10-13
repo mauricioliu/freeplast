@@ -10,7 +10,9 @@
     "test:photos": "node wordpress/scripts/catalog-photos-native-test.mjs",
     "check": "node wordpress/scripts/check-woo.mjs",
     "typecheck": "node wordpress/scripts/check-woo.mjs",
-    "woo:package": "python3 wordpress/scripts/package-woo.py"
+    "woo:package": "python3 wordpress/scripts/package-woo.py",
+    "local": "node wordpress/local/local.mjs",
+    "test:local": "node wordpress/local/local-test.mjs"
   },
   "engines": {
     "node": ">=20"
