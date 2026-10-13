@@ -23,6 +23,10 @@ console.log(`quotation PDF: ${pdfArtifacts} pinned library/asset hashes checked`
 checks+=pdfArtifacts;
 console.log(run('python3',[path.join(root,'scripts/quotation-artifacts-test.py')]));
 console.log(run('python3',[path.join(root,'scripts/catalog-pdf-test.py')]));
+console.log(run('python3',[path.join(root,'scripts/commercial-source-test.py')]));
+console.log(run(php,[path.join(root,'scripts/catalog-minimums-test.php')]));
+console.log(run(php,[path.join(root,'scripts/contacto-address-test.php')]));
+console.log(run(php,[path.join(root,'scripts/quotation-issuer-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-migration-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-release-test.php')]));
 console.log(run('python3',[path.join(root,'scripts/catalog-pdf-package-test.py')]));

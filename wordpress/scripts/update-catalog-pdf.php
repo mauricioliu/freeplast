@@ -20,7 +20,7 @@ try {
         throw new RuntimeException('Only the isolated Freeplast staging identity is allowed');
     }
     if (!class_exists('WooCommerce')) { throw new RuntimeException('WooCommerce required'); }
-    $source = __DIR__ . '/../data/products.json';
+    $source = __DIR__ . '/catalog-pdf-release/products.json';
     $hash = hash_file('sha256', $source);
     if ($hash !== 'a88c84feddf1ad54f10587d23cd99a3e1d3c8d110b1d88768350d7a7e84e9f3a') { throw new RuntimeException('Unreviewed reference bytes; stop and review a new patch'); }
     $catalog = json_decode(file_get_contents($source), true, 512, JSON_THROW_ON_ERROR);

@@ -38,7 +38,7 @@ def main():
         shutil.rmtree(migration)
     shutil.copytree(root / "scripts/catalog-pdf-release", migration)
     shutil.copy2(root / "scripts/lib/catalog-pdf.php", migration / "catalog-pdf.php")
-    shutil.copy2(root / "data/products.json", migration / "products.json")
+    shutil.copy2(root / "scripts/catalog-pdf-release/products.json", migration / "products.json")
     print(out)
 
 

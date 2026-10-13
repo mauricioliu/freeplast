@@ -2208,7 +2208,8 @@ test('the complete v6 content and navigation experience is governed, connected a
   assertContains(contactSection, 'tel:+56968444265', 'the concise contact section must offer the current phone');
   assertContains(contactSection, 'mailto:ventas@freeplast.cl', 'the concise contact section must offer the current email');
   assertContains(contactSection, 'api.whatsapp.com/send?phone=56968444265', 'the concise contact section must offer WhatsApp');
-  assertContains(contactSection, 'maps.app.goo.gl', 'the concise contact section must offer the warehouse map');
+  assertContains(contactSection, 'P Picarquín sitio 52, San Fco de Mostazal, VI Región', 'the concise contact section must show the approved warehouse address');
+  assertAbsent(contactSection, 'maps.app.goo.gl', 'the retired Arrayán map link must not remain on Home');
   assertContains(contactSection, 'Lun a Vie 09:00 a 13:00 hrs y 14:00 a 18:00 hrs', 'the concise contact section must show the current hours');
   assertContains(contactSection, 'href="/contacto/"', 'the concise section must link the standalone Contacto page');
 
@@ -2239,7 +2240,9 @@ test('the complete v6 content and navigation experience is governed, connected a
   const contacto = await get('/contacto/', MOBILE_UA);
   assert.equal(contacto.status, 200, '/contacto/ must return HTTP 200');
   assertContains(contacto.body, 'Visítanos', 'Contacto must render the warehouse section');
-  assertContains(contacto.body, 'href="https://maps.app.goo.gl/QtGSdagB55W7rnRj7"', 'the warehouse/map must link the location');
+  assertContains(contacto.body, 'P Picarquín sitio 52, San Fco de Mostazal, VI Región', 'Contacto must show the approved warehouse address');
+  assertAbsent(contacto.body, 'Camino El Arrayán', 'the retired Arrayán address must not remain on Contacto');
+  assertAbsent(contacto.body, 'maps.app.goo.gl', 'the retired Arrayán map link must not remain on Contacto');
   assertContains(contacto.body, 'href="tel:+56968444265"', 'Contacto must link the current phone');
   assertContains(contacto.body, 'href="https://api.whatsapp.com/send?phone=56968444265"', 'Contacto must link WhatsApp');
   assertContains(contacto.body, 'href="mailto:ventas@freeplast.cl"', 'Contacto must link the current email');

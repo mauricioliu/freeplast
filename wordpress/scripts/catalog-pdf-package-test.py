@@ -23,7 +23,7 @@ _, second = package()
 assert first == second, 'Packaging must be byte deterministic'
 expected = {'run.php', 'policy.php', 'review.json', 'catalog-pdf.php', 'products.json'}
 assert {p.name for p in (out / 'migration').iterdir()} == expected
-assert (out / 'migration/products.json').read_bytes() == (root / 'data/products.json').read_bytes()
+assert (out / 'migration/products.json').read_bytes() == (root / 'scripts/catalog-pdf-release/products.json').read_bytes()
 assert (out / 'migration/catalog-pdf.php').read_bytes() == (root / 'scripts/lib/catalog-pdf.php').read_bytes()
 review = json.loads((out / 'migration/review.json').read_text())
 assert len(review) == len({p['id'] for p in review}) == len({p['source_id'] for p in review}) == 15

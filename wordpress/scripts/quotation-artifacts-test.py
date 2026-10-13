@@ -21,7 +21,7 @@ class QuotationArtifacts(unittest.TestCase):
         self.assertGreater(verify_quotation_artifacts(self.adapter), 100)
 
     def test_damaged_asset_or_vendor_file(self):
-        for name in ['pdf-assets/Manrope-Regular.ttf', 'pdf-assets/mark.svg', 'vendor/dompdf/VERSION']:
+        for name in ['pdf-assets/Manrope-Regular.ttf', 'pdf-assets/mark.svg', 'pdf-assets/logo.png', 'vendor/dompdf/VERSION']:
             with self.subTest(name=name):
                 file = self.adapter / name
                 original = file.read_bytes()

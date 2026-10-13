@@ -4,14 +4,23 @@ import hashlib
 import json
 from pathlib import Path
 
-products = json.loads((Path(__file__).resolve().parents[1] / 'data/products.json').read_text())['products']
+root = Path(__file__).resolve().parents[1]
+products = json.loads((root / 'data/products.json').read_text())['products']
+sealed = json.loads((root / 'scripts/catalog-pdf-release/products.json').read_text())['products']
+# The technical release stays immutable; only owner-confirmed commercial fields changed later.
+for current, original in zip(products, sealed, strict=True):
+    expected = json.loads(json.dumps(original))
+    units = original['specs']['units_per_pallet']
+    expected['specs']['minimum_quantity'] = 50 if current['slug'].startswith('traversa-') else units
+    expected['specs']['quantity_step'] = 1
+    assert current == expected, current['slug']
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 def protected(p):
     return {k: v for k, v in p.items() if k not in ('specs', 'excerpt', 'description', 'review')} | {
-        'minimum_quantity': p['specs']['minimum_quantity'], 'quantity_step': p['specs']['quantity_step']}
+        'minimum_quantity': None, 'quantity_step': None}
 assert digest([protected(p) for p in products]) == 'db705f60ee66fde26c0e8968b6f040725f3120bbe065a77bf7119b57ad42db67'
-assert digest(products[-2:]) == '21d282f79cb79321ecf30fd87facde1c138fe7599d9e322fdc5de5d0b5549ec1'
+assert digest(sealed[-2:]) == '21d282f79cb79321ecf30fd87facde1c138fe7599d9e322fdc5de5d0b5549ec1'
 # Independent page ledger: slug, detailed page, weight, capacity, units/pallet, pallet height.
 rows = [
  ('tote', 6, '800 g', '21 l', 120, '2.30'),
@@ -46,7 +55,7 @@ for slug, page, weight, capacity, count, height in rows:
     assert s['pallet_dimensions'] == (f'1.00 x 1.20 x {height} m' if height else None), slug
     assert p['review']['spec_sources']['units_per_pallet'] == page
     for key, value in s.items():
-        if value not in (None, 'Consultar'):
+        if key not in ('minimum_quantity', 'quantity_step') and value not in (None, 'Consultar'):
             assert key in p['review']['spec_sources'], (slug, key)
     assert 'not transcribable' not in str(p)
     if p['options']:

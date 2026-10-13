@@ -38,8 +38,8 @@
         "features": "Apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.60 m",
         "units_per_pallet": 70,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 70,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -90,8 +90,8 @@
         "features": "Anidable y apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
         "units_per_pallet": 100,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 100,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -140,8 +140,8 @@
         "features": "Anidable y apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
         "units_per_pallet": 100,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 100,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -190,8 +190,8 @@
         "features": "Anidable y apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
         "units_per_pallet": 100,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 100,
+        "quantity_step": 1
       },
       "options": [
         {
@@ -266,8 +266,8 @@
         "features": "Anidable y apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
         "units_per_pallet": 100,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 100,
+        "quantity_step": 1
       },
       "options": [
         {
@@ -344,8 +344,8 @@
         "features": "Apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
         "units_per_pallet": 128,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 128,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -396,8 +396,8 @@
         "features": null,
         "pallet_dimensions": "1.00 x 1.20 x 2.50 m",
         "units_per_pallet": 200,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 200,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -448,8 +448,8 @@
         "features": null,
         "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
         "units_per_pallet": 65,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 65,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -498,8 +498,8 @@
         "features": "Plegable",
         "pallet_dimensions": "1.00 x 1.20 x 2.10 m",
         "units_per_pallet": 540,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 540,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -550,8 +550,8 @@
         "features": "Apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.30 m",
         "units_per_pallet": 75,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 75,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -602,8 +602,8 @@
         "features": "Apilable",
         "pallet_dimensions": "1.00 x 1.20 x 2.80 m",
         "units_per_pallet": 90,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 90,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -654,8 +654,8 @@
         "features": null,
         "pallet_dimensions": "1.00 x 1.20 x 2.30 m",
         "units_per_pallet": 120,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 120,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -707,8 +707,8 @@
         "features": null,
         "pallet_dimensions": "1.00 x 1.20 x 1.90 m",
         "units_per_pallet": 132,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 50,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -758,8 +758,8 @@
         "features": null,
         "pallet_dimensions": "1.00 x 1.20 x 1.90 m",
         "units_per_pallet": 132,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 50,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -807,8 +807,8 @@
         "features": null,
         "pallet_dimensions": null,
         "units_per_pallet": 200,
-        "minimum_quantity": null,
-        "quantity_step": null
+        "minimum_quantity": 50,
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -855,7 +855,7 @@
         "use": "Consultar",
         "units_per_pallet": null,
         "minimum_quantity": null,
-        "quantity_step": null
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
@@ -902,7 +902,7 @@
         "use": "Consultar",
         "units_per_pallet": null,
         "minimum_quantity": null,
-        "quantity_step": null
+        "quantity_step": 1
       },
       "options": [],
       "related_ids": [
