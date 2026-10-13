@@ -131,7 +131,7 @@ th{text-align:left;font-size:9pt;border-bottom:1pt solid #306020;padding:8pt 4pt
 .summary{margin:18pt 0 20pt 42%;width:58%;page-break-inside:avoid}.summary td{padding:6pt 4pt}.summary td+td{text-align:right;white-space:nowrap}
 .total{font-size:12pt;font-weight:700}h2{font-size:11pt;margin:20pt 0 6pt}.conditions{page-break-inside:avoid}
 </style></head><body>' . $brand . $issuer_html
-		. '<h1>Cotización</h1><p class="reference">' . $esc( $version['reference'] ) . ' · Versión ' . (int) $version['version'] . '</p>'
+		. '<h1>Cotización' . ( isset( $version['commercial']['number'] ) ? ' Nº ' . (int) $version['commercial']['number'] : '' ) . '</h1><p class="reference">' . $esc( $version['reference'] ) . ' · Versión ' . (int) $version['version'] . '</p>'
 		. '<p>Fecha de aprobación: ' . $esc( wp_date( 'd/m/Y', $version['approved_at'] ) ) . '<br>Señores: ' . $esc( $version['buyer']['company'] ) . '</p>'
 		. '<table><colgroup><col style="width:43%"><col style="width:11%"><col style="width:23%"><col style="width:23%"></colgroup><thead><tr><th>Producto</th><th class="number">Cantidad</th><th class="number">Precio neto</th><th class="number">Total línea</th></tr></thead><tbody>' . $rows . '</tbody></table>'
 		. '<table class="summary">' . $summary . '</table><div class="conditions">'

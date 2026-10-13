@@ -261,6 +261,23 @@ function fpw_validate_checkout( $data, $errors ) {
 		if ( strlen( $data[$key] ?? '' ) > 240 ) { $errors->add($key, $fields['billing'][$key]['label'] . ': el texto es demasiado largo. Acórtalo y vuelve a intentarlo.', array('id'=>$key)); }
 	}
 	if ( 'quotes-gateway' !== ( $data['payment_method'] ?? '' ) ) { $errors->add('payment_method', 'Este sitio recibe solicitudes de cotización, no pagos. Recarga el formulario antes de reintentar.', array('id'=>'payment_method')); }
+	// Owner-confirmed request minimums (step 3): aggregated per product across
+	// every basket line, so two colors of one product cannot split a pallet
+	// minimum. Unknown minimums never validate as 1 — they stay requestable.
+	if ( function_exists( 'WC' ) && WC()->cart ) {
+		$quantities = array();
+		foreach ( WC()->cart->get_cart() as $item ) {
+			$product_id = (int) ( $item['product_id'] ?? 0 );
+			if ( $product_id < 1 ) { continue; }
+			$quantities[ $product_id ] = ( $quantities[ $product_id ] ?? 0 ) + max( 0, (int) ( $item['quantity'] ?? 0 ) );
+		}
+		foreach ( $quantities as $product_id => $quantity ) {
+			$minimum = fpw_quote_minimum( $product_id );
+			if ( null !== $minimum && $quantity < $minimum ) {
+				$errors->add( 'fpw_minimum_' . $product_id, get_the_title( $product_id ) . ': el mínimo por solicitud es ' . number_format( $minimum, 0, ',', '.' ) . ' unidades; lleva ' . number_format( $quantity, 0, ',', '.' ) . '. Ajusta la cantidad antes de enviar.', array( 'id' => 'fpw_minimum' ) );
+			}
+		}
+	}
 	// Request-local copy: Woo prints/consumes POST notices before rendering the no-JS form.
 	$GLOBALS['fpw_checkout_field_errors'] = array();
 	foreach ( $errors->get_error_codes() as $code ) {
@@ -1514,18 +1531,130 @@ add_filter('woocommerce_product_add_to_cart_text', static function($text,$produc
 // native filter sits on the translated string, so it outranks any translation).
 add_filter('woocommerce_product_single_add_to_cart_text', static fn() => 'Agregar a Cotización', 1000);
 
-/** Product-sheet quantity controls use the same batches as catalog cards. */
+/** The owner-confirmed request minimum of one product, from native Woo meta (_fp_quote_min_qty, delivered by the reviewed one-shot migration). Absent or invalid meta is an honest UNKNOWN (null) — never reinterpreted as a confirmed 1. */
+function fpw_quote_minimum( int $product_id ): ?int {
+	if ( $product_id < 1 ) { return null; }
+	$raw = get_post_meta( $product_id, '_fp_quote_min_qty', true );
+	return is_string( $raw ) && ctype_digit( $raw ) && (int) $raw >= 1 ? (int) $raw : null;
+}
+
+/** Variations carry no minimum of their own: the confirmed meta lives on the PARENT, so every minimum lookup resolves the parent identity consistently. */
+function fpw_quote_minimum_parent_id( $product ): int {
+	if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) { return 0; }
+	$id = (int) $product->get_id();
+	if ( method_exists( $product, 'get_parent_id' ) && (int) $product->get_parent_id() > 0 ) { $id = (int) $product->get_parent_id(); }
+	return $id;
+}
+
+/** The public minimum wording of one product: the confirmed minimum, or the explicit pending note for unknowns — requestable either way. */
+function fpw_quote_minimum_html( int $product_id ): string {
+	$minimum = fpw_quote_minimum( $product_id );
+	if ( null === $minimum ) {
+		return '<p class="fpw-minimum fpw-minimum--unknown">Mínimo por confirmar: solicita la cantidad que necesites y la revisamos contigo antes de cotizar.</p>';
+	}
+	return '<p class="fpw-minimum">Mínimo por solicitud: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' ' . ( 1 === $minimum ? 'unidad' : 'unidades' ) . '.</p>';
+}
+
+/** The ficha names its minimum (or its explicit pending state) inside the native summary. */
+add_action( 'woocommerce_single_product_summary', static function () {
+	global $product;
+	if ( ! $product || ! method_exists( $product, 'get_id' ) ) { return; }
+	echo fpw_quote_minimum_html( fpw_quote_minimum_parent_id( $product ) );
+}, 25 );
+
+/** Basket wording rides the native item-data presentation seam — the one the REAL Cart block renders per line (classic templates share it). */
+add_filter( 'woocommerce_get_item_data', static function ( $item_data, $cart_item ) {
+	if ( ! is_array( $item_data ) || ! is_array( $cart_item ) ) { return $item_data; }
+	$minimum = fpw_quote_minimum( (int) ( $cart_item['product_id'] ?? 0 ) );
+	$item_data[] = null === $minimum
+		? array( 'key' => 'Mínimo', 'display' => 'por confirmar — lo revisamos contigo antes de cotizar' )
+		: array( 'key' => 'Mínimo por solicitud', 'display' => number_format( $minimum, 0, ',', '.' ) . ' ' . ( 1 === $minimum ? 'unidad' : 'unidades' ) );
+	return $item_data;
+}, 10, 2 );
+
+/** Server boundary of "agregar productos": the RESULTING aggregate decides — a top-up of 1 onto a satisfied basket passes; unknowns pass. */
+add_filter( 'woocommerce_add_to_cart_validation', static function ( $passed, $product_id, $quantity, $variation_id = 0, $variations = array(), $cart_item_data = array() ) {
+	$minimum = fpw_quote_minimum( (int) $product_id );
+	if ( null === $minimum ) { return $passed; }
+	$current = 0;
+	if ( function_exists( 'WC' ) && WC()->cart ) {
+		foreach ( WC()->cart->get_cart() as $item ) {
+			if ( (int) ( $item['product_id'] ?? 0 ) === (int) $product_id ) { $current += max( 0, (int) ( $item['quantity'] ?? 0 ) ); }
+		}
+	}
+	if ( $current + max( 0, (int) $quantity ) < $minimum ) {
+		wc_add_notice( get_the_title( (int) $product_id ) . ': el mínimo por solicitud es ' . number_format( $minimum, 0, ',', '.' ) . ' unidades. Ajusta la cantidad para agregarlo.', 'error' );
+		return false;
+	}
+	return $passed;
+}, 10, 6 );
+
+/** Server boundary of "modificar cantidades" (classic cart): the PROSPECTIVE posted multi-row update decides, never the stale basket. */
+add_filter( 'woocommerce_update_cart_validation', static function ( $passed, $cart_item_key, $values, $quantity ) {
+	$product_id = (int) ( is_array( $values ) ? ( $values['product_id'] ?? 0 ) : 0 );
+	$minimum = fpw_quote_minimum( $product_id );
+	if ( null === $minimum || $product_id < 1 ) { return $passed; }
+	$posted = array();
+	if ( isset( $_POST['cart'] ) && is_array( $_POST['cart'] ) ) {
+		/* Native classic payload: cart[<cart_item_key>]['qty'] — a keyed map; the row identity is the array key, never an embedded item field. */
+		foreach ( wp_unslash( $_POST['cart'] ) as $key => $posted_item ) {
+			$qty = is_array( $posted_item ) ? ( $posted_item['qty'] ?? null ) : ( is_scalar( $posted_item ) ? $posted_item : null );
+			if ( is_scalar( $qty ) ) { $posted[ (string) $key ] = max( 0, (int) $qty ); }
+		}
+	}
+	$totals = array();
+	$incoming = max( 0, (int) $quantity );
+	if ( function_exists( 'WC' ) && WC()->cart ) {
+		foreach ( WC()->cart->get_cart() as $item_key => $item ) {
+			$item_product = (int) ( $item['product_id'] ?? 0 );
+			/* THIS row validates its INCOMING quantity; every sibling row takes its own posted update when the multi-row form was submitted, else its persisted quantity. */
+			$item_quantity = (string) $item_key === (string) $cart_item_key ? $incoming : ( array_key_exists( (string) $item_key, $posted ) ? $posted[ (string) $item_key ] : max( 0, (int) ( $item['quantity'] ?? 0 ) ) );
+			$totals[ $item_product ] = ( $totals[ $item_product ] ?? 0 ) + $item_quantity;
+		}
+	}
+	if ( ( $totals[ $product_id ] ?? 0 ) < $minimum ) {
+		wc_add_notice( get_the_title( $product_id ) . ': el mínimo por solicitud es ' . number_format( $minimum, 0, ',', '.' ) . ' unidades y la canasta quedaría con ' . number_format( (int) ( $totals[ $product_id ] ?? 0 ), 0, ',', '.' ) . '. Ajusta la cantidad antes de actualizar.', 'error' );
+		return false;
+	}
+	return $passed;
+}, 10, 4 );
+
+/** The REAL Cart block seam (pinned Woo 11.1.0 StoreApi): quantity_limits and update-item validation both read this native filter. The line floor is ALWAYS the remainder of the product minimum after its sibling variations — the prospective aggregation — with no relaxation for historical under-minimum lines: reading preserves the stored quantity untouched (the schema reports it verbatim), while an explicit update below the floor is rejected. */
+add_filter( 'woocommerce_store_api_product_quantity_minimum', static function ( $value, $product, $cart_item ) {
+	if ( ! is_object( $product ) || ! method_exists( $product, 'is_sold_individually' ) || $product->is_sold_individually() ) { return $value; }
+	$minimum = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) );
+	if ( null === $minimum ) { return $value; }
+	$floor = $minimum;
+	if ( is_array( $cart_item ) ) {
+		$siblings = 0;
+		$product_id = (int) ( $cart_item['product_id'] ?? 0 );
+		if ( function_exists( 'WC' ) && WC()->cart ) {
+			foreach ( WC()->cart->get_cart() as $item_key => $item ) {
+				if ( (string) $item_key !== (string) ( $cart_item['key'] ?? '' ) && (int) ( $item['product_id'] ?? 0 ) === $product_id ) { $siblings += max( 0, (int) ( $item['quantity'] ?? 0 ) ); }
+			}
+		}
+		$floor = max( 1, $minimum - $siblings );
+	}
+	return max( 1, (int) $floor );
+}, 10, 3 );
+
+/** Product-sheet (and classic basket) quantity floors are the owner-confirmed request minimums — step 1, never mandatory multiples. A persisted below-floor line never gets its displayed quantity clamped up. */
 add_filter('woocommerce_quantity_input_args', static function($args,$product) {
-	if ( ! is_product() || ! $product || $product->is_sold_individually() ) { return $args; }
-	$args['min_value'] = 10;
-	$args['step'] = 10;
-	$args['input_value'] = max( 10, (int) $args['input_value'] );
+	if ( ( ! is_product() && ! is_cart() ) || ! $product || ! method_exists( $product, 'is_sold_individually' ) || $product->is_sold_individually() ) { return $args; }
+	$floor = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) ) ?? 1;
+	if ( is_cart() ) {
+		$persisted = (int) ( $args['input_value'] ?? 0 );
+		if ( $persisted > 0 && $persisted < $floor ) { $floor = $persisted; }
+	}
+	$args['min_value'] = $floor;
+	$args['step'] = 1;
+	$args['input_value'] = max( $floor, (int) $args['input_value'] );
 	return $args;
 }, 100, 2);
 // Woo's variation script overwrites the input minimum whenever a color changes.
-// Supply the same minimum in both embedded and AJAX variation responses.
+// Supply the same inherited minimum in both embedded and AJAX variation responses.
 add_filter('woocommerce_available_variation', static function($data,$product,$variation) {
-	if ( ! $variation->is_sold_individually() ) { $data['min_qty'] = 10; }
+	if ( ! $variation->is_sold_individually() ) { $data['min_qty'] = fpw_quote_minimum( fpw_quote_minimum_parent_id( $variation ) ) ?? 1; }
 	return $data;
 }, 100, 3);
 
@@ -1534,22 +1663,24 @@ add_filter('woocommerce_available_variation', static function($data,$product,$va
  * keeps WooCommerce's own anchor — its AJAX handler reads data-quantity from
  * the anchor's DOM dataset at click time (pinned Woo 11.1.0 add-to-cart.js
  * gives preference to data attributes) — and WooCommerce's own quantity input
- * rendered through woocommerce_quantity_input() in batches of ten, preserving
- * the product's maximum. assets/js/loop-add-to-cart-quantity.js mirrors the
- * input into the anchor's data-quantity. Without JavaScript the native link
- * keeps WooCommerce's fallback behavior. Variable, grouped, unpurchasable and out-of-stock cards
- * keep the native link to their product sheet, where Woo's own form owns the
- * quantity.
+ * rendered through woocommerce_quantity_input() at the product's confirmed
+ * minimum with step 1 (unknown minimums floor at 1 and stay requestable),
+ * preserving the product's maximum. assets/js/loop-add-to-cart-quantity.js
+ * mirrors the input into the anchor's data-quantity. Without JavaScript the
+ * native link keeps WooCommerce's fallback behavior. Variable, grouped,
+ * unpurchasable and out-of-stock cards keep the native link to their product
+ * sheet, where Woo's own form owns the quantity.
  */
 add_filter('woocommerce_loop_add_to_cart_args', static function($args,$product) {
 	if ( $product->is_type('simple') && $product->is_purchasable() && $product->is_in_stock() ) {
-		$args['quantity'] = 10;
+		$args['quantity'] = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) ) ?? 1;
 	}
 	return $args;
 }, 100, 2);
 add_filter('woocommerce_loop_add_to_cart_link', static function($html,$product,$args) {
 	if ( ! $product->is_type('simple') || ! $product->is_purchasable() || ! $product->is_in_stock() || ! function_exists('woocommerce_quantity_input') ) { return $html; }
-	$quantity = woocommerce_quantity_input( array( 'input_value' => 10, 'min_value' => 10, 'step' => 10 ), $product, false );
+	$floor = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) ) ?? 1;
+	$quantity = woocommerce_quantity_input( array( 'input_value' => $floor, 'min_value' => $floor, 'step' => 1 ), $product, false );
 	$lines = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_cart() : array();
 	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$quantity.$html.fpw_card_selection( $product->get_id(), $lines ).'</div>';
 }, 100, 3);

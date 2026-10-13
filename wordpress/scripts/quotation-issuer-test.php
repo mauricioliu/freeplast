@@ -23,10 +23,11 @@ check(str_contains($render, '&lt;em&gt;Frozen test&lt;/em&gt;') && str_contains(
 $copy['issuer']['logo_base64'] = base64_encode('not a PNG');
 try { fpw_quotation_document_html($copy, '', 'sans-serif'); check(false,'bad frozen logo refused'); } catch (RuntimeException $e) { check(true,'bad frozen logo refused'); }
 $legacy = $issued;
-unset($legacy['issuer']);
+unset($legacy['issuer'], $legacy['commercial']);
 $legacy['projection']['validity_days'] = 7;
 $legacy_html = fpw_quotation_document_html($legacy, '', 'sans-serif');
 check(!str_contains($legacy_html, '390400602') && !str_contains($legacy_html, 'Datos para transferencia') && str_contains($legacy_html, 'Vigencia de la oferta: 7'), 'legacy version is never enriched from current issuer or defaults');
+check(!str_contains($legacy_html, 'Nº '), 'legacy version is never renumbered with a commercial number it never had');
 $legacy['pdf_base64'] = base64_encode(fpw_quotation_dompdf_render($legacy));
 $legacy_row = wp_json_encode($legacy);
 $GLOBALS['fpwd_table']['fpw_quotation_91'] = $legacy_row;
