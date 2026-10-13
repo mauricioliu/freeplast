@@ -70,18 +70,18 @@ function fpw_price_reference_editor( string $key, array $entry ): string {
 
 /** References are informational. Buttons only copy a number into the editable offer field. */
 function fpw_workspace_references_html( array $reference, int $index, bool $readonly, ?int $legacy ): string {
-	$html = '<div class="fpw-price-references"><p class="fpw-references-heading">Precios de referencia por volumen</p><p class="fpw-muted">CLP netos por unidad. Elige un precio o escribe otro; no se aplica ningún descuento automáticamente.</p>';
+	if ( null === ( $reference['small'] ?? $reference['bulk'] ?? $legacy ) ) { return ''; }
+	$html = '<div class="fpw-price-references"><p class="fpw-references-heading">Precios de referencia por volumen</p>';
 	foreach ( array( 'small' => '1 a 4 pallets', 'bulk' => '5 o más pallets' ) as $key => $label ) {
 		$price = $reference[ $key ] ?? null;
+		if ( null === $price ) { continue; }
 		$html .= '<div class="fpw-list-reference"><div><span>' . $label . '</span><strong>' . fpw_workspace_money( $price ) . '</strong></div>';
-		if ( null !== $price && ! $readonly ) { $html .= '<button type="button" hidden data-fpw-apply-price="' . $index . '" data-price="' . $price . '">Usar precio<span class="screen-reader-text"> de ' . $label . '</span></button>'; }
+		if ( ! $readonly ) { $html .= '<button type="button" hidden data-fpw-apply-price="' . $index . '" data-price="' . $price . '">Usar precio<span class="screen-reader-text"> de ' . $label . '</span></button>'; }
 		$html .= '</div>';
 	}
 	if ( null !== $legacy ) {
 		$html .= '<div class="fpw-list-reference"><div><span>Precio base anterior · sin tramo</span><strong>' . fpw_workspace_money( $legacy ) . '</strong></div>'
 			. ( ! $readonly ? '<button type="button" hidden data-fpw-apply-price="' . $index . '" data-price="' . $legacy . '">Usar precio base</button>' : '' ) . '</div>';
 	}
-	if ( ! empty( $reference['source'] ) ) { $html .= '<p class="fpw-muted">Referencia: ' . esc_html( $reference['source'] ) . '.</p>'; }
-	if ( ! empty( $reference['note'] ) ) { $html .= '<p class="fpw-muted">' . esc_html( $reference['note'] ) . '</p>'; }
-	return $html . '<p class="fpw-muted">No combinamos pallets ni elegimos tramos automáticamente. El precio escrito solo se guarda al guardar el borrador.</p><noscript><p>Para usar una referencia, escribe su importe en Precio ofrecido y guarda el borrador.</p></noscript></div>';
+	return $html . '<noscript><p>Para usar una referencia, escribe su importe en Precio ofrecido y guarda el borrador.</p></noscript></div>';
 }

@@ -124,7 +124,7 @@ function fpw_render_workspace(): void {
 			$created = $order->get_date_created();
 			$received = $draft['received_at'] ?? ( $created ? $created->getTimestamp() : null );
 			$url = $draft ? fpw_draft_screen_url( $id ) : fpw_draft_request_admin_url( $id );
-			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( $url ) . '">' . esc_html( $company ?: $reference ) . '</a></h2><p class="fpw-muted">' . esc_html( $reference ) . ( null !== $received ? ' · ' . esc_html( wp_date( 'd/m/Y', (int) $received ) ) : '' ) . '</p></div>'
+			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( $url ) . '">' . esc_html( $company ?: $reference ) . '</a></h2><p class="fpw-muted">' . esc_html( $reference ) . ( null !== $received ? ' · ' . esc_html( wp_date( 'd/m/Y · H:i', (int) $received ) ) : '' ) . '</p></div>'
 				. fpw_workspace_request_state_html( $id, $version, $offer['unavailable'] ) . '<div class="fpw-workspace-row-total"><span>' . ( $offer['unavailable'] ? 'Versión no disponible' : ( $version ? 'Total aprobado' : 'Total guardado' ) ) . '</span><strong>' . fpw_workspace_money( $projection['total'] ?? null ) . '</strong></div><a class="fpw-button" href="' . esc_url( $url ) . '">Abrir<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a></article>';
 		}
 		$body .= '</div><nav class="fpw-workspace-pagination" aria-label="Páginas de cotizaciones">';
@@ -145,17 +145,18 @@ function fpw_workspace_product_html( array $line, array $value, int $index, ?int
 	$pack = $product ? $product->get_attribute( 'Unidades por pallet' ) : '';
 	$units = $reference['units'] ?? ( ctype_digit( $pack ) && (int) $pack > 0 ? (int) $pack : null );
 	$qty = (int) $value['quantity'];
-	$pallets = null === $units ? 'Unidades por pallet por confirmar.' : intdiv( $qty, $units ) . ( 1 === intdiv( $qty, $units ) ? ' pallet completo + ' : ' pallets completos + ' ) . ( $qty % $units ) . ' un. · ' . $units . ' un. por pallet';
+	$pallets = null === $units ? '' : intdiv( $qty, $units ) . ( 1 === intdiv( $qty, $units ) ? ' pallet completo + ' : ' pallets completos + ' ) . ( $qty % $units ) . ' un. · ' . $units . ' un. por pallet';
 	$photo = $product && $product->get_image_id() ? $product->get_image( 'woocommerce_thumbnail', array( 'alt' => '', 'loading' => 'lazy' ) ) : '<span class="fpw-photo-missing">Sin foto</span>';
 	$options = '';
 	foreach ( $line['options'] ?? array() as $option ) { $options .= '<span>' . esc_html( wc_attribute_label( $option['key'] ) . ': ' . $option['value'] ) . '</span> '; }
 	$price = $value['price'] ?? $value['suggested'];
 	$suggested = $value['suggested'];
-	$origin = null === $value['price'] ? ( null === $suggested ? 'Precio por definir.' : 'Precio de lista, aún sin guardar.' ) : ( 'suggested' === $value['price_source'] ? 'Precio guardado de la lista.' : 'Precio guardado para esta oferta.' );
+	$origin = null === $value['price'] ? ( null === $suggested ? '' : 'Precio de lista, aún sin guardar.' ) : ( 'suggested' === $value['price_source'] ? 'Precio guardado de la lista.' : 'Precio guardado para esta oferta.' );
 	$prefix = 'fpw_work[lines][' . $index . ']';
 	return '<section class="fpw-workspace-product"><div class="fpw-product-heading"><div class="fpw-product-photo">' . $photo . '</div><div><h3>' . esc_html( $line['name'] ) . '</h3><p>' . $options . '</p><p class="fpw-muted">Pedido: ' . (int) $line['quantity'] . ' unidades</p></div></div>'
 		. '<div class="fpw-product-inputs"><label>Cantidad <span class="screen-reader-text">de ' . esc_html( $line['name'] ) . '</span><span class="fpw-muted">unidades</span>' . fpw_draft_quantity_input_html( $prefix . '[quantity]', $qty ) . '</label><label class="fpw-offered-price">Precio ofrecido <span class="screen-reader-text">de ' . esc_html( $line['name'] ) . '</span><span class="fpw-muted">CLP netos / unidad</span>' . fpw_draft_amount_input_html( $prefix . '[price]', $price ) . '</label></div>'
-		. '<p class="fpw-muted" data-fpw-pallets="' . $index . '" data-units="' . (int) $units . '">' . esc_html( $pallets ) . '</p><p class="fpw-muted" data-fpw-origin="' . $index . '">' . $origin . '</p>'
+		. ( null !== $units ? '<p class="fpw-muted" data-fpw-pallets="' . $index . '" data-units="' . (int) $units . '">' . esc_html( $pallets ) . '</p>' : '' )
+		. '<p class="fpw-muted" data-fpw-origin="' . $index . '"' . ( '' === $origin ? ' hidden' : '' ) . '>' . $origin . '</p>'
 		. fpw_workspace_references_html( $reference, $index, $readonly, $suggested )
 		. '<div class="fpw-line-total"><span>Neto guardado</span><strong>' . fpw_workspace_money( $line_total ) . '</strong></div></section>';
 }
@@ -219,7 +220,6 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 		$body .= '<div' . ( 'total' === $key ? ' class="fpw-grand-total"' : '' ) . '><dt>' . $label . '</dt><dd>' . fpw_workspace_money( $projection[ $key ] ?? null ) . '</dd></div>';
 	}
 	$body .= '</dl>';
-	if ( ! empty( $projection['missing'] ) ) { $body .= '<p>Por completar:</p><ul>' . implode( '', array_map( static fn( $item ) => '<li>' . esc_html( $item ) . '</li>', $projection['missing'] ) ) . '</ul>'; }
 	$body .= '<button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" class="fpw-secondary">Guardar borrador</button>'
 			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
 			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Guarda los cambios y revisa la oferta. Solo se envía al aprobar.</p>'

@@ -62,6 +62,30 @@ export function runOwnerWorkspaceJsTests() {
       check(originLegend.textContent === 'Precio guardado para esta oferta.', 'H6: reset restores the price legend together with the native fields');
     } finally { dom.window.close(); }
   }
+  for (const unsaved of [false, true]) {
+    const dom = new JSDOM(`<div class="fpw-workspace">
+      <form data-fpw-work data-fpw-has-saved="0" ${unsaved ? 'data-fpw-unsaved="1"' : ''}><input name="fpw_work[lines][0][price]" value=""></form>
+      <p data-fpw-origin="0" hidden></p><p data-fpw-save-state></p>
+      <button hidden data-fpw-apply-price="0" data-price="1300">Usar precio</button>
+      <button data-fpw-preview>Revisar</button>
+    </div>`, {runScripts:'outside-only', url:'https://freeplast.test/'});
+    try {
+      const {document, Event} = dom.window;
+      dom.window.eval(source);
+      const legend = document.querySelector('[data-fpw-origin]');
+      const form = document.querySelector('form');
+      const price = form.elements.namedItem('fpw_work[lines][0][price]');
+      check(legend.hidden === !unsaved, 'pending origin hidden unless server reports unsaved work');
+      document.querySelector('[data-fpw-apply-price]').click();
+      check(price.value === '1300' && !legend.hidden && legend.textContent === 'Cambio sin guardar.', 'reference selection reveals unsaved feedback without packaging node');
+      check(document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar') && document.querySelector('[data-fpw-preview]').disabled, 'global warning and save-before-review guard survive');
+      price.value = ''; price.dispatchEvent(new Event('input', {bubbles:true}));
+      check(legend.hidden && legend.textContent === '', 'clearing back to pending does not restore a redundant pending legend');
+      price.value = '1400'; price.dispatchEvent(new Event('input', {bubbles:true}));
+      form.reset();
+      check(legend.hidden && price.value === '', 'reset restores empty field and hides pending origin without a gap');
+    } finally { dom.window.close(); }
+  }
   const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas Históricas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
   try {
     const {document,Event,MouseEvent,KeyboardEvent} = menuDom.window;

@@ -73,10 +73,12 @@
     if (!legend) { return; }
     if (legend.dataset.fpwSavedLegend === undefined) { legend.dataset.fpwSavedLegend = legend.textContent; }
     legend.textContent = field.value === field.defaultValue ? legend.dataset.fpwSavedLegend : 'Cambio sin guardar.';
+    legend.hidden = !legend.textContent;
   };
   const resetPriceOrigins = () => {
     root.querySelectorAll('[data-fpw-origin]').forEach(legend => {
       if (legend.dataset.fpwSavedLegend !== undefined) { legend.textContent = legend.dataset.fpwSavedLegend; }
+      legend.hidden = !legend.textContent;
     });
   };
   work?.addEventListener('reset', () => {
@@ -106,6 +108,7 @@
     root.querySelectorAll('[data-fpw-origin]').forEach(legend => {
       if (legend.dataset.fpwSavedLegend === undefined) { legend.dataset.fpwSavedLegend = legend.textContent; }
       legend.textContent = 'Cambio sin guardar.';
+      legend.hidden = false;
     });
   }
   else syncActions();

@@ -79,7 +79,7 @@ check( ! str_contains( $detail, 'Seguimiento comercial' ) && str_contains( $deta
 $id = 195; $draft = fpw_read_request_draft( $id ); $work = fpw_read_draft_work( $id ); $preview = fpw_read_draft_preview( $id );
 $detail = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, null );
 check( str_contains( $detail, 'id="fpw-products"' ) && ! str_contains( $detail, 'data-fpw-tracking' ) && ! str_contains( $detail, 'Seguimiento comercial' ), 'draft keeps products and removes manual tracking entirely' );
-check( str_contains( $detail, 'fpw-price-references' ), 'per-offer volume references remain available' );
+check( ! str_contains( $detail, 'fpw-price-references' ), 'offer without reference amounts omits the whole reference section' );
 $dispatch_draft = $draft; $dispatch_draft['destination']['dispatch'] = 'si';
 $dispatch_detail = fpw_workspace_detail_markup( wc_get_order( $id ), $dispatch_draft, $work, null );
 $no_dispatch_draft = $draft; $no_dispatch_draft['destination']['dispatch'] = 'no';
@@ -117,4 +117,36 @@ $not_sent = $version; $not_sent['document'] = 'pending';
 check( ! str_contains( fpw_workspace_request_state_html( 91, $not_sent ), 'data-fpw-request-state="sent"' ), 'approval without a ready document is not sent' );
 check( str_contains( fpw_workspace_request_state_html( 999, $version ), 'Estado no disponible' ), 'misbound sending record cannot label another request sent' );
 check( $before_rows === $GLOBALS['fpwd_table'] && $before_mail === count( $GLOBALS['fpwd_mail_calls'] ), 'rendering and downloads never mutate quotation rows or attempt mail' );
+// Compact editing retains amounts and safety, not repeated pending explanations.
+$empty_detail = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, null, null );
+check( ! str_contains( $empty_detail, 'Por completar:' ) && str_contains( $empty_detail, 'Por definir' ), 'editor omits missing list without turning pending totals into zero' );
+check( ! str_contains( $empty_detail, 'Unidades por pallet por confirmar' ) && ! str_contains( $empty_detail, 'Precio por definir.' ), 'unknown packaging and pending-price legends are absent' );
+check( str_contains( $empty_detail, 'Neto guardado' ) && str_contains( $empty_detail, 'Revisar cotización' ), 'line subtotal and review action survive' );
+foreach ( array( array(), array( 'small' => null, 'bulk' => null, 'source' => 'Fixture', 'note' => 'Pending' ) ) as $reference ) {
+	check( '' === fpw_workspace_references_html( $reference, 0, false, null ), 'no amounts means no reference heading or wrapper' );
+}
+foreach ( array( array( 'small' => 1300, 'bulk' => 1100 ), array( 'small' => 1300 ), array( 'bulk' => 1100 ) ) as $reference ) {
+	$html = fpw_workspace_references_html( $reference + array( 'source' => 'Private source', 'note' => 'Private note' ), 2, false, null );
+	check( substr_count( $html, 'class="fpw-list-reference"' ) === count( $reference ) && substr_count( $html, 'data-fpw-apply-price="2"' ) === count( $reference ), 'only priced tiers have rows and explicit buttons' );
+	check( ! str_contains( $html, 'Por definir' ) && ! str_contains( $html, 'Private' ) && ! str_contains( $html, 'automáticamente' ), 'no pending tiers, source, notes or repeated instructions' );
+	check( str_contains( $html, '<noscript>' ), 'manual no-JS reference instructions remain' );
+	check( ! str_contains( fpw_workspace_references_html( $reference, 2, true, null ), '<button' ), 'readonly references cannot apply prices' );
+}
+$legacy_html = fpw_workspace_references_html( array(), 0, false, 1200 );
+check( str_contains( $legacy_html, '1.200 CLP' ) && str_contains( $legacy_html, 'Usar precio base' ) && ! str_contains( $legacy_html, '1 a 4 pallets' ), 'legacy-only amount and action survive without empty tiers' );
+$line = $draft['items'][0];
+$values = fpw_draft_work_values( $draft, null )['lines'][0];
+$values['price'] = null; $values['suggested'] = null;
+$product_html = fpw_workspace_product_html( $line, $values, 0, null, false );
+check( str_contains( $product_html, 'data-fpw-origin="0" hidden' ) && ! str_contains( $product_html, 'data-fpw-pallets' ), 'pending origin reserves only a hidden feedback node, unknown packaging no node' );
+$price_rows = $GLOBALS['fpwd_table'];
+$GLOBALS['fpwd_table'][FPW_PRICE_ROW] = wp_json_encode( array( 'prices' => array(), 'references' => array( fpw_price_key( $line['product_id'], $line['variation_id'] ) => array( 'units' => 70 ) ) ) );
+$values['quantity'] = 141;
+$known_packaging = fpw_workspace_product_html( $line, $values, 0, null, false );
+check( str_contains( $known_packaging, '2 pallets completos + 1 un. · 70 un. por pallet' ), 'known packaging remains even without reference prices' );
+$GLOBALS['fpwd_table'] = $price_rows;
+$source = file_get_contents( __DIR__ . '/../wp-content/plugins/freeplast-woo/owner-workspace.php' );
+check( str_contains( $source, "wp_date( 'd/m/Y · H:i', (int) \$received )" ), 'inbox formats existing receipt timestamp through WordPress site timezone' );
+$timestamp = ( new DateTimeImmutable( '2026-10-13 14:28:00', new DateTimeZone( 'UTC' ) ) )->getTimestamp();
+check( ( new DateTimeImmutable( '@' . $timestamp ) )->setTimezone( new DateTimeZone( 'America/Santiago' ) )->format( 'd/m/Y · H:i' ) === '13/10/2026 · 11:28', 'documented Chile timezone produces requested local date/time' );
 echo 'workspace offer: ' . ( $assertions - $start ) . " offline checks passed\n";
