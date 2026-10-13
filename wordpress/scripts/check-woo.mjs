@@ -24,6 +24,9 @@ checks+=pdfArtifacts;
 console.log(run('python3',[path.join(root,'scripts/quotation-artifacts-test.py')]));
 console.log(run('python3',[path.join(root,'scripts/catalog-pdf-test.py')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-migration-test.php')]));
+console.log(run(php,[path.join(root,'scripts/catalog-pdf-release-test.php')]));
+console.log(run('python3',[path.join(root,'scripts/catalog-pdf-package-test.py')]));
+for (const file of ['catalog-pdf-release/run.php','catalog-pdf-release/policy.php','catalog-pdf-release-fingerprint.php']) { run(php,['-l',path.join(root,'scripts',file)]); checks++; }
 const deps=JSON.parse(readFileSync(path.join(root,'woo-dependencies.json'),'utf8'));
 for(const dep of Object.values(deps)){if(!/^[a-f0-9]{64}$/.test(dep.sha256)||!dep.url.startsWith('https://downloads.wordpress.org/plugin/'))throw Error('Unpinned dependency');checks++;}
 // Issue #28: behavioral states of the variation add-to-cart button script (initial, selected, cleared, unavailable, pending).

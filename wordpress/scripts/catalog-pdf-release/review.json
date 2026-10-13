@@ -1,0 +1,17 @@
+[
+  {"id":10,"source_id":"fp-caja-cosechera-3-4","before_sha256":"b119d54181b216940e58e9edf389d6b4a75ed07ecafae0cef2a75d0c7d80eace"},
+  {"id":12,"source_id":"fp-caja-universal-cerrada-negra","before_sha256":"db986a8c0031b3cd7d3841012237b7414826be10a370c8d13713144ac0a79529"},
+  {"id":14,"source_id":"fp-caja-universal-ventilada-negra","before_sha256":"f493a3bec8662ae9269a64021cd9b6fdd38744c5e09b7aa1b6bc8c97e63b9f94"},
+  {"id":16,"source_id":"fp-caja-universal-cerrada-color","before_sha256":"30e2ceb4c64cd6032c2173ca2561bddd59e58eaa28cea4ea977fd8f3f526a9f5"},
+  {"id":23,"source_id":"fp-caja-universal-ventilada-color","before_sha256":"4071c62e090a296c61c791e08123e96a1439c9d084d46fa141ed0ec4d9e1996e"},
+  {"id":30,"source_id":"fp-caja-tomatera","before_sha256":"f94cb75af1e2971146c6a8ca2f7022fadbb3fd32c270d5e21a77aee01a2e12a9"},
+  {"id":32,"source_id":"fp-caja-frutillera","before_sha256":"f89cf3e7aac9d817a6cd123d8fd444beeb2311ca533c262e5339a1de3061a6e0"},
+  {"id":34,"source_id":"fp-caja-frutera","before_sha256":"e874082af7dc5a3054903aa0e007d72dcdfab86e93a04f6cff2f26b7b8162449"},
+  {"id":36,"source_id":"fp-caja-paltera","before_sha256":"f07d94d5d5d142f3db04c39646e5d319ddcd4646583aa4b81af6022e43317d26"},
+  {"id":38,"source_id":"fp-caja-merlucera","before_sha256":"69cc67d5770b982c674312330fb7637d19b99d648a96a9f3a035c197a4ccbc1e"},
+  {"id":40,"source_id":"fp-caja-pollera","before_sha256":"2261a312184e1eae39fca16d89a8317ba7388d410d004d2959a6d5c1a961835b"},
+  {"id":42,"source_id":"fp-tote","before_sha256":"7e4619392b12f9a3f6868162a7c1e688b11b38be0ed32126e7ac03ce7aa507f4"},
+  {"id":44,"source_id":"fp-traversa-para-bins-tipo-upc","before_sha256":"d3b6480d9f5d415c61ede7039bcb9b4f4a85a2b008c4d52411558be9c56cce2e"},
+  {"id":46,"source_id":"fp-traversa-para-bins-tipo-g1","before_sha256":"c3883d84eedb9cdd70f8b9824db9d5d24e2a87bb50ee5848f7f2f435563d7452"},
+  {"id":48,"source_id":"fp-traversa-para-bins-tipo-romano","before_sha256":"c6cb99625379c68187db693bcce135a8aa0884187eb2160ebd79e3d3b8d3e257"}
+]
