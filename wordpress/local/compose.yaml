@@ -1,0 +1,134 @@
+name: ${FREEPLAST_LOCAL_PROJECT:-freeplast-local}
+
+x-environment: &environment
+  WORDPRESS_DEBUG: "1"
+  WORDPRESS_DB_HOST: db
+  WORDPRESS_DB_NAME: freeplast_local
+  WORDPRESS_DB_USER: freeplast_local
+  WORDPRESS_DB_PASSWORD_FILE: /run/secrets/db_password
+  WORDPRESS_CONFIG_EXTRA: "require '/opt/freeplast/config.php';"
+  FREEPLAST_LOCAL_URL: ${FREEPLAST_LOCAL_URL:-http://mliu:8131}
+  FREEPLAST_GOOGLE_API_KEY: ""
+  FREEPLAST_CQ_MAIL_MODE: suppress
+
+x-volumes: &volumes
+  - wp_data:/var/www/html
+  - capture:/var/freeplast
+  - type: bind
+    source: ../wp-content/themes/freeplast
+    target: /var/www/html/wp-content/themes/freeplast
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ../wp-content/plugins/freeplast-woo
+    target: /var/www/html/wp-content/plugins/freeplast-woo
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ./safety.php
+    target: /var/www/html/wp-content/mu-plugins/000-freeplast-local.php
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: .
+    target: /opt/freeplast
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ../scripts/local-review-mail-capture.php
+    target: /opt/local-review-mail-capture.php
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ../data
+    target: /opt/catalog
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ../scripts/woo-cart.html
+    target: /opt/woo-cart.html
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ${FREEPLAST_LOCAL_STATE:?Run npm run local -- init --execute}/vendor
+    target: /opt/vendor
+    read_only: true
+    bind: {create_host_path: false}
+  - type: bind
+    source: ./php.ini
+    target: /usr/local/etc/php/conf.d/zz-freeplast-local.ini
+    read_only: true
+    bind: {create_host_path: false}
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: "no"
+    environment:
+      MARIADB_DATABASE: freeplast_local
+      MARIADB_USER: freeplast_local
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+    secrets: [db_password, db_root_password]
+    volumes: [db_data:/var/lib/mysql]
+    networks: [local]
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  wordpress:
+    image: wordpress:7.1-php8.3-apache
+    restart: "no"
+    entrypoint: [/bin/sh, /opt/freeplast/start.sh]
+    command: [apache2-foreground]
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["127.0.0.1:${FREEPLAST_LOCAL_PORT:-8131}:80"]
+    environment: *environment
+    secrets: [db_password]
+    volumes: *volumes
+    networks: [local, preview]
+    healthcheck:
+      test: [CMD, php, -r, "exit(@fsockopen('127.0.0.1', 80) ? 0 : 1);"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  cli:
+    image: wordpress:cli-php8.3
+    profiles: [tools]
+    user: "33:33"
+    working_dir: /var/www/html
+    environment:
+      <<: *environment
+      HOME: /tmp
+    secrets: [db_password, admin_password]
+    volumes: *volumes
+    networks: [local]
+
+secrets:
+  db_password:
+    file: ${FREEPLAST_LOCAL_STATE:?Run local init}/db-password
+  db_root_password:
+    file: ${FREEPLAST_LOCAL_STATE:?Run local init}/db-root-password
+  admin_password:
+    file: ${FREEPLAST_LOCAL_STATE:?Run local init}/admin-password
+volumes:
+  db_data:
+    labels: &ownership
+      site.freeplast.local.state: ${FREEPLAST_LOCAL_STATE:?Run local init}
+      site.freeplast.local.checkout: ${FREEPLAST_LOCAL_CHECKOUT:?Use npm run local}
+  wp_data:
+    labels: *ownership
+  capture:
+    labels: *ownership
+networks:
+  local:
+    internal: true
+  # A solely internal network suppresses Docker's published port mapping.
+  preview:
+    driver: bridge
+    internal: false
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"

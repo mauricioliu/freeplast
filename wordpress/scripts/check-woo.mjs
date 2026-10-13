@@ -179,6 +179,7 @@ checks += catalogPhotoChecks;
 // Count actual product class tokens, independent of theme class ordering.
 await import('./catalog-markup-test.mjs');
 checks+=7;
+console.log(run(process.execPath, [path.join(root, 'local/local-test.mjs')]));
 // Issue #1 (Woo-side ports of #24/#27): boot the disposable WP+Woo stack and exercise the
 // delivered Home card contract (WA-04) and the concurrent-checkout attempt claim (WA-01)
 // over real HTTP — loopback only; the port is refused if a foreign server owns it.
