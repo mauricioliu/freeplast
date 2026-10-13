@@ -22,6 +22,7 @@ else if (a[0]==='info' && process.env.FP_TEST_ERROR) { console.log('stdout cause
 else if (a[0]==='info') console.log('test-only');
 else if (a[0]==='volume') { console.error('Error: no such volume'); process.exitCode=1; }
 else if (a.includes('ps')) console.log('[]');
+else if (process.env.FP_TEST_LIFECYCLE === '1' && (a.includes('stop') || a.includes('up'))) console.log('mock lifecycle only');
 else if (!a.includes('config')) { console.error('test refuses mutations'); process.exitCode=90; }
 `, { mode: 0o755 });
   const env = { ...process.env, PATH: bin + ':' + process.env.PATH, FREEPLAST_LOCAL_STATE: state, FREEPLAST_LOCAL_PROJECT: 'freeplast-local-test', FREEPLAST_LOCAL_PORT: '8131', FREEPLAST_LOCAL_URL: 'http://mliu:8131', FP_TEST_CALLS: calls };
@@ -62,6 +63,12 @@ else if (!a.includes('config')) { console.error('test refuses mutations'); proce
     check(bounded.stdout.length < 3200 && bounded.stdout.includes('truncated') && bounded.stdout.includes('final cause'), 'diagnostic output bounded without losing final cause');
     check(cli(['up']).stdout.includes('plan'), 'up requires explicit execute');
     check(cli(['seed']).stdout.includes('plan'), 'seed requires explicit execute');
+    check(cli(['stop']).stdout.includes('plan'), 'manual stop still requires explicit execute');
+    check(cli(['stop', '--execute'], { FP_TEST_LIFECYCLE: '1' }).status === 0, 'manual stop succeeds against mock');
+    check(JSON.parse(readFileSync(calls, 'utf8').trim().split('\n').at(-1)).at(-1) === 'stop', 'manual stop uses compose stop, preserving stopped state and volumes');
+    check(cli(['up', '--execute'], { FP_TEST_LIFECYCLE: '1' }).status === 0, 'explicit up resumes against mock');
+    const resumed = JSON.parse(readFileSync(calls, 'utf8').trim().split('\n').at(-1));
+    check(resumed.includes('up') && resumed.slice(-2).join(',') === 'db,wordpress', 'resume starts only persistent services, never seeds');
     check(cli(['reset', '--execute']).status === 2, 'destructive reset needs exact project confirmation');
     check(cli(['reset', '--confirm', 'freeplast-local-test']).stdout.includes('plan'), 'confirmed reset still needs execute');
     check(cli(['doctor'], { FP_TEST_ENDPOINT: 'ssh://production' }).status === 1, 'refuse remote context');
@@ -72,6 +79,10 @@ else if (!a.includes('config')) { console.error('test refuses mutations'); proce
     check(cli(['doctor'], { FREEPLAST_LOCAL_URL: 'http://localhost:8131' }).status === 1, 'ownership includes canonical URL');
   } else console.log('local init permission integration: skipped (set FREEPLAST_LOCAL_TEST_CACHE to checked local archives)');
   const config = readFileSync(join(here, 'compose.yaml'), 'utf8');
+  for (const role of ['db', 'wordpress', 'cli']) {
+    const service = config.split(`  ${role}:\n`)[1].split(/\n(?:  [a-z_]+:|[a-z_]+:)/)[0];
+    check(role === 'cli' ? !service.includes('restart:') : service.includes('restart: unless-stopped'), role + ' restart policy recovers running services but respects manual stop');
+  }
   check(/networks:\n  local:\n    internal: true/.test(config), 'database network remains internal');
   check(/wordpress:[\s\S]*?networks: \[local, preview\]/.test(config), 'web service joins publishing-capable preview bridge');
   check(/preview:\n    driver: bridge\n    internal: false\n    enable_ipv6: false\n    driver_opts:\n      com\.docker\.network\.bridge\.enable_ip_masquerade: "false"/.test(config), 'preview bridge supports publishing without IPv4 masquerade or IPv6');

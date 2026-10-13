@@ -63,7 +63,7 @@ x-volumes: &volumes
 services:
   db:
     image: mariadb:11.4
-    restart: "no"
+    restart: unless-stopped
     environment:
       MARIADB_DATABASE: freeplast_local
       MARIADB_USER: freeplast_local
@@ -79,7 +79,7 @@ services:
       retries: 30
   wordpress:
     image: wordpress:7.1-php8.3-apache
-    restart: "no"
+    restart: unless-stopped
     entrypoint: [/bin/sh, /opt/freeplast/start.sh]
     command: [apache2-foreground]
     depends_on:
