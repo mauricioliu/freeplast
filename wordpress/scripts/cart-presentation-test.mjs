@@ -95,7 +95,9 @@ export function runCartAccessibleNamesTests() {
     ok(localeData['Quantity of %s in your cart.'][0] === 'Cantidad de %s en tu selección.', 'the quantity label ships Spanish through wp.i18n before the block renders');
     ok(localeData['Remove %s from cart'][0] === 'Quitar %s de tu selección' && localeData['Products in cart'][0] === 'Productos en tu selección', 'remove and table labels ship Spanish too');
     ok(localeData['Reduce quantity of %s'][0] === 'Reducir cantidad de %s' && localeData['Increase quantity of %s'][0] === 'Aumentar cantidad de %s', 'both stepper button labels ship Spanish');
+    ok(localeData['Proceed to checkout'][0] === 'Continuar' && localeData['Proceed to Checkout'][0] === 'Continuar', 'Proceed to checkout translations ship Continuar');
     ok(registered.length === 1 && registered[0].namespace === 'freeplast/variant-names' && typeof registered[0].filters.itemName === 'function', 'the variant context registers once through the checkout-filter API');
+    ok(typeof registered[0].filters.proceedToCheckoutButtonLabel === 'function' && registered[0].filters.proceedToCheckoutButtonLabel() === 'Continuar', 'proceedToCheckoutButtonLabel filter returns Continuar');
     const itemName = registered[0].filters.itemName;
     ok(itemName('Caja Universal Cerrada Color', {}, { cartItem: { variation: [{ attribute: 'color', value: 'Azul' }] } }) === 'Caja Universal Cerrada Color · Azul', 'an Azul variant line names its colour');
     ok(itemName('Caja Universal Cerrada Color', {}, { cartItem: { variation: [{ attribute: 'color', value: 'Rojo' }] } }) === 'Caja Universal Cerrada Color · Rojo', 'the Rojo line of the same product gets a distinct name');

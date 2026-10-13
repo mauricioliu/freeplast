@@ -10,6 +10,7 @@ import { JSDOM } from 'jsdom';
  * simulated (real credentials are a separate authorization); the native
  * serialization is asserted untouched. */
 const source = readFileSync(new URL('../wp-content/plugins/freeplast-woo/places.js', import.meta.url), 'utf8');
+const themeCss = readFileSync(new URL('../wp-content/themes/freeplast/style.css', import.meta.url), 'utf8');
 
 const FORM = `
 <form class="checkout woocommerce-checkout">
@@ -28,6 +29,10 @@ const FORM = `
         <p class="form-row" id="billing_fp_address_field">
           <label for="billing_fp_address">Dirección de despacho</label>
           <span class="woocommerce-input-wrapper"><textarea id="billing_fp_address" name="billing_fp_address" cols="5" rows="2"></textarea></span>
+        </p>
+        <p class="form-row" id="billing_fp_references_field">
+          <label for="billing_fp_references">Referencias para llegar <span class="optional">(opcional)</span></label>
+          <span class="woocommerce-input-wrapper"><textarea id="billing_fp_references" name="billing_fp_references" rows="2"></textarea></span>
         </p>
       </div>
       <input type="hidden" name="fpw_attempt" value="owned-fixture-attempt">
@@ -127,6 +132,22 @@ export async function runCheckoutPlacesTests() {
     ok(e.created.filter((name) => name === 'places').length === 1, 'dispatch wanted: the official places library is requested once');
     const widget = e.w.document.querySelector('.fpw-places-host gmp-place-autocomplete');
     ok(Boolean(widget), 'the widget joins the address slot');
+    // Google defaults to light dark. The white request form must explicitly
+    // select light, including when the device prefers dark (Shadow DOM inherits it).
+    e.w.document.body.classList.add('fp-checkout-page');
+    const style = e.w.document.createElement('style');
+    style.textContent = 'gmp-place-autocomplete { color-scheme: light dark; }\n' + themeCss;
+    e.w.document.head.appendChild(style);
+    ok(e.w.getComputedStyle(widget).getPropertyValue('color-scheme') === 'light', 'Google address assistant stays light instead of adopting device dark mode');
+    const address = e.form.querySelector('#billing_fp_address');
+    const references = e.form.querySelector('#billing_fp_references');
+    ok(address.readOnly && !address.disabled, 'canonical address stays read-only but serializable');
+    ok(e.w.getComputedStyle(address).background === 'var(--fp-tint)', 'read-only address has a light grey background');
+    ok(e.w.getComputedStyle(address).resize === 'none', 'read-only address has no misleading resize handle');
+    ok(!references.readOnly && !references.disabled, 'references remain editable');
+    ok(e.w.getComputedStyle(references).background === 'var(--fp-paper)', 'editable references retain their white background');
+    ok(e.w.getComputedStyle(references.closest('.form-row')).marginTop === '24px', 'references have their own separation from the address');
+    ok(e.w.getComputedStyle(references.closest('.form-row').querySelector('label')).justifyContent === 'flex-start', 'optional is grouped with the references label');
     ok(widget.getAttribute('data-fpw-places-widget') !== null && !widget.hasAttribute('name'), 'the assistant carries an explicit marker and NO name: it never serializes');
     const host = e.w.document.querySelector('.fpw-places-host');
     const row = e.w.document.getElementById('billing_fp_address_field');

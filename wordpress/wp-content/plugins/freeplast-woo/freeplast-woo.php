@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.9
+ * Version: 1.12.10
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -1469,7 +1469,7 @@ add_filter( 'woocommerce_locate_template', static function ( $template, $name ) 
 // Localized task language, not a new checkout implementation.
 add_filter( 'gettext', static function ( $translated, $text, $domain ) {
 	if ( ! in_array($domain, array('woocommerce','quote-wc'), true) ) { return $translated; }
-	$labels = array('Billing details'=>'Datos de contacto y empresa','Your order'=>'Productos solicitados','Place order'=>'Solicitar cotización','Proceed to checkout'=>'Datos y envío','Proceed to Checkout'=>'Datos y envío','Cart'=>'Productos a Cotizar','Checkout'=>'Datos y envío','Additional information'=>'Información adicional');
+	$labels = array('Billing details'=>'Datos de contacto y empresa','Your order'=>'Productos solicitados','Place order'=>'Solicitar cotización','Proceed to checkout'=>'Continuar','Proceed to Checkout'=>'Continuar','Cart'=>'Productos a Cotizar','Checkout'=>'Datos y envío','Additional information'=>'Información adicional');
 	return $labels[$text] ?? $translated;
 }, 20, 3 );
 

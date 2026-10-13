@@ -44,20 +44,20 @@ Results: 356 proposed, all with product/boxes/price/net (no issues listed). Key 
 
 Offline rehearsal (fake in-memory DB seeded from the applied CSV): preview new 0 / enrich 356 / same 0 / conflict 0; confirm enriched 356 (1424 fields), sales stay 356; repeat = 356 already imported, 0 enriched.
 
-## What the lead must approve before a real update
+## Historical preparation checklist (superseded by authorized sealed release)
 
 1. Deploy the importer change (separate approved release; this change is uncommitted and unreleased).
 2. Backup/protected-state check of the target register, then upload `enrichment.csv` in the owner screen and **compare the preview** with: 0 new, 356 enrich, 0 same, 0 conflicts. Stop and investigate if different.
 3. Explicit owner confirmation, then verify receipt counts, repeat = no-op, and Key Logistics history in the workspace.
 4. Confirm `Ventas (2).xlsx` stays out of scope and that the enrichment CSV sha256 in `audit.json` (`e2968dad...5606180`) is the file uploaded.
 
-## Lead verification
+## Lead verification (pre-release checkpoint)
 
 Lead independently reviewed the importer, converter and source artifacts; requested and verified corrections for expected-source-hash enforcement, duplicate source IDs, truthful prior-application evidence and the partial-fill conflict regression. Focused lead gates passed: 140 PHP sales-register checks, five synthetic converter tests and `git diff --check`. Local artifact hashes, 356 unique proposal identities, 34 Key Logistics rows and both supplied screenshot examples were independently reconciled. The actual uploaded bytes and current live register are still unverified and require pre-apply reconciliation; no source-row mapping is substituted for that check.
 
 Full lead-run `npm test` passed against a fresh private Git/source snapshot using an isolated disposable WordPress stack at `http://127.0.0.1:8098`: 744 real-stack checks and 2649 syntax/dependency/deployment checks. Native approval/fault tests also passed, with no real mail. Final log and zero exit code: `/home/mauricio-liu/.cache/freeplast-enrichment-native-7ZfzXj/{final-gate.log,final-exit-code}`. Earlier gate attempts stopped because an existing disposable DB had the wrong URL and because a Git archive lacked the historical Git evidence required by the fingerprint tests; neither failure was waived. The final clone retained Git history and fresh disposable storage.
 
-## Not checked
+## Pre-release evidence limits (updated by closure below)
 
 Browser rendering of the new preview text, current shared-site register contents, mobile layout and human acceptance. Native gates cover a disposable synthetic site, not a real sales update. The owner subsequently authorized the scoped staging release and enrichment without another approval prompt. The former approval steps above describe the preparation checkpoint; the approved execution now uses a sealed migration with a fresh immutable live baseline, paired backup and restored trial. Actual execution evidence belongs in the generated release record.
 
@@ -68,3 +68,11 @@ Dedicated one-shot config: `wp-release-sales-enrichment.json`; ordinary future c
 `capture` independently reconciles the live register and emits an immutable private baseline with its full original digest. `apply`/`verify` rederive the exact expected delta from the sealed source and require the operation-owned maintenance guard. The options table must be InnoDB; START, locked read, binary compare-and-swap, deterministic receipt insertion, exact state and COMMIT are checked. Idempotent retry accepts only the exact completed register and matching receipt. The original import batch/time, every populated sale field, IDs/dates/RUTs/totals, other sales and old receipts remain unchanged. Only missing detail and one provenance receipt are added; no pending batch is replaced or receipts swept.
 
 The fingerprint retains the original table/option contract and rederives the baseline from the closure without plugins. It projects only the coupled untouched state or exact expected register-plus-receipt back to the original values. All unauthorized deltas remain visible; the baseline is never recaptured. Native apply and expected-delta checks run first against the restored paired backup, then under staging maintenance. Migration regression suite: 157 lead-run synthetic checks, in addition to 140 importer checks and five converter tests. The full offline suite passes. No browser or production acceptance is implied by these tests.
+
+## Completed staging release and recovery closure
+
+Release `20261010T040507Z-4d88ad` completed at commit `c57ba51`: 356 existing purchases enriched, 1424 missing fields filled, 0 new purchases and 0 conflicts. All original populated fields and unique identities were preserved. Key Logistics has 34 complete purchases. The exact receipt matched the sealed baseline; a read-only repeat plan yielded 356 same and zero changes. No second import was applied.
+
+Release-time installed hashes, protected expected-delta fingerprint and cleanup passed, with dedicated cron restored and staging non-indexed. Browser history evidence at an emulated 412 × 915 viewport showed 34 complete rows and no page overflow; both scroll positions were captured. This supersedes the pre-release uncertainty about current register contents and that limited mobile history layout, not the historical uploaded-byte caveat or untested import-preview/receipt UI.
+
+Recovery reconciled existing local evidence only, without external mutation or rerunning the plan. Nothing remains pending for this scoped staging enrichment. Physical-device/human acceptance and production publication were not performed. Full results, private evidence paths and remaining limits: [release record](../../wordpress/docs/releases/2026-10-10-data-4d88ad.md).

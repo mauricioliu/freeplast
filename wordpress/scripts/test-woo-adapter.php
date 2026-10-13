@@ -1477,6 +1477,12 @@ try {
 	check(str_contains($tripwire->getMessage(),'calculate_taxes boundary'),'With the guard removed the REAL pinned controller rewrites the record through the order object — the probe detects the removed guard');
 }
 check(($GLOBALS['fpw_persistence'][0]['boundary']??'')==='calculate_taxes' && (int)($GLOBALS['fpw_persistence'][0]['order_id']??0)===401,'The coupon flow reached the record boundary for order 401');
+
+// CTA microcopy: Proceed to checkout translates to Continuar, while Checkout page title stays Datos y envío.
+check(apply_filters('gettext', 'Proceed to checkout', 'Proceed to checkout', 'woocommerce') === 'Continuar', 'Proceed to checkout translates to Continuar');
+check(apply_filters('gettext', 'Proceed to Checkout', 'Proceed to Checkout', 'woocommerce') === 'Continuar', 'Proceed to Checkout translates to Continuar');
+check(apply_filters('gettext', 'Checkout', 'Checkout', 'woocommerce') === 'Datos y envío', 'Checkout page title stays Datos y envío');
+
 unset($GLOBALS['fpw_options_table'],$GLOBALS['wpdb'],$GLOBALS['fpw_order_notes'],$GLOBALS['fpw_session_customer_id'],$GLOBALS['wp_filter']);
 
 echo "checks: {$assertions} local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + attempt identity vs content + submitted attempt identity through the real Woo normalization + landed-attempt retry recovery with lifetime and cart preservation)\n";

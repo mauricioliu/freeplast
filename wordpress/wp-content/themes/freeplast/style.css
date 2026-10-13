@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.23
+Version: 1.0.24
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -3408,6 +3408,26 @@ body.fpw-has-dock.fpw-has-selection {
   height: calc(3em + 26px);
 }
 
+.fp-checkout-page .fp-fields .form-row #billing_fp_address[readonly] {
+  background: var(--fp-tint);
+  resize: none;
+}
+
+/* These rows share a slot, so the parent fields grid cannot separate them. */
+.fp-checkout-page .fp-address-slot #billing_fp_references_field {
+  margin-top: 24px;
+}
+
+.fp-checkout-page .fp-address-slot #billing_fp_references_field label {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.fp-checkout-page .fp-address-slot #billing_fp_references_field label .optional {
+  white-space: nowrap;
+}
+
 .fp-checkout-page .fp-fields .form-row input::placeholder,
 .fp-checkout-page .fp-fields .form-row textarea::placeholder {
   color: #757680;
@@ -3502,6 +3522,8 @@ body.woocommerce-checkout .fp-checkout-page form .form-row.woocommerce-invalid l
 .fp-checkout-page .fpw-places-host gmp-place-autocomplete {
   display: block;
   width: 100%;
+  /* Google defaults to light dark; keep its Shadow DOM on the form's light theme. */
+  color-scheme: light;
 }
 
 .fp-checkout-page .fpw-places-status {

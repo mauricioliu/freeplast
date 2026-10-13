@@ -28,7 +28,9 @@
       'Quantity of %s in your cart.': ['Cantidad de %s en tu selección.'],
       'Reduce quantity of %s': ['Reducir cantidad de %s'],
       'Increase quantity of %s': ['Aumentar cantidad de %s'],
-      'Remove %s from cart': ['Quitar %s de tu selección']
+      'Remove %s from cart': ['Quitar %s de tu selección'],
+      'Proceed to checkout': ['Continuar'],
+      'Proceed to Checkout': ['Continuar']
     }, 'woocommerce');
   }
   var api = window.wc && window.wc.blocksCheckout;
@@ -45,6 +47,9 @@
             if (!parts.length) { return value; }
             return value + ' · ' + parts.join(', ');
           } catch (error) { return value; }
+        },
+        proceedToCheckoutButtonLabel: function () {
+          return 'Continuar';
         }
       });
     } catch (error) { /* Woo's own item naming stands if registration fails */ }
