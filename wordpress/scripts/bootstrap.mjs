@@ -370,7 +370,7 @@ function seedReferenceCatalog() {
       if (is_wp_error($term)) { fwrite(STDERR, $term->get_error_message()); exit(1); }
       $cats[$slug] = (int) (is_array($term) ? $term['term_id'] : $term);
     }
-    $specFields = array('material' => 'Material', 'dimensions' => 'Medidas', 'weight' => 'Peso propio', 'use' => 'Uso', 'units_per_pallet' => 'Unidades por pallet');
+    $specFields = array('material' => 'Material', 'dimensions' => 'Medidas', 'weight' => 'Peso propio', 'use' => 'Uso', 'units_per_pallet' => 'Unidades por pallet', 'capacity' => 'Capacidad', 'interior_dimensions' => 'Medidas interiores', 'color' => 'Color', 'features' => 'Características', 'pallet_dimensions' => 'Medidas del pallet');
     $created = 0;
     foreach ($items as $item) {
       $existing = get_posts(array('post_type' => 'product', 'name' => $item['slug'], 'post_status' => 'any', 'numberposts' => 1, 'fields' => 'ids'));
@@ -392,7 +392,7 @@ function seedReferenceCatalog() {
       $product->update_meta_data('qwc_enable_quotes', 'on');
       $attributes = array();
       foreach ($specFields as $key => $label) {
-        if (!empty($item['specs'][$key])) {
+        if (!empty($item['specs'][$key]) && !('color' === $key && $isVariable)) {
           $attribute = new WC_Product_Attribute();
           $attribute->set_name($label);
           $attribute->set_options(array((string) $item['specs'][$key]));

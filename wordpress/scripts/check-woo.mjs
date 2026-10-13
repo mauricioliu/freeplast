@@ -22,6 +22,8 @@ const pdfArtifacts=Number(run('python3',['-c',`import sys; from pathlib import P
 console.log(`quotation PDF: ${pdfArtifacts} pinned library/asset hashes checked`);
 checks+=pdfArtifacts;
 console.log(run('python3',[path.join(root,'scripts/quotation-artifacts-test.py')]));
+console.log(run('python3',[path.join(root,'scripts/catalog-pdf-test.py')]));
+console.log(run(php,[path.join(root,'scripts/catalog-pdf-migration-test.php')]));
 const deps=JSON.parse(readFileSync(path.join(root,'woo-dependencies.json'),'utf8'));
 for(const dep of Object.values(deps)){if(!/^[a-f0-9]{64}$/.test(dep.sha256)||!dep.url.startsWith('https://downloads.wordpress.org/plugin/'))throw Error('Unpinned dependency');checks++;}
 // Issue #28: behavioral states of the variation add-to-cart button script (initial, selected, cleared, unavailable, pending).
@@ -179,6 +181,8 @@ checks+=7;
 // over real HTTP — loopback only; the port is refused if a foreign server owns it.
 {const {runBootstrapOnboardingTests}=await import('./bootstrap-onboarding-test.mjs');
  checks+=runBootstrapOnboardingTests();
+ const {runStackPreflightTests}=await import('./woo-stack-preflight-test.mjs');
+ checks+=runStackPreflightTests();
  const {runStackHarness}=await import('./woo-stack-harness.mjs');
  checks+=await runStackHarness();}
 console.log(`checks: ${checks+1} syntax, dependency and deployment checks passed`);

@@ -44,6 +44,10 @@ $fp_spec_fields = array(
 	'Uso'               => $fp_known( $product->get_attribute( 'Uso' ) ),
 	'Unidades por pallet' => $fp_known( $product->get_attribute( 'Unidades por pallet' ) ),
 );
+foreach ( array( 'Capacidad', 'Medidas interiores', 'Color', 'Características', 'Medidas del pallet' ) as $fp_label ) {
+	$fp_value = $fp_known( $product->get_attribute( $fp_label ) );
+	if ( '' !== $fp_value ) { $fp_spec_fields[ $fp_label ] = $fp_value; }
+}
 $fp_facts = array_filter( $fp_spec_fields, static fn( $value ) => '' !== $value );
 
 /* A never presents internal review prose or pending copy as a fact. */

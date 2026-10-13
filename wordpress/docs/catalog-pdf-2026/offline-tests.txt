@@ -1,0 +1,60 @@
+
+> freeplast@0.1.0 test
+> node wordpress/scripts/check-woo.mjs
+
+quotation PDF: 323 pinned library/asset hashes checked
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.269s
+
+OK
+catalog PDF: 15 page ledgers, provenance, colors, unknowns and 17 protected identities passed
+catalog PDF migration: 23 offline boundary checks passed; native DB trial unrun
+card quantities: 74 checks passed (per-product, repeated add, duplicate feedback, remove, empty, reload, malformed outcomes and pinned Woo handlers)
+chrome nav: 31 A · Directa chrome script checks passed (native dialogs, aria-expanded, dialog replacement, focus return, current-page marking)
+card controls: 49 A · Directa stepper + dock + cart-summary bridge checks passed (native input/anchor contracts, store-driven header count, dock and basket truth)
+cart presentation: 23 late-DOM/focus/feedback checks passed (modeled store; hydrated native browser unrun)
+cart accessible names: 12 H3 checks passed (public seams; hydrated cart unrun)
+product colors: 24 A · Directa variation-control checks passed (native select driven exclusively, two-way sync, no silent defaults)
+checkout form: 33 A · Directa checkout enhancement checks passed (linked errors, honest ambiguity, busy submit)
+checkout places: 51 A · Directa dispatch-assistance checks passed (simulated Places transport; dispatch requires selection)
+native checkout: 630 pinned Woo/jQuery lifecycle checks passed (intercepted transport; no HTTP/storage evidence)
+evidence fingerprint: 6 offline checks passed (stable, complete input families, versions, fail-closed)
+checks: 516 local assertions passed (checkout fields + header line count + unpriced review table + variation button state + quantity-change feedback + sales role + featured grid block + attempt identity vs content + submitted attempt identity through the real Woo normalization + landed-attempt retry recovery with lifetime and cart preservation)
+card projection: 27 PHP checks passed
+card theme: 25 PHP checks passed
+catalog tools: 21 offline form/query/SQL checks passed (native HTTP unrun)
+native catalog frame: 50 checks passed (no HTTP)
+desktop visual: 14 CSS/selector contracts passed (not rendered-layout acceptance)
+product sheet: 48 PHP checks passed
+cart page: 30 PHP checks passed
+quote presentation: 7 native-hook checks passed (offline)
+quote draft: 339 offline checks passed (issues #50 + #51 + #55 + #56)
+workspace offer: 82 offline checks passed
+quotation access: 56 offline checks passed
+quotation own-basket REST boundary: 30 denial checks in this block
+workspace chrome: 58 checks passed
+workspace request queries: 20 CPT/HPOS SQL checks passed (SQLite fixtures; no live MySQL/HPOS run)
+owner workspace JS: 56 checks passed
+price list: 116 offline checks passed (issue #52 + manual volume references)
+dispatch distance: 58 offline checks passed (issue #60: config seam, destination resolution, honest states, boundaries, nothing stored)
+sales register: 141 offline checks passed (issue #54)
+
+sales enrichment migration: 157 offline checks passed
+checkout places: 92 offline checks passed (issue #59: provenance claim handling, persistence boundary, draft rendering)
+checkout form: 242 PHP checks passed
+accessible names: 46 offline checks passed
+local review capture: 43 offline checks passed
+staging role migration: 53 offline checks passed
+confirmation: 28 PHP checks passed
+native chrome: 13 PHP checks passed (pinned hooks/ClassicTemplate/HTML parser; HTTP/rendered focus unrun)
+post_checkout_plain self-test: 7 checks passed (place-order trigger present, no update_totals shortcut, caller values unchanged, native checkout_action dispatch predicate satisfied)
+
+native-state digest: 10 offline checks passed
+
+catalog photos: 144 source, manifest and asset checks passed
+catalog markup: 7 class-token/text regression checks passed
+bootstrap onboarding: 4 offline fixture checks passed (HTTP admin gate unrun)
+stack harness: skipped (FREEPLAST_SKIP_STACK=1)
+checks: 1939 syntax, dependency and deployment checks passed
+scope: offline only; native HTTP stack skipped; no staging, browser, device or visual approval
