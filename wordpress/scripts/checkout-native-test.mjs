@@ -46,6 +46,20 @@ export async function runNativeCheckoutTests(enhancement = source) {
   const env = async () => { const value = await environment(enhancement); instances.push(value); return value; };
   try {
     {
+      const e = await env();
+      const button = e.form.querySelector('#place_order');
+      button.click(); await wait();
+      const posts = () => e.requests.filter(r => r.options.url.endsWith('=checkout'));
+      ok(posts().length === 1, 'one actual public-button click starts exactly one native checkout POST');
+      ok(new URLSearchParams(posts()[0].options.data).get('fpw_attempt') === 'owned-original-attempt', 'actual click carries the original attempt identity');
+      button.click(); button.click(); await wait();
+      ok(posts().length === 1, 'repeated actual clicks while pending do not duplicate the checkout POST');
+      posts()[0].complete(0, 'timeout', {}, ''); await wait();
+      button.click(); await wait();
+      ok(posts().length === 2, 'one explicit click after timeout starts exactly one retry, without automatic retry');
+      ok(new URLSearchParams(posts()[1].options.data).get('fpw_attempt') === 'owned-original-attempt', 'actual-click timeout retry retains identity for server-side deduplication');
+    }
+    {
       const e = await env(); e.submit(); await wait(); const request = checkout(e);
       ok(request, 'REAL native checkout reaches the intercepted transport');
       ok(request.options.data.includes('fpw_attempt=owned-original-attempt'), 'native AJAX preserves submitted attempt');

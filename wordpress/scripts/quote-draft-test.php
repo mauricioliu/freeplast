@@ -552,15 +552,15 @@ check( ! str_contains( fpw_quote_draft_markup( $manual2, null ), 'fpw_work' ), '
 /* ===== Issue #55 — corte 6 de #49: revisar totales y vigencia antes de aprobar =====
  * ONE shared server-side projection (deterministic integer CLP arithmetic), a
  * fiscal policy that is ABSENT by default (the prototype's 19% is no fiscal
- * approval), a seven-day editable validity, and a stored preview bound to the
+ * approval), a fifteen-day editable validity, and a stored preview bound to the
  * revision the owner actually reviewed — obsolete after any later commercial
  * save, issuing no version, no PDF and no mail. */
 
 /* Fiscal policy and default validity: configuration seams, absent by default. */
 check( fpw_quotation_tax_config() === array(), 'without a delivered configuration there is no fiscal policy: no IVA rate is invented' );
-check( fpw_quotation_default_validity_days() === 7, 'the offer validity defaults to seven days' );
+check( fpw_quotation_default_validity_days() === 15, 'the offer validity defaults to fifteen days' );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 'junk' );
-check( fpw_quotation_default_validity_days() === 7, 'a malformed default-validity delivery falls back to seven' );
+check( fpw_quotation_default_validity_days() === 15, 'a malformed default-validity delivery falls back to fifteen' );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 10 );
 check( fpw_quotation_default_validity_days() === 10, 'the default validity is configurable through its filter' );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array();
@@ -617,7 +617,7 @@ check( array_contains_string( $projected_no_policy['missing'], 'política fiscal
 $projected_fresh = fpw_quotation_projection( $payload91, null );
 check( 2 === count( preg_grep( '/Falta el precio neto/', $projected_fresh['missing'] ) ), 'each unpriced line is a named faltante, never a zero' );
 check( array_contains_string( $projected_fresh['missing'], 'monto de despacho' ), 'a requested dispatch without an amount is a named faltante' );
-check( null === $projected_fresh['subtotal'] && null === $projected_fresh['dispatch'] && $projected_fresh['validity_days'] === 7, 'an untouched working state projects pendings with the default validity' );
+check( null === $projected_fresh['subtotal'] && null === $projected_fresh['dispatch'] && $projected_fresh['validity_days'] === 15, 'an untouched working state projects pendings with the default validity' );
 $stale_work = $work91;
 $stale_work['destination'] = 'Otro destino 9, Colchane';
 $projected_stale = fpw_quotation_projection( $payload91, $stale_work );
@@ -740,14 +740,14 @@ $work91 = fpw_read_draft_work( 91 );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 10 );
 check( 3 === (int) $work91['revision'] && 10 === fpw_draft_validity_days( null ) && 10 === fpw_quotation_projection( $payload91, $work91 )['validity_days'], 'the effective validity falls back to the configured default (10 by filter here)' );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array();
-check( 7 === fpw_quotation_projection( $payload91, $work91 )['validity_days'], 'with the filter removed the default returns to seven days' );
+check( 15 === fpw_quotation_projection( $payload91, $work91 )['validity_days'], 'with the filter removed the default returns to fifteen days' );
 
 /* The status board and the honest pendings on a fresh draft. */
 $html = fpw_quote_draft_markup( $order91, $payload91, null );
 check( substr_count( $html, 'Pendiente' ) >= 4, 'a fresh draft reads prices, dispatch, preview and history as pending — never zero' );
 check( ! preg_match( '/[^.\d]0 CLP/', $html ), 'no pending amount ever renders as 0 CLP, preview included' );
-check( str_contains( $html, 'Vigencia de la oferta</dt><dd>7 días' ), 'the status board shows the effective validity' );
-check( str_contains( $html, 'Vista previa' ) && str_contains( $html, 'placeholder="7 (por defecto)"' ), 'the validity input names its default without inventing a value' );
+check( str_contains( $html, 'Vigencia de la oferta</dt><dd>15 días' ), 'the status board shows the effective validity' );
+check( str_contains( $html, 'Vista previa' ) && str_contains( $html, 'placeholder="15 (por defecto)"' ), 'the validity input names its default without inventing a value' );
 
 /* ===== Issue #56 — corte 7 de #49: aprobar y enviar la primera versión =====
  * Approval is an explicit owner action over the REVIEWED draft: a current,
@@ -845,7 +845,9 @@ check( str_contains( $page, 'Vista previa generada (revisión 5)' ) && str_conta
 
 /* The real approval: the version is frozen, the document is real, the mail rides the stub transport. */
 $GLOBALS['fpwd_mail_mode'] = 'ok';
+$mail_calls_before_approval = count( $GLOBALS['fpwd_mail_calls'] );
 $page = fpwd_approve_and_render( 91 );
+check( $mail_calls_before_approval + 1 === count( $GLOBALS['fpwd_mail_calls'] ), 'one private approval POST makes exactly one simulated mail call without a second submission' );
 check( str_contains( $page, 'Cotización aprobada y enviada (Versión 1)' ), 'the approved and sent version is confirmed by name' );
 check( str_contains( $page, 'no prueba la recepción del comprador' ), 'the confirmation names transport acceptance as not buyer receipt' );
 $version = fpw_read_quotation_version( 91 );
@@ -876,7 +878,7 @@ foreach ( $bounds->getElementsByTagName( 'page' ) as $sheet ) {
 }
 check( 0 === $overflow && $bounds->getElementsByTagName( 'word' )->length > 20, 'independently decoded document text stays within its pages (not visual acceptance)' );
 check( str_contains( $text, 'IVA (19%' ), 'the PDF names the confirmed rate it applied' );
-check( str_contains( $text, 'Vigencia de la oferta: 7' ), 'the PDF freezes the effective validity (the default seven days here)' );
+check( str_contains( $text, 'Vigencia de la oferta: 15' ), 'the PDF freezes the effective validity (the default fifteen days here)' );
 check( ! str_contains( $text, 'Historial' ) && ! str_contains( $text, 'sugerido' ) && ! str_contains( $text, 'ingreso manual' ), 'the buyer document carries no history or internal price origins' );
 
 /* The buyer mail: addressed to the frozen identity, carrying exactly the frozen bytes. */
@@ -888,7 +890,7 @@ check( ( $mail['attachment_bytes'][0] ?? null ) === $pdf, 'the attached file is 
 check( array( 0700 ) === $mail['attachment_dir_modes'], 'the transport reads its attachment from an owner-only directory even with a permissive host umask' );
 check( ! file_exists( (string) $mail['attachments'][0] ), 'the staging temp file never survives the send' );
 check( ! str_contains( $mail['message'], 'Historial' ) && ! str_contains( $mail['message'], 'sugerido' ) && ! str_contains( $mail['message'], 'ingreso manual' ), 'the buyer mail excludes history and internal price origins' );
-check( str_contains( $mail['message'], '4.820 CLP' ) && str_contains( $mail['message'], 'Vigencia de la oferta: 7' ), 'the buyer mail shows the approved values' );
+check( str_contains( $mail['message'], '4.820 CLP' ) && str_contains( $mail['message'], 'Vigencia de la oferta: 15' ), 'the buyer mail shows the approved values' );
 $mail_calls = count( $GLOBALS['fpwd_mail_calls'] );
 
 /* Doble click / retry of the SAME approval: the standing version answers, nothing is created, nobody is mailed again. */

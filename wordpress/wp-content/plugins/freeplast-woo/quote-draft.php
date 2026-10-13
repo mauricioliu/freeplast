@@ -61,7 +61,7 @@
  * (cut 7) must consume, never parallel math per screen. The fiscal policy is a
  * configuration seam ABSENT by default (fpw_quotation_tax_config): no rate is
  * invented, and without a delivered policy the IVA and total stay pending and
- * the offer stays incomplete. The offer validity defaults to seven days
+ * the offer stays incomplete. The offer validity defaults to fifteen days
  * (filterable) and is editable per draft in the working state. "Generar vista
  * previa" stores the projection of the revision the owner actually reviewed in
  * its own row, fpw_draft_preview_<order_id>; any later commercial save makes
@@ -903,10 +903,10 @@ function fpw_draft_validity_days( ?array $work ): int {
 	return ( is_int( $saved ) && $saved >= 1 && $saved <= FPW_DRAFT_MAX_VALIDITY_DAYS ) ? $saved : fpw_quotation_default_validity_days();
 }
 
-/** The default Quotation Validity in days, configurable through the homonymous filter; a delivered value outside 1–365 falls back to seven. */
+/** The default Quotation Validity in days, configurable through the homonymous filter; a delivered value outside 1–365 falls back to fifteen. */
 function fpw_quotation_default_validity_days(): int {
-	$days = apply_filters( 'fpw_quotation_default_validity_days', 7 );
-	if ( ! is_int( $days ) || $days < 1 || $days > FPW_DRAFT_MAX_VALIDITY_DAYS ) { return 7; }
+	$days = apply_filters( 'fpw_quotation_default_validity_days', 15 );
+	if ( ! is_int( $days ) || $days < 1 || $days > FPW_DRAFT_MAX_VALIDITY_DAYS ) { return 15; }
 	return $days;
 }
 

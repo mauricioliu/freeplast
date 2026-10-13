@@ -13,7 +13,7 @@ def verify_quotation_artifacts(adapter: Path) -> int:
     }
     if lock['library'] != expected:
         raise ValueError('PDF library differs from the owner-approved pin')
-    if set(lock['assets']) != {'mark.svg', 'Manrope-Regular.ttf', 'Manrope-Bold.ttf', 'OFL.txt'}:
+    if set(lock['assets']) != {'mark.svg', 'logo.png', 'Manrope-Regular.ttf', 'Manrope-Bold.ttf', 'OFL.txt'}:
         raise ValueError('Approved PDF asset set incomplete')
     count = 0
     for folder, entries in [('vendor/dompdf', lock['vendor_files']), ('pdf-assets', lock['assets'])]:

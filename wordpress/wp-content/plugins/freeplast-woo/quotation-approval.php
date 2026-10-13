@@ -109,6 +109,9 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	}
 	$existing = fpw_read_quotation_version( $order_id );
 	if ( is_array( $existing ) ) { return array( 'state' => 'already', 'version' => $existing ); }
+	require_once __DIR__ . '/quotation-document.php';
+	try { $issuer = fpw_quotation_issuer_snapshot( ! empty( $preview['projection']['dispatch_requested'] ) ); }
+	catch ( Throwable ) { return array( 'state' => 'storage-failed', 'version' => null ); }
 	$identity = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
 	$version  = array(
 		'schema'        => 1,
@@ -125,6 +128,7 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 			'email'   => (string) ( $identity['email'] ?? '' ),
 		),
 		'projection'    => $preview['projection'],
+		'issuer'        => $issuer,
 		'document'      => 'pending',
 		'delivery'      => array( 'state' => null, 'at' => null ),
 	);
