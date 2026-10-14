@@ -89,7 +89,9 @@ class LocalDB {
     }
     public function get_var($sql) {
         if (preg_match("/^SELECT meta_value FROM wp_postmeta WHERE post_id = (\d+) AND meta_key = '([^']*)' LIMIT 1$/", $sql, $m)) {
-            return $GLOBALS['lu_meta'][(int) $m[1]][$m[2]] ?? null;
+            $value = $GLOBALS['lu_meta'][(int) $m[1]][$m[2]] ?? null;
+            /* Mirrors native wpdb: a stored empty string reads back as null, exactly like an absent row. */
+            return '' === $value ? null : $value;
         }
         if (str_starts_with($sql, 'SELECT ENGINE FROM information_schema.TABLES')) { return $GLOBALS['lu_engines']; }
         if (str_contains($sql, 'HAVING COUNT(*) > 1')) { return $GLOBALS['lu_dup']; }
@@ -139,12 +141,12 @@ try {
     /* Minima: plan (receipt only, no backup needed); apply needs the verified backup flag. */
     $receipt = 'minima.json';
     $result = lu_invoke(array('minima', 'plan', $receipt));
-    check($result[0] === 0 && str_contains($result[1], 'changed: 17'), 'minima plan reviews seventeen changed rows (unknowns become explicit): ' . $result[1]);
+    check($result[0] === 0 && str_contains($result[1], 'changed: 17'), 'minima plan reviews seventeen changed rows (step everywhere, minima on the fifteen confirmed): ' . $result[1]);
     check((fileperms(FPW_LOCAL_RECEIPTS . '/' . $receipt) & 0777) === 0600, 'private receipt');
     $rows = json_decode((string) file_get_contents(FPW_LOCAL_RECEIPTS . '/' . $receipt), true);
     check(count($rows['rows']) === 17 && array_filter($rows['rows'], static fn($row) => null !== $row['before_min']) === array(), 'plan records the true absent-before state of all seventeen products');
     $by_slug = array_column($rows['rows'], null, 'slug');
-    check($by_slug['caja-cosechera-3-4']['after_min'] === '70' && $by_slug['traversa-para-bins-tipo-upc']['after_min'] === '50' && $by_slug['bases-plasticas-para-pediluvios']['after_min'] === '', 'plan carries the owner-confirmed minima and keeps unknowns explicit');
+    check($by_slug['caja-cosechera-3-4']['after_min'] === '70' && $by_slug['traversa-para-bins-tipo-upc']['after_min'] === '50' && $by_slug['bases-plasticas-para-pediluvios']['after_min'] === null, 'plan carries the owner-confirmed minima and keeps unknowns as the absent state');
     $token = $rows['token'];
     check(lu_invoke(array('minima', 'apply', $receipt, str_repeat('0', 64)))[0] === 1, 'wrong token refused');
     check(lu_invoke(array('minima', 'apply', $receipt, $token))[0] === 1, 'apply requires the verified backup flag');
@@ -189,16 +191,27 @@ try {
     check(in_array('ROLLBACK', $GLOBALS['wpdb']->commands, true) && array_filter($GLOBALS['lu_meta'], static fn($meta) => isset($meta['_fp_quote_step'])) === array(), 'the refused transaction rolled back with no partial writes');
     check($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['caja-cosechera-3-4']]['_fp_quote_min_qty'] === '999', 'the merchant drift itself is preserved untouched');
     unset($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['caja-cosechera-3-4']]['_fp_quote_min_qty']);
-    /* Happy apply: seventeen products get both keys; unknowns get the explicit empty string. */
+    /* Happy apply: fifteen confirmed products get both keys; unknowns stay absent. */
     $GLOBALS['lu_cache_cleaned'] = array();
     $result = lu_invoke(array('minima', 'apply', $receipt, $token));
-    check($result[0] === 0 && str_contains($result[1], 'writes: 34'), 'apply writes thirty-four compare-and-swap meta rows: ' . $result[1]);
+    check($result[0] === 0 && str_contains($result[1], 'writes: 32'), 'apply writes thirty-two compare-and-swap meta rows: ' . $result[1]);
     check(($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['caja-cosechera-3-4']]['_fp_quote_min_qty'] ?? null) === '70' && ($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['traversa-para-bins-tipo-romano']]['_fp_quote_min_qty'] ?? null) === '50', 'confirmed minima applied');
-    check(($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['ladrillo-plastico']]['_fp_quote_min_qty'] ?? 'x') === '' && ($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['bases-plasticas-para-pediluvios']]['_fp_quote_min_qty'] ?? 'x') === '', 'unknown minimums stay explicit empty strings');
+    check(!isset($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['ladrillo-plastico']]['_fp_quote_min_qty']) && !isset($GLOBALS['lu_meta'][$GLOBALS['lu_by_slug']['bases-plasticas-para-pediluvios']]['_fp_quote_min_qty']), 'unknown minimums stay absent: no empty-string writes the native reader cannot verify');
     check(array_intersect($GLOBALS['lu_cache_cleaned'], array_map('intval', array_column($rows['rows'], 'id'))) !== array(), 'native caches cleaned after commit');
     $status = json_decode(lu_invoke(array('status'))[1], true);
     check(($status['minima_already_exact'] ?? -1) === 17, 'status reports all seventeen exact after apply');
     check(lu_invoke(array('minima', 'apply', $receipt, $token))[1] === "status: applied; writes: 0; verify with status\n", 're-apply is a verified no-op');
+    /* Native semantics mirror: a LEGACY stored empty string reads back as null — the plan treats it as the absent before-state, apply is a no-op for it, and the legacy row is never touched. */
+    $legacy_id = $GLOBALS['lu_by_slug']['ladrillo-plastico'];
+    $GLOBALS['lu_meta'][$legacy_id]['_fp_quote_min_qty'] = '';
+    lu_invoke(array('minima', 'plan', 'legacy.json'));
+    $legacy = json_decode((string) file_get_contents(FPW_LOCAL_RECEIPTS . '/legacy.json'), true);
+    check(array_column($legacy['rows'], null, 'slug')['ladrillo-plastico']['before_min'] === null && array_column($legacy['rows'], null, 'slug')['ladrillo-plastico']['after_min'] === null, 'a legacy empty-string row reads as the absent state (native coercion) and plans as a no-op');
+    $result = lu_invoke(array('minima', 'apply', 'legacy.json', $legacy['token']));
+    check($result[0] === 0 && str_contains($result[1], 'writes: 0') && ($GLOBALS['lu_meta'][$legacy_id]['_fp_quote_min_qty'] ?? null) === '', 'the legacy empty-string row is preserved untouched: it reads as the absent unknown and never needs a write');
+    lu_invoke(array('minima', 'rollback', 'legacy.json', $legacy['token']));
+    unset($GLOBALS['lu_meta'][$legacy_id]['_fp_quote_min_qty']);
+    unlink(FPW_LOCAL_RECEIPTS . '/legacy.json');
     /* Uncertain COMMIT: reported, never claimed back with a rollback, never replayed. */
     $GLOBALS['wpdb']->fail_commit = true; $GLOBALS['wpdb']->commands = array();
     $result = lu_invoke(array('minima', 'apply', $receipt, $token));
@@ -208,7 +221,7 @@ try {
     /* Rollback restores the exact absent state and cleans caches. */
     $GLOBALS['lu_cache_cleaned'] = array();
     $result = lu_invoke(array('minima', 'rollback', $receipt, $token));
-    check($result[0] === 0 && str_contains($result[1], 'writes: 34'), 'rollback removes the reviewed rows: ' . $result[1]);
+    check($result[0] === 0 && str_contains($result[1], 'writes: 32'), 'rollback removes the reviewed rows: ' . $result[1]);
     check(array_filter($GLOBALS['lu_meta'], static fn($meta) => isset($meta['_fp_quote_min_qty']) || isset($meta['_fp_quote_step'])) === array(), 'quantity metadata back to the pre-upgrade absent state');
     check(array_intersect($GLOBALS['lu_cache_cleaned'], array_map('intval', array_column($rows['rows'], 'id'))) !== array(), 'native caches cleaned after rollback');
     /* Receipt root privacy is enforced on READ too. */
@@ -252,7 +265,7 @@ try {
     check(array_filter($GLOBALS['lu_meta'], static fn($meta) => ($meta['_fp_local_seed_complete'] ?? null) === '1') !== array(), 'seed markers preserved');
     putenv('FREEPLAST_LOCAL_BACKUP_VERIFIED');
 } finally {
-    foreach (array('minima.json', 'rebuilt.json', 'foreign.json', 'dup.json', 'short.json', 'url.json', 'again.json', 'contacto.json', 'contacto2.json', 'ct-foreign.json', 'ct-evil.json', 'ct-before.json', 'tampered.json') as $file) { @unlink(FPW_LOCAL_RECEIPTS . '/' . $file); }
+    foreach (array('minima.json', 'legacy.json', 'rebuilt.json', 'foreign.json', 'dup.json', 'short.json', 'url.json', 'again.json', 'contacto.json', 'contacto2.json', 'ct-foreign.json', 'ct-evil.json', 'ct-before.json', 'tampered.json') as $file) { @unlink(FPW_LOCAL_RECEIPTS . '/' . $file); }
     @chmod(FPW_LOCAL_RECEIPTS, 0700);
     @rmdir(FPW_LOCAL_RECEIPTS); @rmdir($receipts);
 }

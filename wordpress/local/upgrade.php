@@ -63,7 +63,7 @@ function fpw_local_upgrade_receipt_root(): string {
 }
 
 if (!function_exists('fpw_local_upgrade_meta')) {
-/** Current raw meta of one post: exact string, or null when the row is absent — never an invented default. */
+/** Current raw meta of one post as native wpdb reads it: null when the row is absent AND null for a stored empty string (native get_var coercion). The upgrade therefore never writes empty strings: an explicit unknown is the ABSENT row, which runtime get_post_meta also reads as unknown. */
 function fpw_local_upgrade_meta(int $post_id, string $key): ?string {
 	global $wpdb;
 	$value = $wpdb->get_var($wpdb->prepare('SELECT meta_value FROM ' . $wpdb->postmeta . ' WHERE post_id = %d AND meta_key = %s LIMIT 1', $post_id, $key));
@@ -126,7 +126,7 @@ function fpw_local_upgrade_receipt_read(string $argument, string $mode, string $
 			$slug = (string) $item['slug'];
 			if (isset($expected[$slug])) { throw new RuntimeException('Duplicate slug in the pinned catalog'); }
 			$minimum = $item['specs']['minimum_quantity'] ?? null;
-			$expected[$slug] = array('id' => fpw_local_upgrade_discover_product($item), 'after_min' => null === $minimum ? '' : (string) (int) $minimum, 'after_step' => '1');
+			$expected[$slug] = array('id' => fpw_local_upgrade_discover_product($item), 'after_min' => null === $minimum ? null : (string) (int) $minimum, 'after_step' => '1');
 		}
 		$seen = array();
 		foreach ($receipt['rows'] as $row) {
@@ -135,7 +135,9 @@ function fpw_local_upgrade_receipt_read(string $argument, string $mode, string $
 			$seen[$row['slug']] = true;
 			$want = $expected[$row['slug']];
 			if ((int) ($row['id'] ?? 0) !== $want['id']) { throw new RuntimeException('Receipt row id is not the currently discovered product: ' . $row['slug']); }
-			if ((string) ($row['after_min'] ?? null) !== $want['after_min'] || (string) ($row['after_step'] ?? null) !== $want['after_step']) { throw new RuntimeException('Receipt after-values are not the catalog-derived minimums: ' . $row['slug']); }
+			$after_min = array_key_exists('after_min', $row) ? $row['after_min'] : '\x00absent';
+			$after_step = array_key_exists('after_step', $row) ? $row['after_step'] : '\x00absent';
+			if ($after_min !== $want['after_min'] || $after_step !== $want['after_step']) { throw new RuntimeException('Receipt after-values are not the catalog-derived minimums: ' . $row['slug']); }
 			if (null !== ($row['before_min'] ?? null) && !is_string($row['before_min'])) { throw new RuntimeException('Receipt before-values must be strings or null'); }
 			if (null !== ($row['before_step'] ?? null) && !is_string($row['before_step'])) { throw new RuntimeException('Receipt before-values must be strings or null'); }
 		}
@@ -179,8 +181,8 @@ try {
 		foreach ($catalog as $item) {
 			$id = fpw_local_upgrade_discover_product($item);
 			$minimum = $item['specs']['minimum_quantity'] ?? null;
-			/* An explicit unknown matches either the absent state or the explicit empty string the upgrade writes. */
-			$accepted = null === $minimum ? array( null, '' ) : array( (string) $minimum );
+			/* An explicit unknown is the absent row; native wpdb also coerces any legacy empty string to null, which reads the same. */
+			$accepted = null === $minimum ? array( null ) : array( (string) $minimum );
 			if (in_array(fpw_local_upgrade_meta($id, '_fp_quote_min_qty'), $accepted, true)) { $known++; } else { $missing++; }
 		}
 		echo json_encode(array('status' => 'ok', 'url' => $url, 'products' => count($catalog), 'minima_already_exact' => $known, 'minima_pending_or_drifted' => $missing, 'contacto' => $state), JSON_UNESCAPED_UNICODE) . "\n";
@@ -200,8 +202,8 @@ try {
 				$rows[] = array(
 					'slug' => (string) $item['slug'], 'id' => $id,
 					'before_min' => fpw_local_upgrade_meta($id, '_fp_quote_min_qty'), 'before_step' => fpw_local_upgrade_meta($id, '_fp_quote_step'),
-					/* null minimum stays an explicit unknown: the row keeps an empty string, mirroring the reviewed staging migration. */
-					'after_min' => null === $minimum ? '' : (string) (int) $minimum, 'after_step' => '1',
+					/* An explicit unknown is the ABSENT row: native wpdb reads a stored empty string as null, so '' would be an unverifiable representation here; runtime get_post_meta reads absence as unknown too. */
+					'after_min' => null === $minimum ? null : (string) (int) $minimum, 'after_step' => '1',
 				);
 			}
 			$receipt = fpw_local_upgrade_write_receipt($path, 'minima', $url, $rows);
@@ -229,13 +231,13 @@ try {
 					$current = fpw_local_upgrade_meta((int) $row['id'], $key);
 					if ($current === $after) { continue; }
 					if ($current !== $before) { throw new RuntimeException('Quantity metadata drifted since review (' . $row['slug'] . ', ' . $key . '); plan again, merchant edits are never overwritten'); }
-					if (null === $current) {
+					if (null === $after) {
+						/* Rolling back to the absent state removes exactly the reviewed row, compare-and-swap on the bytes it had (before is non-null here). */
+						$result = $wpdb->query($wpdb->prepare('DELETE FROM ' . $wpdb->postmeta . ' WHERE post_id = %d AND meta_key = %s AND meta_value = %s', (int) $row['id'], $key, (string) $before));
+					} elseif (null === $current) {
 						$result = $wpdb->query($wpdb->prepare('INSERT INTO ' . $wpdb->postmeta . ' ( post_id, meta_key, meta_value ) VALUES ( %d, %s, %s )', (int) $row['id'], $key, $after));
-					} elseif (null === $after) {
-						/* Rolling back to an absent row removes exactly the reviewed meta, compare-and-swap on the bytes it had. */
-						$result = $wpdb->query($wpdb->prepare('DELETE FROM ' . $wpdb->postmeta . ' WHERE post_id = %d AND meta_key = %s AND meta_value = %s', (int) $row['id'], $key, $before));
 					} else {
-						$result = $wpdb->query($wpdb->prepare('UPDATE ' . $wpdb->postmeta . ' SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND meta_value = %s', $after, (int) $row['id'], $key, $before));
+						$result = $wpdb->query($wpdb->prepare('UPDATE ' . $wpdb->postmeta . ' SET meta_value = %s WHERE post_id = %d AND meta_key = %s AND meta_value = %s', $after, (int) $row['id'], $key, (string) $before));
 					}
 					if (1 !== $result) { throw new RuntimeException('Compare-and-swap did not write exactly one row (' . $row['slug'] . ', ' . $key . '); inspect, never replay automatically'); }
 					if (fpw_local_upgrade_meta((int) $row['id'], $key) !== $after) { throw new RuntimeException('Verification failed after write; inspect the local backup'); }
