@@ -46,9 +46,9 @@ function fpw_handle_tracking_post(): void {
 	$message = 'No se guardó el seguimiento. Revisa las fechas y vuelve a intentarlo.';
 	$ok = false;
 	if ( ! $current['valid'] ) {
-		$message = 'El seguimiento guardado no se puede leer. Nada se sobrescribió; solicita revisión técnica.';
+		$message = 'El seguimiento guardado no se puede leer. Nada se sobrescribió; solicita ayuda antes de editar.';
 	} elseif ( ! is_string( $revision ) || ! ctype_digit( $revision ) || (string) $current['revision'] !== $revision ) {
-		$message = 'Este seguimiento tiene una revisión más reciente. Revisa los valores guardados antes de volver a editar.';
+		$message = 'Este seguimiento tiene cambios más recientes. Revisa los valores guardados antes de volver a editar.';
 	} else {
 		$posted = wp_unslash( $_POST['fpw_tracking'] ?? array() );
 		$events = array();
@@ -98,7 +98,7 @@ function fpw_milestones_html( array $events ): string {
 
 function fpw_tracking_form_html( int $id ): string {
 	$current = fpw_tracking_read( $id );
-	if ( ! $current['valid'] ) { return '<p>Seguimiento no disponible. Solicita revisión técnica antes de editarlo.</p>'; }
+	if ( ! $current['valid'] ) { return '<p>Seguimiento no disponible. Solicita ayuda antes de editarlo.</p>'; }
 	$html = '<details class="fpw-tracking"><summary>Actualizar aceptación, pago o despacho</summary><p>Registro manual del dueño. Cada hito es independiente. Desmarcar corrige el registro; no mueve dinero ni cambia pedidos.</p><form method="post" data-fpw-tracking action="' . esc_url( fpw_draft_screen_url( $id ) ) . '">'
 		. '<input type="hidden" name="fpw_tracking_save" value="1"><input type="hidden" name="fpw_tracking_revision" value="' . (int) $current['revision'] . '">'
 		. wp_nonce_field( 'fpw-tracking-' . $id, 'fpw_tracking_nonce', true, false );

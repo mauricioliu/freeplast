@@ -283,7 +283,7 @@ $html = fpw_quote_draft_markup( fpws_make_order( 68, '76.543.210-K' ), $draft );
 check( str_contains( $html, 'H-1' ) && str_contains( $html, 'H-2' ), 'the draft now renders the imported transactions beside the request' );
 check( str_contains( $html, '2025-11-03' ) && str_contains( $html, '240.000 CLP' ), 'dates and totals render in the supported-source shape (no fabricated metrics)' );
 check( ! str_contains( $html, '$' ), 'no price-notation amounts appear on the draft: history totals are not draft prices' );
-check( str_contains( $html, 'historial-k.csv' ) && str_contains( $html, 'Registro de ventas' ), 'the history section names its provenance/freshness' );
+check( ! str_contains( $html, 'historial-k.csv' ) && str_contains( $html, 'Registro de ventas' ) && str_contains( $html, 'Última carga aplicada el' ), 'history keeps business freshness without source filename' );
 check( str_contains( $html, 'detalle por producto' ), 'the view states that per-product detail is not supported by the source' );
 check( str_contains( $html, 'page=fpw-sales-import' ), 'the section links the owner to the importer' );
 $htmlNobody = fpw_quote_draft_markup( fpws_make_order( 91, '11.222.333-4' ), array( 'schema' => 1, 'order_id' => 91, 'identity' => array( 'rut' => '11.222.333-4' ) ) );
@@ -324,7 +324,7 @@ $_REQUEST = $_POST;
 ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
 $_POST = array();
 $_REQUEST = array();
-check( str_contains( $page, 'Importación aplicada: 1 ventas nuevas' ) && str_contains( $page, 'banner.csv' ), 'a confirmed POST renders the explicit result with its counts and source' );
+check( str_contains( $page, 'Importación aplicada: 1 ventas nuevas' ) && ! str_contains( $page, 'banner.csv' ), 'a confirmed POST renders the explicit result with its counts and source' );
 check( fpw_sales_pending_batch() === null, 'the POSTed confirm consumed the pending slot' );
 
 /* The owner's screen: upload, CSRF-carrying forms, pending review, receipts. */
@@ -333,8 +333,8 @@ ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Importar ventas' ) && str_contains( $page, 'Cargar CSV' ), 'the owner retains the import screen and neighboring CSV upload' );
 check( str_contains( $page, 'name="fpw_sales_nonce"' ) && str_contains( $page, 'multipart/form-data' ), 'the upload form carries its CSRF nonce' );
 check( substr_count( $page, 'fpw_sales_nonce' ) >= 3, 'upload, confirm and cancel each carry their own nonce' );
-check( str_contains( $page, 'pendiente.csv' ) && str_contains( $page, 'Confirmar e importar' ) && str_contains( $page, 'Cancelar sin efectos' ), 'the pending preview renders its review, confirm and cancel actions' );
-check( str_contains( $page, $applied['receipt']['token'] ), 'the applied receipts are consultable on the screen with their token' );
+check( str_contains( $page, 'P-1' ) && str_contains( $page, 'Confirmar e importar' ) && str_contains( $page, 'Cancelar sin efectos' ), 'the pending preview renders its review, confirm and cancel actions' );
+check( ! str_contains( $page, $applied['receipt']['token'] ) && str_contains( $page, 'Importaciones aplicadas' ), 'applied receipt outcomes remain visible without technical tokens' );
 check( str_contains( $page, '@media (min-width: 782px)' ), 'the screen is authored mobile-first with a desktop enhancement' );
 check( str_contains( $page, 'grid-template-columns:1fr;' ) && ! str_contains( $page, 'grid-template-columns:1fr 1fr;' ), 'desktop upload occupies the remaining grid without an empty explanatory column' );
 check( ! str_contains( $page, 'Contrato de importación (v1)' ) && ! str_contains( $page, 'muestra real' ) && ! str_contains( $page, 'Columnas exactas:' ), 'the entire import explanation is absent without removing upload, review or receipts' );
@@ -462,7 +462,7 @@ check( 7 === $reg_by_id()['E-5']['precio'] && ! isset( $reg_by_id()['E-5']['tota
 fpw_sales_write_row( FPW_SALES_PENDING_ROW, array( 'token' => 'oldtoken', 'filename' => 'old.csv', 'actor' => 'x', 'at' => 1, 'rows' => array(
 	array( 'line' => 2, 'id' => 'E-6', 'date' => '2025-06-01', 'rut' => '96123456-7', 'rut_norm' => '961234567', 'total' => 4000, 'producto' => 'CO' ),
 ) ) );
-check( str_contains( fpw_sales_pending_preview_html(), 'old.csv' ), 'an old pending batch still previews' );
+check( str_contains( fpw_sales_pending_preview_html(), 'Confirmar e importar' ) && ! str_contains( fpw_sales_pending_preview_html(), 'old.csv' ), 'an old pending batch still previews without its filename' );
 $old = fpw_sales_confirm( 'oldtoken' )['receipt'];
 check( 1 === $old['enriquecidas'] && 'CO' === $reg_by_id()['E-6']['producto'], 'an old pending batch enriches on explicit confirmation' );
 check( ! isset( fpw_sales_receipt( 'oldtoken' )['cambios'][0]['campos']['neto'] ), 'old batch receipt lists only fields it carried' );

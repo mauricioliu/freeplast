@@ -882,10 +882,10 @@ register_shutdown_function( static function () {
 
       /* Private review preserves exact/broad scope and references. */
       const assistedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.asistida}`)).text();
-      check(assistedScreen.includes('Procedencia de la dirección') && assistedScreen.includes('Confirmada con el asistente de direcciones'), 'the private reading names the assisted provenance (issue #59)');
-      check(assistedScreen.includes('Coincidencia exacta') && assistedScreen.includes('ChIJfreesideQ9fXhZplaces-fixture'), 'the private reading shows the claim and its scope');
+      check(!assistedScreen.includes('Procedencia de la dirección') && assistedScreen.includes('Dirección de despacho'), 'private reading keeps delivery address, not provenance metadata');
+      check(!assistedScreen.includes('Coincidencia exacta') && !assistedScreen.includes('ChIJfreesideQ9fXhZplaces-fixture'), 'private reading hides address claim metadata');
       const degradedScreen = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${placesJourneyIds.degradada}`)).text();
-      check(degradedScreen.includes('Coincidencia amplia') && degradedScreen.includes('ChIJbroad-stack-fixture'), 'broad match remains explicit in sales');
+      check(degradedScreen.includes('Revisa el número y la comuna de entrega.') && !degradedScreen.includes('ChIJbroad-stack-fixture'), 'broad match keeps only its business warning');
       check(assistedScreen.includes('Portón azul'), 'sales renders references separately');
 
       /* Negative permission with a VALID session (no nonce applies to a GET
@@ -949,7 +949,7 @@ register_shutdown_function( static function () {
           ...lineFields(draftState.records[raceOrder], (i) => (i === 0 ? 1490 : null)),
           'fpw_work[destination]': 'Intento de destino', 'fpw_work[dispatch_amount]': '5000',
         });
-        check((await noDispatchSave.text()).includes('Cambios guardados (revisión 1)'), 'the no-dispatch draft saves its line work');
+        check((await noDispatchSave.text()).includes('Cambios guardados.'), 'the no-dispatch draft saves its line work');
         const noDispatchReopened = await (await owner(editUrl(raceOrder))).text();
         check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(noDispatchReopened), 'the saved price is recovered on reopening');
         check(!noDispatchReopened.includes('Intento de destino') && !noDispatchReopened.includes('name="fpw_work[dispatch_amount]"'), 'the posted destination and freight stay out of a no-dispatch draft');
@@ -968,7 +968,7 @@ register_shutdown_function( static function () {
           'fpw_work[destination]': 'Plaza de Armas 123, Santiago', 'fpw_work[dispatch_amount]': '39990',
         });
         check(saved.status === 200, `the owner's save must answer 200 (got ${saved.status})`);
-        check((await saved.text()).includes('Cambios guardados (revisión 1)'), 'a valid save confirms the revision it stored');
+        check((await saved.text()).includes('Cambios guardados.'), 'a valid save confirms the revision it stored');
         const reopened = await (await owner(editUrl(correctOrder))).text();
         check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(reopened), 'the saved line price is recovered on reopening');
         check(reopened.includes('Plaza de Armas 123, Santiago') && /39\.990 CLP/.test(reopened) && reopened.includes('ingreso manual'), 'the saved working destination and dispatch amount recover with their manual origin');
@@ -1001,7 +1001,7 @@ register_shutdown_function( static function () {
           ...lineFields(correctRecord, () => 1),
           'fpw_work[destination]': 'Sobrescritura', 'fpw_work[dispatch_amount]': '1',
         })).text();
-        check(staleHtml.includes('no se guardó') && staleHtml.includes('revisión más reciente'), 'a stale edit is refused with the conflict message');
+        check(staleHtml.includes('no se guardó') && staleHtml.includes('cambios más recientes'), 'a stale edit is refused with the conflict message');
         check(/name="fpw_work_revision" value="3"/.test(staleHtml), 'the conflict screen re-renders from the accepted revision');
         check(staleHtml.includes('Camino rural 9, Colchane') && !staleHtml.includes('Sobrescritura'), 'the accepted edit is preserved; the stale submission is not merged in');
 
@@ -1024,7 +1024,7 @@ register_shutdown_function( static function () {
           ...lineFields(staleRecord, (i) => (i === 0 ? 990 : null)),
           'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '',
         })).text();
-        check(twoLineHtml.includes('Cambios guardados (revisión 1)'), 'the two-line draft saves');
+        check(twoLineHtml.includes('Cambios guardados.'), 'the two-line draft saves');
         const twoLineReopened = await (await owner(editUrl(staleOrder))).text();
         check(/name="fpw_work\[lines\]\[0\]\[price\]" value="990"/.test(twoLineReopened) && /name="fpw_work\[lines\]\[1\]\[price\]" value="" placeholder="Pendiente"/.test(twoLineReopened), 'each line recovers its own price: one entered, one left pending');
 
@@ -1136,7 +1136,7 @@ register_shutdown_function( static function () {
       };
       let importHtml = await uploadCsv(syntheticCsv, 'ventas-sinteticas.csv');
       check(importHtml.includes('NO cambió'), 'the upload banner states the history did not change');
-      check(importHtml.includes('ventas-sinteticas.csv') && importHtml.includes('4 filas candidatas') && importHtml.includes('2 filas con error') && importHtml.includes('1 asociación sin resolver'), 'the preview names its source file and its explicit per-row outcomes');
+      check(!importHtml.includes('ventas-sinteticas.csv') && importHtml.includes('4 filas candidatas') && importHtml.includes('2 filas con error') && importHtml.includes('1 asociación sin resolver'), 'the preview hides its filename and preserves explicit per-row outcomes');
       const afterUpload = await salesState();
       check(afterUpload.sales === 0 && afterUpload.pending === true, 'upload/preview stage a proposal only: the register stays empty until confirmation');
       const draftAfterUpload = await (await owner(draftUrl)).text();
@@ -1155,7 +1155,7 @@ register_shutdown_function( static function () {
       const draftWithHistory = await (await owner(draftUrl)).text();
       check(draftWithHistory.includes('FPW-TEST-0001') && draftWithHistory.includes('2026-03-15') && draftWithHistory.includes('1.250.000 CLP'), 'the race draft renders its imported history (date, source id, amount)');
       check(draftWithHistory.includes('FPW-TEST-0002') && !draftWithHistory.includes('FPW-TEST-0003'), 'both RUT formats match one customer; the unassociated sale belongs to nobody');
-      check(draftWithHistory.includes('ventas-sinteticas.csv'), 'the history names its provenance (which import supplies it)');
+      check(!draftWithHistory.includes('ventas-sinteticas.csv') && draftWithHistory.includes('Última carga aplicada el'), 'history shows freshness without technical filenames');
       check(!draftWithHistory.replace(/<script[\s\S]*?<\/script>/g, '').includes('$'), 'history totals never render as draft prices');
       const isolateDraft = await (await owner(`/wp-admin/admin.php?page=fpw-quote-draft&request=${isolateOrder}`)).text();
       check(isolateDraft.includes('FPW-TEST-0004') && isolateDraft.includes('320.000 CLP') && !isolateDraft.includes('FPW-TEST-0001'), 'a different RUT sees only its own history — customer scoping holds');
@@ -1364,7 +1364,7 @@ register_shutdown_function( static function () {
           ...lineFields52((i) => (i === 1 ? 17500 : [14971, 21973, 23979][i])),
           'fpw_work[destination]': 'Camino de precios 123, Mostazal', 'fpw_work[dispatch_amount]': '39990',
         });
-        check((await saved52.text()).includes('Cambios guardados (revisión 1)'), 'the draft save with adopted + manual prices lands');
+        check((await saved52.text()).includes('Cambios guardados.'), 'the draft save with adopted + manual prices lands');
         const workRow52 = () => JSON.parse(wpEval(`
           global $wpdb;
           $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_draft_work_' . ${order52}));
@@ -1390,7 +1390,7 @@ register_shutdown_function( static function () {
 
         /* The explicit refresh: tracking lines adopt the new list, the manual choice survives. */
         const refreshed52 = await (await postDraft52(owner, { 'fpw_price_refresh': '1', 'fpw_refresh_nonce': await mint52(owner, `fpw-draft-refresh-${order52}`) })).text();
-        check(refreshed52.includes('Precios refrescados desde el mantenedor (revisión 2)'), 'the explicit refresh lands as a new revision');
+        check(refreshed52.includes('Precios actualizados.'), 'the explicit refresh lands as a new revision');
         const workAfterRefresh = workRow52();
         check(workAfterRefresh.revision === 2 && workAfterRefresh.lines[0].price === 15980 && workAfterRefresh.lines[0].price_source === 'suggested', 'the tracking line adopts the new list value');
         check(workAfterRefresh.lines[1].price === 17500 && workAfterRefresh.lines[1].price_source === 'manual', 'the manual choice survives the refresh');
@@ -1450,7 +1450,7 @@ register_shutdown_function( static function () {
         const consultedHtml = await consulted.text();
         check(consultedHtml.includes('61,2 km') && consultedHtml.includes('61.200 m'), 'the consultation renders its reference distance with the exact meters beside it');
         check(consultedHtml.includes('no certifica el acceso de un camión') && consultedHtml.includes('no se guarda'), 'the consultation renders the honest reference and nothing-stored disclaimers');
-        check(consultedHtml.includes('Destino escrito a mano'), 'a typed destination is named as such');
+        check(!consultedHtml.includes('Destino escrito a mano') && consultedHtml.includes('km'), 'distance remains visible without address-entry metadata');
         const probeList = probes();
         check(probeList.length === 1, `exactly one provider call per consult (got ${probeList.length})`);
         const probe = probeList[0] || {};
@@ -1487,7 +1487,7 @@ register_shutdown_function( static function () {
            its recorded text consults WITH its place identification. */
         const assistedConsult = await consultPost(owner, placesJourneyIds.asistida, await consultNonce(placesJourneyIds.asistida, owner));
         const assistedHtml = await assistedConsult.text();
-        check(assistedHtml.includes('27,5 km') && assistedHtml.includes('coincidencia exacta'), 'the assisted destination consults with its recorded identification and precision');
+        check(assistedHtml.includes('27,5 km') && !assistedHtml.includes('coincidencia exacta'), 'assisted destination shows distance without technical precision metadata');
         const assistedProbe = JSON.parse((probes()[probes().length - 1] || {}).body || '{}');
         check(assistedProbe.destination?.placeId === 'ChIJfreesideQ9fXhZplaces-fixture' && !assistedProbe.destination?.address, 'the recorded Place ID is the route endpoint, never a re-typed guess');
 
@@ -1555,7 +1555,7 @@ register_shutdown_function( static function () {
       const incompletePreview = await (await postForm5f(owner, correctOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       })).text();
-      check(incompletePreview.includes('Vista previa generada (revisión 3)'), 'the owner generates a preview of the draft as it stands');
+      check(incompletePreview.includes('Vista previa generada.'), 'the owner generates a preview of the draft as it stands');
       check(incompletePreview.includes('identifica faltantes que bloquean la oferta completa'), 'the incomplete preview names its faltantes explicitly');
       check(incompletePreview.includes('requiere revisión'), 'the stale dispatch amount is a named faltante, never silently offered');
 
@@ -1564,7 +1564,7 @@ register_shutdown_function( static function () {
       const twoLinePreview = await (await postForm5f(owner, staleOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${staleOrder}`),
       })).text();
-      check(twoLinePreview.includes('Vista previa generada (revisión 1)'), 'the two-line draft previews its saved work');
+      check(twoLinePreview.includes('Vista previa generada.'), 'the two-line draft previews its saved work');
       check(twoLinePreview.includes('Falta el precio neto'), 'the pending line price is a named faltante, distinguished from zero');
 
       /* Complete the commercial work: the line priced, the dispatch amount
@@ -1577,7 +1577,7 @@ register_shutdown_function( static function () {
         'fpw_work[validity_days]': '10',
       });
       const completingHtml = await completingSave.text();
-      check(completingSave.status === 200 && completingHtml.includes('Cambios guardados (revisión 4)'), 'the completing save stores revision 4');
+      check(completingSave.status === 200 && completingHtml.includes('Cambios guardados.'), 'the completing save stores revision 4');
 
       /* The reviewed preview: subtotal, dispatch, IVA and total from the ONE
          shared calculation, plus the editable validity. */
@@ -1588,10 +1588,10 @@ register_shutdown_function( static function () {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       });
       const previewHtml = await previewResponse.text();
-      check(previewResponse.status === 200 && previewHtml.includes('Vista previa generada (revisión 4)'), 'the authorized preview confirms the revision it reviewed');
+      check(previewResponse.status === 200 && previewHtml.includes('Vista previa generada.'), 'the authorized preview confirms the revision it reviewed');
       check(previewHtml.includes('no aprueba ni envía nada al comprador'), 'previewing states it issues nothing to the buyer');
       const previewSection = previewSectionOf(previewHtml);
-      check(previewSection.includes('Vista previa para el comprador') && previewSection.includes('revisión 4'), 'the screen renders the stored buyer-facing preview of revision 4');
+      check(previewSection.includes('Vista previa para el comprador') && previewSection.includes('Vista previa generada el'), 'the screen renders the stored buyer-facing preview of revision 4');
       check(previewSection.includes('× ' + clp(1490) + ' CLP'), 'the preview line carries the working quantity and net price');
       check(previewSection.includes('Subtotal (neto)') && previewSection.includes(clp(subtotal) + ' CLP'), `the preview shows the exact subtotal (${clp(subtotal)} CLP)`);
       check(previewSection.includes('25.000 CLP'), 'the preview shows the offered dispatch amount');
@@ -1634,12 +1634,12 @@ register_shutdown_function( static function () {
         'fpw_work[dispatch_amount]': '25000',
         'fpw_work[validity_days]': '10',
       })).text();
-      check(obsoleteSave.includes('Cambios guardados (revisión 5)'), 'the later commercial save lands (revision 5)');
+      check(obsoleteSave.includes('Cambios guardados.'), 'the later commercial save lands (revision 5)');
       check(obsoleteSave.includes('Vista previa obsoleta') && obsoleteSave.includes('Ninguna aprobación futura puede usar esta vista previa'), 'the screen marks the reviewed preview obsolete: it can never authorize different values');
       const refreshed = await (await postForm5f(owner, correctOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       })).text();
-      check(refreshed.includes('Vista previa generada (revisión 5)') && !refreshed.includes('Vista previa obsoleta'), 'a regenerated preview re-binds to the new revision');
+      check(refreshed.includes('Vista previa generada.') && !refreshed.includes('Vista previa obsoleta'), 'a regenerated preview re-binds to the new revision');
 
       /* Boundaries: permission first, then CSRF — on the preview action too. */
       const ventasPreviewStatus = (await postForm5f(ventas, correctOrder, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(ventas, `fpw-draft-preview-${correctOrder}`) })).status;
@@ -1812,7 +1812,7 @@ register_shutdown_function( static function () {
         'fpw_work[dispatch_amount]': '20000',
         'fpw_work[validity_days]': '15',
       });
-      check((await asistidaSave56.text()).includes('Cambios guardados (revisión 1)'), 'the asistida draft completes its commercial work');
+      check((await asistidaSave56.text()).includes('Cambios guardados.'), 'the asistida draft completes its commercial work');
       await postForm56(owner, placesJourneyIds.asistida, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.asistida}`) });
       // A complete review in tab A must not approve the newer review tab B sees.
       const oldReview56 = approvalToken56(await (await owner(editUrl(placesJourneyIds.asistida))).text());
@@ -1823,7 +1823,7 @@ register_shutdown_function( static function () {
         'fpw_work[destination]': 'Camino El Arrayán 52, San Francisco de Mostazal',
         'fpw_work[dispatch_amount]': '20000', 'fpw_work[validity_days]': '14',
       });
-      check((await newerSave56.text()).includes('Cambios guardados (revisión 2)'), 'tab B saves new commercial conditions');
+      check((await newerSave56.text()).includes('Cambios guardados.'), 'tab B saves new commercial conditions');
       await postForm56(owner, placesJourneyIds.asistida, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.asistida}`) });
       const staleForm56 = await approvePost56(owner, placesJourneyIds.asistida, await mint(owner, `fpw-draft-approve-${placesJourneyIds.asistida}`), oldReview56);
       check((await staleForm56.text()).includes('Nada se aprobó') && versionRow56(placesJourneyIds.asistida) === null && mailCount56() === mails56Before + 1, 'a stale valid owner form cannot approve or mail tab B\'s unseen offer');
@@ -1842,7 +1842,7 @@ register_shutdown_function( static function () {
         ...lineFields56(sinRecord56, () => 1490),
         'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '',
       });
-      check((await sinSave56.text()).includes('Cambios guardados (revisión 1)'), 'the no-dispatch draft completes its work');
+      check((await sinSave56.text()).includes('Cambios guardados.'), 'the no-dispatch draft completes its work');
       await postForm56(owner, placesJourneyIds.sindespacho, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.sindespacho}`) });
       setDeliveryScenario('rejected');
       const rejected56 = await approvePost56(owner, placesJourneyIds.sindespacho, await mint(owner, `fpw-draft-approve-${placesJourneyIds.sindespacho}`));
@@ -1860,7 +1860,7 @@ register_shutdown_function( static function () {
         'fpw_work[dispatch_amount]': '18000',
         'fpw_work[validity_days]': '7',
       });
-      check((await degSave56.text()).includes('Cambios guardados (revisión 1)'), 'the degraded-address draft completes its work');
+      check((await degSave56.text()).includes('Cambios guardados.'), 'the degraded-address draft completes its work');
       await postForm56(owner, placesJourneyIds.degradada, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.degradada}`) });
       setDeliveryScenario('unknown');
       const unknown56 = await approvePost56(owner, placesJourneyIds.degradada, await mint(owner, `fpw-draft-approve-${placesJourneyIds.degradada}`));

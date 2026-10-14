@@ -228,13 +228,13 @@ function fpw_distance_state_html( array $result ): string {
 		case 'cuota':
 			return 'La consulta alcanzó la cuota configurada del proveedor: espera e inténtalo más tarde.';
 		case 'no_autorizada':
-			return 'La credencial del servidor fue rechazada por el proveedor: revisa la configuración privada.';
+			return 'El servicio de distancia no autorizó la consulta. Solicita ayuda o define el monto de despacho manualmente.';
 		case 'timeout':
 			return 'La consulta excedió el tiempo límite y se abortó: nada cambió.';
 		case 'fallo':
 			return 'La consulta falló (proveedor o red): nada cambió. Puedes reintentar o fijar el monto manualmente.';
 		case 'sin_configuracion':
-			return 'La consulta de distancia no está configurada en este sitio (falta la credencial privada de servidor): el monto de despacho se define manualmente.';
+			return 'La consulta de distancia no está configurada. Define el monto de despacho manualmente.';
 		case 'sin_destino':
 			return 'Este borrador no tiene un destino de trabajo utilizable: completa el destino y vuelve a consultar.';
 		case 'sin_despacho':
@@ -247,11 +247,11 @@ function fpw_distance_state_html( array $result ): string {
 function fpw_distance_precision_note( string $precision ): string {
 	switch ( $precision ) {
 		case 'exacta':
-			return 'Destino identificado con el asistente (coincidencia exacta).';
+			return '';
 		case 'amplia':
-			return 'Coincidencia amplia del destino: revisa número y comuna antes de confiar en esta referencia.';
+			return 'Revisa el número y la comuna de entrega.';
 	}
-	return 'Destino escrito a mano: la ruta se calculó sobre el texto guardado.';
+	return '';
 }
 
 /** The shared disclaimer: a driving reference, never certification, never a promise, never stored. */
@@ -303,12 +303,8 @@ function fpw_draft_distance_section_html( array $draft, ?array $work ): string {
 	$destination_note = '';
 	if ( is_array( $destination ) ) {
 		$destination_text = (string) $destination['address'];
-		if ( '' !== $destination['place_id'] ) {
-			$destination_note = 'exacta' === $destination['precision']
-				? ' — con Place ID del asistente (coincidencia exacta)'
-				: ' — con Place ID del asistente (coincidencia amplia: revisar número y comuna)';
-		} else {
-			$destination_note = ' — texto escrito';
+		if ( '' !== $destination['place_id'] && 'exacta' !== $destination['precision'] ) {
+			$destination_note = '. Revisa el número y la comuna de entrega.';
 		}
 	}
 
@@ -320,7 +316,7 @@ function fpw_draft_distance_section_html( array $draft, ?array $work ): string {
 		. '<input type="hidden" name="fpw_distance_consult" value="1" />'
 		. wp_nonce_field( fpw_distance_nonce_action( $order_id ), 'fpw_distance_nonce', true, false )
 		. '<button type="submit">Consultar distancia (referencia)</button>'
-		. '<span class="fpw-draft__origin">Una llamada acotada por consulta; usa el destino guardado del borrador.</span></form>';
+		. '<span class="fpw-draft__origin">Usa el destino guardado del borrador.</span></form>';
 
 	return '<section><h2>Distancia de despacho (referencia)</h2><dl>'
 		. '<div class="fpw-draft__fact"><dt>Origen (bodega)</dt><dd>' . esc_html( $config['origin'] ) . '</dd></div>'

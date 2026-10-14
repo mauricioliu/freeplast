@@ -110,7 +110,8 @@ def probe_sales(sales, receipt):
     editor_path = '/wp-admin/post.php?post=%d&action=edit' % order_id
     code, editor = sales.request(editor_path)
     require(code == 200 and isinstance(editor, str) and re.search(r'FP-\d{4}-%06d\b' % order_id, editor)
-            and ('NO ATENDER ' + receipt['run']) in editor and 'Datos originales recibidos' in editor,
+            and ('NO ATENDER ' + receipt['run']) in editor
+            and ('ventas-' + receipt['run'] + '@example.invalid') in editor,
             'restricted_fixture_read_failed')
     nonce = re.search(r'"add_order_note_nonce":"([a-f0-9]+)"', editor)
     require(nonce is not None, 'note_nonce_unavailable')

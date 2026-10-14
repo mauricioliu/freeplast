@@ -1466,8 +1466,7 @@ add_action( 'woocommerce_admin_order_data_after_billing_address', static functio
 	if ( $order->get_meta('_fp_legacy_post_id') ) {
 		echo '<p>Solicitud histórica conservada: '.esc_html($order->get_meta('_fpq_reference')).'.</p>';
 	}
-	$original = $order->get_meta('_fp_submitted_details');
-	if ( $original ) { echo '<details><summary>Datos originales recibidos</summary><pre style="white-space:pre-wrap">'.esc_html(wp_json_encode($original, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)).'</pre></details>'; }
+	// Original submitted details remain stored; display business fields only.
 } );
 add_filter( 'woocommerce_email_order_meta_fields', static function ( $fields, $sent, $order ) {
 	foreach ( fpw_details($order) as $label=>$value ) { if ($value !== '') { $fields['fpw_'.sanitize_title($label)] = array('label'=>$label,'value'=>$value); } }

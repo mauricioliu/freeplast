@@ -320,7 +320,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 			'<h1>Mantenedor de precios</h1>'
 			. '<p class="fpw-prices__kicker">Lista de precios vigentes · netos CLP</p>'
 			. fpw_price_banner_html( $banner )
-			. '<section><h2>Catálogo</h2><p>El catálogo no tiene productos publicados todavía: cuando los haya, cada identidad nativa aparecerá aquí con su campo de precio.</p></section>'
+			. '<section><h2>Catálogo</h2><p>Aún no hay productos publicados. Cuando los haya, podrás ingresar sus precios aquí.</p></section>'
 		);
 	}
 
@@ -330,7 +330,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		$product_id = (int) ( $entry['product_id'] ?? 0 );
 		$product_price = fpw_price_own_entry( $product_id, 0 );
 		if ( null !== $product_price ) { $maintained++; }
-		$row = fpw_price_row_html( fpw_price_key( $product_id, 0 ), (string) ( $entry['name'] ?? '' ), 'Producto · ID #' . $product_id, $product_price );
+		$row = fpw_price_row_html( fpw_price_key( $product_id, 0 ), (string) ( $entry['name'] ?? '' ), 'Producto', $product_price );
 		$variations = is_array( $entry['variations'] ?? null ) ? $entry['variations'] : array();
 		if ( ! empty( $variations ) ) {
 			$variation_rows = '';
@@ -338,7 +338,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 				$variation_id    = (int) ( $variation['variation_id'] ?? 0 );
 				$variation_price = fpw_price_own_entry( $product_id, $variation_id );
 				if ( null !== $variation_price ) { $maintained++; }
-				$variation_row = fpw_price_row_html( fpw_price_key( $product_id, $variation_id ), (string) ( $variation['name'] ?? '' ), 'Opción de ' . (string) ( $entry['name'] ?? '' ) . ' · ID #' . $variation_id, $variation_price );
+				$variation_row = fpw_price_row_html( fpw_price_key( $product_id, $variation_id ), (string) ( $variation['name'] ?? '' ), 'Opción de ' . (string) ( $entry['name'] ?? '' ), $variation_price );
 				if ( null === $variation_price && null !== $product_price ) {
 					$variation_row .= '<p class="fpw-prices__note">Sin precio propio: mientras tanto sugerirá el precio del producto (' . esc_html( number_format( $product_price, 0, ',', '.' ) ) . ' CLP neto).</p>';
 				}
@@ -364,7 +364,7 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		. $nonce
 		. $rows
 		. '<p><button type="submit" class="button button-primary">Guardar lista de precios</button></p>'
-		. '<p class="fpw-prices__note">Dejar un campo vacío quita ese precio de la lista; los borradores nuevos lo mostrarán como pendiente. Un precio de 0 no se acepta: el cero del catálogo es un centinela técnico.</p>'
+		. '<p class="fpw-prices__note">Dejar un campo vacío quita ese precio de la lista; los borradores nuevos lo mostrarán como pendiente. Ingresa un precio mayor que cero.</p>'
 		. '</form></section>'
 	);
 }

@@ -217,9 +217,9 @@ $draft = fpw_build_request_draft_payload( $assisted );
 check( $draft['schema'] === 2, 'the draft schema marks the destination-provenance shape' );
 check( $draft['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'references' => '', 'source' => 'asistida', 'place_id' => $place_id_evil, 'scope' => 'amplia' ), 'the snapshot carries the recorded provenance exactly as the record kept it' );
 $html = fpw_quote_draft_markup( $assisted, $draft );
-check( str_contains( $html, 'Procedencia de la dirección' ) && str_contains( $html, 'Confirmada con el asistente de direcciones' ), 'the assisted provenance renders for the private review' );
-check( str_contains( $html, 'Coincidencia amplia — revisar número y comuna' ), 'a broad match is named as needing review, never as a certified delivery point' );
-check( str_contains( $html, htmlspecialchars( $place_id_evil, ENT_QUOTES ) ) && ! str_contains( $html, 'onmouseover="alert' ), 'the place id renders escaped: a stored claim can never inject markup' );
+check( ! str_contains( $html, 'Procedencia de la dirección' ) && str_contains( $html, 'Camino de prueba 123, Mostazal' ), 'private review keeps the address without provenance metadata' );
+check( str_contains( $html, 'Revisa el número y la comuna de entrega.' ), 'a broad match is named as needing review, never as a certified delivery point' );
+check( ! str_contains( $html, htmlspecialchars( $place_id_evil, ENT_QUOTES ) ) && ! str_contains( $html, 'onmouseover="alert' ), 'stored place metadata is not rendered and cannot inject markup' );
 check( ! str_contains( $html, 'acceso certificado' ) && ! str_contains( $html, 'entrega garantizada' ), 'the screen never certifies deliverability' );
 
 $manual_order = new FPWP_Order( array(
@@ -234,12 +234,12 @@ $legacy_order = new FPWP_Order( array(
 $legacy_draft = fpw_build_request_draft_payload( $legacy_order );
 check( $legacy_draft['destination']['source'] === '' && $legacy_draft['destination']['place_id'] === '' && $legacy_draft['destination']['scope'] === '', 'records older than the feature carry no invented provenance' );
 $html_legacy = fpw_quote_draft_markup( $legacy_order, $legacy_draft );
-check( str_contains( $html_legacy, 'Sin registro' ), 'a missing provenance is named honestly, not dressed as manual or assisted' );
+check( ! str_contains( $html_legacy, 'Sin registro' ) && str_contains( $html_legacy, 'Dirección anterior al asistente' ), 'legacy address remains visible without metadata status' );
 
 $manual_draft = fpw_build_request_draft_payload( $manual_order );
 check( $manual_draft['destination']['source'] === 'manual' && $manual_draft['destination']['place_id'] === '' && $manual_draft['destination']['scope'] === '', 'a manual address keeps no place identification' );
 $html_manual = fpw_quote_draft_markup( $manual_order, $manual_draft );
-check( str_contains( $html_manual, 'Ingresada manualmente' ), 'the manual provenance renders plainly' );
+check( ! str_contains( $html_manual, 'Procedencia de la dirección' ) && str_contains( $html_manual, 'Camino rural sin asistente, Mostazal' ), 'manual address remains visible without provenance facts' );
 check( ! str_contains( $html_manual, 'Place ID' ), 'a manual address renders no place identification row' );
 
 $none_order = new FPWP_Order( array( '_fp_request' => 'yes', '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );

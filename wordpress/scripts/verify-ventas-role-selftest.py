@@ -54,7 +54,7 @@ class Network:
                     return (404,{}) if network.order=={} else (200,copy.deepcopy(network.order))
                 if path.startswith('/wp-admin/post.php?'):
                     if network.editor_invalid: return 200,'Unexpected page'
-                    return 200,(f'FP-2026-000042 NO ATENDER {RUN} Datos originales recibidos '
+                    return 200,(f'FP-2026-000042 NO ATENDER {RUN} ventas-{RUN}@example.invalid '
                         '"add_order_note_nonce":"abc123abcd" '
                         '<input name="_wpnonce" value="abc123abcd">'
                         '<input name="woocommerce_meta_nonce" value="abc123abcd">'+network.note)

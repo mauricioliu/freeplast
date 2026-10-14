@@ -295,7 +295,9 @@ check( true === $add_validation( true, 22, 70, 0 ) && true === $add_validation( 
 check( false === $add_validation( true, 25, 25, 310 ) && str_contains( (string) end( $GLOBALS['fpwd_notices'] )['message'], 'el mínimo por solicitud es 100' ), 'a variation inherits its parent product minimum' );
 check( true === $add_validation( true, 999, 1, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 2, 'an unknown minimum never blocks adding: one unit stays requestable' );
 check( str_contains( $html, 'compras@prueba.invalid' ), 'the stored identity renders' );
-check( str_contains( $html, 'Datos originales recibidos' ), 'Submitted Details stay available beside the draft' );
+check( ! str_contains( $html, 'Datos originales recibidos' ) && '' === fpw_draft_submitted_details_html( $payload['submitted_details'] ), 'Submitted Details remain stored but are never rendered' );
+check( '' === fpw_draft_provenance_facts_html( array( 'source' => 'asistida', 'scope' => 'exacta', 'place_id' => 'private-place-id' ) ), 'exact address metadata is not rendered' );
+check( str_contains( fpw_draft_provenance_facts_html( array( 'source' => 'asistida', 'scope' => 'amplia' ) ), 'Revisa el número y la comuna de entrega.' ), 'broad addresses keep the business warning' );
 check( str_contains( $html, 'post.php?post=68' ), 'the native request record stays reachable' );
 check( str_contains( $html, '@media (min-width: 782px)' ), 'the layout is authored mobile-first with a desktop enhancement' );
 
@@ -407,7 +409,7 @@ check( str_contains( $html, 'value="120"' ) && str_contains( $html, 'value="1490
 check( str_contains( $html, '1.490 CLP neto' ) && str_contains( $html, 'ingreso manual' ), 'the saved price renders as a net CLP amount with its manual origin' );
 check( str_contains( $html, 'Camino de trabajo 456, Mostazal' ) && str_contains( $html, '39.990 CLP' ), 'the saved working destination and dispatch amount recover' );
 check( ! str_contains( $html, 'value="0"' ) && str_contains( $html, '[1][price]" value="" placeholder="Pendiente"' ) && ! preg_match( '/[^.\d]0 CLP/', $html ), 'no pending amount ever reads as zero' );
-check( str_contains( $html, 'revisión 1' ), 'the screen names the saved revision the owner is retaking' );
+check( str_contains( $html, 'Ajustes guardados' ) && str_contains( $html, 'name="fpw_work_revision" value="1"' ), 'saved state is clear and concurrency revision stays hidden' );
 check( str_contains( $html, 'Ingresada manualmente' ), 'the dispatch estimate state reads as manually entered' );
 check( ! str_contains( $html, 'Ingresados manualmente por el dueño' ), 'prices with a pending line still read as pending in the status' );
 check( str_contains( $html, 'Pedido: 140 unidades' ), 'the original request stays separate from the working values' );
@@ -569,7 +571,7 @@ check( fpw_read_draft_work( 68 ) === $work68, 'the refused save changed nothing'
 $GLOBALS['fpwd_nonce_ok'] = true;
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Cambios guardados (revisión 6)' ) && str_contains( $page, 'value="111"' ), 'the authorized save persists and confirms its revision' );
+check( str_contains( $page, 'Cambios guardados.' ) && str_contains( $page, 'value="111"' ), 'the authorized save persists and confirms its revision' );
 check( str_contains( $page, 'no aprueba ni envía' ), 'even a successful save states it approves nothing' );
 
 /* The conflict journey through the screen: the submission from a stale
@@ -580,7 +582,7 @@ $stale_post['fpw_work']['destination'] = 'Sobrescritura';
 $_POST = $stale_post;
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'no se guardó' ) && str_contains( $page, 'revisión más reciente' ), 'a stale save through the screen gets the conflict message' );
+check( str_contains( $page, 'no se guardó' ) && str_contains( $page, 'cambios más recientes' ), 'a stale save through the screen gets the conflict message' );
 check( str_contains( $page, 'Destino guardado 1, Mostazal' ) && str_contains( $page, 'value="111"' ), 'the conflict screen shows the preserved accepted edit' );
 check( ! str_contains( $page, 'Sobrescritura' ), 'the stale submission is not merged in' );
 check( str_contains( $page, 'name="fpw_work_revision" value="6"' ), 'the conflict screen re-renders the form from the accepted revision' );
@@ -680,13 +682,13 @@ $GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada (revisión 1)' ), 'an authorized preview confirms the revision it reviewed' );
+check( str_contains( $page, 'Vista previa generada.' ), 'an authorized preview confirms completion' );
 check( str_contains( $page, 'no aprueba ni envía nada al comprador' ), 'previewing states it issues nothing to the buyer' );
 $stored = fpw_read_draft_preview( 91 );
 check( is_array( $stored ) && 1 === (int) $stored['revision'] && 1 === (int) $stored['created_by'], 'the stored preview is bound to the work revision the owner reviewed' );
 check( $stored['projection'] === fpw_quotation_projection( $payload91, fpw_read_draft_work( 91 ) ), 'the stored preview IS the shared projection: no parallel screen math' );
 $preview_section = fpwd_draft_preview_section_of( $page );
-check( str_contains( $preview_section, 'Vista previa para el comprador' ) && str_contains( $preview_section, 'revisión 1' ), 'the screen renders the stored buyer-facing preview' );
+check( str_contains( $preview_section, 'Vista previa para el comprador' ) && str_contains( $preview_section, 'Vista previa generada el' ), 'the screen renders the stored buyer-facing preview' );
 check( str_contains( $preview_section, 'Subtotal (neto)' ) && str_contains( $preview_section, '3.195 CLP' ) && str_contains( $preview_section, '1.000 CLP' ) && str_contains( $preview_section, '607 CLP' ) && str_contains( $preview_section, '4.802 CLP' ), 'the preview shows subtotal, dispatch, IVA and total as exact amounts' );
 check( str_contains( $preview_section, 'IVA (19%)' ), 'the IVA row names the confirmed rate it applied' );
 check( str_contains( $preview_section, 'Vigencia de la oferta: 10 días' ) && str_contains( $preview_section, 'a contar de su aprobación' ), 'the preview expresses the validity as days from approval, without invented deadlines' );
@@ -711,15 +713,15 @@ $save91b = fpw_save_draft_work( 91, $payload91, array(
 check( ( $save91b['state'] ?? '' ) === 'saved', 'the later commercial save lands (revision 2)' );
 check( $GLOBALS['fpwd_table']['fpw_draft_preview_91'] === $raw_preview_before, 'the reviewed preview is frozen: the later save never rewrites what was seen' );
 $html = fpw_quote_draft_markup( $order91, $payload91, $save91b['work'] );
-check( str_contains( $html, 'Vista previa obsoleta' ) && str_contains( $html, 'Ninguna aprobación futura puede usar esta vista previa' ), 'the screen marks the reviewed preview obsolete after the commercial change' );
-check( str_contains( $html, 'esta revisó la 1' ) && str_contains( $html, 'revisión 2' ), 'the obsolete marker names both revisions honestly' );
+check( str_contains( $html, 'Vista previa obsoleta' ) && str_contains( $html, 'revisa los valores antes de aprobar' ), 'the screen marks the reviewed preview obsolete after the commercial change' );
+check( str_contains( $html, 'el borrador cambió' ) && str_contains( $html, 'Genera una nueva' ) && ! str_contains( $html, 'Aprobar y enviar' ), 'stale preview explains recovery and never offers approval' );
 check( str_contains( $html, '3.195 CLP' ), 'the frozen preview still shows exactly the amounts that were reviewed' );
-check( str_contains( $html, 'Obsoleta — el trabajo cambió después de la revisión 1' ), 'the aside names the revision the stale preview reviewed' );
+check( str_contains( $html, 'Desactualizada: genera una nueva antes de aprobar.' ), 'the aside gives a safe next step for a stale preview' );
 $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => false ) );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada (revisión 2)' ), 'a new preview re-binds to the new revision' );
+check( str_contains( $page, 'Vista previa generada.' ), 'a new preview re-binds to the new revision' );
 $stored = fpw_read_draft_preview( 91 );
 check( 2 === (int) $stored['revision'] && 1020 === $stored['projection']['lines'][0]['line_total'] && 4820 === $stored['projection']['total'], 'the replacement preview carries the newly reviewed amounts (3.210 + 1.000 + 610 = 4.820)' );
 $html = fpw_quote_draft_markup( $order91, $payload91, fpw_read_draft_work( 91 ) );
@@ -863,7 +865,7 @@ $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '91' );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada (revisión 4)' ) && ! str_contains( $page, 'Aprobar y enviar' ), 'an incomplete offer is never offered the approval button' );
+check( str_contains( $page, 'Vista previa generada.' ) && ! str_contains( $page, 'Aprobar y enviar' ), 'an incomplete offer is never offered the approval button' );
 $page = fpwd_approve_and_render( 91 );
 check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'Falta el precio neto' ), 'an incomplete offer is refused with its named faltante' );
 check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_91'] ) && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the incomplete refusal created nothing and mailed nobody' );
@@ -882,7 +884,7 @@ check( ( $save56b['state'] ?? '' ) === 'saved' && 5 === (int) $save56b['work']['
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada (revisión 5)' ) && str_contains( $page, 'Aprobar y enviar' ) && str_contains( $page, 'name="fpw_approve_nonce"' ), 'a current complete review offers Aprobar y enviar with its own nonce' );
+check( str_contains( $page, 'Vista previa generada.' ) && str_contains( $page, 'Aprobar y enviar' ) && str_contains( $page, 'name="fpw_approve_nonce"' ), 'a current complete review offers Aprobar y enviar with its own nonce' );
 
 /* The real approval: the version is frozen, the document is real, the mail rides the stub transport. */
 $GLOBALS['fpwd_mail_mode'] = 'ok';
@@ -952,7 +954,7 @@ $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '92' );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada (revisión 1)' ), 'the no-dispatch draft previews its complete work' );
+check( str_contains( $page, 'Vista previa generada.' ), 'the no-dispatch draft previews its complete work' );
 $page = fpwd_approve_and_render( 92 );
 check( str_contains( $page, 'el documento no se pudo generar' ) && str_contains( $page, 'No se intentó enviar' ), 'a failed document approves the version but never mails an incomplete offer' );
 $version92 = fpw_read_quotation_version( 92 );

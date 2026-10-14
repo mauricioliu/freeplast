@@ -86,7 +86,7 @@ function fpw_workspace_preview_html( array $draft, ?array $work, ?array $preview
 	}
 	$projection = $preview['projection'];
 	$obsolete = fpw_draft_preview_is_obsolete( $preview, $work );
-	$html .= '<p class="fpw-muted">Guardada el ' . esc_html( wp_date( 'd/m/Y', (int) $preview['created_at'] ) ) . ' · revisión ' . (int) $preview['revision'] . '</p>';
+	$html .= '<p class="fpw-muted">Guardada el ' . esc_html( wp_date( 'd/m/Y', (int) $preview['created_at'] ) ) . '</p>';
 	if ( $obsolete ) { $html .= '<p class="fpw-workspace-notice">Vista previa obsoleta. El borrador cambió: genera una nueva y revísala antes de aprobar.</p>'; }
 	if ( ! empty( $projection['missing'] ) ) {
 		$html .= '<p>Por completar antes de aprobar:</p><ul>' . implode( '', array_map( static fn( $item ) => '<li>' . esc_html( $item ) . '</li>', $projection['missing'] ) ) . '</ul>';

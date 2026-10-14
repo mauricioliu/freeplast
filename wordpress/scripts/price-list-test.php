@@ -286,7 +286,7 @@ check( str_contains( $with_banner, 'Lista de precios guardada' ), 'the save bann
 /* An empty catalog reads honestly. */
 $GLOBALS['fppw_product_ids'] = array();
 $no_catalog = fpw_price_screen_markup();
-check( str_contains( $no_catalog, 'catálogo' ) && ! str_contains( $no_catalog, 'name="fpw_prices[' ), 'an empty catalog offers no inputs and says so' );
+check( str_contains( $no_catalog, 'Aún no hay productos publicados' ) && ! str_contains( $no_catalog, 'name="fpw_prices[' ), 'an empty catalog offers no inputs and says so' );
 check( ! str_contains( $no_catalog, 'Cómo funciona esta lista' ), 'the empty catalog also omits the explanatory block' );
 $GLOBALS['fppw_product_ids'] = array( 22, 25 );
 
@@ -402,7 +402,7 @@ check( is_array( $work2 ) && 1550 === $work2['lines'][0]['price'] && 1750 === $w
 $html = fpw_quote_draft_markup( $order68, $payload68, $work2 );
 check( preg_match( '/name="fpw_work\\[lines\\]\\[0\\]\\[price\\]" value="1550"/', $html ) === 1, 'the adopted suggestion recovers into the form' );
 check( substr_count( $html, 'La lista sugiere hoy' ) === 1, 'only the manual line that differs from the list carries the beside-note; the tracking line matches it silently' );
-check( str_contains( $html, 'name="fpw_price_refresh"' ) && str_contains( $html, 'name="fpw_refresh_nonce"' ), 'the editing form offers the explicit refresh action with its own CSRF nonce' );
+check( ! str_contains( $html, 'name="fpw_price_refresh"' ) && str_contains( $html, 'name="fpw_refresh_nonce"' ), 'technical refresh control is absent; handler security remains intact' );
 
 /* A form rendered from the pre-refresh revision is now stale: the refreshed work stands. */
 $stale = fpw_save_draft_work( 68, $payload68, array(
@@ -463,7 +463,7 @@ check( fpw_read_draft_work( 68 ) === $save3['work'], 'the refused refresh change
 $GLOBALS['fppw_nonce_ok'] = true;
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Precios refrescados desde el mantenedor (revisión 4)' ), 'the authorized refresh confirms its revision' );
+check( str_contains( $page, 'Precios actualizados.' ) && fpw_read_draft_work( 68 )['revision'] === 4, 'the retained authorized refresh confirms completion and persists its revision' );
 check( str_contains( $page, 'se conservaron' ), 'the refresh notice states the manual choices were conserved' );
 check( str_contains( $page, 'name="fpw_work_revision" value="4"' ), 'the form re-renders from the refreshed revision' );
 
