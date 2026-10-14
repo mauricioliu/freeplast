@@ -1556,7 +1556,7 @@ register_shutdown_function( static function () {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       })).text();
       check(incompletePreview.includes('Vista previa generada.'), 'the owner generates a preview of the draft as it stands');
-      check(incompletePreview.includes('identifica faltantes que bloquean la oferta completa'), 'the incomplete preview names its faltantes explicitly');
+      check(incompletePreview.includes('Completa estos datos antes de aprobar:') && incompletePreview.includes('class="fpw-draft__missing"') && !incompletePreview.includes('name="fpw_work_approve"'), 'the incomplete preview names its faltantes explicitly and blocks approval');
       check(incompletePreview.includes('requiere revisión'), 'the stale dispatch amount is a named faltante, never silently offered');
 
       /* A two-line no-dispatch fixture with one line still unpriced: the
@@ -1635,7 +1635,7 @@ register_shutdown_function( static function () {
         'fpw_work[validity_days]': '10',
       })).text();
       check(obsoleteSave.includes('Cambios guardados.'), 'the later commercial save lands (revision 5)');
-      check(obsoleteSave.includes('Vista previa obsoleta') && obsoleteSave.includes('Ninguna aprobación futura puede usar esta vista previa'), 'the screen marks the reviewed preview obsolete: it can never authorize different values');
+      check(obsoleteSave.includes('Vista previa obsoleta') && obsoleteSave.includes('Genera una nueva y revisa los valores antes de aprobar.') && !obsoleteSave.includes('name="fpw_work_approve"'), 'the screen marks the reviewed preview obsolete: it can never authorize different values');
       const refreshed = await (await postForm5f(owner, correctOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       })).text();
