@@ -29,8 +29,8 @@ Registro de los cambios sin confirmar del worker impl-1. Todo verificado offline
 
 ## Muestras
 
-- `sample-quotation.pdf` (2 páginas): comprador ficticio «MUESTRA-NO-EMITIDA», despacho, vigencia 15 días, logo y banco embebidos. Generada por la suite offline, no por una emisión real.
-- `.scratch/commercial-update/sample-multipage.pdf` (8 páginas, ignorado): retiro, vigencia 7 explícita del fixture; verifica paginación útil: cabeceras de tabla repetidas por página y bloque final resumen + términos + banco junto. PNG de revisión visual junto al PDF (este worker no pudo inspeccionarlos visualmente; solo verificación estructural de límites de página).
+- `sample-quotation.pdf` (2 páginas): comprador ficticio «MUESTRA-NO-EMITIDA», NÚM 1761 citado (sin asignación real), despacho, vigencia 15 días, logo y banco embebidos; cantidades válidas por mínimo. Regenerable con `wordpress/scripts/generate-sample-quotation.php` (ver sección de paso 8).
+- `.scratch/commercial-update/sample-multipage.pdf` (8 páginas, ignorado): retiro, 40 líneas ficticias; verifica paginación útil: cabeceras de tabla repetidas por página y bloque final resumen + términos + banco junto. PNG de revisión visual junto al PDF (este worker no pudo inspeccionarlos visualmente; solo verificación estructural de límites de página).
 
 ## Gates
 
@@ -79,6 +79,46 @@ Fuente: `fpw_quote_minimum()` lee la meta nativa `_fp_quote_min_qty` (entregada 
 - **Asignación**: un solo INSERT — el motor serializa la clave; aprobaciones concurrentes, doble clic y reintentos jamás toman el mismo número (sin ventana transaccional que custodiar). Un fallo del INSERT de la versión tras asignar consume el número (hueco documentado, nunca reutilizado ni renumerado); un fallo de asignación no deja nada escrito (state storage-failed) y el reintento asigna uno nuevo.
 - **Congelado**: el número viaja dentro de la versión emitida — PDF («Cotización Nº 1761» junto a la referencia FP-YYYY-NNNNNN separada), asunto y cuerpo del correo, y pantallas privadas («Cotización Nº 1761 · serie propia confirmada por el propietario, distinta de la referencia de solicitud»). Las versiones históricas sin número no se renumeran ni rellenan.
 - **Prueba sustantiva de concurrencia** (`quotation-sequence-test.php`): **prueba semántica SQLite con procesos reales, NO verificación MySQL nativa** — 8 procesos PHP reales contra un motor SQLite real (WAL): 48 números únicos y contiguos desde 1761, exactamente un ganador de la fila de versión por orden compartido (los perdedores no escriben segunda versión), redeploy posterior continúa la serie. Más: fallos inyectados de allocator/bootstrap → null sin estado parcial y la serie solo avanza. El patrón SQL (INSERT de autoincremento + fila de versión con nombre único) es el mismísimo que corre el adaptador `$wpdb`/MySQL; la verificación sobre MySQL nativo queda como paso de integración con stack.
+
+## Paso 8 (preparación offline): muestra, comandos reproducibles y checklist de entrega
+
+### Muestra ficticia regenerada
+
+- `sample-quotation.pdf` (2 páginas): «Cotización NÚM 1761 · MUESTRA-NO-EMITIDA», emisor/banco/dirección Picarquín vigentes, términos stock/contado-transferencia, cantidades válidas por mínimo (Cosechera 70/70, Universal 100/100 con opción Azul), vigencia 15 días, IVA 19% (46.322) y total 290.122 CLP, logo embebido. El número 1761 va CITADO en la versión ficticia: no hubo asignación (ninguna llamada a `fpw_quotation_allocate_number`), ni correo, ni runtime — la primera asignación real también será 1761.
+- `.scratch/commercial-update/sample-multipage.pdf` (8 páginas, ignorado): 40 líneas ficticias de nombre largo, términos de retiro (sin despacho); paginación útil verificada (cabeceras repetidas, bloque final vigencia+banco junto).
+- Regeneración reproducible: `PHP_BINARY=/home/mauricio-liu/.local/bin/php wordpress/scripts/generate-sample-quotation.php` (recrea ambos PDF; corre primero la suite de borrador offline como carga del arnés). Verificación: `pdfinfo`/`pdftotext` del contenido anterior + `pdfimages -list` (logo 365×227 con máscara).
+
+### Hashes fijados de las migraciones y artefactos
+
+| Artefacto | SHA256 | Custodio |
+|---|---|---|
+| `wordpress/data/products.json` (mínimos comerciales) | `1b3ef16a027b3f68b4704efb6c9d9f2d5e164a93c19f938fdf85cb0ecb38d088` | fijado en `update-catalog-minimums.php`; editar el JSON exige plan nuevo |
+| `wordpress/scripts/catalog-pdf-release/products.json` (release técnico sellado) | `a88c84feddf1ad54f10587d23cd99a3e1d3c8d110b1d88768350d7a7e84e9f3a` | fijado en `update-catalog-pdf.php` y `commercial-source-test.py` |
+| `pdf-assets/logo.png` | `a3e3db4a40679b15121e3a59e676c86fe51341d48147306beac30b75e23a3523` | `quotation-pdf.lock.json` + snapshot de emisor |
+| Migración `/contacto/` | sin hash estático: receipt con token ligado a before/after (plan→apply) | `update-contacto-address.php` |
+| Tabla `wp_fpw_quotation_sequence` | nace `AUTO_INCREMENT=1761` solo si no existe | `quotation-sequence.php`; jamás reseed |
+
+### Secuencia de migración y rollback en staging (con aprobación del propietario)
+
+1. Respaldo pareado DB+archivos verificado; `touch <ABSPATH>/.maintenance`; pausar escritores.
+2. `FREEPLAST_CATALOG_BACKUP_VERIFIED=1 wp eval-file wordpress/scripts/update-catalog-minimums.php plan /private/minimos.json` → revisar → `apply … <token>`; verificar meta `_fp_quote_min_qty` en 15 padres.
+3. `FREEPLAST_CONTACTO_BACKUP_VERIFIED=1 wp eval-file wordpress/scripts/update-contacto-address.php plan /private/contacto.json` → revisar → `apply … <token>`; verificar `/contacto/` (check 14.5).
+4. Confirmar próximo número ANTES de la primera aprobación real: `wp db query "SELECT COUNT(*), MAX(id) FROM $(wp db prefix)fpw_quotation_sequence;"` — tabla vacía/ausente ⇒ primera asignación 1761; si el propietario corrige el último usado, `ALTER TABLE … AUTO_INCREMENT=<siguiente>` SOLO antes de la primera emisión real; después, jamás reseed.
+5. Retirar `.maintenance` tras verificación independiente.
+- Rollback (orden inverso): `/contacto/` tiene `rollback` simétrico con su receipt+token; los MÍNIMOS no tienen subcomando rollback — restaurar desde el respaldo pareado o revisar un plan inverso usando los valores `before` del receipt como referencia exacta. La tabla de secuencia NO se revierte: los números emitidos son hechos comerciales; un rollback de contenido no renumera.
+
+### Validación PENDIENTE (no corrida aquí — sin stack/servidor/dispositivos)
+
+- [ ] Staging runtime + HTTP real: fichas/canasta (bloque Cart) mostrando mínimos y «por confirmar», validaciones de agregar/modificar/enviar en vivo.
+- [ ] MySQL NATIVO para la secuencia (la evidencia offline es semántica SQLite/procesos reales, no MySQL verificado): primera aprobación concurrente en staging.
+- [ ] Visual/dispositivo: muestra en pantalla y móvil; el privado `http://mliu:8131/` es un destino de revisión provisto por el propietario — NO verificado aquí ni se garantiza que contenga la muestra; su apertura es paso del propietario.
+- [ ] Correo real: ninguno enviado ni autorizado en esta fase.
+- [ ] Paso 5 (doble envío): SIGUE BLOQUEADO — el propietario preguntará a Ignacio; no se afirma corregido. El paso 8 completo depende de 5 y de la aprobación explícita de publicación.
+
+### Entrega
+
+- Cambios sin confirmar en el árbol (el lead integra): plugin (mínimos/seams StoreApi/clásicos, correlativo, issuer), migraciones custodiadas (mínimos, /contacto/), suite de pruebas offline (incl. StoreApi fijado 11.1.0), documentación y muestras.
+- Gate offline verde: `PHP_BINARY=/home/mauricio-liu/.local/bin/php FREEPLAST_SKIP_STACK=1 npm test` (1953 checks + suites); `git diff --check` PASS.
 
 ## Pendientes fuera de alcance
 

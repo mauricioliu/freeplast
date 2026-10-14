@@ -120,7 +120,7 @@ $fp_has_image = fp_theme_has_product_photo( $product );
 				</tbody>
 			</table>
 			<?php if ( '' !== $fp_spec_fields['Unidades por pallet'] ) : ?>
-				<p class="fp-fine">Unidades por pallet es un dato de embalaje, no una cantidad mínima de solicitud.</p>
+				<p class="fp-fine">Las unidades por pallet describen cómo se embala el producto; el mínimo por solicitud es propio de cada producto y se indica junto a la cantidad, o queda por confirmar.</p>
 			<?php endif; ?>
 		</details>
 	</div>

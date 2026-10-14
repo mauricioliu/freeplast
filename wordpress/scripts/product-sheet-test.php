@@ -106,7 +106,7 @@ verify(str_contains($sheet, 'Sin compra ni reserva de stock.'), 'the reference n
 verify(str_contains($sheet, 'data-fpw-detail-added') && str_contains($sheet, ' hidden'), 'the added state renders hidden with an empty selection');
 verify(str_contains($sheet, 'Ficha técnica completa'), 'the technical disclosure');
 verify(str_contains($sheet, 'Unidades por pallet'), 'packaging data stays available in the disclosure');
-verify(str_contains($sheet, 'no una cantidad mínima de solicitud'), 'pallet size is never framed as a commercial minimum');
+verify(str_contains($sheet, 'el mínimo por solicitud es propio de cada producto'), 'pallet size is packaging data; the per-product minimum (or its pending state) is the accurate distinction');
 verify(str_contains($sheet, 'RELATED-BLOCK'), 'related products render through the native block');
 verify(!str_contains($sheet, 'price') && !str_contains($sheet, 'clp'), 'no price surface on the sheet');
 
