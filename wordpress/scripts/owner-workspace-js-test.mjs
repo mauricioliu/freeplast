@@ -7,9 +7,9 @@ export function runOwnerWorkspaceJsTests() {
   const source = readFileSync(new URL('../wp-content/plugins/freeplast-woo/assets/owner-workspace.js', import.meta.url), 'utf8');
   for (const saved of ['0', '1']) {
     const dom = new JSDOM(`<div class="fpw-workspace">
-      <form id="fpw-work-form" data-fpw-work data-fpw-has-saved="${saved}"><input name="fpw_work[lines][0][quantity]" value="100"><input name="fpw_work[lines][0][price]" value="1500"></form>
+      <form id="fpw-work-form" data-fpw-work data-fpw-has-saved="${saved}" data-fpw-calculation='{"tax":{"rate_permille":190,"applies_to_dispatch":false},"dispatch":false}' ><input name="fpw_work[lines][0][quantity]" value="100"><input name="fpw_work[lines][0][price]" value="1500"></form>
       <p data-fpw-pallets="0" data-units="70">1 pallet completo + 30 un.</p>
-      <p data-fpw-origin="0">Precio guardado para esta oferta.</p>
+      <p data-fpw-origin="0">Precio guardado para esta oferta.</p><strong data-fpw-line-total="0">150.000 CLP</strong><dd data-fpw-amount="total">178.500 CLP</dd>
       <button type="button" hidden data-fpw-apply-price="0" data-price="2400">1 a 4 pallets</button>
       <button type="button" hidden data-fpw-apply-price="0" data-price="1900">5 o más pallets</button>
       <aside id="fpw-summary"><p data-fpw-save-state>Importes guardados</p><button type="reset" form="fpw-work-form" data-fpw-discard>Descartar</button></aside>
@@ -29,7 +29,11 @@ export function runOwnerWorkspaceJsTests() {
       const quantity = form.elements.namedItem('fpw_work[lines][0][quantity]');
       quantity.value = '350'; quantity.dispatchEvent(new Event('input', {bubbles:true}));
       check(!save.hidden && preview.hidden && preview.disabled && !discard.hidden, 'dirty dock offers save, never silent preview');
-      check(document.querySelector('[data-fpw-dock-total]').textContent === 'Sin guardar' && price.value === '1500', 'quantity edit does not invent a total or change the unit price');
+      check(document.querySelector('[data-fpw-dock-total]').textContent === '624.750 CLP' && price.value === '1500', 'quantity edit estimates total without changing chosen price');
+      check(document.querySelector('[data-fpw-amount="total"]').textContent === '624.750 CLP' && document.querySelector('[data-fpw-line-total]').textContent === '525.000 CLP', 'summary and line totals update with dock');
+      const attemptedReview = new dom.window.SubmitEvent('submit', {bubbles:true, cancelable:true, submitter:preview});
+      form.dispatchEvent(attemptedReview);
+      check(attemptedReview.defaultPrevented, 'dirty review submission is blocked even if dispatched directly');
       const posted = new FormData(form, save);
       check(posted.get('fpw_work_save') === '1' && posted.get('fpw_work[lines][0][quantity]') === '350' && !posted.has('fpw_work_preview'), 'external dock button submits the native form and only its explicit action');
       const distance = document.querySelector('[data-distance-test]');
@@ -80,12 +84,99 @@ export function runOwnerWorkspaceJsTests() {
       check(price.value === '1300' && !legend.hidden && legend.textContent === 'Cambio sin guardar.', 'reference selection reveals unsaved feedback without packaging node');
       check(document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar') && document.querySelector('[data-fpw-preview]').disabled, 'global warning and save-before-review guard survive');
       price.value = ''; price.dispatchEvent(new Event('input', {bubbles:true}));
-      check(legend.hidden && legend.textContent === '', 'clearing back to pending does not restore a redundant pending legend');
+      check(unsaved ? !legend.hidden && legend.textContent === 'Cambio sin guardar.' : legend.hidden && legend.textContent === '', 'returning to rejected fields never claims saved origin');
       price.value = '1400'; price.dispatchEvent(new Event('input', {bubbles:true}));
       form.reset();
-      check(legend.hidden && price.value === '', 'reset restores empty field and hides pending origin without a gap');
+      check(legend.hidden === !unsaved && price.value === '', 'reset restores native fields without clearing rejected-POST state');
+      if (unsaved) check(document.querySelector('[data-fpw-preview]').disabled, 'rejected POST cannot reset into approval readiness');
     } finally { dom.window.close(); }
   }
+  const live = (config = {}, count = 2) => {
+    const dom = new JSDOM(`<div class="fpw-workspace"><form data-fpw-work data-fpw-has-saved="1" data-fpw-calculation='${JSON.stringify({tax:{rate_permille:190, applies_to_dispatch:false},dispatch:false,...config})}'>
+      ${Array.from({length:count}, (_, i) => `<input name="fpw_work[lines][${i}][quantity]" value="1"><input name="fpw_work[lines][${i}][price]" value="1"><strong data-fpw-line-total="${i}">Guardado</strong>`).join('')}
+      <input name="fpw_work[dispatch_amount]" value="10"><textarea name="fpw_work[destination]">Calle 1</textarea><input name="fpw_work[validity_days]" value="7"></form>
+      <p data-fpw-save-state>Guardado</p><p data-fpw-minimum="0" data-minimum="70">Mínimo guardado</p><p data-fpw-minimum="1" data-minimum="">Mínimo por confirmar</p>
+      <span data-fpw-line-label>Neto guardado</span><span data-fpw-total-label>Total guardado</span><p data-fpw-dispatch-warning hidden></p>
+      ${['subtotal','dispatch','tax','total'].map(key => `<dd data-fpw-amount="${key}">Guardado</dd>`).join('')}
+      <strong data-fpw-dock-total>Guardado</strong><button data-fpw-preview disabled>Bloqueado previamente</button></div>`, {runScripts:'outside-only'});
+    dom.window.TextEncoder = TextEncoder;
+    dom.window.eval(source);
+    const form = dom.window.document.querySelector('form');
+    const set = (name, value) => { const field = form.elements.namedItem(`fpw_work${name}`); field.value = value; field.dispatchEvent(new dom.window.Event('input', {bubbles:true})); };
+    const text = selector => dom.window.document.querySelector(selector).textContent;
+    const amount = key => text(`[data-fpw-amount="${key}"]`);
+    return {dom, form, set, text, amount};
+  };
+  for (const [rate, price, tax] of [[190,'49','10 CLP'],[190,'48','9 CLP'],[0,'49','0 CLP'],[5000,'49','250 CLP']]) {
+    const t = live({tax:{rate_permille:rate,applies_to_dispatch:false}});
+    try {
+      t.set('[lines][0][price]',price);
+      check(t.amount('tax') === tax, 'multi-line tax uses half-up rounding at confirmed rate');
+      check(t.amount('total') === t.text('[data-fpw-dock-total]'), 'dock equals summary estimate');
+      check(t.text('[data-fpw-save-state]').includes('estimados'), 'dirty money explicitly estimated');
+      t.form.reset();
+      check(t.amount('total') === 'Guardado' && t.text('[data-fpw-line-label]') === 'Neto guardado', 'reset restores actual server text, not calculated suggestion');
+      check(t.dom.window.document.querySelector('[data-fpw-preview]').disabled, 'reset preserves previously disabled action');
+    } finally { t.dom.window.close(); }
+  }
+  for (const tax of [{}, {rate_permille:5001}, {rate_permille:-1}, {rate_permille:'190'}]) {
+    const t = live({tax});
+    try { t.set('[lines][0][price]','49'); check(t.amount('subtotal') === '50 CLP' && t.amount('tax') === 'Por definir' && t.amount('total') === 'Por definir', 'absent/invalid policy never invents IVA'); }
+    finally { t.dom.window.close(); }
+  }
+  for (const field of ['quantity','price']) {
+    for (const value of ['', '0', '-1', '1.5', 'NaN', '1e2', field === 'quantity' ? '1000001' : '100000000', '000000001']) {
+      const t = live();
+      try {
+        t.set(`[lines][0][${field}]`,value);
+        check(t.amount('total') === 'Por definir' && t.text('[data-fpw-line-total="0"]') === 'Por definir', `invalid ${field} ${value} stays pending`);
+      } finally { t.dom.window.close(); }
+    }
+  }
+  const max = live({tax:{rate_permille:5000,applies_to_dispatch:true}}, 100);
+  try {
+    for (let i=0;i<100;i++) { max.form.elements.namedItem(`fpw_work[lines][${i}][quantity]`).value='1000000'; max.form.elements.namedItem(`fpw_work[lines][${i}][price]`).value='99999999'; }
+    max.set('[lines][0][price]','99999999');
+    check(max.amount('subtotal') === '9.999.999.900.000.000 CLP' && max.amount('total') === '59.999.999.400.000.000 CLP', 'maximum multi-line accumulation remains exact above Number safe range');
+  } finally { max.dom.window.close(); }
+  for (const taxed of [false,true]) {
+    const t = live({dispatch:true,savedAmount:10,conditions:{destination:'Calle 1',quantities:[1,1]},tax:{rate_permille:190,applies_to_dispatch:taxed}});
+    try {
+      t.set('[lines][0][price]','49');
+      check(t.amount('tax') === (taxed ? '11 CLP' : '10 CLP') && t.amount('total') === (taxed ? '71 CLP' : '70 CLP'), 'freight taxed only by explicit policy');
+      t.set('[lines][0][quantity]','70');
+      check(t.amount('dispatch') === 'Por definir' && t.amount('total') === 'Por definir' && t.text('[data-fpw-dispatch-warning]').includes('requiere revisión'), 'quantity edit invalidates old freight basis');
+      check(t.text('[data-fpw-minimum="0"]').includes('cubierto') && t.text('[data-fpw-minimum="1"]') === 'Mínimo por confirmar', 'minimum crossing updates known warning, unknown remains');
+      t.set('[dispatch_amount]','11');
+      check(t.amount('dispatch') === '11 CLP' && t.amount('total') !== 'Por definir', 'changed freight establishes estimated basis as future save would');
+      t.set('[dispatch_amount]','10');
+      check(t.amount('total') === 'Por definir', 'returning to old freight amount re-exposes mismatch');
+      t.set('[lines][0][quantity]','1');
+      check(t.amount('total') !== 'Por definir', 'returning quantities to saved basis restores freight estimate');
+      t.set('[destination]','Calle 2');
+      check(t.amount('total') === 'Por definir', 'destination edit invalidates old basis');
+      t.set('[dispatch_amount]','12');
+      check(t.amount('total') !== 'Por definir', 'new amount covers edited destination estimate');
+      for (const destination of ['', '<b>Calle 2</b>', ' Calle 2 ', 'é'.repeat(401)]) {
+        t.set('[destination]',destination); check(t.amount('total') === 'Por definir', 'uncertain or oversized destination never pretends confirmed');
+      }
+      t.set('[destination]','Calle 2');
+      for (const freight of ['', '0', '100000000']) { t.set('[dispatch_amount]',freight); check(t.amount('total') === 'Por definir', 'missing/invalid freight never zero'); }
+      t.form.reset();
+      check(t.amount('dispatch') === 'Guardado' && t.dom.window.document.querySelector('[data-fpw-dispatch-warning]').hidden, 'reset restores saved freight and warning visibility');
+    } finally { t.dom.window.close(); }
+  }
+  const fresh = live({dispatch:true,savedAmount:10,conditions:null});
+  try { fresh.set('[lines][0][quantity]','2'); check(fresh.amount('dispatch') === '10 CLP', 'absent saved basis can be established on next save'); }
+  finally { fresh.dom.window.close(); }
+  const validity = live();
+  try {
+    validity.set('[lines][0][price]','49');
+    for (const days of ['0','366','no']) { validity.set('[validity_days]',days); check(validity.amount('total') === 'Por definir', 'invalid validity blocks estimate'); }
+    validity.set('[validity_days]',''); check(validity.amount('total') === '60 CLP', 'blank validity uses server default and no fictitious freight required');
+    validity.set('[validity_days]','7'); validity.set('[lines][0][price]','1');
+    check(validity.amount('total') === 'Guardado', 'returning all values restores original saved totals');
+  } finally { validity.dom.window.close(); }
   const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas Históricas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
   try {
     const {document,Event,MouseEvent,KeyboardEvent} = menuDom.window;

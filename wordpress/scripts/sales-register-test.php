@@ -351,6 +351,7 @@ check( 2 === $detail_result['receipt']['aplicadas'], 'detailed rows import on ex
 $sale = array_column( fpw_sales_register()['sales'], null, 'id' )['D-1'];
 check( 'CO' === $sale['producto'] && 140 === $sale['total_cajas'] && 1400 === $sale['precio'] && 196000 === $sale['neto'], 'product, boxes, price and net persist verbatim without calculations' );
 $history_html = fpw_workspace_history( array( 'identity' => array( 'rut' => '76123456-7' ) ) );
+check( ! str_contains( $history_html, 'detalle.csv' ) && str_contains( $history_html, 'Última carga:' ), 'workspace keeps freshness date without internal filename' );
 check( ! str_contains( $history_html, '>Registro<' ) && ! str_contains( $history_html, 'Total registrado' ) && ! str_contains( $history_html, '>D-1<' ), 'history removes source IDs and the old total heading' );
 foreach ( array( 'Fecha', 'Producto', 'Total Cajas', 'Precio', 'Neto', 'Total' ) as $label ) {
 	check( str_contains( $history_html, '>' . $label . '</th>' ), 'history shows column ' . $label );

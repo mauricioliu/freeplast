@@ -240,7 +240,10 @@ check( empty( $ok['errors'] ) && $ok['entries'] === array( 'p:22' => 1490, 'v:31
 $invented = fpw_price_parse_input( $catalog, array( 'p:999' => '100', 'v:4242' => '100' ) );
 check( ! empty( $invented['errors'] ) && empty( $invented['entries'] ), 'an invented identity is refused: the mantenedor only knows native catalog identities' );
 
+$arbitrary = fpw_price_parse_input( $catalog, array( '<script>private-key</script>' => '100' ) );
+check( ! str_contains( implode( ' ', $arbitrary['errors'] ), 'private-key' ) && str_contains( $arbitrary['errors'][0], 'Recarga' ), 'unknown posted identity is not reflected; recovery remains actionable' );
 $zero = fpw_price_parse_input( $catalog, array( 'p:22' => '0' ) );
+check( ! str_contains( $zero['errors'][0], 'p:22' ) && str_contains( $zero['errors'][0], $catalog[0]['name'] ), 'invalid price identifies commercial product, not technical key' );
 check( ! empty( $zero['errors'] ) && empty( $zero['entries'] ), 'a zero price is refused: the catalog zero sentinel is never turned into a commercial price' );
 $junk = fpw_price_parse_input( $catalog, array( 'p:22' => 'abc' ) );
 check( ! empty( $junk['errors'] ) && empty( $junk['entries'] ), 'a junk amount is refused' );
