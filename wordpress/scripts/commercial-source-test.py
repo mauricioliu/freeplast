@@ -11,6 +11,10 @@ assert 'href="https://api.whatsapp.com/send?phone=56968444265"' in home
 assert 'href="mailto:ventas@freeplast.cl"' in home
 # Public wording is not an authorization to change routing coordinates/origin.
 assert "define( 'FPW_DISTANCE_ORIGIN', 'Camino El Arrayán 52, San Francisco de Mostazal' );" in (root / 'wp-content/plugins/freeplast-woo/dispatch-distance.php').read_text()
+# The ficha's fine print must state the packaging/minimum distinction accurately — the obsolete denial of any minimum is rejected.
+single = (root / 'wp-content/themes/freeplast/woocommerce/content-single-product.php').read_text()
+assert 'no una cantidad mínima de solicitud' not in single, 'obsolete fine print: packaging data denied being a request minimum'
+assert 'mínimo por solicitud es propio de cada producto' in single, 'the fine print names the per-product minimum (or its pending state)'
 sealed = root / 'scripts/catalog-pdf-release/products.json'
 assert hashlib.sha256(sealed.read_bytes()).hexdigest() == 'a88c84feddf1ad54f10587d23cd99a3e1d3c8d110b1d88768350d7a7e84e9f3a'
 catalog = json.loads((root / 'data/products.json').read_text())['products']

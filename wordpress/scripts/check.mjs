@@ -1088,7 +1088,7 @@ test('every Product has a clean canonical URL, stays out of editor menus and ren
 
   // Unknown pallet facts are honestly absent: no packaging note where no
   // units-per-pallet value is confirmed.
-  assertAbsent(ladrillo.body, 'dato de embalaje', 'the pallet note must not render without a confirmed packaging fact');
+  assertAbsent(ladrillo.body, 'mínimo por solicitud es propio', 'the pallet fine print must not render without a confirmed packaging fact');
 
   // The /tienda/ placeholder retired: the fp_product archive owns the route
   // and the discovery grid lists every Active Product on one page.
