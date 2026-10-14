@@ -1,10 +1,14 @@
 # Limpieza de interfaz de release
 
-## Estado: validación local documentada; aceptación visual/HTTP y release pendientes
+## Estado actual: release LOGIC completado en dev; aceptación visual humana pendiente
+
+El release `20261014T204713Z-a871c8` terminó mediante resume canónico autorizado el2026-10-14, fuente `7b3b8d5`, adapter1.12.11/tema1.0.25, solo `https://freeplast.mliu.site`. Gate nativo obligatorio, backup pareado, ensayo de restauración, trial, instalación/verificación y smoke: PASS; exit0. Inventario final395 archivos exactos a fuente, fingerprint protegido y uploads sin cambios, cron restaurado, shim intacto, sin mantenimiento ni recursos temporales activos. Registro: [`2026-10-14-logic-a871c8.md`](../../../wordpress/docs/releases/2026-10-14-logic-a871c8.md).
+
+El primer intento falló antes de empaquetar por TMPDIR dentro del alcance ESM del repositorio; se preservó evidencia y se reanudó una sola vez con consentimiento fresco, temporal externo privado y mismas fuentes/tests. No se alteraron sellos ni baselines. **Las secciones siguientes describen etapas históricas**: sus NOT_RUN del stack y release pendiente quedan sustituidos por el gate/ceremonia posterior, no por aceptación visual, fiscal ni comercial. Producción excluida; revisión humana, píxeles, foco/teclado y dispositivo físico siguen pendientes.
 
 Actualización `plan-mv85ckrr-iiu3`, worker `impl-1`: implementación verificada e integrada por lead en `de859e1` (base aislada inicial `6ff322c`). Seguimiento del paso 9: documentación de evidencia DOM ejecutada por lead, sin cambios de runtime. Los resultados anteriores quedan como evidencia histórica; la validación local actual figura al final.
 
-Operación: reparación de microcopy en superficies de operación y consulta. Se conserva identidad Freeplast, idioma español, datos comerciales, formularios, autorizaciones, concurrencia, almacenamiento y seguridad de aprobación. Sin publicación, instalaciones, operaciones en GitHub ni mutaciones de servidores. Sin commits ni cambios en el checkout original; el lead realizó commits acotados de snapshot e implementación en worktrees aislados.
+Operación: reparación de microcopy en superficies de operación y consulta. Se conserva identidad Freeplast, idioma español, datos comerciales, formularios, autorizaciones, concurrencia, almacenamiento y seguridad de aprobación. Durante la implementación inicial no hubo publicación, instalaciones, operaciones en GitHub ni mutaciones de servidores; el release dev posterior figura arriba. Sin commits del worker ni cambios en el checkout original; el lead realizó commits acotados de snapshot e implementación en worktrees aislados.
 
 Lecturas: catálogo de la biblioteca de diseño; `clarify.md` (principal: claridad de acciones y estados); `.agents/skills/impeccable/reference/craft-floor.md` (comprobaciones de calidad); `chrome-devtools-axi/SKILL.md` (protocolo de navegador aislado). No se rediseñaron tokens ni composición.
 
@@ -140,7 +144,7 @@ CSS zoom 2 se probó en borrador sin despacho, con despacho, precios vacíos y p
 
 Verificación documental offline del worker: JSONL parseable, conjuntos y conteos exactos (18 + 1 + 4), anchos, flags, importes, estado de guardado/revisión, reset/Escape y resultados del log cotejados con aserciones Python; `git diff --check` PASS. No se volvió a ejecutar aplicación, navegador, servidor, suite runtime ni dispositivos en este seguimiento.
 
-### Prerrequisitos explícitos de release
+### Prerrequisitos registrados antes de la autorización posterior
 
 1. Recorrido **nativo HTTP autenticado** real: catálogo → solicitud → borrador → previa → oferta, mantenedores y estados de error/vacío; comprobar permisos, nonces, concurrencia y guardado real bajo autorización propia. Los fixtures locales no usan DB ni prueban este recorrido HTTP.
 2. Inspección visual/píxeles, teclado/foco, zoom del navegador, dispositivo físico y aceptación humana. Ninguna queda sustituida por estas aserciones DOM ni por capturas sin revisar.
