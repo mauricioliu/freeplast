@@ -104,6 +104,14 @@ $fp_has_image = fp_theme_has_product_photo( $product );
 			<?php endif; ?>
 
 			<div class="product-options">
+				<?php
+				// The single authoritative request-minimum message: the plugin owns the
+				// wording, this active sheet owns the seam (the classic summary hook never
+				// runs on this override, so nothing else may render it).
+				if ( function_exists( 'fpw_quote_minimum_html' ) ) {
+					echo fpw_quote_minimum_html( function_exists( 'fpw_quote_minimum_parent_id' ) ? fpw_quote_minimum_parent_id( $product ) : (int) $product->get_id() );
+				}
+				?>
 				<?php woocommerce_template_single_add_to_cart(); ?>
 				<p class="product-help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="15" height="15"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg> Sin compra ni reserva de stock.</p>
 			</div>

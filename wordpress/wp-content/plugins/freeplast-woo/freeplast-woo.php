@@ -1546,7 +1546,7 @@ function fpw_quote_minimum_parent_id( $product ): int {
 	return $id;
 }
 
-/** The public minimum wording of one product: the confirmed minimum, or the explicit pending note for unknowns — requestable either way. */
+/** The public minimum wording of one product: the confirmed minimum, or the explicit pending note for unknowns — requestable either way. Rendered ONCE by the active product sheet's product-options area (content-single-product.php composes its own summary and never fires woocommerce_single_product_summary, so no summary hook may carry it). */
 function fpw_quote_minimum_html( int $product_id ): string {
 	$minimum = fpw_quote_minimum( $product_id );
 	if ( null === $minimum ) {
@@ -1555,12 +1555,7 @@ function fpw_quote_minimum_html( int $product_id ): string {
 	return '<p class="fpw-minimum">Mínimo por solicitud: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' ' . ( 1 === $minimum ? 'unidad' : 'unidades' ) . '.</p>';
 }
 
-/** The ficha names its minimum (or its explicit pending state) inside the native summary. */
-add_action( 'woocommerce_single_product_summary', static function () {
-	global $product;
-	if ( ! $product || ! method_exists( $product, 'get_id' ) ) { return; }
-	echo fpw_quote_minimum_html( fpw_quote_minimum_parent_id( $product ) );
-}, 25 );
+/** The ficha names its minimum (or its explicit pending state) through the ACTIVE theme seam: content-single-product.php calls this once inside product-options. */
 
 /** Basket wording rides the native item-data presentation seam — the one the REAL Cart block renders per line (classic templates share it). */
 add_filter( 'woocommerce_get_item_data', static function ( $item_data, $cart_item ) {

@@ -30,7 +30,7 @@ function the_ID() { echo 21; }
 function the_title() { echo 'Caja Universal Cerrada Color'; }
 function wc_product_class($class, $product) { echo 'class="product type-product ' . esc_attr($class) . '"'; }
 function wp_get_post_terms($id, $tax, $args) { return array('Otros'); }
-function get_post_meta($id, $key, $single) { return $id === 999 ? 'Imagen referencial pendiente para un producto' : ''; }
+function get_post_meta($id, $key, $single) { if (is_string($GLOBALS['sheet_meta'][$id][$key] ?? null)) { return $GLOBALS['sheet_meta'][$id][$key]; } return $id === 999 ? 'Imagen referencial pendiente para un producto' : ''; }
 function wp_get_attachment_caption($id) { return $GLOBALS['photo_captions'][$id] ?? ''; }
 function post_password_required() { return $GLOBALS['protected_product'] ?? false; }
 function get_the_password_form() { return 'NATIVE-PASSWORD-FORM'; }
@@ -58,6 +58,12 @@ class SheetProduct {
     public function get_attribute($name) { return $this->data['attribute_map'][$name] ?? ''; }
 }
 require __DIR__ . '/../wp-content/themes/freeplast/functions.php';
+/* The REAL adapter minimum helpers, extracted and evaluated so the active sheet renders them exactly as production does. */
+$adapter_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
+foreach (array('fpw_quote_minimum', 'fpw_quote_minimum_html') as $function) {
+    if (!preg_match('/\nfunction ' . $function . '\( .*?\n\}/s', $adapter_source, $match)) { throw new RuntimeException('adapter minimum helper missing: ' . $function); }
+    eval($match[0]);
+}
 
 function render_sheet($data) {
     global $product;
@@ -107,6 +113,19 @@ verify(str_contains($sheet, 'data-fpw-detail-added') && str_contains($sheet, ' h
 verify(str_contains($sheet, 'Ficha técnica completa'), 'the technical disclosure');
 verify(str_contains($sheet, 'Unidades por pallet'), 'packaging data stays available in the disclosure');
 verify(str_contains($sheet, 'el mínimo por solicitud es propio de cada producto'), 'pallet size is packaging data; the per-product minimum (or its pending state) is the accurate distinction');
+/* The ACTIVE product-options area renders the request minimum through the adapter helper — the classic summary hook is dead on this override and must not exist as a duplicate seam. */
+verify(str_contains($sheet, 'Mínimo por confirmar: solicita la cantidad que necesites'), 'the real active sheet renders the pending note for a product without a confirmed minimum');
+verify(substr_count($sheet, 'class="fpw-minimum') === 1, 'the minimum message renders exactly once (single authoritative seam)');
+$plugin_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
+verify(!str_contains($plugin_source, "add_action( 'woocommerce_single_product_summary'"), 'no dead summary-hook registration remains: the active theme seam owns the message');
+$GLOBALS['sheet_meta'] = array(21 => array('_fp_quote_min_qty' => '70'));
+$sheet70 = render_sheet($base);
+verify(str_contains($sheet70, 'Mínimo por solicitud: 70 unidades'), 'the real active sheet renders the confirmed minimum (70) beside the quantity control');
+verify(substr_count($sheet70, 'class="fpw-minimum') === 1, 'the confirmed message also renders exactly once');
+$GLOBALS['sheet_meta'] = array(21 => array('_fp_quote_min_qty' => '50'));
+$sheet50 = render_sheet(array_merge($base, array('name' => 'Traversa para Bins Tipo UPC')));
+verify(str_contains($sheet50, 'Mínimo por solicitud: 50 unidades'), 'the traversa exception (50) renders on the real active sheet');
+unset($GLOBALS['sheet_meta']);
 verify(str_contains($sheet, 'RELATED-BLOCK'), 'related products render through the native block');
 verify(!str_contains($sheet, 'price') && !str_contains($sheet, 'clp'), 'no price surface on the sheet');
 
