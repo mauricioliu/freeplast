@@ -165,9 +165,9 @@ function fpw_price_parse_input( array $catalog, array $posted ): array {
 	$allowed = array();
 	foreach ( $catalog as $entry ) {
 		$product_id = (int) ( $entry['product_id'] ?? 0 );
-		$allowed[ fpw_price_key( $product_id, 0 ) ] = true;
+		$allowed[ fpw_price_key( $product_id, 0 ) ] = (string) ( $entry['name'] ?? 'Producto' );
 		foreach ( ( is_array( $entry['variations'] ?? null ) ? $entry['variations'] : array() ) as $variation ) {
-			$allowed[ fpw_price_key( $product_id, (int) ( $variation['variation_id'] ?? 0 ) ) ] = true;
+			$allowed[ fpw_price_key( $product_id, (int) ( $variation['variation_id'] ?? 0 ) ) ] = (string) ( $entry['name'] ?? 'Producto' ) . ' / ' . (string) ( $variation['name'] ?? 'Opción' );
 		}
 	}
 	$errors  = array();
@@ -175,16 +175,16 @@ function fpw_price_parse_input( array $catalog, array $posted ): array {
 	foreach ( $posted as $key => $raw ) {
 		$key = (string) $key;
 		if ( ! isset( $allowed[ $key ] ) ) {
-			$errors[] = 'Identidad desconocida («' . $key . '»): el mantenedor solo recibe identidades nativas de producto y variación del catálogo.';
+			$errors[] = 'El producto u opción ya no está disponible. Recarga el mantenedor y revisa los precios antes de guardar.';
 			continue;
 		}
 		$amount = fpw_parse_draft_amount( $raw );
 		if ( 'zero' === $amount ) {
-			$errors[] = '«' . $key . '»: un precio de 0 no está permitido; deja el campo vacío mientras no haya un precio mantenido.';
+			$errors[] = '«' . $allowed[ $key ] . '»: un precio de 0 no está permitido; deja el campo vacío mientras no haya un precio mantenido.';
 			continue;
 		}
 		if ( 'invalid' === $amount ) {
-			$errors[] = '«' . $key . '»: ingresa un precio neto entero en CLP (1 a 99.999.999) o deja el campo vacío.';
+			$errors[] = '«' . $allowed[ $key ] . '»: ingresa un precio neto entero en CLP (1 a 99.999.999) o deja el campo vacío.';
 			continue;
 		}
 		if ( null !== $amount ) { $entries[ $key ] = $amount; }

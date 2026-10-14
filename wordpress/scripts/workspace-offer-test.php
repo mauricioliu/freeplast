@@ -82,15 +82,23 @@ check( str_contains( $detail, 'id="fpw-products"' ) && ! str_contains( $detail, 
 check( ! str_contains( $detail, 'fpw-price-references' ), 'offer without reference amounts omits the whole reference section' );
 $dispatch_draft = $draft; $dispatch_draft['destination']['dispatch'] = 'si';
 $dispatch_detail = fpw_workspace_detail_markup( wc_get_order( $id ), $dispatch_draft, $work, null );
+$broad_draft = $dispatch_draft;
+$broad_draft['destination']['source'] = 'asistida'; $broad_draft['destination']['scope'] = 'amplia';
+check( str_contains( fpw_workspace_detail_markup( wc_get_order( $id ), $broad_draft, $work, null ), 'Revisa el número y la comuna de entrega.' ), 'workspace retains broad-destination commercial warning' );
+check( str_contains( $dispatch_detail, 'Mínimo por solicitud:' ) || str_contains( $dispatch_detail, 'Mínimo por confirmar:' ), 'workspace renders minimum review without JavaScript' );
 $no_dispatch_draft = $draft; $no_dispatch_draft['destination']['dispatch'] = 'no';
 foreach ( array( $dispatch_detail, fpw_workspace_detail_markup( wc_get_order( $id ), $no_dispatch_draft, $work, null ) ) as $simplified ) {
 	check( ! str_contains( $simplified, '<summary>Mantenimiento de precios</summary>' ) && ! str_contains( $simplified, 'class="fpw-distance"' ) && ! str_contains( $simplified, 'Consultar distancia de despacho' ), 'quotation omits only the two requested secondary accordions, with or without dispatch' );
-	check( str_contains( $simplified, 'Datos de contacto y solicitud original' ) && str_contains( $simplified, 'Historial de compras' ) && str_contains( $simplified, 'Opciones de precios' ), 'neighboring contact, history and price options remain' );
+	check( str_contains( $simplified, 'Datos de contacto y solicitud original' ) && str_contains( $simplified, 'Historial de compras' ) && ! str_contains( $simplified, 'Opciones de precios' ), 'contact and history remain; technical refresh disclosure removed' );
 	check( str_contains( $simplified, 'page=fpw-price-list' ) && str_contains( $simplified, 'page=fpw-sales-import' ), 'independent maintenance screens stay reachable through navigation' );
 }
 check( str_contains( $dispatch_detail, 'name="fpw_work[destination]"' ) && str_contains( $dispatch_detail, 'name="fpw_work[dispatch_amount]"' ), 'removing distance disclosure preserves the editable destination and freight amount' );
 check( str_contains( $detail, 'data-fpw-origin="0"' ) && str_contains( $detail, 'Precio guardado para esta oferta.' ), 'H6: each price line ships its origin legend bound for unsaved-value feedback' );
 check( str_contains( $detail, 'data-fpw-dock-save' ) && str_contains( $detail, 'form="fpw-work-form"' ), 'mobile save submits the existing guarded native form' );
+check( ! str_contains( $detail, 'Importes guardados · revisión' ) && ! str_contains( $detail, 'Refrescar precios' ), 'editor hides internal revision and refresh' );
+foreach ( array( 'fpw_work_revision', 'fpw_draft_nonce', 'fpw_preview_nonce', 'fpw_refresh_nonce', 'data-fpw-calculation', 'data-fpw-minimum', 'data-fpw-amount="total"' ) as $required ) {
+	check( str_contains( $detail, $required ), 'editor preserves controls and calculation hooks: ' . $required );
+}
 $review = fpw_workspace_preview_html( $draft, $work, $preview );
 check( str_contains( $review, 'fpw_approve_preview' ) && str_contains( $review, fpw_quotation_preview_token( $preview ) ), 'current complete review carries the exact approval token' );
 // H4 (2026-10-03 review): the review names the exact recipient the approval will freeze —
@@ -149,4 +157,29 @@ $source = file_get_contents( __DIR__ . '/../wp-content/plugins/freeplast-woo/own
 check( str_contains( $source, "wp_date( 'd/m/Y · H:i', (int) \$received )" ), 'inbox formats existing receipt timestamp through WordPress site timezone' );
 $timestamp = ( new DateTimeImmutable( '2026-10-13 14:28:00', new DateTimeZone( 'UTC' ) ) )->getTimestamp();
 check( ( new DateTimeImmutable( '@' . $timestamp ) )->setTimezone( new DateTimeZone( 'America/Santiago' ) )->format( 'd/m/Y · H:i' ) === '13/10/2026 · 11:28', 'documented Chile timezone produces requested local date/time' );
+// Clean HTML remains server-authoritative; the browser receives confirmed policy even when totals are incomplete.
+$tax_filters = $GLOBALS['registered_filters']['fpw_quotation_tax_config'];
+foreach ( array( array(), array( 'rate_permille' => 0, 'applies_to_dispatch' => false ), array( 'rate_permille' => 5000, 'applies_to_dispatch' => true ) ) as $policy ) {
+	$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => $policy );
+	$html = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, null, null );
+	preg_match( '/data-fpw-calculation="([^"]+)"/', $html, $match );
+	$config = json_decode( html_entity_decode( $match[1], ENT_QUOTES ), true );
+	check( $config['tax'] === $policy, 'confirmed tax policy independent of incomplete projection rate' );
+	check( str_contains( $html, 'Por definir' ) && ! str_contains( $html, 'name="fpw_work_approve"' ), 'initial incomplete totals stay server-rendered, no editor approval' );
+}
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = $tax_filters;
+$posted_values = fpw_draft_work_values( $draft, $work );
+$_POST = array( 'fpw_work' => $posted_values, 'fpw_work_revision' => fpw_draft_work_revision( $work ), 'fpw_preview_nonce' => 'offline-nonce' );
+check( fpw_workspace_guard_clean_action( $id, $draft, 'preview' ), 'no-JS unchanged form can review saved work' );
+$_POST['fpw_work']['lines'][0]['price']++;
+check( ! fpw_workspace_guard_clean_action( $id, $draft, 'preview' ), 'no-JS changed price cannot bypass save-before-review' );
+$_GET['review'] = '1';
+$rejected = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, null );
+check( str_contains( $rejected, 'data-fpw-unsaved="1"' ) && str_contains( $rejected, 'data-fpw-discard-work' ) && ! str_contains( $rejected, 'name="fpw_work_approve"' ), 'rejected POST remains editor with explicit discard link and no approval' );
+$_POST['fpw_work_revision']--;
+check( ! fpw_workspace_guard_clean_action( $id, $draft, 'preview' ) && fpw_pending_draft_outcome()['result']['state'] === 'conflict', 'stale revision still fails closed' );
+$_POST['fpw_preview_nonce'] = 'forged';
+try { fpw_workspace_guard_clean_action( $id, $draft, 'preview' ); check( false, 'forged preview nonce must fail' ); }
+catch ( FPWD_Die $e ) { check( '403' === $e->getMessage(), 'forged preview nonce forbidden' ); }
+fpw_pending_draft_outcome( array() ); $_POST = array(); unset( $_GET['review'] );
 echo 'workspace offer: ' . ( $assertions - $start ) . " offline checks passed\n";

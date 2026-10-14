@@ -120,19 +120,22 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       await new Promise(resolve => setTimeout(resolve, inspectSeconds * 1000));
     }
     const conflict = document(await (await post(owner, {...values, 'fpw_work[lines][0][price]':'1900'})).text());
-    check(conflict.body.textContent.includes('revisión más reciente') && conflict.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: stale price edit does not overwrite');
+    check(conflict.body.textContent.includes('cambios más recientes') && conflict.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: stale price edit does not overwrite');
     const previewButton = fresh.querySelector('button[data-fpw-preview], [data-fpw-preview] button');
     check(!!previewButton, 'workspace: preview is a separate explicit action');
     const changedQuantity = fresh.querySelector('[name="fpw_work[lines][0][quantity]"]');
     changedQuantity.value = '350';
     check((await post(owner, {...formValues(previewButton.form, previewButton), fpw_preview_nonce:'forged'})).status === 403, 'workspace: no-JS unsaved guard checks the preview nonce before considering changes');
-    for (const selector of ['button[data-fpw-preview], [data-fpw-preview] button', 'button[data-fpw-refresh], [data-fpw-refresh] button']) {
-      const submitter = fresh.querySelector(selector);
-      const refused = document(await (await post(owner, formValues(submitter.form, submitter))).text());
+    const refreshFields = {...formValues(previewButton.form), fpw_price_refresh:'1'};
+    check(!!refreshFields.fpw_refresh_nonce && !fresh.querySelector('[data-fpw-refresh]'), 'workspace: refresh remains a nonce-guarded handler without a technical UI button');
+    check((await post(owner, {...refreshFields, fpw_refresh_nonce:'forged'})).status === 403, 'workspace: explicit refresh handler rejects a forged nonce before considering changes');
+    for (const fields of [formValues(previewButton.form, previewButton), refreshFields]) {
+      const refused = document(await (await post(owner, fields)).text());
       check(refused.body.textContent.includes('Cambios sin guardar') && refused.querySelector('[name="fpw_work[lines][0][quantity]"]')?.value === '350', 'workspace: native no-JS preview/refresh preserve unsaved submitted inputs');
       const recovery = refused.querySelector('button[name="fpw_work_save"]');
       const recoverFields = formValues(recovery.form, recovery);
-      check(recoverFields['fpw_work[lines][0][quantity]'] === '350' && recoverFields.fpw_work_save === '1' && !recoverFields.fpw_work_preview, 'workspace: preserved no-JS inputs offer an explicit save without carrying the rejected action');
+      check(recoverFields['fpw_work[lines][0][quantity]'] === '350' && recoverFields.fpw_work_save === '1' && !recoverFields.fpw_work_preview && !recoverFields.fpw_price_refresh, 'workspace: preserved no-JS inputs offer an explicit save without carrying the rejected action');
+      check(wpEval(`echo fpw_read_draft_work(${fixture.order})['lines'][0]['price'];`) === '1500', 'workspace: rejected preview/refresh preserves persisted price');
       check(wpEval(`echo fpw_draft_work_revision(fpw_read_draft_work(${fixture.order}));`) === '1' && wpEval(`echo fpw_read_draft_preview(${fixture.order}) ? 'present' : 'absent';`) === 'absent', 'workspace: rejected no-JS action changes neither saved work nor preview');
     }
     changedQuantity.value = '3';
@@ -163,7 +166,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       dom.window.eval(readFileSync(new URL('../wp-content/plugins/freeplast-woo/assets/owner-workspace.js', import.meta.url), 'utf8'));
       const input = dom.window.document.querySelector('[name="fpw_work[lines][0][quantity]"]');
       input.value = '350'; input.dispatchEvent(new dom.window.Event('input', {bubbles:true}));
-      check(dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('sin guardar'), 'workspace: editing names unsaved totals, without a second browser calculator');
+      check(dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('sin guardar'), 'workspace: editing labels transient totals as unsaved');
       check(dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved values cannot be mistaken for the preview');
       check(dom.window.document.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: quantity does not change offered price');
     } finally { dom.window.close(); }

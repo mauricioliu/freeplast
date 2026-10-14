@@ -19,7 +19,7 @@ add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
 	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.7' );
-	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.7', true );
+	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.11', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
 add_filter( 'admin_title', static function ( $title ) {
@@ -32,7 +32,7 @@ add_filter( 'admin_body_class', static function ( $classes ) {
 
 function fpw_workspace_shell( string $body, ?int $id = null, ?int $total = null, bool $editable = false ): string {
 	$header = fpw_workspace_header() . fpw_workspace_navigation();
-	$nav = $editable ? '<nav class="fpw-workspace-dock" aria-label="Preparar cotización"><a href="#fpw-summary">Total guardado<strong data-fpw-dock-total>' . fpw_workspace_money( $total ) . '</strong></a><button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" data-fpw-dock-save>Guardar borrador</button><button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview data-fpw-dock-preview hidden>Revisar cotización</button></nav>' : '';
+	$nav = $editable ? '<nav class="fpw-workspace-dock" aria-label="Preparar cotización"><a href="#fpw-summary"><span data-fpw-total-label>Total guardado</span><strong data-fpw-dock-total>' . fpw_workspace_money( $total ) . '</strong></a><button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" data-fpw-dock-save>Guardar borrador</button><button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview data-fpw-dock-preview hidden>Revisar cotización</button></nav>' : '';
 	return '<div class="fpw-workspace' . ( $editable ? ' fpw-workspace-editable' : '' ) . '">' . $header . '<div class="fpw-workspace-body">' . $body . '</div>' . $nav . '</div>';
 }
 
@@ -145,6 +145,8 @@ function fpw_workspace_product_html( array $line, array $value, int $index, ?int
 	$pack = $product ? $product->get_attribute( 'Unidades por pallet' ) : '';
 	$units = $reference['units'] ?? ( ctype_digit( $pack ) && (int) $pack > 0 ? (int) $pack : null );
 	$qty = (int) $value['quantity'];
+	$minimum = fpw_quote_minimum( (int) $line['product_id'] );
+	$minimum_text = null === $minimum ? 'Mínimo por confirmar: revisa la cantidad con el comprador antes de aprobar la oferta.' : 'Mínimo por solicitud: ' . number_format( $minimum, 0, ',', '.' ) . ' unidades — ' . ( $qty >= $minimum ? 'cubierto.' : 'revisa la cantidad con el comprador.' );
 	$pallets = null === $units ? '' : intdiv( $qty, $units ) . ( 1 === intdiv( $qty, $units ) ? ' pallet completo + ' : ' pallets completos + ' ) . ( $qty % $units ) . ' un. · ' . $units . ' un. por pallet';
 	$photo = $product && $product->get_image_id() ? $product->get_image( 'woocommerce_thumbnail', array( 'alt' => '', 'loading' => 'lazy' ) ) : '<span class="fpw-photo-missing">Sin foto</span>';
 	$options = '';
@@ -156,9 +158,9 @@ function fpw_workspace_product_html( array $line, array $value, int $index, ?int
 	return '<section class="fpw-workspace-product"><div class="fpw-product-heading"><div class="fpw-product-photo">' . $photo . '</div><div><h3>' . esc_html( $line['name'] ) . '</h3><p>' . $options . '</p><p class="fpw-muted">Pedido: ' . (int) $line['quantity'] . ' unidades</p></div></div>'
 		. '<div class="fpw-product-inputs"><label>Cantidad <span class="screen-reader-text">de ' . esc_html( $line['name'] ) . '</span><span class="fpw-muted">unidades</span>' . fpw_draft_quantity_input_html( $prefix . '[quantity]', $qty ) . '</label><label class="fpw-offered-price">Precio ofrecido <span class="screen-reader-text">de ' . esc_html( $line['name'] ) . '</span><span class="fpw-muted">CLP netos / unidad</span>' . fpw_draft_amount_input_html( $prefix . '[price]', $price ) . '</label></div>'
 		. ( null !== $units ? '<p class="fpw-muted" data-fpw-pallets="' . $index . '" data-units="' . (int) $units . '">' . esc_html( $pallets ) . '</p>' : '' )
-		. '<p class="fpw-muted" data-fpw-origin="' . $index . '"' . ( '' === $origin ? ' hidden' : '' ) . '>' . $origin . '</p>'
+		. '<p class="fpw-muted" data-fpw-minimum="' . $index . '" data-minimum="' . esc_attr( null === $minimum ? '' : (string) $minimum ) . '">' . esc_html( $minimum_text ) . '</p><p class="fpw-muted" data-fpw-origin="' . $index . '"' . ( '' === $origin ? ' hidden' : '' ) . '>' . $origin . '</p>'
 		. fpw_workspace_references_html( $reference, $index, $readonly, $suggested )
-		. '<div class="fpw-line-total"><span>Neto guardado</span><strong>' . fpw_workspace_money( $line_total ) . '</strong></div></section>';
+		. '<div class="fpw-line-total"><span data-fpw-line-label>Neto guardado</span><strong data-fpw-line-total="' . $index . '">' . fpw_workspace_money( $line_total ) . '</strong></div></section>';
 }
 
 function fpw_workspace_history( array $draft ): string {
@@ -177,7 +179,7 @@ function fpw_workspace_history( array $draft ): string {
 		$html .= '</tr>';
 	}
 	$html .= '</tbody></table></div><p class="fpw-muted">Mostrando hasta 50 de ' . count( $history['sales'] ) . ' registros.';
-	if ( is_array( $history['freshness'] ?? null ) ) { $html .= ' Última carga: ' . esc_html( wp_date( 'd/m/Y', (int) $history['freshness']['at'] ) ) . ' · ' . esc_html( $history['freshness']['filename'] ) . '.'; }
+	if ( is_array( $history['freshness'] ?? null ) ) { $html .= ' Última carga: ' . esc_html( wp_date( 'd/m/Y', (int) $history['freshness']['at'] ) ) . '.'; }
 	return $html . '</p><a href="#fpw-products">Volver a productos</a></details>';
 }
 
@@ -210,20 +212,20 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	if ( $version ) {
 		return fpw_workspace_shell( $body . '<div id="fpw-summary" class="fpw-workspace-preview" tabindex="-1">' . fpw_workspace_issued_html( $version ) . '</div>' . $contact . fpw_workspace_history( $draft ), $id, $projection['total'] );
 	}
-	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
+	$calculation = array( 'tax' => fpw_quotation_tax_config(), 'dispatch' => fpw_draft_requests_dispatch( $draft ), 'savedAmount' => $work['dispatch_amount'] ?? null, 'conditions' => $work['dispatch_conditions'] ?? null );
+	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
 		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false ) . wp_nonce_field( fpw_draft_preview_action( $id ), 'fpw_preview_nonce', true, false ) . wp_nonce_field( fpw_draft_refresh_action( $id ), 'fpw_refresh_nonce', true, false ) . '<fieldset><legend class="screen-reader-text">Preparar cotización</legend><section id="fpw-products" tabindex="-1"><h2>Productos a cotizar</h2><p class="fpw-muted">Revisa cantidades y precios netos por unidad.</p>';
 	foreach ( $draft['items'] as $index => $line ) { $body .= fpw_workspace_product_html( $line, $values['lines'][ $index ], $index, $projection['lines'][ $index ]['line_total'] ?? null, false ); }
-	$body .= '</section><section class="fpw-workspace-dispatch"><h2>Despacho</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : '<p>Sin despacho solicitado. No incluye flete.</p>' ) . '</section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
-	$body .= '<aside id="fpw-summary" tabindex="-1" class="fpw-workspace-summary"><h2>Resumen de cotización</h2><p data-fpw-save-state class="fpw-muted" role="status">' . ( $unsaved ? 'Cambios sin guardar. ' : '' ) . ( null === $work ? 'Guarda para confirmar los importes.' : 'Importes guardados · revisión ' . fpw_draft_work_revision( $work ) ) . '</p><dl>';
+	$body .= '</section><section class="fpw-workspace-dispatch"><h2>Despacho</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : '<p>Sin despacho solicitado. No incluye flete.</p>' ) . '<p data-fpw-dispatch-warning hidden></p></section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
+	$body .= '<aside id="fpw-summary" tabindex="-1" class="fpw-workspace-summary"><h2>Resumen de cotización</h2><p data-fpw-save-state class="fpw-muted" role="status">' . ( $unsaved ? 'Cambios sin guardar. ' : '' ) . ( null === $work ? 'Guarda para confirmar los importes.' : 'Importes guardados.' ) . '</p><dl>';
 	foreach ( array( 'subtotal' => 'Productos netos', 'dispatch' => 'Despacho neto', 'tax' => 'IVA', 'total' => 'Total' ) as $key => $label ) {
 		if ( 'dispatch' === $key && ! fpw_draft_requests_dispatch( $draft ) ) { continue; }
-		$body .= '<div' . ( 'total' === $key ? ' class="fpw-grand-total"' : '' ) . '><dt>' . $label . '</dt><dd>' . fpw_workspace_money( $projection[ $key ] ?? null ) . '</dd></div>';
+		$body .= '<div' . ( 'total' === $key ? ' class="fpw-grand-total"' : '' ) . '><dt>' . $label . '</dt><dd data-fpw-amount="' . $key . '">' . fpw_workspace_money( $projection[ $key ] ?? null ) . '</dd></div>';
 	}
 	$body .= '</dl>';
 	$body .= '<button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" class="fpw-secondary">Guardar borrador</button>'
 			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
-			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Guarda los cambios y revisa la oferta. Solo se envía al aprobar.</p>'
-			. '<details><summary>Opciones de precios</summary><p>Refresca desde la lista actual conservando ajustes manuales. Guarda o descarta antes cualquier cambio pendiente.</p><button type="submit" name="fpw_price_refresh" value="1" form="fpw-work-form" data-fpw-refresh class="fpw-secondary">Refrescar precios</button></details>';
+			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Guarda los cambios y revisa la oferta. Solo se envía al aprobar.</p>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
 		. $contact . fpw_workspace_history( $draft );
 	return fpw_workspace_shell( $body, $id, $projection['total'] ?? null, true );

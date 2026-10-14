@@ -38,7 +38,8 @@ export async function runQuotationNativeFailures({ owner, makeCookieFetch, mint,
       'fpw_work[lines][0][quantity]': '2', 'fpw_work[lines][0][price]': '3210',
       'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '12',
     });
-    check((await saved.text()).includes('Cambios guardados (revisión 1)'), `quotation ${label}: owner completes the offer over HTTP`);
+    check((await saved.text()).includes('Cambios guardados.'), `quotation ${label}: owner completes the offer over HTTP`);
+    check(wpEval(`echo fpw_draft_work_revision(fpw_read_draft_work(${id}));`) === '1' && wpEval(`echo fpw_read_draft_work(${id})['lines'][0]['price'];`) === '3210', `quotation ${label}: saved revision and price persist independently of notice copy`);
     await postForm(owner, id, { fpw_work_preview: '1', fpw_preview_nonce: await mint(owner, `fpw-draft-preview-${id}`) });
     const form = controls(await (await owner(editUrl(id))).text());
     check(form.fpw_approve_preview?.length === 64 && versionRow(id) === null, `quotation ${label}: complete reviewed offer has not yet been approved`);
