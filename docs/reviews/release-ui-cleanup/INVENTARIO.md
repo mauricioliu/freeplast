@@ -1,10 +1,10 @@
 # Limpieza de interfaz de release
 
-## Estado: PARTIAL (integración y gate offline completos; navegador/HTTP pendientes)
+## Estado: validación local documentada; aceptación visual/HTTP y release pendientes
 
-Actualización `plan-mv85ckrr-iiu3`, worker `impl-1`: base aislada `6ff322c`, sin modificar el checkout original. Los resultados anteriores quedan como evidencia histórica; el gate actual figura al final.
+Actualización `plan-mv85ckrr-iiu3`, worker `impl-1`: implementación verificada e integrada por lead en `de859e1` (base aislada inicial `6ff322c`). Seguimiento del paso 9: documentación de evidencia DOM ejecutada por lead, sin cambios de runtime. Los resultados anteriores quedan como evidencia histórica; la validación local actual figura al final.
 
-Operación: reparación de microcopy en superficies de operación y consulta. Se conserva identidad Freeplast, idioma español, datos comerciales, formularios, autorizaciones, concurrencia, almacenamiento y seguridad de aprobación. Sin publicación, instalaciones, GitHub, commits ni mutaciones de servidores.
+Operación: reparación de microcopy en superficies de operación y consulta. Se conserva identidad Freeplast, idioma español, datos comerciales, formularios, autorizaciones, concurrencia, almacenamiento y seguridad de aprobación. Sin publicación, instalaciones, operaciones en GitHub ni mutaciones de servidores. Sin commits ni cambios en el checkout original; el lead realizó commits acotados de snapshot e implementación en worktrees aislados.
 
 Lecturas: catálogo de la biblioteca de diseño; `clarify.md` (principal: claridad de acciones y estados); `.agents/skills/impeccable/reference/craft-floor.md` (comprobaciones de calidad); `chrome-devtools-axi/SKILL.md` (protocolo de navegador aislado). No se rediseñaron tokens ni composición.
 
@@ -76,9 +76,9 @@ Evidencia temporal de la sesión: `/tmp/release-<nombre>.log` para las pruebas P
 
 ## Pendientes / handoff
 
-- NOT_RUN: navegador aislado, capturas, móvil/escritorio, zoom, foco y estados interactivos. No se suministró endpoint aislado; no se inició ni reutilizó navegador personal, ni se instalaron herramientas.
+- Lead ejecutó comprobaciones DOM en navegador sobre fixtures sintéticos locales a 412/1440 px y CSS zoom 2; resultados al final. Capturas guardadas según handoff, sin inspección de píxeles acreditada. No equivale a dispositivo físico, zoom del navegador ni aceptación visual.
 - NOT_RUN: `woo-stack-harness.mjs` completo y verificaciones HTTP de roles. Sus expectativas se actualizaron, pero ejecutarlos implica aprovisionamiento y mutaciones fuera de este encargo.
-- Lead: revisar/integrar el diff sin commit del worker y ejecutar gate visual. Los tres archivos antes reservados ya están integrados y cubiertos offline.
+- Implementación integrada en `de859e1`; este seguimiento modifica solo documentación, sin cambios de runtime. Pendientes: recorrido nativo HTTP autenticado, revisión visual, dispositivo físico y aprobación humana; autorización separada para release en staging. Producción excluida.
 - QA: una ronda de render real de catálogo → checkout → recibo y solicitudes → borrador → previa incompleta/desactualizada/completa → oferta aprobada, además de ventas y precios. Confirmar errores, cargas vacías, conflictos, advertencia amplia y ausencia de aprobación cuando faltan datos.
 - Esta evidencia no constituye aprobación humana ni autorización de despliegue.
 
@@ -114,6 +114,34 @@ Reutilizar, **copiándolo al checkout aislado de integración**, `/home/mauricio
 
 Preparación ya ejecutada en worker: copia local del script anterior y siete HTML en `.scratch/release-ui-cleanup/{quote,quote-dispatch,quote-issued,prices,prices-empty,sales,sales-preview}.html`. Autocomprobación Python: los siete empiezan con doctype, bloquean submits y no contienen avisos/errores PHP. No son capturas ni validación visual.
 
-Lead debe revisar escritorio/móvil, teclado, zoom, total largo en dock, campos inválidos, cantidades máximas, despacho obsoleto, descarte, precio sugerido sin guardar, POST rechazado, previa incompleta/obsoleta y oferta aprobada. Para variante sin política, retirar filtro `fpw_quotation_tax_config` del fixture antes del render, no cambiar backend. Validar también formularios reales con permisos/nonces vía HTTP solamente bajo autorización propia.
+La evidencia DOM del lead descrita abajo cubre parte de esta preparación. Sigue pendiente la revisión visual y nativa completa de escritorio/móvil, teclado/foco, zoom del navegador, total largo en dock, campos inválidos, cantidades máximas, despacho obsoleto, descarte, precio sugerido sin guardar, POST rechazado, previa incompleta/obsoleta y oferta aprobada. Para variante sin política, retirar filtro `fpw_quotation_tax_config` del fixture antes del render, no cambiar backend. Validar también formularios reales con permisos/nonces vía HTTP solamente bajo autorización propia.
 
-No ejecutado: gate visual/dispositivos, stack HTTP, integración nativa de permisos que pide `FREEPLAST_LOCAL_TEST_CACHE`. Sidecar `.impeccable/design.json` reportado desactualizado; no reparado (fuera de alcance; `document` puede regenerarlo con autorización).
+No acreditado: aceptación visual/dispositivos, stack HTTP nativo, integración nativa de permisos que pide `FREEPLAST_LOCAL_TEST_CACHE`. Sidecar `.impeccable/design.json` reportado desactualizado; no reparado (fuera de alcance; `document` puede regenerarlo con autorización).
+
+## Paso 9: evidencia local del lead tras integración
+
+Fuentes en `/home/mauricio-liu/.herd/plan-mode/`, prefijo `plan-mv85ckrr-iiu3`:
+
+| Archivo | Evidencia registrada |
+|---|---|
+| `.browser-mobile.jsonl` | 9 casos a 412 px |
+| `.browser-desktop.jsonl` | Los mismos 9 casos a 1440 px |
+| `.final-mobile.jsonl` | Total máximo del caso: `118.999.998.810.000 CLP`, ancho 412 px, `overflow:false`, dock de 69 px de alto, guardar visible y revisión bloqueada |
+| `.final-zoom.jsonl` | 4 pantallas a 1440 px con `cssZoom:"2"`, `bodyWidth:1440`, sin desborde registrado |
+| `.lead-integrated-gate.log` | Rerun offline del lead: PASS, **2039** comprobaciones agregadas; workspace-offer 103, JS 140, price-list 118, sales-register 142; stack nativo omitido |
+
+Los **18 casos** corresponden a precios, precios vacíos, ventas, previa de ventas, borrador con despacho, sin despacho, oferta emitida, borrador vacío y revisión de cotización, en ambos anchos. Todos registran `overflow:false` y `technicalCopy:false` (resultado del detector utilizado, no prueba exhaustiva de ausencia de cualquier texto técnico). Formularios registrados por vista: 1, 0, 1, 3, 1, 1, 0, 1 y 1, respectivamente.
+
+En los seis casos editables ejercitados (tres vistas por ancho), el neto de línea pasa a **525.000 CLP**. Sin despacho y borrador vacío: resumen y dock **624.750 CLP**; con despacho: ambos **Por definir**. Todos registran etiqueta «Total estimado · Cambios sin guardar», revisión bloqueada, ausencia de desborde tras editar, entrada inválida como «Por definir», `reset:true` y `escape:true`. Estos dos últimos son resultados DOM del harness; no certifican navegación completa de teclado, foco visible ni experiencia con lector de pantalla.
+
+El caso máximo de una línea equivale a `1.000.000 × 99.999.999 × 1,19 = 118.999.998.810.000 CLP`; el registro a 412 px confirma ausencia de desborde de página, guardar visible y revisión bloqueada. No acredita por sí solo legibilidad, ausencia de recorte interno ni todos los máximos posibles de una oferta multilínea.
+
+CSS zoom 2 se probó en borrador sin despacho, con despacho, precios vacíos y previa de ventas. **CSS zoom no es zoom del navegador. Las aserciones DOM no son inspección de píxeles.** Capturas guardadas por lead según handoff; este seguimiento no las abrió ni afirma revisión visual.
+
+Verificación documental offline del worker: JSONL parseable, conjuntos y conteos exactos (18 + 1 + 4), anchos, flags, importes, estado de guardado/revisión, reset/Escape y resultados del log cotejados con aserciones Python; `git diff --check` PASS. No se volvió a ejecutar aplicación, navegador, servidor, suite runtime ni dispositivos en este seguimiento.
+
+### Prerrequisitos explícitos de release
+
+1. Recorrido **nativo HTTP autenticado** real: catálogo → solicitud → borrador → previa → oferta, mantenedores y estados de error/vacío; comprobar permisos, nonces, concurrencia y guardado real bajo autorización propia. Los fixtures locales no usan DB ni prueban este recorrido HTTP.
+2. Inspección visual/píxeles, teclado/foco, zoom del navegador, dispositivo físico y aceptación humana. Ninguna queda sustituida por estas aserciones DOM ni por capturas sin revisar.
+3. Autorización separada para publicar en **staging**. **Producción excluida**. Completar documentación/validación local del paso 9 no autoriza despliegue ni significa aprobación humana.
