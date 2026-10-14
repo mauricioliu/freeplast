@@ -129,6 +129,34 @@ staging, selección de color/cantidades, solicitud sin despacho, panel privado, 
 borrador, PDF y correo simulado. La CSP o el proxy podrían requerir ajustes después de
 esas comprobaciones; no marcar experiencia visual validada con pruebas de código.
 
+## Actualización local custodiada (mínimos + /contacto/) — PREPARADA, no ejecutada
+
+`local/upgrade.php` (montado solo lectura en `/opt/freeplast/upgrade.php`) aplica en el entorno LOCAL, con plan/apply/rollback custodiados, los mínimos por solicitud (`_fp_quote_min_qty`/`_fp_quote_step` desde el catálogo fijado del repositorio) y el reemplazo exacto del placeholder local de `/contacto/` por el bloque aprobado con la dirección Picarquín y la nota LOCAL. Contención exigida en cada modo: WP-CLI, entorno `local`, captura de correo activa (`fpw_local_capture_active`), URL canónica local coincidente con `FREEPLAST_LOCAL_URL` (mliu/localhost/127.0.0.1:puerto), y procedencia bajo el bind `/opt/freeplast`. Los guardias de staging de las migraciones del repositorio NO se relajan ni se reusan: este archivo solo corre bajo la contención local. Reglas duras: receipt privado 0600 en `/var/freeplast/receipts` (volumen de captura, fuera del webroot) con token ligado a modo+URL+hash fuente; hash del catálogo fijado (`1b3ef16a…`); metadatos de cantidad editados por el comercio NUNCA se sobreescriben (drift → replanificar); apply/rollback por compare-and-swap por fila dentro de una transacción verificada (FOR UPDATE sobre las filas planificadas), COMMIT incierto reportado y jamás reclamado ni reintentado a ciegas; la página se escribe con UN solo UPDATE byte-exacto (`CAST(? AS BINARY)`); el seed no se re-corre y los marcadores `_fp_local_seed_complete`, variantes, solicitudes sintéticas y números quedan intactos. Los desconocidos (pediluvios, ladrillo) quedan como cadena vacía explícita, igual que la migración de staging.
+
+```bash
+# 0) estado (lectura) y respaldo privado ANTES de cualquier apply:
+npm run local -- status
+docker compose --env-file /dev/null -p freeplast-local -f wordpress/local/compose.yaml \
+  exec -T db sh -c 'mariadb-dump -u root -p"$(cat /run/secrets/db_root_password)" freeplast_local' \
+  > ~/freeplast-local-$(date +%F-%s).sql && chmod 600 ~/freeplast-local-*.sql
+cli() { docker compose --env-file /dev/null -p freeplast-local -f wordpress/local/compose.yaml run --rm -T --no-deps cli wp "$@"; }
+# 1) revisar el delta (solo escribe el receipt privado):
+cli wp eval-file /opt/freeplast/upgrade.php status
+cli wp eval-file /opt/freeplast/upgrade.php minima plan minima.json
+cli wp eval-file /opt/freeplast/upgrade.php contacto plan contacto.json
+# 2) aplicar (requiere respaldo verificado) y verificar por HTTP:
+FREEPLAST_LOCAL_BACKUP_VERIFIED=1 # exportar en el entorno que llama a cli(), o -e ante compose run
+cli wp eval-file /opt/freeplast/upgrade.php minima apply minima.json <token>
+cli wp eval-file /opt/freeplast/upgrade.php contacto apply contacto.json <token>
+curl --noproxy '*' -s http://mliu:8131/producto/caja-cosechera-3-4/ | grep -F 'Mínimo por solicitud: 70'
+curl --noproxy '*' -s http://mliu:8131/contacto/ | grep -F 'P Picarquín sitio 52'
+# 3) rollback puntual (nunca reset amplio):
+cli wp eval-file /opt/freeplast/upgrade.php contacto rollback contacto.json <token>
+cli wp eval-file /opt/freeplast/upgrade.php minima rollback minima.json <token>
+```
+
+Regresiones offline: `wordpress/scripts/local-upgrade-test.php` (36 checks: guardias de contención, hash fijado, plan/apply/rollback con CAS, drift de comercio rechazado, COMMIT incierto sin rollback reclamado, placeholder/contacto byte-exacto, edición concurrente sobrevive, seed intacto; fuente alterada rechazada en proceso aislado). **No ejecutado contra el stack local**: la aplicación real espera la integración del helper por el lead y la orden `dev-local-despliegue`.
+
 ## Gates offline
 
 ```bash

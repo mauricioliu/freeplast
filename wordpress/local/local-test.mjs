@@ -103,7 +103,7 @@ else if (!a.includes('config')) { console.error('test refuses mutations'); proce
     check(result.status === 0 && result.stdout.includes(expected), 'request Host and missing-containment startup gates: ' + host);
   }
   const recipe = readFileSync(join(here, 'README.md'), 'utf8');
-  check(!/cli eval-file/.test(recipe) && (recipe.match(/cli wp eval-file/g) || []).length === 2, 'official CLI image recipes invoke explicit wp executable');
+  check(!/cli eval-file/.test(recipe) && (recipe.match(/cli wp eval-file/g) || []).length === 9, 'official CLI image recipes invoke explicit wp executable');
   for (const mode of ['allowed', 'uninstalled', 'bad-host', 'bad-dir']) {
     const result = spawnSync(php, [join(here, 'safety-test.php'), mode], { encoding: 'utf8' });
     check(result.status === 0, result.stdout + result.stderr);

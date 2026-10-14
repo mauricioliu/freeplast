@@ -27,6 +27,8 @@ console.log(run('python3',[path.join(root,'scripts/commercial-source-test.py')])
 console.log(run(php,[path.join(root,'scripts/catalog-minimums-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-sequence-test.php')]));
 console.log(run(php,[path.join(root,'scripts/storeapi-minimums-test.php')]));
+console.log(run(php,[path.join(root,'scripts/local-upgrade-test.php')]));
+run(php,['-l',path.join(root,'local/upgrade.php')]);checks++;
 console.log(run(php,[path.join(root,'scripts/contacto-address-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-issuer-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-migration-test.php')]));
