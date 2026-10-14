@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 SCRIPT = Path(__file__).with_name('woo-ventas-guard.py')
 RUN = 'abcdef123456'
 EMAIL = f'ventas-{RUN}@example.invalid'
-EDITOR = f'''FP-2026-000042 Caja Universal Datos originales recibidos RUT Empresa 76.555.555-5 <input name="_billing_email" value="{EMAIL}">
+EDITOR = f'''FP-2026-000042 Caja Universal RUT Empresa 76.555.555-5 <input name="_billing_email" value="{EMAIL}">
 <tr class="item " data-order_item_id="88"><td><input name="order_item_qty[88]" value="5"></td></tr>'''
 
 class MutationReached(Exception):

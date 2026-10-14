@@ -276,7 +276,7 @@ function fpw_draft_approve_html( int $order_id, array $preview, bool $concise = 
 		. '<input type="hidden" name="fpw_approve_preview" value="' . esc_attr( fpw_quotation_preview_token( $preview ) ) . '" />'
 		. wp_nonce_field( fpw_quotation_approve_action( $order_id ), 'fpw_approve_nonce', true, false )
 		. '<button type="submit">Aprobar y enviar</button>'
-		. '<span class="fpw-draft__origin">' . ( $concise ? 'La oferta aprobada queda fija. No se confirma recepción del cliente.' : 'Congela esta revisión como la primera versión de la cotización, genera su PDF e intenta enviarlo por correo al comprador. Se resuelve en el servidor: un doble clic no crea versiones ni envíos extra.' ) . '</span>'
+		. '<span class="fpw-draft__origin">' . ( $concise ? 'La oferta aprobada queda fija. No se confirma recepción del cliente.' : 'Aprueba los valores revisados, genera la cotización en PDF e intenta enviarla por correo al comprador. La oferta aprobada queda fija; el envío no confirma recepción.' ) . '</span>'
 		. '</form>';
 }
 
@@ -313,7 +313,7 @@ function fpw_quotation_version_section_html( ?array $version ): string {
 		: 'Pendiente — no se intentó enviar ninguna oferta sin su documento';
 	return '<section class="fpw-draft__version"><h2>Versión aprobada</h2><dl>'
 		. ( isset( $version['commercial']['number'] ) ? '<div class="fpw-draft__fact"><dt>Cotización comercial</dt><dd>Nº ' . (int) $version['commercial']['number'] . ' · serie propia confirmada por el propietario, distinta de la referencia de solicitud</dd></div>' : '' )
-		. '<div class="fpw-draft__fact"><dt>Versión</dt><dd>Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ' · aprobada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $version['approved_at'] ?? 0 ) ) ) . ' sobre la revisión ' . max( 0, (int) ( $version['work_revision'] ?? 0 ) ) . ' del trabajo</dd></div>'
+		. '<div class="fpw-draft__fact"><dt>Versión</dt><dd>Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) ) . ' · aprobada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $version['approved_at'] ?? 0 ) ) ) . '</dd></div>'
 		. '<div class="fpw-draft__fact"><dt>Documento</dt><dd>' . esc_html( $document ) . '</dd></div>'
 		. '<div class="fpw-draft__fact"><dt>Correo al comprador</dt><dd>' . fpw_quotation_delivery_state_html( is_array( $version['delivery'] ?? null ) ? $version['delivery'] : array() ) . '</dd></div>'
 		. '</dl><p class="fpw-draft__aside-note">La versión quedó congelada con los valores revisados: cambiar precios o condiciones exige una nueva versión revisada. La recuperación explícita del envío opera sobre esta versión; la aceptación del transporte no prueba la recepción del comprador.</p></section>';

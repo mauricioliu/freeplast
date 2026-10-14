@@ -83,9 +83,9 @@ function fpw_sales_parse_csv( string $content ): array {
 	if ( str_starts_with( $content, "PK\x03\x04" ) ) {
 		return array( 'ok' => false, 'error' => 'El archivo parece un libro de Excel comprimido (ZIP): este importador solo recibe CSV de texto, sin macros ni fórmulas. Guarda la planilla como CSV UTF-8 y súbelo de nuevo.' );
 	}
-	if ( str_contains( $content, "\0" ) ) { return array( 'ok' => false, 'error' => 'El archivo contiene bytes nulos: no parece un CSV de texto.' ); }
+	if ( str_contains( $content, "\0" ) ) { return array( 'ok' => false, 'error' => 'No se pudo leer la planilla. Guárdala como CSV UTF-8 y vuelve a cargarla.' ); }
 	if ( strlen( $content ) > FPW_SALES_MAX_BYTES ) { return array( 'ok' => false, 'error' => 'El archivo supera el máximo de 2 MB por carga.' ); }
-	if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $content, 'UTF-8' ) ) { return array( 'ok' => false, 'error' => 'El archivo debe estar codificado en UTF-8.' ); }
+	if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $content, 'UTF-8' ) ) { return array( 'ok' => false, 'error' => 'Guarda la planilla como CSV UTF-8 y vuelve a cargarla.' ); }
 	if ( str_starts_with( $content, "\xEF\xBB\xBF" ) ) { $content = substr( $content, 3 ); }
 	$lines = preg_split( '/\r\n|\n|\r/', $content );
 	if ( ! is_array( $lines ) ) { return array( 'ok' => false, 'error' => 'No se pudo leer el archivo como texto.' ); }
@@ -501,7 +501,7 @@ function fpw_sales_handle_upload(): array {
 	if ( UPLOAD_ERR_OK !== $error ) {
 		return array( 'ok' => false, 'message' => ( UPLOAD_ERR_INI_SIZE === $error || UPLOAD_ERR_FORM_SIZE === $error )
 			? 'El archivo supera el máximo de 2 MB por carga.'
-			: 'La carga del archivo falló (código ' . $error . '). Intenta de nuevo.' );
+			: 'No se pudo cargar la planilla. Intenta de nuevo.' );
 	}
 	$tmp = (string) ( $_FILES['fpw_sales_file']['tmp_name'] ?? '' );
 	if ( '' === $tmp || ! is_uploaded_file( $tmp ) ) { return array( 'ok' => false, 'message' => 'La carga no provino de un formulario válido.' ); }
@@ -584,7 +584,7 @@ function fpw_sales_pending_preview_html(): string {
 	$token     = (string) ( $pending['token'] ?? '' );
 	$sin_total = (int) ( $pending['sin_asociacion_total'] ?? 0 );
 	$html = '<section><h2>Vista previa pendiente</h2>'
-		. '<p><strong>' . esc_html( (string) ( $pending['filename'] ?? '' ) ) . '</strong> · subida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $pending['at'] ?? 0 ) ) ) . ' por ' . esc_html( (string) ( $pending['actor'] ?? '' ) ) . '</p>'
+		. '<p>Planilla cargada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $pending['at'] ?? 0 ) ) ) . ' por ' . esc_html( (string) ( $pending['actor'] ?? '' ) ) . '</p>'
 		. '<p>' . count( $rows ) . ' filas candidatas · ' . (int) ( $pending['errores_total'] ?? 0 ) . ' filas con error · ' . $sin_total . ' ' . esc_html( 1 === $sin_total ? 'asociación sin resolver' : 'asociaciones sin resolver' )
 		. ( ! empty( $pending['ignored_columns'] ) ? ' · columnas ignoradas: ' . esc_html( implode( ', ', (array) $pending['ignored_columns'] ) ) : '' ) . '</p>';
 	if ( '' !== $preview ) {
@@ -619,13 +619,13 @@ function fpw_sales_receipts_html(): string {
 	$receipt_rows = '';
 	foreach ( $receipts as $receipt ) {
 		$conflictos = (int) ( $receipt['conflictos_total'] ?? 0 );
-		$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td><td>' . esc_html( (string) ( $receipt['filename'] ?? '' ) ) . '</td>'
+		$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td>'
 			. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['enriquecidas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
-			. '<td><code>' . esc_html( (string) ( $receipt['token'] ?? '' ) ) . '</code></td></tr>';
+			. '</tr>';
 	}
 	return '<section><h2>Importaciones aplicadas</h2>'
-		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Archivo</th><th scope="col">Nuevas</th><th scope="col">Enriquecidas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th><th scope="col">Lote</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
-		. '<p class="fpw-sales__note">Cada lote aplicado deja este recibo de procedencia: es la frescura que verás junto al historial en cada borrador.</p></section>';
+		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Nuevas</th><th scope="col">Enriquecidas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
+		. '<p class="fpw-sales__note">Estas son las cargas confirmadas y sus resultados. Las filas con errores o conflictos no se importan.</p></section>';
 }
 
 /** The screen markup: upload, pending preview, applied receipts. */

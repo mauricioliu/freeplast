@@ -65,7 +65,7 @@ function fpw_price_reference_editor( string $key, array $entry ): string {
 	foreach ( array( 'units' => 'Unidades por pallet', 'small' => '1 a 4 pallets · CLP netos / unidad', 'bulk' => '5 o más pallets · CLP netos / unidad' ) as $field => $label ) {
 		$html .= '<label class="fpw-prices__field">' . $label . '<input type="number" inputmode="numeric" min="1" max="' . ( 'units' === $field ? 1000000 : 99999999 ) . '" step="1" name="fpw_references[' . esc_attr( $key ) . '][' . $field . ']" value="' . ( isset( $entry[ $field ] ) ? (int) $entry[ $field ] : '' ) . '" placeholder="Por confirmar"></label>';
 	}
-	return $html . '<p class="fpw-prices__note">' . esc_html( trim( ( $entry['source'] ?? '' ) . ' · ' . ( $entry['note'] ?? '' ), ' ·' ) ) . '</p></fieldset>';
+	return $html . '<p class="fpw-prices__note">' . esc_html( (string) ( $entry['note'] ?? '' ) ) . '</p></fieldset>';
 }
 
 /** References are informational. Buttons only copy a number into the editable offer field. */

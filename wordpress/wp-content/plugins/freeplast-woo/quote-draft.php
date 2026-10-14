@@ -658,7 +658,7 @@ function fpw_handle_draft_action_request( $order, array $draft, string $action )
 /** The refresh's server-side half (issue #52): its own CSRF, then the guarded refresh; the outcome is stashed for the screen like any save's. */
 function fpw_handle_draft_refresh_request( int $order_id, array $draft ): void {
 	if ( ! wp_verify_nonce( (string) ( $_POST['fpw_refresh_nonce'] ?? '' ), fpw_draft_refresh_action( $order_id ) ) ) {
-		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo. Nada se refrescó.', '', array( 'response' => 403 ) );
+		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo. No se cambiaron los precios.', '', array( 'response' => 403 ) );
 	}
 	$result = fpw_refresh_draft_prices( $order_id, $draft, get_current_user_id() );
 	fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => $result ) );
@@ -689,23 +689,23 @@ function fpw_draft_outcome_notice( array $result ): array {
 	$state = is_string( $result['state'] ?? null ) ? $result['state'] : '';
 	if ( str_starts_with( $state, 'approval-' ) ) { return fpw_approval_outcome_notice( $result ); }
 	if ( 'workspace-unsaved' === $state ) {
-		return array( 'class' => 'warn', 'title' => 'Cambios sin guardar: guarda o descarta antes de continuar.', 'lines' => array( 'Se conservaron tus entradas en el formulario. No se generó otra vista previa ni se refrescaron precios; los importes guardados siguen intactos.' ) );
+		return array( 'class' => 'warn', 'title' => 'Cambios sin guardar: guarda o descarta antes de continuar.', 'lines' => array( 'Se conservaron tus entradas en el formulario. No se generó otra vista previa ni se cambiaron precios; los importes guardados siguen intactos.' ) );
 	}
 	if ( 'saved' === $state ) {
 		$revision = (int) ( $result['work']['revision'] ?? 0 );
 		if ( ! empty( $result['refresh'] ) ) {
 			return array(
 				'class' => 'ok',
-				'title' => 'Precios refrescados desde el mantenedor (revisión ' . $revision . ').',
+				'title' => 'Precios actualizados.',
 				'lines' => array(
 					'Los precios ingresados manualmente se conservaron; las líneas sin precio elegido tomaron la sugerencia vigente de la lista, o quedaron pendientes si no la tienen.',
-					'Este refresco es un cambio comercial: los formularios abiertos con la revisión anterior quedaron desactualizados.',
+					'Los precios cambiaron. Si tienes este borrador abierto en otra pestaña, vuelve a abrirlo antes de editar.',
 				),
 			);
 		}
 		return array(
 			'class' => 'ok',
-			'title' => 'Cambios guardados (revisión ' . $revision . ').',
+			'title' => 'Cambios guardados.',
 			'lines' => array( 'Al volver a este borrador recuperarás estos valores. Guardar no aprueba ni envía ninguna cotización.' ),
 		);
 	}
@@ -713,7 +713,7 @@ function fpw_draft_outcome_notice( array $result ): array {
 		$stored = (int) ( $result['stored_revision'] ?? 0 );
 		return array(
 			'class' => 'warn',
-			'title' => 'Tu envío no se guardó: este borrador tiene una revisión más reciente guardada' . ( $stored > 0 ? ' (la ' . $stored . ').' : '.' ),
+			'title' => 'Tu envío no se guardó: este borrador tiene cambios más recientes.',
 			'lines' => array( 'Los valores que se muestran son los ya guardados y quedan conservados; nada fue sobrescrito. Revísalos y vuelve a guardar si corresponde.' ),
 		);
 	}
@@ -721,11 +721,11 @@ function fpw_draft_outcome_notice( array $result ): array {
 		$projection = is_array( $result['preview']['projection'] ?? null ) ? $result['preview']['projection'] : array();
 		return array(
 			'class' => 'ok',
-			'title' => 'Vista previa generada (revisión ' . (int) ( $result['preview']['revision'] ?? 0 ) . ').',
+			'title' => 'Vista previa generada.',
 			'lines' => array(
 				empty( $projection['missing'] )
-					? 'La proyección quedó guardada y ligada a esta revisión, y está completa: revisa sus importes, IVA, total y vigencia abajo.'
-					: 'La proyección quedó guardada y ligada a esta revisión, e identifica faltantes que bloquean la oferta completa: revisa la vista previa abajo.',
+					? 'Revisa los importes, IVA, total y vigencia antes de aprobar.'
+					: 'Faltan datos para completar la oferta. Revisa la vista previa antes de aprobar.',
 				'La vista previa no aprueba ni envía nada al comprador: ninguna versión, ningún documento, ningún correo.',
 			),
 		);
@@ -832,25 +832,16 @@ function fpw_draft_facts_html( array $identity, array $destination, bool $with_d
 	return $html;
 }
 
-/** The delivery-address provenance facts, honestly naming what the record carries (issue #59): an assistant selection is a recorded claim for review — never a certified delivery point; a manual entry is plainly manual; a record older than the feature carries no invented provenance. */
+/** Keep only the actionable broad-address warning; recorded metadata stays private. */
 function fpw_draft_provenance_facts_html( array $destination ): string {
-	$source = (string) ( $destination['source'] ?? '' );
-	if ( '' === $source ) { return fpw_draft_fact_html( 'Procedencia de la dirección', 'Sin registro' ); }
-	if ( 'asistida' === $source ) {
-		$scope = 'amplia' === ( $destination['scope'] ?? '' )
-			? 'Coincidencia amplia — revisar número y comuna'
-			: 'Coincidencia exacta';
-		return fpw_draft_fact_html( 'Procedencia de la dirección', 'Confirmada con el asistente de direcciones' )
-			. fpw_draft_fact_html( 'Alcance de la coincidencia', $scope )
-			. fpw_draft_fact_html( 'Identificación del lugar (Place ID)', (string) ( $destination['place_id'] ?? '' ) );
-	}
-	return fpw_draft_fact_html( 'Procedencia de la dirección', 'Ingresada manualmente' );
+	return 'asistida' === ( $destination['source'] ?? '' ) && 'amplia' === ( $destination['scope'] ?? '' )
+		? fpw_draft_fact_html( 'Dirección de entrega', 'Revisa el número y la comuna de entrega.' )
+		: '';
 }
 
-/** The Submitted Details, preserved verbatim behind a collapsible; empty when the record carried none. */
+/** Original submitted details remain stored, but are not customer-service UI. */
 function fpw_draft_submitted_details_html( $details ): string {
-	if ( ! is_array( $details ) || empty( $details ) ) { return ''; }
-	return '<details style="margin-top:10px"><summary>Datos originales recibidos</summary><pre>' . esc_html( (string) wp_json_encode( $details, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) ) . '</pre></details>';
+	return '';
 }
 
 /** The saved-work values the screen shows for one draft: the owner's saved adjustments over the receipt snapshot's defaults (identity-checked per line), with each line's current Price List suggestion (issue #52). */
@@ -1234,7 +1225,7 @@ function fpw_draft_no_draft_html( $order ): string {
 	return fpw_draft_screen_shell(
 		'<h1>Borrador de cotización</h1>'
 		. '<p class="fpw-draft__kicker">Solicitud ' . esc_html( $reference ) . '</p>'
-		. '<section><h2>Sin borrador</h2><p>Esta solicitud no tiene borrador inicial guardado: se creó antes de este registro automático o su creación falló. La solicitud sigue intacta y legible en su registro nativo; no se inventa ningún dato.</p>'
+		. '<section><h2>Sin borrador</h2><p>Esta solicitud no tiene borrador guardado. Puedes consultar los datos recibidos en la solicitud completa.</p>'
 		. '<p><a href="' . esc_url( fpw_draft_request_admin_url( $order_id ) ) . '">Ver solicitud completa</a></p></section>'
 	);
 }
@@ -1272,7 +1263,7 @@ function fpw_draft_history_section( array $draft ): string {
 	}
 	$fresh      = $history['freshness'];
 	$fresh_note = is_array( $fresh )
-		? 'Última carga aplicada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) $fresh['at'] ) ) . ' por ' . esc_html( $fresh['actor'] ) . ' (' . esc_html( $fresh['filename'] ) . '). '
+		? 'Última carga aplicada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) $fresh['at'] ) ) . ' por ' . esc_html( $fresh['actor'] ) . '. '
 		: '';
 	return '<section><h2>Historial de compras</h2>'
 		. '<p>' . count( $history['sales'] ) . ' ' . esc_html( 1 === count( $history['sales'] ) ? 'venta importada' : 'ventas importadas' ) . ' para el RUT ' . esc_html( $rut ) . ':</p>'
@@ -1287,7 +1278,7 @@ function fpw_draft_preview_generate_html( int $order_id ): string {
 		. '<input type="hidden" name="fpw_work_preview" value="1" />'
 		. wp_nonce_field( fpw_draft_preview_action( $order_id ), 'fpw_preview_nonce', true, false )
 		. '<button type="submit">Generar vista previa</button>'
-		. '<span class="fpw-draft__origin">Usa el trabajo guardado de este momento y queda ligado a su revisión; no aprueba ni envía nada al comprador.</span>'
+		. '<span class="fpw-draft__origin">Muestra los cambios guardados; no aprueba ni envía nada al comprador.</span>'
 		. '</form>';
 }
 
@@ -1316,7 +1307,7 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 	$order_id = (int) ( $draft['order_id'] ?? 0 );
 	$heading  = '<section class="fpw-draft__preview"><h2>Vista previa para el comprador</h2>';
 	if ( ! is_array( $preview ) ) {
-		return $heading . '<p>Aún no hay vista previa guardada: genera una para revisar la proyección que recibiría el comprador con el trabajo guardado hasta ahora.</p>' . fpw_draft_preview_generate_html( $order_id ) . '</section>';
+		return $heading . '<p>Aún no hay vista previa. Genera una para revisar los valores guardados antes de aprobar.</p>' . fpw_draft_preview_generate_html( $order_id ) . '</section>';
 	}
 	$projection = is_array( $preview['projection'] ?? null ) ? $preview['projection'] : null;
 	if ( null === $projection ) {
@@ -1327,11 +1318,11 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 	$obsolete = fpw_draft_preview_is_obsolete( $preview, $work );
 	$html = $heading
 		. ( $obsolete
-			? '<p class="fpw-draft__stale">Vista previa obsoleta: el trabajo del borrador cambió después de esta vista previa (quedó en la revisión ' . $current . ', esta revisó la ' . $revision . '). Ya no refleja lo guardado: genera una nueva. Ninguna aprobación futura puede usar esta vista previa para emitir valores distintos a los revisados.</p>'
-			: '<p class="fpw-draft__preview-ok">Vista previa de la revisión ' . $revision . ' · generada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $preview['created_at'] ?? 0 ) ) ) . '.</p>' )
+			? '<p class="fpw-draft__stale">Vista previa obsoleta: el borrador cambió. Genera una nueva y revisa los valores antes de aprobar.</p>'
+			: '<p class="fpw-draft__preview-ok">Vista previa generada el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $preview['created_at'] ?? 0 ) ) ) . '.</p>' )
 		. ( empty( $projection['missing'] )
-			? '<p class="fpw-draft__preview-state">La proyección está completa: todos los importes, el IVA y el total quedaron calculados.</p>'
-			: '<p class="fpw-draft__preview-state is-incomplete">La proyección identifica faltantes que bloquean la oferta completa:</p><ul class="fpw-draft__missing">'
+			? '<p class="fpw-draft__preview-state">La oferta está completa: revisa los importes, el IVA y el total antes de aprobar.</p>'
+			: '<p class="fpw-draft__preview-state is-incomplete">Completa estos datos antes de aprobar:</p><ul class="fpw-draft__missing">'
 				. implode( '', array_map( static fn( $item ) => '<li>' . esc_html( (string) $item ) . '</li>', (array) $projection['missing'] ) ) . '</ul>' );
 	$rows = '';
 	foreach ( (array) ( $projection['lines'] ?? array() ) as $line ) { $rows .= fpw_draft_preview_line_html( is_array( $line ) ? $line : array() ); }
@@ -1375,7 +1366,7 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?array $notice = null ): string {
 	if ( ! $draft ) {
 		if ( ! $order || ! method_exists( $order, 'get_id' ) ) {
-			return fpw_draft_screen_shell( '<h1>Borrador de cotización</h1><p><strong>Solicitud no encontrada.</strong> El enlace está incompleto o la solicitud no existe. Ningún dato se muestra sin su registro nativo.</p>' );
+			return fpw_draft_screen_shell( '<h1>Borrador de cotización</h1><p><strong>Solicitud no encontrada.</strong> El enlace está incompleto o la solicitud no existe. Vuelve a la lista de solicitudes.</p>' );
 		}
 		return fpw_draft_no_draft_html( $order );
 	}
@@ -1400,7 +1391,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$heading = '<p class="fpw-draft__kicker">Solicitud <strong>' . esc_html( (string) ( $draft['reference'] ?? '' ) ) . '</strong> · recibida el ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $draft['received_at'] ?? 0 ) ) ) . '</p>'
 		. '<h1>Borrador de cotización</h1>'
 		. '<span class="fpw-draft__status">Borrador inicial · pendiente de completar</span>'
-		. ( $revision > 0 ? '<p class="fpw-draft__work-status">Ajustes guardados · revisión ' . $revision . ' · ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $work['updated_at'] ?? 0 ) ) ) . '</p>' : '' )
+		. ( $revision > 0 ? '<p class="fpw-draft__work-status">Ajustes guardados · ' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $work['updated_at'] ?? 0 ) ) ) . '</p>' : '' )
 		. '<p class="fpw-draft__summary">' . count( $items ) . ' ' . esc_html( 1 === count( $items ) ? 'producto' : 'productos' ) . ' · ' . $units . ' ' . esc_html( 1 === $units ? 'unidad' : 'unidades' ) . ' · ' . ( $with_dispatch ? 'con despacho' : 'sin despacho' ) . '</p>'
 		. '<p class="fpw-draft__guard">Este borrador es privado y aún no constituye una cotización emitida: el comprador no ha recibido precios ni documentos.</p>';
 
@@ -1411,8 +1402,6 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. wp_nonce_field( fpw_draft_refresh_action( $order_id ), 'fpw_refresh_nonce', true, false );
 	$save_section = '<section class="fpw-draft__save"><h2>Guardar trabajo</h2>'
 		. '<button type="submit">Guardar cambios del borrador</button> '
-		. '<button type="submit" name="fpw_price_refresh" value="1">Refrescar precios desde el mantenedor</button>'
-		. '<p class="fpw-draft__aside-note">Refrescar toma las sugerencias vigentes del mantenedor para las líneas sin precio elegido y conserva tus ingresos manuales: es un cambio comercial que desactualiza los formularios abiertos de la revisión anterior.</p>'
 		. '<p class="fpw-draft__aside-note">Guardar solo conserva tu trabajo: no aprueba ni envía ninguna cotización al comprador. Cada valor que ingresas es un ajuste manual que afecta solo a este borrador, nunca a una lista general ni a otro cliente.</p></section>';
 
 	$sections = fpw_draft_notice_html( $notice )
@@ -1436,9 +1425,9 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	if ( ! is_array( $preview ) ) {
 		$preview_state = fpw_draft_pending_html();
 	} elseif ( fpw_draft_preview_is_obsolete( $preview, $work ) ) {
-		$preview_state = 'Obsoleta — el trabajo cambió después de la revisión ' . max( 0, (int) ( $preview['revision'] ?? 0 ) );
+		$preview_state = 'Desactualizada: genera una nueva antes de aprobar.';
 	} else {
-		$preview_state = 'Generada (revisión ' . $revision . ')';
+		$preview_state = 'Generada';
 	}
 
 	$aside = '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
