@@ -246,7 +246,7 @@ $none_order = new FPWP_Order( array( '_fp_request' => 'yes', '_billing_fp_dispat
 $none_draft = fpw_build_request_draft_payload( $none_order );
 check( $none_draft['destination']['dispatch'] === 'no' && $none_draft['destination']['source'] === '', 'a no-dispatch record carries no destination provenance' );
 $html_none = fpw_quote_draft_markup( $none_order, $none_draft );
-check( str_contains( $html_none, 'no pide despacho' ) && ! str_contains( $html_none, 'Procedencia' ), 'the no-dispatch section renders no provenance row' );
+check( str_contains( $html_none, 'Retiro - Sin Despacho' ) && str_contains( $html_none, 'Punto de retiro' ) && ! str_contains( $html_none, 'Procedencia' ), 'the no-dispatch section renders pickup selection without provenance' );
 
 $canonical = $GLOBALS['transport_place'];
 foreach ( array(401, 403, 404, 429, 500, 'network') as $status ) {

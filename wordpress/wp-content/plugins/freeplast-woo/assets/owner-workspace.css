@@ -172,6 +172,9 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace-dock strong{font-size:16px;color:var(--ink)}
 .fpw-workspace-dock button{max-width:60%}
 #fpw-products,#fpw-history{scroll-margin-top:16px}
+.fpw-workspace [aria-invalid="true"]{outline:2px solid var(--blue,#100090);outline-offset:2px;background:#eeedf8;scroll-margin-block:100px}
+.fpw-field-error{display:block;color:var(--ink);font-size:14px;line-height:1.5;margin-block:8px}
+.fpw-field-error[hidden]{display:none}
 @media(min-width:600px){.fpw-workspace-body{padding:24px 24px 48px}.fpw-request-views{max-width:560px}.fpw-workspace-search{max-width:760px}.fpw-product-inputs{max-width:560px}.fpw-workspace-editor>form,.fpw-workspace-summary{padding:24px}.fpw-workspace table{font-size:14px}}
 @media(min-width:900px){.fpw-workspace-dock{display:none}.fpw-workspace-editable .fpw-workspace-body{padding-bottom:48px}.fpw-workspace-editor{grid-template-columns:minmax(0,1fr) 300px}.fpw-workspace-summary{position:sticky;top:24px}}
 @media(min-width:1150px){.fpw-workspace-editor{grid-template-columns:minmax(0,1fr) 340px}.fpw-workspace-row,.fpw-inbox-head{grid-template-columns:minmax(240px,2fr) minmax(200px,1fr) 160px 76px;align-items:center;gap:20px}.fpw-inbox-head{display:grid;padding:16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}.fpw-workspace-row>div:first-child,.fpw-workspace-row>.fpw-request-state{grid-column:auto}.fpw-workspace-row-total{text-align:right}.fpw-workspace-row .fpw-request-state{display:grid}}

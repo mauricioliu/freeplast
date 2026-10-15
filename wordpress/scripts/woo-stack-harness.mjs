@@ -943,16 +943,17 @@ register_shutdown_function( static function () {
            edit — sin despacho is different from dispatch not yet priced. */
         const noDispatchInitial = await (await owner(editUrl(raceOrder))).text();
         check(!noDispatchInitial.includes('name="fpw_work[destination]"') && !noDispatchInitial.includes('name="fpw_work[dispatch_amount]"'), 'a no-dispatch draft offers no working destination or freight input');
-        check(noDispatchInitial.includes('no incluye destino de entrega ni flete'), 'the no-dispatch work offer states it excludes the delivery destination and freight');
+        check(noDispatchInitial.includes('Retiro - Sin Despacho') && noDispatchInitial.includes('Punto de retiro') && noDispatchInitial.includes('No incluye flete.'), 'the no-dispatch work offer selects pickup and explicitly excludes freight');
         const noDispatchSave = await postForm(owner, raceOrder, {
           'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${raceOrder}`),
           ...lineFields(draftState.records[raceOrder], (i) => (i === 0 ? 1490 : null)),
-          'fpw_work[destination]': 'Intento de destino', 'fpw_work[dispatch_amount]': '5000',
+          'fpw_work[destination]': 'Intento de destino', 'fpw_work[dispatch_amount]': '5000', 'fpw_work[pickup_location]': 'mostazal',
         });
         check((await noDispatchSave.text()).includes('Cambios guardados.'), 'the no-dispatch draft saves its line work');
         const noDispatchReopened = await (await owner(editUrl(raceOrder))).text();
         check(/name="fpw_work\[lines\]\[0\]\[price\]" value="1490"/.test(noDispatchReopened), 'the saved price is recovered on reopening');
         check(!noDispatchReopened.includes('Intento de destino') && !noDispatchReopened.includes('name="fpw_work[dispatch_amount]"'), 'the posted destination and freight stay out of a no-dispatch draft');
+        check(noDispatchReopened.includes('value="mostazal" checked'), 'the selected pickup survives reopening independently of ignored delivery inputs');
 
         /* The dispatch request: real edit → save → reopen, every chosen value
            recovered. */
@@ -1022,7 +1023,7 @@ register_shutdown_function( static function () {
         const twoLineHtml = await (await postForm(owner, staleOrder, {
           'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${staleOrder}`),
           ...lineFields(staleRecord, (i) => (i === 0 ? 990 : null)),
-          'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '',
+          'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[pickup_location]': 'mostazal',
         })).text();
         check(twoLineHtml.includes('Cambios guardados.'), 'the two-line draft saves');
         const twoLineReopened = await (await owner(editUrl(staleOrder))).text();
@@ -1549,14 +1550,14 @@ register_shutdown_function( static function () {
       const correctRecord5f = draftState.records[correctOrder];
       const mailBefore5f = mailCount5f();
 
-      /* The draft is still incomplete from cut 5's journey: the dispatch
-         amount was entered for other conditions. The preview names the
-         faltante instead of passing the stale amount off as an offer. */
+      /* Incomplete saved work names its gaps but cannot create a stored preview. */
+      const pendingReviewState = () => sh(PHP, [WPCLI, 'eval', `echo wp_json_encode(array_map(static fn($id) => array(fpw_read_draft_work($id), fpw_read_draft_preview($id)), array(${correctOrder}, ${staleOrder})));`, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+      const beforeIncompleteReviews = pendingReviewState();
       const incompletePreview = await (await postForm5f(owner, correctOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${correctOrder}`),
       })).text();
-      check(incompletePreview.includes('Vista previa generada.'), 'the owner generates a preview of the draft as it stands');
-      check(incompletePreview.includes('Completa estos datos antes de aprobar:') && incompletePreview.includes('class="fpw-draft__missing"') && !incompletePreview.includes('name="fpw_work_approve"'), 'the incomplete preview names its faltantes explicitly and blocks approval');
+      check(!incompletePreview.includes('Vista previa generada.') && incompletePreview.includes('name="fpw_work_revision"'), 'an incomplete preview request stays in the legacy editor without generating a review');
+      check(incompletePreview.includes('No se guardó nada') && !incompletePreview.includes('name="fpw_work_approve"'), 'the incomplete review reports refusal and offers no approval');
       check(incompletePreview.includes('requiere revisión'), 'the stale dispatch amount is a named faltante, never silently offered');
 
       /* A two-line no-dispatch fixture with one line still unpriced: the
@@ -1564,8 +1565,9 @@ register_shutdown_function( static function () {
       const twoLinePreview = await (await postForm5f(owner, staleOrder, {
         'fpw_work_preview': '1', 'fpw_preview_nonce': await mint5f(owner, `fpw-draft-preview-${staleOrder}`),
       })).text();
-      check(twoLinePreview.includes('Vista previa generada.'), 'the two-line draft previews its saved work');
+      check(!twoLinePreview.includes('Vista previa generada.') && !twoLinePreview.includes('name="fpw_work_approve"'), 'the unpriced two-line draft cannot generate a review or offer approval');
       check(twoLinePreview.includes('Falta el precio neto'), 'the pending line price is a named faltante, distinguished from zero');
+      check(pendingReviewState() === beforeIncompleteReviews, 'refused previews leave both saved drafts and prior preview rows unchanged');
 
       /* Complete the commercial work: the line priced, the dispatch amount
          re-entered for the current conditions, ten days of validity. */
@@ -1747,7 +1749,7 @@ register_shutdown_function( static function () {
           'pdf_header' => substr( (string) $pdf, 0, 8 ),
           'pdf_tail' => substr( rtrim( (string) $pdf ), -5 ),
           'pdf_producer' => str_contains( $inspection['info'], 'dompdf 3.1.6' ),
-          'pdf_numeric_date' => (bool) preg_match('~Fecha de aprobación: [0-9]{2}/[0-9]{2}/[0-9]{4}~', $text),
+          'pdf_numeric_date' => preg_match('~Fecha: ([0-9]{2}/[0-9]{2}/[0-9]{4})~', $text, $date_match) === 1 && $date_match[1] === wp_date('d/m/Y', $version['approved_at']),
           'pdf_sha256' => hash( 'sha256', $pdf ),
           'pdf_has_reference' => str_contains( $text, (string) ( $version['reference'] ?? '' ) ),
           'pdf_has_total' => str_contains( $text, '${totalLabel56} CLP' ),
@@ -1765,7 +1767,7 @@ register_shutdown_function( static function () {
       check(versionState56.document === 'ready' && versionState56.delivery === 'accepted', 'document ready and mail accepted are recorded on the version');
       check(versionState56.pdf_header.startsWith('%PDF-') && versionState56.pdf_tail === '%%EOF' && versionState56.pdf_producer, 'the frozen document parses independently and uses the approved pinned PDF library');
       check(buyerMail56.attachment_sha256?.[0] === versionState56.pdf_sha256, 'the intercepted attachment is byte-identical to the durable PDF');
-      check(versionState56.pdf_numeric_date, 'the approval date is unambiguous day/month/year even when the WP installation locale is English');
+      check(versionState56.pdf_numeric_date, 'the PDF Fecha is day/month/year and matches the frozen approval timestamp even in an English WP locale');
       check(versionState56.pdf_has_reference && versionState56.pdf_has_total && versionState56.pdf_has_validity, `the PDF carries the reference, the exact total (${totalLabel56} CLP) and the reviewed validity`);
       check(versionState56.pdf_clean && versionState56.mail_clean && versionState56.mail_shows_total, 'the buyer document and mail exclude history and internal origins while showing the approved values');
       check(versionState56.issuance_rows === 1, 'exactly one issuance row exists after the approval');
@@ -1796,10 +1798,10 @@ register_shutdown_function( static function () {
       check(versionRow56(placesJourneyIds.asistida) === null, 'the denied approvals created no version');
       check(mailCount56() === mails56Before + 1, 'the denied approvals mailed nobody');
 
-      /* An incomplete offer can never be approved: the faltante is named. */
+      /* The incomplete offer could not create a preview; approval must fail closed. */
       const refusedApprove56 = await approvePost56(owner, staleOrder, await mint(owner, `fpw-draft-approve-${staleOrder}`));
       const refusedHtml56 = await refusedApprove56.text();
-      check(refusedHtml56.includes('Nada se aprobó') && refusedHtml56.includes('Falta el precio neto'), 'an incomplete offer cannot be approved and names its faltante');
+      check(refusedHtml56.includes('Nada se aprobó') && refusedHtml56.includes('no tiene una vista previa guardada'), 'an incomplete offer cannot be approved without a stored complete review');
       check(versionRow56(staleOrder) === null && mailCount56() === mails56Before + 1, 'the refused approval created nothing and mailed nobody');
 
       /* The document stage fails: the version stands approved with a pending
@@ -1840,10 +1842,12 @@ register_shutdown_function( static function () {
       const sinSave56 = await postForm56(owner, placesJourneyIds.sindespacho, {
         'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint(owner, `fpw-draft-save-${placesJourneyIds.sindespacho}`),
         ...lineFields56(sinRecord56, () => 1490),
-        'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '',
+        'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '', 'fpw_work[pickup_location]': 'mostazal',
       });
       check((await sinSave56.text()).includes('Cambios guardados.'), 'the no-dispatch draft completes its work');
-      await postForm56(owner, placesJourneyIds.sindespacho, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.sindespacho}`) });
+      const sinPreview56 = await postForm56(owner, placesJourneyIds.sindespacho, { 'fpw_work_preview': '1', 'fpw_preview_nonce': await mint(owner, `fpw-draft-preview-${placesJourneyIds.sindespacho}`) });
+      const sinPreviewHtml56 = await sinPreview56.text();
+      check(sinPreviewHtml56.includes('Vista previa generada.') && approvalToken56(sinPreviewHtml56).length === 64, 'the no-dispatch fixture has a complete pickup review before testing transport failure');
       setDeliveryScenario('rejected');
       const rejected56 = await approvePost56(owner, placesJourneyIds.sindespacho, await mint(owner, `fpw-draft-approve-${placesJourneyIds.sindespacho}`));
       check((await rejected56.text()).includes('el correo fue rechazado por el transporte'), 'a rejected mail is named as rejected, never as a delivery');

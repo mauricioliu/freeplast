@@ -51,6 +51,48 @@
     const value = BigInt(text);
     return value > 0n && value <= max ? value : null;
   };
+  const staleFreight = (dispatch, destination, quantities) => {
+    const basis = calculation.conditions;
+    return dispatch !== null && dispatch === BigInt(calculation.savedAmount ?? 0) && basis &&
+      (destination !== basis.destination || quantities.length !== basis.quantities?.length || quantities.some((quantity, i) => quantity === null || quantity !== BigInt(basis.quantities[i])));
+  };
+  let reviewAttempted = !!work?.querySelector('[aria-invalid="true"]');
+  const validateReview = (focus = false) => {
+    const invalid = [];
+    fields().filter(field => field.hasAttribute('data-fpw-review-field')).forEach((field, index) => {
+      field.setCustomValidity('');
+      const value = field.value.trim();
+      let message = '';
+      if (/\[(price|dispatch_amount)\]$/.test(field.name) && integer(value, 8, 99999999n) === null) message = 'Ingresa un monto entero entre 1 y 99.999.999 CLP.';
+      else if (/\[quantity\]$/.test(field.name) && integer(value, 7, 1000000n) === null) message = 'Ingresa una cantidad entera entre 1 y 1.000.000.';
+      else if (/\[validity_days\]$/.test(field.name) && (field.validity.badInput || (value && integer(value, 3, 365n) === null))) message = 'Ingresa una vigencia entre 1 y 365 días, o deja el valor por defecto.';
+      else if (/\[destination\]$/.test(field.name) && (!value || new TextEncoder().encode(value).length > 800)) message = 'Completa el destino (máximo 800 caracteres).';
+      else if (/\[pickup_location\]$/.test(field.name) && !work.querySelector('[name="fpw_work[pickup_location]"]:checked')) message = 'Selecciona el punto de retiro.';
+      if (/\[dispatch_amount\]$/.test(field.name) && !message) {
+        const quantities = fields().filter(node => /\[quantity\]$/.test(node.name)).map(node => integer(node.value, 7, 1000000n));
+        if (staleFreight(integer(value, 8, 99999999n), work.elements.namedItem('fpw_work[destination]')?.value || '', quantities)) message = 'Revisa el monto de despacho: cambió el destino o las cantidades.';
+      }
+      let note = document.getElementById(field.getAttribute('aria-describedby'));
+      if (!note && message) {
+        note = document.createElement('span'); note.id = `fpw-review-error-${index}`; note.className = 'fpw-field-error'; field.after(note);
+        field.setAttribute('aria-describedby', note.id);
+      }
+      if (note) { note.textContent = message; note.hidden = !message; }
+      if (message) { field.setAttribute('aria-invalid', 'true'); field.setCustomValidity(message); invalid.push(field); }
+      else field.removeAttribute('aria-invalid');
+    });
+    const fiscalMissing = work?.hasAttribute('data-fpw-calculation') && !Number.isInteger(calculation.tax?.rate_permille);
+    let notice = root.querySelector('[data-fpw-review-error]');
+    if (!notice && (invalid.length || fiscalMissing)) {
+      notice = document.createElement('p'); notice.dataset.fpwReviewError = ''; notice.className = 'fpw-workspace-notice'; notice.setAttribute('role', 'alert'); notice.tabIndex = -1; work.prepend(notice);
+    }
+    if (notice) { notice.hidden = !invalid.length && !fiscalMissing; notice.textContent = fiscalMissing ? 'Falta la política fiscal confirmada (IVA). Solicita su configuración.' : 'Completa los datos señalados antes de revisar la cotización.'; }
+    if (focus && (invalid.length || fiscalMissing)) {
+      const target = invalid[0] || notice;
+      target.scrollIntoView?.({block:'center'}); target.focus(); invalid[0]?.reportValidity();
+    }
+    return !invalid.length && !fiscalMissing;
+  };
   const money = value => value === null ? 'Por definir' : `${value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} CLP`;
   const estimate = () => {
     const quantities = [];
@@ -72,11 +114,9 @@
     if (calculation.dispatch) {
       dispatch = integer(work.elements.namedItem('fpw_work[dispatch_amount]')?.value, 8, 99999999n);
       const destination = work.elements.namedItem('fpw_work[destination]')?.value || '';
-      const basis = calculation.conditions;
       // ponytail: ambiguous WordPress sanitation stays pending; expand only with shared normalization tests.
       const safeDestination = destination !== '' && destination === destination.trim() && !/[<>&%\r\t]| {2}/.test(destination) && new TextEncoder().encode(destination).length <= 800;
-      const stale = dispatch !== null && dispatch === BigInt(calculation.savedAmount ?? 0) && basis &&
-        (destination !== basis.destination || quantities.length !== basis.quantities?.length || quantities.some((quantity, i) => quantity === null || quantity !== BigInt(basis.quantities[i])));
+      const stale = staleFreight(dispatch, destination, quantities);
       if (!safeDestination) warning = 'Completa o revisa el destino antes de revisar la cotización.';
       else if (stale) warning = 'Despacho requiere revisión: cambió el destino o las cantidades. Revisa el monto de despacho antes de continuar.';
       else if (dispatch === null) warning = 'Ingresa el monto de despacho (1 a 99.999.999 CLP); no equivale a cero.';
@@ -158,7 +198,7 @@
     });
   };
   work?.addEventListener('reset', () => {
-    setTimeout(syncPallets, 0);
+    setTimeout(() => { syncPallets(); if (reviewAttempted) validateReview(); }, 0);
     if (rejected) { setTimeout(setWorkDirty, 0); return; }
     workDirty = false;
     restoreAmounts();
@@ -174,6 +214,7 @@
       guarded.forEach(([button]) => { button.disabled = true; });
     } else restoreAmounts();
     syncActions();
+    if (reviewAttempted) validateReview();
   };
   if (work?.dataset.fpwUnsaved === '1') {
     setWorkDirty();
@@ -202,6 +243,10 @@
   });
   root.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', event => {
+      if (form === work && event.submitter?.name === 'fpw_work_preview') {
+        reviewAttempted = true;
+        if (!validateReview(true)) { event.preventDefault(); return; }
+      }
       if (workDirty && (form !== work || event.submitter?.name === 'fpw_price_refresh')) {
         event.preventDefault();
         let notice = form.querySelector('[data-fpw-unsaved-warning]');

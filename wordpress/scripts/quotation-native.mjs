@@ -36,7 +36,7 @@ export async function runQuotationNativeFailures({ owner, makeCookieFetch, mint,
     const saved = await postForm(owner, id, {
       fpw_work_save: '1', fpw_work_revision: '0', fpw_draft_nonce: await mint(owner, `fpw-draft-save-${id}`),
       'fpw_work[lines][0][quantity]': '2', 'fpw_work[lines][0][price]': '3210',
-      'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '12',
+      'fpw_work[destination]': '', 'fpw_work[dispatch_amount]': '', 'fpw_work[validity_days]': '12', 'fpw_work[pickup_location]': 'mostazal',
     });
     check((await saved.text()).includes('Cambios guardados.'), `quotation ${label}: owner completes the offer over HTTP`);
     check(wpEval(`echo fpw_draft_work_revision(fpw_read_draft_work(${id}));`) === '1' && wpEval(`echo fpw_read_draft_work(${id})['lines'][0]['price'];`) === '3210', `quotation ${label}: saved revision and price persist independently of notice copy`);

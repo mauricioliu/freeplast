@@ -878,9 +878,10 @@ $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '91' );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
 fpw_handle_draft_posted_action();
 ob_start(); fpw_render_quote_draft_screen(); $page = ob_get_clean();
-check( str_contains( $page, 'Vista previa generada.' ) && ! str_contains( $page, 'Aprobar y enviar' ), 'an incomplete offer is never offered the approval button' );
+check( ! str_contains( $page, 'Vista previa generada.' ) && ! str_contains( $page, 'Aprobar y enviar' ), 'an incomplete offer cannot generate a preview or offer approval' );
+check( fpw_read_draft_preview( 91 )['revision'] !== 4, 'incomplete preview request does not replace the previous stored review' );
 $page = fpwd_approve_and_render( 91 );
-check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'Falta el precio neto' ), 'an incomplete offer is refused with its named faltante' );
+check( str_contains( $page, 'Nada se aprobó' ) && str_contains( $page, 'obsoleta' ), 'incomplete preview cannot replace the old review or authorize approval' );
 check( ! isset( $GLOBALS['fpwd_table']['fpw_quotation_91'] ) && $mail_calls === count( $GLOBALS['fpwd_mail_calls'] ), 'the incomplete refusal created nothing and mailed nobody' );
 
 /* Complete the work again: the current review offers Aprobar y enviar with its own action and nonce. */

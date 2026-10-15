@@ -5,6 +5,60 @@ export function runOwnerWorkspaceJsTests() {
   let checks = 0;
   const check = (ok, message) => { if (!ok) throw new Error(message); checks++; };
   const source = readFileSync(new URL('../wp-content/plugins/freeplast-woo/assets/owner-workspace.js', import.meta.url), 'utf8');
+  // No workspace script: native click must reach PHP despite invalid min/max fields.
+  for (const action of ['main', 'mobile']) {
+    const dom = new JSDOM('<form id="edit" novalidate><input type="number" min="1" value="0"><input type="number" max="365" value="366"><button id="main">Revisar</button></form><button id="mobile" form="edit">Revisar móvil</button>');
+    try {
+      const doc = dom.window.document, form = doc.querySelector('form');
+      let submitted = false;
+      form.addEventListener('submit', event => { event.preventDefault(); submitted = true; });
+      doc.getElementById(action).click();
+      check(submitted && !form.checkValidity(), `${action}: no-JS native click submits all invalid values for aggregate server validation`);
+      submitted = false; form.noValidate = false; doc.getElementById(action).click();
+      check(!submitted, 'regression control: native constraints otherwise intercept before server validation');
+    } finally { dom.window.close(); }
+  }
+  for (const dispatch of [false, true]) {
+    for (const action of ['main', 'mobile']) {
+      const dom = new JSDOM(`<div class="fpw-workspace"><form id="edit" data-fpw-work data-fpw-calculation='${JSON.stringify({dispatch, tax:{rate_permille:190}, savedAmount:20, conditions:dispatch ? {destination:'Calle 1', quantities:[2]} : null})}'>
+        <input data-fpw-review-field type="number" name="fpw_work[lines][0][quantity]" value="0">
+        <input data-fpw-review-field type="number" name="fpw_work[lines][0][price]" value="">
+        ${dispatch ? '<textarea data-fpw-review-field name="fpw_work[destination]"></textarea><input data-fpw-review-field type="number" name="fpw_work[dispatch_amount]" value="">' : '<input data-fpw-review-field type="radio" name="fpw_work[pickup_location]" value="mostazal"><input data-fpw-review-field type="radio" name="fpw_work[pickup_location]" value="los-paltos">'}
+        <input data-fpw-review-field type="number" name="fpw_work[validity_days]" value="366">
+        <button id="main" name="fpw_work_preview">Revisar</button><button id="save" name="fpw_work_save">Guardar</button></form>
+        <button id="mobile" form="edit" name="fpw_work_preview">Revisar móvil</button></div>`, {runScripts:'outside-only'});
+      try {
+        dom.window.TextEncoder = TextEncoder;
+        dom.window.eval(source);
+        const doc = dom.window.document, form = doc.querySelector('form');
+        const submit = id => { const event = new dom.window.SubmitEvent('submit', {bubbles:true, cancelable:true, submitter:doc.getElementById(id)}); form.dispatchEvent(event); return event; };
+        check(submit(action).defaultPrevented && doc.querySelectorAll('[aria-invalid="true"]').length === 5, `${action}: every missing field marked, review blocked`);
+        check(doc.activeElement.name.endsWith('[quantity]') && doc.activeElement.validationMessage.includes('cantidad'), `${action}: first invalid field focused with native floating help`);
+        check(!submit('save').defaultPrevented, 'incomplete draft still submits explicit save');
+        const set = (suffix, value) => { const field = form.elements.namedItem(`fpw_work${suffix}`); field.value = value; field.dispatchEvent(new dom.window.Event('input', {bubbles:true})); };
+        set('[lines][0][quantity]', '1'); set('[lines][0][price]', '10'); set('[validity_days]', '');
+        if (dispatch) {
+          set('[destination]', 'Calle 1');
+          for (const amount of ['20', '020', '00000020']) {
+            set('[dispatch_amount]', amount);
+            check(submit(action).defaultPrevented && form.elements.namedItem('fpw_work[dispatch_amount]').validationMessage.includes('Revisa el monto'), 'numerically unchanged freight blocks stale review, including leading zeros');
+          }
+          set('[dispatch_amount]', '21');
+        }
+        else { const radio = form.querySelector('[type="radio"]'); radio.checked = true; radio.dispatchEvent(new dom.window.Event('change', {bubbles:true})); }
+        check(!doc.querySelector('[aria-invalid="true"]') && !submit(action).defaultPrevented, 'correction clears all errors; blank validity keeps default and permits review');
+      } finally { dom.window.close(); }
+    }
+  }
+  for (const existingNotice of ['', '<div class="fpw-workspace-notice" role="alert" tabindex="-1" data-fpw-review-error>Falta IVA</div>']) {
+    const dom = new JSDOM(`<div class="fpw-workspace">${existingNotice}<form data-fpw-work data-fpw-calculation='{"tax":[]}'><input data-fpw-review-field name="fpw_work[lines][0][price]" value="10"><button name="fpw_work_preview">Revisar</button></form></div>`, {runScripts:'outside-only'});
+    try {
+      dom.window.eval(source);
+      const doc = dom.window.document, form = doc.querySelector('form');
+      const event = new dom.window.SubmitEvent('submit', {bubbles:true, cancelable:true, submitter:doc.querySelector('button')}); form.dispatchEvent(event);
+      check(event.defaultPrevented && !doc.querySelector('[aria-invalid="true"]') && doc.activeElement === doc.querySelector('[data-fpw-review-error]') && doc.activeElement.textContent.includes('política fiscal'), 'new or server-rendered fiscal notice receives focus without field blame');
+    } finally { dom.window.close(); }
+  }
   for (const saved of ['0', '1']) {
     const dom = new JSDOM(`<div class="fpw-workspace">
       <form id="fpw-work-form" data-fpw-work data-fpw-has-saved="${saved}" data-fpw-calculation='{"tax":{"rate_permille":190,"applies_to_dispatch":false},"dispatch":false}' ><input name="fpw_work[lines][0][quantity]" value="100"><input name="fpw_work[lines][0][price]" value="1500"></form>

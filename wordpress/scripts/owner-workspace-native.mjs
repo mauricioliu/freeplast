@@ -24,9 +24,15 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     $order->update_meta_data('_billing_fp_dispatch', 'no'); $order->update_meta_data('_billing_fp_rut', '76.543.210-K');
     $order->add_product($product, 2); $order->save();
     do_action('woocommerce_checkout_order_created', $order);
+    $dispatch = wc_create_order(); $dispatch->set_address($order->get_address('billing'), 'billing');
+    $dispatch->set_billing_company('Despacho prueba ${suffix}');
+    $dispatch->update_meta_data('_fp_request', 'yes'); $dispatch->update_meta_data('_fpw_attempt', hash('sha256', '${suffix}-dispatch'));
+    $dispatch->update_meta_data('_billing_fp_dispatch', 'si'); $dispatch->update_meta_data('_billing_fp_address', 'Calle prueba 1');
+    $dispatch->add_product($product, 2); $dispatch->save();
+    do_action('woocommerce_checkout_order_created', $dispatch);
     $legacy = wc_create_order(); $legacy->set_billing_company('Antigua ${suffix}');
     $legacy->update_meta_data('_fp_request', 'yes'); $legacy->save();
-    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'data'=>$data,'quote'=>$quote,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id(),'legacy'=>$legacy->get_id()));
+    echo wp_json_encode(array('owner'=>$owner,'staff'=>$staff,'data'=>$data,'quote'=>$quote,'password'=>$password,'product'=>$product->get_id(),'order'=>$order->get_id(),'dispatch'=>$dispatch->get_id(),'dispatchUrl'=>fpw_draft_screen_url($dispatch->get_id()),'legacy'=>$legacy->get_id()));
   `));
   const owner = makeCookieFetch(), staff = makeCookieFetch(), guest = makeCookieFetch();
   const inbox = '/wp-admin/admin.php?page=fpw-quotations';
@@ -108,7 +114,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     check(beforeSending.querySelectorAll('[data-fpw-request]').length === 0, 'workspace: received request is not automatically sent');
     const work = detail.querySelector('form[data-fpw-work]');
     check(!!work, 'workspace: A exposes a real quotation editing form');
-    const values = {...formValues(work, detail.querySelector('button[name="fpw_work_save"]')), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7'};
+    const values = {...formValues(work, detail.querySelector('button[name="fpw_work_save"]')), 'fpw_work[lines][0][quantity]':'3', 'fpw_work[lines][0][price]':'1500', 'fpw_work[validity_days]':'7', 'fpw_work[pickup_location]':'mostazal'};
     const saved = document(await (await post(owner, values)).text());
     check(saved.body.textContent.includes('Cambios guardados'), 'workspace: quotation save uses the existing guarded action');
     const fresh = document(await (await owner(detailUrl)).text());
@@ -129,17 +135,41 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const refreshFields = {...formValues(previewButton.form), fpw_price_refresh:'1'};
     check(!!refreshFields.fpw_refresh_nonce && !fresh.querySelector('[data-fpw-refresh]'), 'workspace: refresh remains a nonce-guarded handler without a technical UI button');
     check((await post(owner, {...refreshFields, fpw_refresh_nonce:'forged'})).status === 403, 'workspace: explicit refresh handler rejects a forged nonce before considering changes');
-    for (const fields of [formValues(previewButton.form, previewButton), refreshFields]) {
-      const refused = document(await (await post(owner, fields)).text());
-      check(refused.body.textContent.includes('Cambios sin guardar') && refused.querySelector('[name="fpw_work[lines][0][quantity]"]')?.value === '350', 'workspace: native no-JS preview/refresh preserve unsaved submitted inputs');
-      const recovery = refused.querySelector('button[name="fpw_work_save"]');
-      const recoverFields = formValues(recovery.form, recovery);
-      check(recoverFields['fpw_work[lines][0][quantity]'] === '350' && recoverFields.fpw_work_save === '1' && !recoverFields.fpw_work_preview && !recoverFields.fpw_price_refresh, 'workspace: preserved no-JS inputs offer an explicit save without carrying the rejected action');
-      check(wpEval(`echo fpw_read_draft_work(${fixture.order})['lines'][0]['price'];`) === '1500', 'workspace: rejected preview/refresh preserves persisted price');
-      check(wpEval(`echo fpw_draft_work_revision(fpw_read_draft_work(${fixture.order}));`) === '1' && wpEval(`echo fpw_read_draft_preview(${fixture.order}) ? 'present' : 'absent';`) === 'absent', 'workspace: rejected no-JS action changes neither saved work nor preview');
+    const state = () => wpEval(`echo wp_json_encode(array('work'=>fpw_read_draft_work(${fixture.order}),'preview'=>fpw_read_draft_preview(${fixture.order}),'version'=>fpw_read_quotation_version(${fixture.order})));`);
+    const savedState = state();
+    const refused = document(await (await post(owner, refreshFields)).text());
+    check(refused.body.textContent.includes('Cambios sin guardar') && refused.querySelector('[name="fpw_work[lines][0][quantity]"]')?.value === '350', 'workspace: refresh preserves unsaved submitted inputs without saving');
+    const recovery = refused.querySelector('button[name="fpw_work_save"]');
+    const recoverFields = formValues(recovery.form, recovery);
+    check(recoverFields['fpw_work[lines][0][quantity]'] === '350' && recoverFields.fpw_work_save === '1' && !recoverFields.fpw_work_preview && !recoverFields.fpw_price_refresh, 'workspace: rejected refresh offers explicit save without carrying the rejected action');
+    check(state() === savedState, 'workspace: rejected refresh changes neither saved work nor preview');
+    const reviewFields = formValues(previewButton.form, previewButton);
+    check((await post(owner, {...reviewFields, fpw_draft_nonce:'forged'})).status === 403 && state() === savedState, 'workspace: review cannot save edits with a forged save nonce');
+    const invalid = document(await (await post(owner, {...reviewFields, 'fpw_work[lines][0][quantity]':'0', 'fpw_work[lines][0][price]':'', 'fpw_work[pickup_location]':'', 'fpw_work[validity_days]':'366'})).text());
+    check(invalid.querySelector('[data-fpw-work]')?.noValidate && !invalid.querySelector('.fpw-workspace-preview'), 'workspace: no-JS invalid review stays in aggregate-validating editor');
+    for (const name of ['lines][0][quantity', 'lines][0][price', 'pickup_location', 'validity_days']) {
+      check(invalid.querySelector(`[name="fpw_work[${name}]"]`)?.getAttribute('aria-invalid') === 'true', 'workspace: server marks invalid field ' + name);
     }
-    changedQuantity.value = '3';
-    const preview = document(await (await post(owner, formValues(previewButton.form, previewButton))).text());
+    check(invalid.querySelector('[autofocus]')?.name === 'fpw_work[lines][0][quantity]' && invalid.querySelector('[name="fpw_work[validity_days]"]').value === '366' && state() === savedState, 'workspace: first invalid focused, rejected values retained, malformed review writes nothing');
+    const incomplete = document(await (await post(owner, {...reviewFields, 'fpw_work[lines][0][price]':'', 'fpw_work[pickup_location]':'', 'fpw_work[validity_days]':''})).text());
+    const pendingState = JSON.parse(state());
+    check(incomplete.querySelector('[data-fpw-work]') && !incomplete.querySelector('.fpw-workspace-preview') && pendingState.work.lines[0].price === null && pendingState.preview === null && pendingState.version === null, 'workspace: incomplete review retains pending draft but creates no review or issuance');
+    const directIncomplete = document(await (await owner(detailUrl + '&review=1')).text());
+    check(directIncomplete.querySelector('[data-fpw-work]') && directIncomplete.querySelector('[aria-invalid="true"]') && !directIncomplete.querySelector('.fpw-workspace-preview'), 'workspace: direct incomplete review cannot bypass server validation');
+    const pendingSave = directIncomplete.querySelector('button[name="fpw_work_save"]');
+    const savedPending = document(await (await post(owner, formValues(pendingSave.form, pendingSave))).text());
+    check(savedPending.body.textContent.includes('Cambios guardados') && JSON.parse(state()).preview === null, 'workspace: explicit save accepts pending price and pickup with default validity');
+    const pendingForm = savedPending.querySelector('[data-fpw-work]');
+    const completeFields = {...formValues(pendingForm, savedPending.querySelector('[data-fpw-preview]')), 'fpw_work[lines][0][price]':'1500', 'fpw_work[pickup_location]':'mostazal'};
+    const changedReview = document(await (await post(owner, completeFields)).text());
+    const reviewedState = JSON.parse(state());
+    check(changedReview.querySelector('.fpw-workspace-preview') && reviewedState.work.lines[0].quantity === 350 && reviewedState.preview.revision === reviewedState.work.revision && reviewedState.preview.projection.complete && reviewedState.version === null, 'workspace: complete no-JS review saves current edits and binds preview without approval');
+    const reviewedSnapshot = state();
+    const staleReview = document(await (await post(owner, completeFields)).text());
+    check(staleReview.body.textContent.includes('cambios más recientes') && state() === reviewedSnapshot, 'workspace: stale review revision cannot overwrite current work or reviewed projection');
+    const adjust = document(await (await owner(detailUrl)).text());
+    const adjustButton = adjust.querySelector('[data-fpw-preview]');
+    const preview = document(await (await post(owner, {...formValues(adjustButton.form, adjustButton), 'fpw_work[lines][0][quantity]':'3'})).text());
     check(preview.body.textContent.includes('5.355 CLP'), 'workspace: server preview agrees with 3 × 1500 plus the configured synthetic tax');
     const approval = [...preview.querySelectorAll('form')].find(f => f.querySelector('[name="fpw_approve_preview"]'));
     check(!!approval, 'workspace: reviewed preview offers the bound approval action');
@@ -167,9 +197,33 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       const input = dom.window.document.querySelector('[name="fpw_work[lines][0][quantity]"]');
       input.value = '350'; input.dispatchEvent(new dom.window.Event('input', {bubbles:true}));
       check(dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('sin guardar'), 'workspace: editing labels transient totals as unsaved');
-      check(dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved values cannot be mistaken for the preview');
+      check(!dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved values remain reviewable through the guarded save-and-review action');
       check(dom.window.document.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: quantity does not change offered price');
     } finally { dom.window.close(); }
+    const dispatchPath = asSitePath(fixture.dispatchUrl);
+    const postDispatch = fields => owner(dispatchPath, {method:'POST', headers:{'content-type':'application/x-www-form-urlencoded'}, body:new URLSearchParams(fields).toString()});
+    const dispatchState = () => JSON.parse(wpEval(`echo wp_json_encode(array('work'=>fpw_read_draft_work(${fixture.dispatch}),'preview'=>fpw_read_draft_preview(${fixture.dispatch}),'version'=>fpw_read_quotation_version(${fixture.dispatch})));`));
+    const dispatchEditor = document(await (await owner(dispatchPath)).text());
+    const dispatchButton = dispatchEditor.querySelector('[data-fpw-preview]');
+    const dispatchFields = {...formValues(dispatchButton.form, dispatchButton), 'fpw_work[lines][0][price]':'1500', 'fpw_work[destination]':'', 'fpw_work[dispatch_amount]':''};
+    const missingDispatch = document(await (await postDispatch(dispatchFields)).text());
+    check(missingDispatch.querySelector('[name="fpw_work[destination]"]')?.getAttribute('aria-invalid') === 'true' && missingDispatch.querySelector('[name="fpw_work[dispatch_amount]"]')?.getAttribute('aria-invalid') === 'true' && dispatchState().preview === null, 'workspace: no-JS dispatch review marks missing destination and amount, without preview');
+    const dispatchRecovery = missingDispatch.querySelector('[data-fpw-preview]');
+    const completeDispatch = {...formValues(dispatchRecovery.form, dispatchRecovery), 'fpw_work[destination]':'Calle prueba 1', 'fpw_work[dispatch_amount]':'20'};
+    const dispatchReview = document(await (await postDispatch(completeDispatch)).text());
+    const dispatchReviewed = dispatchState();
+    check(dispatchReview.querySelector('.fpw-workspace-preview') && dispatchReviewed.preview.projection.complete, 'workspace: corrected delivery fields permit a complete native preview');
+    const dispatchAdjust = document(await (await owner(dispatchPath)).text());
+    const dispatchAdjustButton = dispatchAdjust.querySelector('[data-fpw-preview]');
+    const staleDispatchFields = {...formValues(dispatchAdjustButton.form, dispatchAdjustButton), 'fpw_work[lines][0][quantity]':'4', 'fpw_work[dispatch_amount]':'020'};
+    const staleDispatch = document(await (await postDispatch(staleDispatchFields)).text());
+    check(staleDispatch.querySelector('[data-fpw-work]') && staleDispatch.querySelector('[name="fpw_work[dispatch_amount]"]')?.getAttribute('aria-invalid') === 'true' && JSON.stringify(dispatchState().preview) === JSON.stringify(dispatchReviewed.preview), 'workspace: stale freight with leading zeros cannot replace native stored preview');
+    const staleRecovery = staleDispatch.querySelector('[data-fpw-preview]');
+    const correctedDispatch = document(await (await postDispatch({...formValues(staleRecovery.form, staleRecovery), 'fpw_work[dispatch_amount]':'21'})).text());
+    check(correctedDispatch.querySelector('.fpw-workspace-preview') && dispatchState().preview.projection.complete && dispatchState().version === null, 'workspace: corrected stale freight reviews without issuing');
+    // Per-process fiscal filter: native WP renderer, not a persistent/global HTTP configuration change.
+    const fiscal = document(wpEval(`add_filter('fpw_quotation_tax_config', static fn() => array(), 999); $_GET['review']='1'; echo fpw_workspace_detail_markup(wc_get_order(${fixture.dispatch}), fpw_read_request_draft(${fixture.dispatch}), fpw_read_draft_work(${fixture.dispatch}), null);`));
+    check(fiscal.querySelector('[data-fpw-work]') && fiscal.querySelector('[data-fpw-review-error]')?.getAttribute('tabindex') === '-1' && !fiscal.querySelector('[aria-invalid="true"]') && fiscal.body.textContent.includes('política fiscal'), 'workspace: native fiscal-only renderer blocks direct review with focusable explanation and no field blame');
     const searched = document(await (await owner(inbox + '&stage=all&q=' + encodeURIComponent(`workspace ${suffix}`))).text());
     check(searched.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: server search finds this company across ALL requests (an issued request no longer sits in the pending default)');
     const empty = document(await (await owner(inbox + '&q=unmatched-' + suffix)).text());
@@ -196,7 +250,10 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       $legacy=wc_get_order(${fixture.legacy}); if($legacy){$legacy->delete(true);}
       $order = wc_get_order(${fixture.order}); if ($order) $order->delete(true);
       wp_delete_post(${fixture.product}, true);
-      foreach (array('fpw_draft_', 'fpw_draft_work_', 'fpw_draft_preview_', 'fpw_quotation_', 'fpw_tracking_') as $prefix) delete_option($prefix . ${fixture.order});
+      $dispatch = wc_get_order(${fixture.dispatch}); if ($dispatch) $dispatch->delete(true);
+      foreach (array(${fixture.order}, ${fixture.dispatch}) as $id) {
+        foreach (array('fpw_draft_', 'fpw_draft_work_', 'fpw_draft_preview_', 'fpw_quotation_', 'fpw_tracking_') as $prefix) delete_option($prefix . $id);
+      }
     `);
   }
 }

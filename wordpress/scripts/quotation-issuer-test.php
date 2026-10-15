@@ -50,6 +50,7 @@ $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array();
 check(fpw_draft_validity_days(array('validity_days'=>7)) === 7, 'explicit saved validity is preserved');
 $probe = fpw_test_pdf_probe(base64_decode($issued['pdf_base64'], true));
 $text = preg_replace('/\s+/u', ' ', $probe['text']);
+check(preg_match('~Fecha: ([0-9]{2}/[0-9]{2}/[0-9]{4})~', $text, $date_match) === 1 && $date_match[1] === wp_date('d/m/Y', $issued['approved_at']), 'real PDF Fecha uses numeric day/month/year from the frozen approval timestamp');
 foreach (array('Freeplast SPA', '76.766.847-3', '390400602', 'Banco de Chile', 'P Picarquín', 'stock disponible', 'Pago contado') as $value) { check(str_contains($text,$value),'real PDF contains '.$value); }
 check(!str_contains($text,'retiro en bodega'), 'real dispatch PDF has no pickup promise');
 echo "quotation issuer: $assertions cumulative offline checks passed; no real mail\n";
