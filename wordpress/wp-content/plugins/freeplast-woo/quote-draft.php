@@ -407,11 +407,16 @@ function fpw_parse_draft_work_input( array $draft, array $posted ): array {
 			$dispatch_amount = null;
 		}
 	}
+	$pickup = fpw_draft_requests_dispatch( $draft ) ? '' : (string) ( $work_in['pickup_location'] ?? '' );
+	if ( '' !== $pickup && ! isset( fpw_pickup_locations()[ $pickup ] ) ) {
+		$errors[] = 'Selecciona un punto de retiro válido.';
+		$pickup = '';
+	}
 	$validity = fpw_parse_draft_validity( $work_in['validity_days'] ?? '' );
 	if ( 'invalid' === $validity ) {
 		$errors[] = 'La vigencia de la oferta debe ser un entero entre 1 y ' . FPW_DRAFT_MAX_VALIDITY_DAYS . ' días, o quedar vacía para usar la vigencia por defecto.';
 	}
-	return array( 'errors' => $errors, 'lines' => $lines, 'destination' => $destination, 'dispatch_amount' => $dispatch_amount, 'validity_days' => 'invalid' === $validity ? null : $validity );
+	return array( 'errors' => $errors, 'lines' => $lines, 'destination' => $destination, 'pickup_location' => $pickup, 'dispatch_amount' => $dispatch_amount, 'validity_days' => 'invalid' === $validity ? null : $validity );
 }
 
 /**
@@ -460,6 +465,7 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
 		'updated_by'          => $user_id,
 		'lines'               => $parsed['lines'],
 		'destination'         => $parsed['destination'],
+		'pickup_location'     => $parsed['pickup_location'],
 		'dispatch_amount'     => $parsed['dispatch_amount'],
 		'dispatch_conditions' => $conditions,
 		'validity_days'       => $parsed['validity_days'],
@@ -516,6 +522,7 @@ function fpw_refresh_draft_prices( int $order_id, array $draft, int $user_id ): 
 		'updated_by'          => $user_id,
 		'lines'               => $lines,
 		'destination'         => is_array( $stored ) ? (string) ( $stored['destination'] ?? '' ) : '',
+		'pickup_location'     => is_array( $stored ) ? (string) ( $stored['pickup_location'] ?? '' ) : '',
 		'dispatch_amount'     => $dispatch_amount,
 		'dispatch_conditions' => is_array( $stored['dispatch_conditions'] ?? null ) ? $stored['dispatch_conditions'] : null,
 		'validity_days'       => is_array( $stored ) && is_int( $stored['validity_days'] ?? null ) ? (int) $stored['validity_days'] : null,
@@ -844,12 +851,29 @@ function fpw_draft_submitted_details_html( $details ): string {
 	return '';
 }
 
+/** Owner-selectable pickup locations. Addresses are frozen in each approved projection. */
+function fpw_pickup_locations(): array {
+	return array(
+		'los-paltos' => 'Los Paltos 2794, La Pintana.',
+		'mostazal' => 'San Francisco de Mostazal (Fresia 1610, La Pintana)',
+	);
+}
+
+function fpw_draft_pickup_html( string $selected ): string {
+	$html = '<fieldset class="fpw-pickup"><legend>Punto de retiro</legend><div class="fpw-pickup-options">';
+	foreach ( fpw_pickup_locations() as $key => $address ) {
+		$html .= '<label class="fpw-pickup-option"><input type="radio" name="fpw_work[pickup_location]" value="' . esc_attr( $key ) . '"' . ( $selected === $key ? ' checked' : '' ) . '><span>' . esc_html( $address ) . '</span></label>';
+	}
+	return $html . '</div><p>No incluye flete. Selecciona dónde debe retirar el cliente.</p></fieldset>';
+}
+
 /** The saved-work values the screen shows for one draft: the owner's saved adjustments over the receipt snapshot's defaults (identity-checked per line), with each line's current Price List suggestion (issue #52). */
 function fpw_draft_work_values( array $draft, ?array $work ): array {
 	$with_dispatch = fpw_draft_requests_dispatch( $draft );
 	$address       = (string) ( is_array( $draft['destination'] ?? null ) ? ( $draft['destination']['address'] ?? '' ) : '' );
 	$values = array(
 		'destination'     => $with_dispatch ? $address : '',
+		'pickup_location' => '',
 		'dispatch_amount' => null,
 		'validity_days'   => null,
 		'lines'           => array(),
@@ -883,6 +907,8 @@ function fpw_draft_work_values( array $draft, ?array $work ): array {
 		$amount = $work['dispatch_amount'] ?? null;
 		if ( is_int( $amount ) && $amount > 0 ) { $values['dispatch_amount'] = $amount; }
 	}
+	$pickup = (string) ( $work['pickup_location'] ?? '' );
+	if ( ! $with_dispatch && isset( fpw_pickup_locations()[ $pickup ] ) ) { $values['pickup_location'] = $pickup; }
 	$validity = $work['validity_days'] ?? null;
 	if ( is_int( $validity ) && $validity >= 1 && $validity <= FPW_DRAFT_MAX_VALIDITY_DAYS ) { $values['validity_days'] = $validity; }
 	return $values;
@@ -995,6 +1021,8 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 			$dispatch = $values['dispatch_amount'];
 		}
 	}
+	$pickup_address = $with_dispatch ? '' : ( fpw_pickup_locations()[ $values['pickup_location'] ] ?? '' );
+	if ( ! $with_dispatch && '' === $pickup_address ) { $missing[] = 'Selecciona el punto de retiro antes de revisar la cotización.'; }
 	$tax_config = fpw_quotation_tax_config();
 	$tax_rate   = null;
 	$tax_base   = null;
@@ -1019,6 +1047,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 		'dispatch'                => $dispatch,
 		'validity_days'           => fpw_draft_validity_days( $work ),
 		'destination'             => $with_dispatch ? $destination : '',
+		'pickup_address'          => $pickup_address,
 		'tax_rate_permille'       => $tax_rate,
 		'tax_applies_to_dispatch' => ! empty( $tax_config['applies_to_dispatch'] ),
 		'taxable_base'            => $tax_base,
@@ -1340,6 +1369,9 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 		$html .= '<p class="fpw-draft__preview-dest">Destino de la oferta: ' . esc_html( (string) $projection['destination'] ) . '</p>';
 		if ( ! empty( $projection['references'] ) ) { $html .= '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>'; }
 	}
+	if ( empty( $projection['dispatch_requested'] ) && ! empty( $projection['pickup_address'] ) ) {
+		$html .= '<p>Retiro - Sin Despacho: ' . esc_html( $projection['pickup_address'] ) . '. No incluye flete.</p>';
+	}
 	$html .= '<p class="fpw-draft__preview-validity"><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 	$html .= '<p class="fpw-draft__aside-note">Esta vista previa no incluye historial de compras, notas internas, costos de transportista ni el desglose interno de la estimación de despacho. No es un documento emitido: nada fue aprobado ni enviado al comprador.</p>'
 		. fpw_draft_preview_generate_html( $order_id )
@@ -1409,7 +1441,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
-		. '<section><h2>Despacho</h2>' . fpw_draft_dispatch_html( $with_dispatch, $values['destination'], $dispatch_amount, $dispatch_stale, (string) ( $destination['references'] ?? '' ) ) . '</section>'
+		. '<section><h2>' . ( $with_dispatch ? 'Despacho' : 'Retiro - Sin Despacho' ) . '</h2>' . ( $with_dispatch ? fpw_draft_dispatch_html( true, $values['destination'], $dispatch_amount, $dispatch_stale, (string) ( $destination['references'] ?? '' ) ) : fpw_draft_pickup_html( $values['pickup_location'] ) ) . '</section>'
 		. '<section><h2>Vigencia de la oferta</h2><label class="fpw-draft__field">Días de vigencia (1 a ' . FPW_DRAFT_MAX_VALIDITY_DAYS . ')' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label>'
 		. '<p class="fpw-draft__origin">Los precios ofrecidos valen por estos días a contar de la aprobación de la oferta. La vigencia por defecto es de ' . fpw_quotation_default_validity_days() . ' días.</p></section>'
 		. $save_section

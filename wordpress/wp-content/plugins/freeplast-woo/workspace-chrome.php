@@ -9,6 +9,14 @@ function fpw_workspace_surface(): bool {
 	return fpw_can_manage_quotations() && ( 'fpw-quotations' === $page || ( 'fpw-quote-draft' === $page && '1' === ( $_GET['workspace'] ?? '' ) ) );
 }
 
+/** Technical queue diagnostics belong in native administration, not the owner's workspace.
+ * This only skips the notice check; scheduling, runners and other notices are unchanged.
+ */
+add_filter( 'action_scheduler_check_pastdue_actions', 'fpw_workspace_scheduler_notice' );
+function fpw_workspace_scheduler_notice( $check ) {
+	return fpw_workspace_surface() ? false : $check;
+}
+
 function fpw_workspace_menu_parent(): string {
 	return fpw_can_manage_quotations() ? 'fpw-quotations' : 'fpw-data';
 }

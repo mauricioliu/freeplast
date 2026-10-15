@@ -32,7 +32,7 @@ add_filter( 'admin_body_class', static function ( $classes ) {
 
 function fpw_workspace_shell( string $body, ?int $id = null, ?int $total = null, bool $editable = false ): string {
 	$header = fpw_workspace_header() . fpw_workspace_navigation();
-	$nav = $editable ? '<nav class="fpw-workspace-dock" aria-label="Preparar cotización"><a href="#fpw-summary"><span data-fpw-total-label>Total guardado</span><strong data-fpw-dock-total>' . fpw_workspace_money( $total ) . '</strong></a><button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" data-fpw-dock-save>Guardar borrador</button><button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview data-fpw-dock-preview hidden>Revisar cotización</button></nav>' : '';
+	$nav = $editable ? '<nav class="fpw-workspace-dock" aria-label="Preparar cotización"><a href="#fpw-summary"><span data-fpw-total-label>Total guardado</span><strong data-fpw-dock-total>' . fpw_workspace_money( $total ) . '</strong></a><button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" data-fpw-dock-save hidden>Guardar borrador</button><button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview data-fpw-dock-preview>Revisar cotización</button></nav>' : '';
 	return '<div class="fpw-workspace' . ( $editable ? ' fpw-workspace-editable' : '' ) . '">' . $header . '<div class="fpw-workspace-body">' . $body . '</div>' . $nav . '</div>';
 }
 
@@ -66,7 +66,7 @@ function fpw_workspace_read_offer( array $draft, ?array $work ): array {
 	return array( 'version' => $version, 'projection' => $valid ? $p : null, 'unavailable' => ! $valid );
 }
 
-/** Pricing actions submit the editor's actual controls, even without JavaScript. */
+/** Review saves posted edits through the existing CAS guard; refresh never discards them. Works without JavaScript. */
 function fpw_workspace_guard_clean_action( int $id, array $draft, string $action ): bool {
 	if ( ! in_array( $action, array( 'preview', 'refresh' ), true ) || ! isset( $_POST['fpw_work'] ) ) { return true; }
 	$nonce = 'preview' === $action ? 'fpw_preview_nonce' : 'fpw_refresh_nonce';
@@ -84,8 +84,17 @@ function fpw_workspace_guard_clean_action( int $id, array $draft, string $action
 	}
 	$stored = fpw_draft_work_values( $draft, $work );
 	$changed = false;
-	foreach ( array( 'destination', 'dispatch_amount', 'validity_days' ) as $key ) { $changed = $changed || $posted[ $key ] !== $stored[ $key ]; }
+	foreach ( array( 'destination', 'pickup_location', 'dispatch_amount', 'validity_days' ) as $key ) { $changed = $changed || $posted[ $key ] !== $stored[ $key ]; }
 	foreach ( $stored['lines'] as $index => $line ) { $changed = $changed || $posted['lines'][ $index ]['quantity'] !== $line['quantity'] || $posted['lines'][ $index ]['price'] !== $line['price']; }
+	if ( 'preview' === $action && ( $changed || null === $work ) ) {
+		if ( ! wp_verify_nonce( (string) ( $_POST['fpw_draft_nonce'] ?? '' ), fpw_draft_save_action( $id ) ) ) { wp_die( 'El formulario no es válido. Vuelve a cargar la cotización.', '', array( 'response' => 403 ) ); }
+		$result = fpw_save_draft_work( $id, $draft, wp_unslash( $_POST ), get_current_user_id() );
+		if ( 'saved' !== ( $result['state'] ?? '' ) ) {
+			fpw_pending_draft_outcome( array( 'order_id' => $id, 'result' => $result ) );
+			return false;
+		}
+		return true;
+	}
 	if ( ! $changed ) { return true; }
 	fpw_pending_draft_outcome( array( 'order_id' => $id, 'result' => array( 'state' => 'workspace-unsaved', 'values' => $posted ) ) );
 	return false;
@@ -197,11 +206,11 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	$unsaved = ! $version && $id === ( $pending['order_id'] ?? null ) && 'workspace-unsaved' === ( $pending['result']['state'] ?? '' );
 	if ( $unsaved ) {
 		$posted = $pending['result']['values'];
-		foreach ( array( 'destination', 'dispatch_amount', 'validity_days' ) as $key ) { $values[ $key ] = $posted[ $key ]; }
+		foreach ( array( 'destination', 'pickup_location', 'dispatch_amount', 'validity_days' ) as $key ) { $values[ $key ] = $posted[ $key ]; }
 		foreach ( $posted['lines'] as $index => $line ) { $values['lines'][ $index ] = array_replace( $values['lines'][ $index ], $line ); }
 	}
 	$body = '<a class="fpw-back" href="' . esc_url( fpw_workspace_url() ) . '">Solicitudes</a><h1>' . esc_html( $draft['identity']['company'] ?: $draft['reference'] ) . '</h1><p class="fpw-muted">Solicitud ' . esc_html( $draft['reference'] ) . ' · ' . esc_html( wp_date( 'd/m/Y', (int) $draft['received_at'] ) ) . '</p>' . fpw_draft_notice_html( $notice );
-	$blocked = $id === ( $pending['order_id'] ?? null ) && in_array( $pending['result']['state'] ?? '', array( 'workspace-unsaved', 'workspace-invalid', 'conflict' ), true );
+	$blocked = $id === ( $pending['order_id'] ?? null ) && in_array( $pending['result']['state'] ?? '', array( 'workspace-unsaved', 'workspace-invalid', 'invalid', 'conflict' ), true );
 	$review = ! $blocked && ( '1' === ( $_GET['review'] ?? '' ) || isset( $_POST['fpw_work_preview'] ) || isset( $_POST['fpw_work_approve'] ) );
 	if ( $review ) {
 		$body .= '<a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">' . ( $version ? 'Volver a la cotización' : 'Volver a ajustar' ) . '</a><div id="fpw-summary" tabindex="-1" class="fpw-workspace-preview">' . ( $version ? fpw_workspace_issued_html( $version ) : fpw_workspace_preview_html( $draft, $work, fpw_read_draft_preview( $id ) ) ) . '</div>';
@@ -216,8 +225,8 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
 		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false ) . wp_nonce_field( fpw_draft_preview_action( $id ), 'fpw_preview_nonce', true, false ) . wp_nonce_field( fpw_draft_refresh_action( $id ), 'fpw_refresh_nonce', true, false ) . '<fieldset><legend class="screen-reader-text">Preparar cotización</legend><section id="fpw-products" tabindex="-1"><h2>Productos a cotizar</h2><p class="fpw-muted">Revisa cantidades y precios netos por unidad.</p>';
 	foreach ( $draft['items'] as $index => $line ) { $body .= fpw_workspace_product_html( $line, $values['lines'][ $index ], $index, $projection['lines'][ $index ]['line_total'] ?? null, false ); }
-	$body .= '</section><section class="fpw-workspace-dispatch"><h2>Despacho</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : '<p>Sin despacho solicitado. No incluye flete.</p>' ) . '<p data-fpw-dispatch-warning hidden></p></section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
-	$body .= '<aside id="fpw-summary" tabindex="-1" class="fpw-workspace-summary"><h2>Resumen de cotización</h2><p data-fpw-save-state class="fpw-muted" role="status">' . ( $unsaved ? 'Cambios sin guardar. ' : '' ) . ( null === $work ? 'Guarda para confirmar los importes.' : 'Importes guardados.' ) . '</p><dl>';
+	$body .= '</section><section class="fpw-workspace-dispatch"><h2>' . ( fpw_draft_requests_dispatch( $draft ) ? 'Despacho' : 'Retiro - Sin Despacho' ) . '</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : fpw_draft_pickup_html( $values['pickup_location'] ) ) . '<p data-fpw-dispatch-warning hidden></p></section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
+	$body .= '<aside id="fpw-summary" tabindex="-1" class="fpw-workspace-summary"><h2>Resumen de cotización</h2><p data-fpw-save-state class="fpw-muted" role="status">' . ( $unsaved ? 'Cambios sin guardar. ' : '' ) . ( null === $work ? 'Revisa la cotización para validar los importes.' : 'Importes guardados.' ) . '</p><dl>';
 	foreach ( array( 'subtotal' => 'Productos netos', 'dispatch' => 'Despacho neto', 'tax' => 'IVA', 'total' => 'Total' ) as $key => $label ) {
 		if ( 'dispatch' === $key && ! fpw_draft_requests_dispatch( $draft ) ) { continue; }
 		$body .= '<div' . ( 'total' === $key ? ' class="fpw-grand-total"' : '' ) . '><dt>' . $label . '</dt><dd data-fpw-amount="' . $key . '">' . fpw_workspace_money( $projection[ $key ] ?? null ) . '</dd></div>';
@@ -225,7 +234,7 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	$body .= '</dl>';
 	$body .= '<button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" class="fpw-secondary">Guardar borrador</button>'
 			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
-			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Guarda los cambios y revisa la oferta. Solo se envía al aprobar.</p>';
+			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Al revisar se guardan y validan los cambios. Solo se envía al aprobar.</p>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
 		. $contact . fpw_workspace_history( $draft );
 	return fpw_workspace_shell( $body, $id, $projection['total'] ?? null, true );

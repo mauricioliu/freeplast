@@ -1,11 +1,31 @@
 <!-- wp:html -->
 <div class="site-footer">
+	<!-- Datos del footer original: https://freeplast.cl/quienes-somos/ -->
+	<div class="footer-details">
+		<div class="footer-brand">
+			<a class="brand" href="/" aria-label="Freeplast — Inicio">
+				<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark-white.svg" alt="" width="29" height="29" />
+				<span>Freeplast</span>
+			</a>
+			<p>Mejores productos y a mejores precios</p>
+		</div>
+		<section aria-labelledby="fp-footer-products">
+			<h2 id="fp-footer-products">Catálogo</h2>
+			<nav class="footer-catalog" aria-labelledby="fp-footer-products">{{FREEPLAST_CATALOG_LINKS}}</nav>
+		</section>
+		<section aria-labelledby="fp-footer-contact">
+			<h2 id="fp-footer-contact">Contáctanos</h2>
+			<address class="footer-contact">
+				<a href="mailto:ventas@freeplast.cl">ventas@freeplast.cl</a>
+				<a href="https://api.whatsapp.com/send?phone=56968444265">WhatsApp: +56 9 6844 4265</a>
+				<a href="tel:+56968444265">Teléfono: +56 9 6844 4265</a>
+				<p>Lun a Vie 09:00 a 13:00 hrs y<br />14:00 a 18:00 hrs</p>
+				<a href="https://maps.app.goo.gl/QtGSdagB55W7rnRj7">Camino El Arrayán 52, San Francisco de Mostazal, VI Región</a>
+			</address>
+		</section>
+	</div>
 	<div class="footer-content">
-		<a class="brand" href="/" aria-label="Freeplast — Inicio">
-			<img src="{{FREEPLAST_THEME_URL}}/assets/img/mark.svg" alt="" width="23" height="23" />
-			<span>Freeplast</span>
-		</a>
-		<p>Productos plásticos. Nuevas posibilidades.</p>
+		<p>© Todos los derechos reservados</p>
 		<a class="text-button fp-privacy-link" href="/politica-de-privacidad/">Política de privacidad</a>
 		<button class="text-button fp-help-trigger" type="button" data-fp-dialog="fp-help">¿Necesitas ayuda?</button>
 	</div>

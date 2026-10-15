@@ -12,7 +12,8 @@ function is_wp_error($v) { return false; }
 function is_admin() { return false; }
 function get_search_query($escape=true) { return $GLOBALS['search'] ?? ''; }
 function get_query_var($key, $default='') { return $GLOBALS['vars'][$key] ?? $default; }
-function get_terms($args) { return array((object)array('slug'=>'agricola','count'=>12), (object)array('slug'=>'otros','count'=>5)); }
+function get_terms($args) { return array((object)array('slug'=>'agricola','name'=>'Agrícola','description'=>'Cajas para agricultura.','count'=>12), (object)array('slug'=>'carnes','name'=>'Carnes','description'=>'Cajas universales y polleras.','count'=>5), (object)array('slug'=>'productos-del-mar','name'=>'Productos del mar','description'=>'Merluceras y universales.','count'=>5), (object)array('slug'=>'otros','name'=>'Otros','description'=>'Bases y ladrillos.','count'=>2)); }
+function wp_strip_all_tags($text) { return strip_tags($text); }
 function get_term_link($term) { return 'https://example.test/subdir/native-category/'.$term->slug.'/'; }
 function wc_get_page_permalink($page) { return 'https://example.test/subdir/shop-real/'; }
 function wc_get_products($args) { return (object)array('total'=>16); } // One product belongs to both terms.
@@ -28,7 +29,13 @@ $checks=0;
 function verify($ok,$message) { global $checks; if(!$ok) throw new RuntimeException($message); $checks++; }
 function render_filters() { ob_start(); fp_catalog_filters(); return ob_get_clean(); }
 $root=render_filters();
-verify(substr_count($root,'class="filter"')===3,'three category controls');
+verify(substr_count($root,'class="filter"')===5,'all products and four native category controls');
+verify(fp_catalog_heading()['title']==='Elige tus productos.','shop keeps its general heading');
+$GLOBALS['vars']['product_cat']='carnes';
+verify(fp_catalog_heading()===array('title'=>'Carnes','copy'=>'Cajas universales y polleras.'),'category heading and description come from the native term');
+$menu=$filters['render_block'][count($filters['render_block'])-1]('<div>{{FREEPLAST_CATALOG_LINKS}}</div>');
+verify(substr_count($menu,'<a ')===5 && str_contains($menu,'/subdir/native-category/productos-del-mar/'),'submenu resolves all five native destinations, including a nonstandard rewrite base');
+unset($GLOBALS['vars']['product_cat']);
 verify(str_contains($root,'Todos <span>16</span>'),'Todos uses native distinct total, not overlapping term sum');
 verify(str_contains($root,'/subdir/shop-real/?orderby=menu_order'),'shop URL is native and subdirectory correct');
 verify(str_contains($root,'/subdir/native-category/agricola/'),'category URLs come from native terms, not guessed rewrite bases');

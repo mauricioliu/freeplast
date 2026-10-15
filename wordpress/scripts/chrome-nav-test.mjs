@@ -16,7 +16,8 @@ function resolve(markup) {
   return markup
     .replace(/<!-- wp:\w+ [^>]*-->|<!-- \/wp:\w+ -->/g, '')
     .replace(/\{\{FREEPLAST_THEME_URL\}\}/g, '')
-    .replace(/\{\{FREEPLAST_BASKET_COUNT\}\}/g, '2');
+    .replace(/\{\{FREEPLAST_BASKET_COUNT\}\}/g, '2')
+    .replace(/\{\{FREEPLAST_CATALOG_LINKS\}\}/g, '<a href="/tienda/">Ver todo</a><a href="/categoria-producto/agricola/">Agrícola</a><a href="/categoria-producto/carnes/">Carnes</a><a href="/categoria-producto/productos-del-mar/">Productos del mar</a><a href="/categoria-producto/otros/">Otros</a>');
 }
 
 /* jsdom cannot follow a clicked navigation link; the chrome script must NOT
@@ -65,15 +66,42 @@ export async function runChromeNavTests() {
   const doc = dom.window.document;
   ok(doc.getElementById('fp-menu') instanceof dom.window.HTMLDialogElement && doc.getElementById('fp-help') instanceof dom.window.HTMLDialogElement, 'the chrome dialogs are native <dialog> elements');
 
+  const contactLinks = [...doc.querySelectorAll('.fp-contact-inner a')];
+  ok(contactLinks.length === 3, 'contact banner exposes three native links without JavaScript handlers');
+  ok(contactLinks[0].getAttribute('href') === 'tel:+56968444265', 'phone banner opens the dialer');
+  ok(contactLinks[1].getAttribute('href') === 'https://wa.me/56968444265' && contactLinks[1].getAttribute('rel').includes('noopener'), 'WhatsApp banner opens the correct chat safely');
+  ok(contactLinks[2].getAttribute('href') === 'mailto:ventas@freeplast.cl', 'email banner opens a new message to sales');
+  ok(contactLinks.every(link => link.hasAttribute('aria-label') && link.querySelector('svg[aria-hidden="true"]')), 'banner icons have explicit accessible link names');
   const desktopItems = [...doc.querySelectorAll('.desktop-nav a, .desktop-nav button')];
   const mobileItems = [...doc.querySelectorAll('.menu-dialog nav a, .menu-dialog nav button')];
   const destination = el => el.getAttribute('href') || '#' + el.getAttribute('data-fp-dialog');
   const label = el => el.textContent.replace('→', '').trim();
-  ok(JSON.stringify(desktopItems.map(destination)) === JSON.stringify(mobileItems.slice(0, 4).map(destination)), 'desktop and mobile share destinations and order');
-  ok(JSON.stringify(desktopItems.map(label)) === JSON.stringify(mobileItems.slice(0, 4).map(label)), 'desktop and mobile share labels, including Cómo cotizar');
+  ok(JSON.stringify(desktopItems.map(destination)) === JSON.stringify(mobileItems.slice(0, desktopItems.length).map(destination)), 'desktop and mobile share destinations and order');
+  ok(JSON.stringify(desktopItems.map(label)) === JSON.stringify(mobileItems.slice(0, desktopItems.length).map(label)), 'desktop and mobile share labels, including Cómo cotizar');
   ok(desktopItems.some(el => el.getAttribute('href') === '/nosotros/'), 'Nosotros is not mobile-only');
+  const footerCatalogLinks = [...doc.querySelectorAll('.footer-catalog a')];
+  const menuCatalogLinks = [...doc.querySelectorAll('.desktop-nav .fp-catalog-submenu a')];
+  ok(footerCatalogLinks.length === 5 && JSON.stringify(footerCatalogLinks.map(destination)) === JSON.stringify(menuCatalogLinks.map(destination)), 'footer catalog uses the same five destinations and order as the header');
+  ok(JSON.stringify(footerCatalogLinks.map(label)) === JSON.stringify(menuCatalogLinks.map(label)), 'footer and menu catalog labels are identical');
+  ok(!doc.querySelector('.footer-products'), 'footer removes the obsolete static product grouping');
   ok(doc.querySelector('.header-selection').getAttribute('href') === mobileItems.at(-1).getAttribute('href'), 'the separate desktop selection CTA matches the mobile selection destination');
 
+  const catalogMenu = doc.querySelector('.desktop-nav .fp-catalog-menu');
+  const catalogSummary = catalogMenu.querySelector('summary');
+  ok(catalogMenu.querySelectorAll('a').length === 5, 'catalog submenu has all products and four sections');
+  catalogMenu.open = true;
+  const escapeCatalog = new dom.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true});
+  catalogSummary.dispatchEvent(escapeCatalog);
+  ok(!catalogMenu.open && doc.activeElement === catalogSummary && escapeCatalog.defaultPrevented, 'Escape closes catalog and returns focus without closing the mobile dialog');
+  catalogMenu.open = true;
+  doc.body.dispatchEvent(new dom.window.MouseEvent('click', {bubbles:true}));
+  ok(!catalogMenu.open, 'outside click closes catalog dropdown');
+  const pointerEnter = new dom.window.Event('pointerenter'); Object.defineProperty(pointerEnter, 'pointerType', {value:'mouse'});
+  catalogMenu.dispatchEvent(pointerEnter);
+  ok(catalogMenu.open, 'desktop mouse hover opens the catalog');
+  click(catalogSummary);
+  ok(catalogMenu.open, 'click pins a hover-open catalog instead of closing it');
+  catalogMenu.open = false;
   const menuTrigger = doc.querySelector('.menu-trigger');
   const menu = doc.getElementById('fp-menu');
   const help = doc.getElementById('fp-help');
@@ -89,7 +117,7 @@ export async function runChromeNavTests() {
 
   /* Navigation links close the dialog before the browser follows them. */
   click(menuTrigger);
-  click(menu.querySelector('nav a[href="/contacto/"]'));
+  click(menu.querySelector('nav a[href="/nosotros/"]'));
   await closeEvents();
   ok(menu.open === false, 'following a menu navigation link closes the menu first');
 
@@ -130,7 +158,9 @@ export async function runChromeNavTests() {
      destination; Home never marks a nav link). */
   ok(doc.querySelector('.desktop-nav a[href="/tienda/"]').getAttribute('aria-current') === 'page', 'Catálogo is marked current on a catalog route');
   ok(doc.querySelector('.menu-dialog nav a[href="/tienda/"]').getAttribute('aria-current') === 'page', 'the mobile menu marks the same destination');
-  ok(doc.querySelector('.desktop-nav a[href="/contacto/"]').getAttribute('aria-current') === null, 'other destinations stay unmarked');
+  ok(doc.querySelector('.desktop-nav a[href="/nosotros/"]').getAttribute('aria-current') === null, 'other destinations stay unmarked');
+  ok(!doc.querySelector('a[href="/contacto/"]'), 'retired contact page has no links in desktop/mobile navigation or footer');
+  ok(doc.querySelector('.site-footer a[href="mailto:ventas@freeplast.cl"]'), 'footer email opens the mail composer instead of the retired page');
   ok(doc.querySelector('.brand').getAttribute('aria-current') === null, 'the brand never carries aria-current');
 
   const about = boot('/nosotros/');

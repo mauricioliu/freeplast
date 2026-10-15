@@ -10,12 +10,49 @@ function fp_catalog_setup_frame(): void {
 	$priority = has_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb' );
 	if ( false !== $priority ) { remove_action( 'woocommerce_before_main_content', 'woocommerce_breadcrumb', $priority ); }
 	add_filter( 'woocommerce_show_page_title', '__return_false' );
+	// The shared introduction renders these sections' native description once.
+	if ( isset( fp_catalog_sections()[ (string) get_query_var( 'product_cat', '' ) ] ) ) {
+		remove_action( 'woocommerce_archive_description', 'woocommerce_taxonomy_archive_description', 10 );
+	}
 	add_action( 'woocommerce_before_main_content', 'fp_catalog_open_frame', 40 );
 	add_action( 'woocommerce_archive_description', 'fp_catalog_intro', 5 );
 	add_action( 'woocommerce_after_main_content', 'fp_catalog_close_frame', 5 );
 }
 function fp_catalog_open_frame(): void { echo '<div class="fp-shell fp-catalog">'; }
 function fp_catalog_intro(): void { wc_get_template( 'loop/catalog-intro.php' ); }
+
+/** Native terms own the section title, description, membership and destination. */
+function fp_catalog_sections(): array {
+	return array( 'agricola' => 'Agrícola', 'carnes' => 'Carnes', 'productos-del-mar' => 'Productos del mar', 'otros' => 'Otros' );
+}
+
+function fp_catalog_section_terms(): array {
+	$terms = get_terms( array( 'taxonomy' => 'product_cat', 'slug' => array_keys( fp_catalog_sections() ), 'hide_empty' => false ) );
+	$indexed = array();
+	if ( ! is_wp_error( $terms ) ) { foreach ( $terms as $term ) { $indexed[ $term->slug ] = $term; } }
+	return $indexed;
+}
+
+function fp_catalog_heading(): array {
+	$terms = fp_catalog_section_terms();
+	$term = $terms[ (string) get_query_var( 'product_cat', '' ) ] ?? null;
+	return array(
+		'title' => $term ? $term->name : 'Elige tus productos.',
+		'copy' => $term && ! empty( $term->description ) ? wp_strip_all_tags( $term->description ) : 'Agrega las cantidades que necesitas. Nosotros preparamos tu cotización.',
+	);
+}
+
+add_filter( 'render_block', static function ( $html ) {
+	if ( ! str_contains( $html, '{{FREEPLAST_CATALOG_LINKS}}' ) ) { return $html; }
+	$links = '<a href="' . esc_url( wc_get_page_permalink( 'shop' ) ) . '">Ver todo</a>';
+	$terms = fp_catalog_section_terms();
+	foreach ( fp_catalog_sections() as $slug => $label ) {
+		if ( ! isset( $terms[ $slug ] ) ) { continue; }
+		$url = get_term_link( $terms[ $slug ] );
+		if ( ! is_wp_error( $url ) ) { $links .= '<a href="' . esc_url( $url ) . '">' . esc_html( $terms[ $slug ]->name ) . '</a>'; }
+	}
+	return str_replace( '{{FREEPLAST_CATALOG_LINKS}}', $links, $html );
+} );
 function fp_catalog_close_frame(): void { echo '</div>'; }
 add_action( 'wp', 'fp_catalog_setup_frame' );
 
@@ -25,17 +62,14 @@ function fp_catalog_orderby(): string {
 }
 
 function fp_catalog_filters(): void {
-	$terms = get_terms( array( 'taxonomy' => 'product_cat', 'slug' => array( 'agricola', 'otros' ), 'hide_empty' => false ) );
-	if ( is_wp_error( $terms ) ) { $terms = array(); }
-	$by_slug = array();
-	foreach ( $terms as $term ) { $by_slug[$term->slug] = $term; }
+	$by_slug = fp_catalog_section_terms();
 	$category = (string) get_query_var( 'product_cat', '' );
 	$common = array( 'orderby' => fp_catalog_orderby() );
 	$search = get_search_query( false );
 	if ( '' !== $search ) { $common['s'] = $search; $common['post_type'] = 'product'; }
 	// Native distinct-product total, not the sum of overlapping term counts.
 	$result = wc_get_products( array( 'status' => 'publish', 'visibility' => 'catalog', 'limit' => 1, 'paginate' => true, 'return' => 'ids' ) );
-	$filters = array( '' => 'Todos', 'agricola' => 'Agrícola', 'otros' => 'Otros' );
+	$filters = array( '' => 'Todos' ) + fp_catalog_sections();
 	echo '<div class="filter-tabs" aria-label="Categorías">';
 	foreach ( $filters as $slug => $label ) {
 		$term = $by_slug[$slug] ?? null;

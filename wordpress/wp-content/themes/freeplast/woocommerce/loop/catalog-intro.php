@@ -1,13 +1,14 @@
 <?php
 /** Shared catalog introduction for native ClassicTemplate and PHP archives. */
 defined( 'ABSPATH' ) || exit;
+$heading = fp_catalog_heading();
 ?>
 <section class="catalog-intro">
 	<div class="catalog-heading-row">
 		<div>
 			<p class="eyebrow">Catálogo mayorista · Freeplast</p>
-			<h1>Elige tus productos.</h1>
-			<p class="intro-copy">Agrega las cantidades que necesitas. Nosotros preparamos tu cotización.</p>
+			<h1><?php echo esc_html( $heading['title'] ); ?></h1>
+			<p class="intro-copy"><?php echo esc_html( $heading['copy'] ); ?></p>
 		</div>
 		<div class="intro-note">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="28" height="28"><path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/></svg>

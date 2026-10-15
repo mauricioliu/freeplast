@@ -15,7 +15,8 @@ function get_query_var($key, $default='') { return $key === 'post_type' && is_se
 function get_search_query($escape=true) { return is_search() ? 'sin <coincidencias>' : ''; }
 function home_url($path='/') { return 'https://example.test'.$path; }
 function wc_get_page_permalink($page) { return home_url('/tienda/'); }
-function get_terms($args) { return [(object)['slug'=>'agricola','count'=>1],(object)['slug'=>'otros','count'=>0]]; }
+function get_terms($args) { return array_map(fn($slug,$name)=>(object)['slug'=>$slug,'name'=>$name,'description'=>'Detalles de '.$name,'count'=>$slug==='agricola'?1:0],['agricola','carnes','productos-del-mar','otros'],['Agrícola','Carnes','Productos del mar','Otros']); }
+function wp_strip_all_tags($text) { return strip_tags($text); }
 function is_wp_error($v) { return false; }
 function get_term_link($term) { return home_url('/categoria/'.$term->slug.'/'); }
 function wc_get_products($args) { return (object)['total'=>1]; }
@@ -57,7 +58,8 @@ foreach(['shop','category','search'] as $route) {
   $html=native_archive();
   verify(substr_count($html,'class="fp-shell fp-catalog"')===1,"$route: one archive shell");
   verify(substr_count($html,'id="fp-catalog-search"')===1,"$route: native legacy path includes search");
-  verify(substr_count($html,'class="filter"')===3,"$route: categories render");
+  verify(substr_count($html,'class="filter"')===5,"$route: all four categories render");
+  if($route==='category')verify(str_contains($html,'<h1>Agrícola</h1>') && substr_count($html,'Detalles de Agrícola')===1,'category has its native title and one description');
   verify(!str_contains($html,'LEGACY TITLE')&&!str_contains($html,'LEGACY BREADCRUMB'),"$route: no duplicate native heading/trail");
   verify(str_contains($html,'EXTENSION'),"$route: extension hooks preserved");
   verify(str_contains($html,$populated?'NATIVE PRODUCT':'empty-state'),"$route: native loop/empty path kept");

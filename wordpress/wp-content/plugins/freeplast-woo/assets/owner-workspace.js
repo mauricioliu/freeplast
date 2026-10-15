@@ -42,7 +42,7 @@
   const calculation = JSON.parse(work?.dataset.fpwCalculation || '{}');
   const amounts = [...root.querySelectorAll('[data-fpw-line-total],[data-fpw-amount],[data-fpw-line-label],[data-fpw-total-label],[data-fpw-minimum],[data-fpw-dispatch-warning]')];
   const savedAmounts = amounts.map(node => [node, node.textContent, node.hidden]);
-  const guarded = [...root.querySelectorAll('[data-fpw-preview],[data-fpw-refresh]')].map(node => [node, node.disabled]);
+  const guarded = [...root.querySelectorAll('[data-fpw-refresh]')].map(node => [node, node.disabled]);
   const freightFacts = [...root.querySelectorAll('.fpw-workspace-dispatch dd > span,.fpw-workspace-dispatch dd > em')].map(node => [node, node.hidden]);
   const fields = () => [...(work?.elements || [])].filter(field => /^fpw_work\[/.test(field.name));
   const integer = (raw, digits, max) => {
@@ -77,8 +77,8 @@
       const safeDestination = destination !== '' && destination === destination.trim() && !/[<>&%\r\t]| {2}/.test(destination) && new TextEncoder().encode(destination).length <= 800;
       const stale = dispatch !== null && dispatch === BigInt(calculation.savedAmount ?? 0) && basis &&
         (destination !== basis.destination || quantities.length !== basis.quantities?.length || quantities.some((quantity, i) => quantity === null || quantity !== BigInt(basis.quantities[i])));
-      if (!safeDestination) warning = 'Completa o revisa el destino y guarda para confirmar el despacho.';
-      else if (stale) warning = 'Despacho requiere revisión: cambió el destino o las cantidades. Revisa el monto antes de guardar.';
+      if (!safeDestination) warning = 'Completa o revisa el destino antes de revisar la cotización.';
+      else if (stale) warning = 'Despacho requiere revisión: cambió el destino o las cantidades. Revisa el monto de despacho antes de continuar.';
       else if (dispatch === null) warning = 'Ingresa el monto de despacho (1 a 99.999.999 CLP); no equivale a cero.';
       if (warning) dispatch = null;
     }
@@ -102,7 +102,7 @@
     freightFacts.forEach(([node]) => { node.hidden = true; });
     const freightWarning = root.querySelector('[data-fpw-dispatch-warning]');
     if (freightWarning) { freightWarning.textContent = warning; freightWarning.hidden = !warning; }
-    if (status) status.textContent = 'Cambios sin guardar. Importes estimados; guarda y revisa antes de aprobar.' +
+    if (status) status.textContent = 'Cambios sin guardar. Importes estimados; al revisar se guardan y validan los cambios.' +
       (subtotal === null ? ' Revisa cantidades (1 a 1.000.000) y precios (1 a 99.999.999 CLP).' : '') +
       (!validPolicy ? ' IVA y total pendientes: falta la política fiscal confirmada.' : '') +
       (!validDays ? ' Ingresa una vigencia entre 1 y 365 días.' : '') + (warning ? ` ${warning}` : '');
@@ -130,11 +130,10 @@
     });
   };
   const syncActions = () => {
-    const reviewReady = !workDirty && work?.dataset.fpwHasSaved === '1';
     const save = root.querySelector('[data-fpw-dock-save]');
     const preview = root.querySelector('[data-fpw-dock-preview]');
-    if (save) save.hidden = reviewReady;
-    if (preview) preview.hidden = !reviewReady;
+    if (save) save.hidden = true;
+    if (preview) preview.hidden = false;
     root.querySelectorAll('[data-fpw-discard]').forEach(button => { button.hidden = !workDirty; });
   };
   /* H6 (2026-10-03 review): the per-line price legend must not keep claiming
@@ -203,7 +202,7 @@
   });
   root.querySelectorAll('form').forEach(form => {
     form.addEventListener('submit', event => {
-      if (workDirty && (form !== work || event.submitter?.name === 'fpw_work_preview' || event.submitter?.name === 'fpw_price_refresh')) {
+      if (workDirty && (form !== work || event.submitter?.name === 'fpw_price_refresh')) {
         event.preventDefault();
         let notice = form.querySelector('[data-fpw-unsaved-warning]');
         if (!notice) {

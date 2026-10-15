@@ -1,0 +1,24 @@
+Banner recuperado el 2026-10-15 desde https://freeplast.cl/
+Composición y configuración: /wp-content/uploads/elementor/css/post-31.css
+HTML: widget fa520b6, dos diapositivas, intervalo 5000 ms, flechas y puntos.
+
+banner-original-1.webp:
+https://freeplast.cl/wp-content/uploads/2020/07/32046f_5442a2e137084f60934d33fd3b085aef_mv2-1-scaled.jpg
+banner-original-2.webp:
+https://freeplast.cl/wp-content/uploads/2020/07/32046f_4b33bf77de084ed5a5158490964618c8_mv2-1-scaled.jpg
+Fotos originales convertidas con ffmpeg a WebP, ancho 1800 px, calidad 85.
+Sin imágenes generadas ni hotlink.
+
+Tipografías originales del banner: Arvo (700 normal/italic), Poppins (400).
+Copias locales desde Google Fonts; licencias OFL junto a los archivos:
+https://fonts.gstatic.com/s/arvo/v23/tDbO2oWUg0MKqSIoVLHK9g.ttf
+https://fonts.gstatic.com/s/arvo/v23/tDbM2oWUg0MKoZw1yLQ.ttf
+https://fonts.gstatic.com/s/poppins/v24/pxiEyp8kv8JHgFVrFJA.ttf
+
+Adaptaciones: texto HTML real, fotos decorativas con alt vacío, CTA /tienda/
+(la página Contacto fue retirada por el dueño), controles nativos de 44 px (flechas móviles de 40 x 64),
+pausa explícita, pausa por hover/foco e interacción, sin rotación cuando se
+solicita reduced-motion o la pestaña está oculta. Sin zoom Ken Burns ni
+transición deslizante: cambio directo para evitar movimiento innecesario.
+Overlay y CTA ligeramente más opacos/oscuros para legibilidad.
+Header, productos y footer fuera del alcance del reemplazo.

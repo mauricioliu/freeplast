@@ -98,7 +98,7 @@ function fpw_quotation_document_html( array $version, string $assets, string $fo
 		foreach ( (array) ( $line['options'] ?? array() ) as $option ) {
 			$name .= '<br><span class="option">' . $esc( wc_attribute_label( $option['key'] ) ) . ': ' . $esc( $option['value'] ) . '</span>';
 		}
-		$rows .= '<tr><td>' . $name . '</td><td class="number">' . (int) $line['quantity'] . '</td><td class="number">' . $clp( $line['price'] ) . '</td><td class="number">' . $clp( $line['line_total'] ) . '</td></tr>';
+		$rows .= '<tr><td class="number">' . number_format( (int) $line['quantity'], 0, ',', '.' ) . '</td><td>' . $name . '</td><td class="number">' . $clp( $line['price'] ) . '</td><td class="number">' . $clp( $line['line_total'] ) . '</td></tr>';
 	}
 	$summary = '<tr><td>Subtotal (neto)</td><td>' . $clp( $p['subtotal'] ) . '</td></tr>';
 	if ( $p['dispatch_requested'] ) { $summary .= '<tr><td>Despacho (neto)</td><td>' . $clp( $p['dispatch'] ) . '</td></tr>'; }
@@ -114,27 +114,33 @@ function fpw_quotation_document_html( array $version, string $assets, string $fo
 		}
 		$logo = base64_decode( $issuer['logo_base64'], true );
 		if ( ! is_string( $logo ) || ! str_starts_with( $logo, "\x89PNG\r\n\x1a\n" ) || ! hash_equals( $issuer['logo_sha256'], hash( 'sha256', $logo ) ) ) { throw new RuntimeException( 'Invalid frozen issuer logo' ); }
-		$brand = '<div class="brand"><img style="width:110pt;height:auto" src="data:image/png;base64,' . $esc( $issuer['logo_base64'] ) . '" alt="Freeplast"></div>';
-		$issuer_html = '<p><strong>' . $esc( $issuer['name'] ) . '</strong> · RUT ' . $esc( $issuer['rut'] ) . '<br>' . $esc( $issuer['address'] ) . '<br>' . $esc( $issuer['phone'] ) . ' · ' . $esc( $issuer['email'] ) . '</p>';
+		$brand = '<div class="brand"><img style="width:90pt;height:auto" src="data:image/png;base64,' . $esc( $issuer['logo_base64'] ) . '" alt="Freeplast"></div>';
+		$issuer_html = '<table class="details issuer"><tr><th>Empresa</th><td>' . $esc( $issuer['name'] ) . '</td></tr><tr><th>RUT</th><td>' . $esc( $issuer['rut'] ) . '</td></tr><tr><th>Dirección</th><td>' . $esc( $issuer['address'] ) . '</td></tr><tr><th>Teléfonos</th><td>' . $esc( $issuer['phone'] ) . '</td></tr><tr><th>E-mail</th><td>' . $esc( $issuer['email'] ) . '</td></tr></table>';
 		$terms = '<p>' . $esc( $issuer['stock_terms'] ) . '<br>' . $esc( $issuer['payment_terms'] ) . ( $issuer['pickup_terms'] !== '' ? '<br>' . $esc( $issuer['pickup_terms'] ) : '' ) . '</p>'
 			. '<h2>Datos para transferencia</h2><p>' . $esc( $issuer['name'] ) . ' · RUT ' . $esc( $issuer['rut'] ) . '<br>' . $esc( $issuer['bank'] ) . ' · ' . $esc( $issuer['account_type'] ) . ' Nº ' . $esc( $issuer['account_number'] ) . '<br>' . $esc( $issuer['email'] ) . '</p>';
 	}
 	return '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Cotización ' . $esc( $version['reference'] ) . '</title><style>
 @font-face{font-family:' . $font_family . ';src:url("' . $esc( $base . 'Manrope-Regular.ttf' ) . '");font-weight:400}
 @font-face{font-family:' . $font_family . ';src:url("' . $esc( $base . 'Manrope-Bold.ttf' ) . '");font-weight:700}
-@page{margin:40pt}body{font-family:' . $font_family . ',sans-serif;font-size:10pt;line-height:1.5;color:#202a20}
-.brand{font-size:17pt;font-weight:700;margin-bottom:22pt}.brand img{width:28pt;height:28pt;vertical-align:middle;margin-right:8pt}
-h1{font-size:22pt;line-height:1.15;margin:0 0 6pt}p{margin:6pt 0 12pt}.reference{font-size:11pt;margin-bottom:18pt}
+@page{margin:36pt}body{font-family:' . $font_family . ',sans-serif;font-size:9pt;line-height:1.15;color:#17181c}
+.brand{font-size:17pt;font-weight:700}.brand img{width:28pt;height:28pt;vertical-align:middle;margin-right:8pt}
+h1{font-size:16pt;line-height:1.2;margin:0 0 14pt}p{margin:5pt 0 9pt}.reference{font-size:8pt;color:#555;margin:6pt 0 0}
 table{border-collapse:collapse;width:100%;table-layout:fixed}thead{display:table-header-group}tr{page-break-inside:avoid}
-th{text-align:left;font-size:9pt;border-bottom:1pt solid #306020;padding:8pt 4pt}td{padding:9pt 4pt;border-bottom:.5pt solid #d4dad1;vertical-align:top;overflow-wrap:break-word}
-.number{text-align:right;white-space:nowrap;font-size:9pt}.option{color:#485448;font-size:9pt}
-.summary{margin:18pt 0 20pt 42%;width:58%;page-break-inside:avoid}.summary td{padding:6pt 4pt}.summary td+td{text-align:right;white-space:nowrap}
-.total{font-size:12pt;font-weight:700}h2{font-size:11pt;margin:20pt 0 6pt}.conditions{page-break-inside:avoid}
-</style></head><body>' . $brand . $issuer_html
-		. '<h1>Cotización' . ( isset( $version['commercial']['number'] ) ? ' Nº ' . (int) $version['commercial']['number'] : '' ) . '</h1><p class="reference">' . $esc( $version['reference'] ) . ' · Versión ' . (int) $version['version'] . '</p>'
-		. '<p>Fecha de aprobación: ' . $esc( wp_date( 'd/m/Y', $version['approved_at'] ) ) . '<br>Señores: ' . $esc( $version['buyer']['company'] ) . '</p>'
-		. '<table><colgroup><col style="width:43%"><col style="width:11%"><col style="width:23%"><col style="width:23%"></colgroup><thead><tr><th>Producto</th><th class="number">Cantidad</th><th class="number">Precio neto</th><th class="number">Total línea</th></tr></thead><tbody>' . $rows . '</tbody></table>'
-		. '<table class="summary">' . $summary . '</table><div class="conditions">'
+th{text-align:left;font-size:8pt;padding:5pt}td{padding:5pt;vertical-align:top;overflow-wrap:break-word}
+.header{margin-bottom:18pt;page-break-inside:avoid}.header td{border:0;padding:0}.document-meta{text-align:right}.date{background:#edf0f8;padding:4pt 8pt;border:0.6pt solid #17181c}
+.details{margin-bottom:14pt;page-break-inside:avoid}.details th,.details td{border:0.6pt solid #555;padding:2pt 5pt;line-height:1.1}.details th{width:19%;font-size:9pt}.client-title th,.client-title td{background:#e2edda;font-weight:700}
+.items th{background:#e2edda;color:#203f15;font-weight:700}.items td,.items th{border:0.6pt solid #555}.items td{padding:7pt 5pt}
+.number{text-align:right;white-space:nowrap;font-size:8pt}.option{color:#485448;font-size:8pt}
+.totals-layout{margin-bottom:14pt;page-break-inside:avoid}.totals-layout>tbody>tr>td{padding:0;border:0}.pickup-details{padding:8pt 12pt 8pt 0}.summary{margin:0;width:100%;page-break-inside:avoid}.summary td{padding:4pt 5pt;border:0.6pt solid #555}.summary td+td{text-align:right;white-space:nowrap}
+.total{font-size:11pt;font-weight:700;background:#e2edda}h2{font-size:9pt;margin:10pt 0 4pt}.conditions{border:0.6pt solid #555;padding:7pt;page-break-inside:avoid}.conditions p:last-child{margin-bottom:0}
+</style></head><body><table class="header"><tr><td style="width:36%">' . $brand . '</td><td class="document-meta"><h1>Cotización' . ( isset( $version['commercial']['number'] ) ? ' Nº ' . (int) $version['commercial']['number'] : '' ) . '</h1><span class="date">Fecha: ' . $esc( wp_date( 'd/m/Y', $version['approved_at'] ) ) . '</span><p class="reference">' . $esc( $version['reference'] ) . ' · Versión ' . (int) $version['version'] . '</p></td></tr></table>' . $issuer_html
+		. '<table class="details client"><tr class="client-title"><th>Cliente</th><td>' . $esc( $version['buyer']['company'] ) . '</td></tr>'
+		. ( ! empty( $version['buyer']['rut'] ) ? '<tr><th>RUT</th><td>' . $esc( $version['buyer']['rut'] ) . '</td></tr>' : '' )
+		. '<tr><th>Contacto</th><td>' . $esc( $version['buyer']['name'] ?? '' ) . '</td></tr>'
+		. ( ! empty( $version['buyer']['phone'] ) ? '<tr><th>Teléfonos</th><td>' . $esc( $version['buyer']['phone'] ) . '</td></tr>' : '' )
+		. '<tr><th>E-mail</th><td>' . $esc( $version['buyer']['email'] ?? '' ) . '</td></tr></table>'
+		. '<table class="items"><colgroup><col style="width:11%"><col style="width:43%"><col style="width:23%"><col style="width:23%"></colgroup><thead><tr><th class="number" style="width:11%">Cant.</th><th style="width:43%">Artículos</th><th class="number" style="width:23%">Valor unit. neto</th><th class="number" style="width:23%">Valor neto</th></tr></thead><tbody>' . $rows . '</tbody></table>'
+		. '<table class="totals-layout"><tr><td style="width:48%">' . ( ! $p['dispatch_requested'] && ! empty( $p['pickup_address'] ) ? '<div class="pickup-details"><h2>Retiro - Sin Despacho</h2><p>' . $esc( $p['pickup_address'] ) . '</p><p>No incluye flete.</p></div>' : '' ) . '</td><td style="width:52%"><table class="summary">' . $summary . '</table></td></tr></table><div class="conditions">'
 		. ( $p['dispatch_requested'] ? '<h2>Destino de la oferta</h2><p>' . $esc( $p['destination'] ) . '</p>' : '' )
 		. ( $p['dispatch_requested'] && ! empty( $p['references'] ) ? '<p>Referencias para llegar: ' . $esc( $p['references'] ) . '</p>' : '' )
 		. '<p><strong>Vigencia de la oferta: ' . (int) $p['validity_days'] . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>' . $terms . '</div></body></html>';

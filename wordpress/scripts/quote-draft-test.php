@@ -530,12 +530,12 @@ check( fpw_read_draft_work( 68 ) === $work68, 'every invalid save stored nothing
  * freight, nothing to review. */
 $save92 = fpw_save_draft_work( 92, $payload92, array(
 	'fpw_work_revision' => '0',
-	'fpw_work' => array( 'lines' => array( array( 'quantity' => '10', 'price' => '990' ) ), 'destination' => 'Intento de destino', 'dispatch_amount' => '5000' ),
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '10', 'price' => '990' ) ), 'destination' => 'Intento de destino', 'dispatch_amount' => '5000', 'pickup_location' => 'los-paltos' ),
 ), 1 );
 check( ( $save92['state'] ?? '' ) === 'saved' && '' === $save92['work']['destination'] && null === $save92['work']['dispatch_amount'], 'a no-dispatch draft never stores a working destination or a freight amount' );
 $html92 = fpw_quote_draft_markup( $order92, $payload92, $save92['work'] );
 check( ! str_contains( $html92, 'name="fpw_work[destination]"' ) && ! str_contains( $html92, 'name="fpw_work[dispatch_amount]"' ), 'a no-dispatch draft offers no destination or freight inputs' );
-check( str_contains( $html92, 'no incluye destino de entrega ni flete' ), 'the no-dispatch work offer excludes the delivery destination and freight' );
+check( str_contains( $html92, 'Retiro - Sin Despacho' ) && str_contains( $html92, 'fpw_work[pickup_location]' ), 'the no-dispatch work offer lets the owner select pickup without freight' );
 check( str_contains( $html92, 'No requerida (sin despacho)' ), 'the dispatch estimate reads as not required, distinct from pending' );
 
 /* The POST path: authorization first, then CSRF — neither substitutes the other.
@@ -910,7 +910,7 @@ $version = fpw_read_quotation_version( 91 );
 check( is_array( $version ) && 1 === (int) $version['version'] && 'FP-2026-000091' === $version['reference'], 'the first version is durable with the request reference' );
 check( 64 === strlen( (string) ( $version['attempt'] ?? '' ) ) && 5 === (int) $version['work_revision'], 'the version binds the request attempt identity and the reviewed revision' );
 check( $version['projection'] === fpw_read_draft_preview( 91 )['projection'], 'the frozen version IS the stored reviewed projection' );
-check( $version['buyer'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'email' => 'compras@prueba.invalid' ), 'the version freezes the buyer identity for delivery' );
+check( $version['buyer'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'rut' => '76.543.210-K', 'phone' => '+56 9 1234 5678', 'email' => 'compras@prueba.invalid' ), 'the version freezes the buyer identity and commercial contact details for delivery' );
 check( 'ready' === $version['document'] && 'accepted' === ( $version['delivery']['state'] ?? '' ) && is_int( $version['delivery']['at'] ?? null ), 'document ready and mail accepted are recorded on the version' );
 check( 1 === (int) ( $version['approved_by'] ?? 0 ) && ( $version['approved_at'] ?? 0 ) > 0, 'the approval records its actor and time' );
 check( ( $version['commercial']['number'] ?? 0 ) === 1761 && ( $version['commercial']['allocated_at'] ?? 0 ) > 0, 'the version freezes the first commercial number of the owner-confirmed series (next after 1760)' );
@@ -978,7 +978,7 @@ $GLOBALS['registered_filters']['fpw_quotation_document_bytes'] = array();
 /* A rejected mail is named as rejected, with the version preserved. */
 $save93 = fpw_save_draft_work( 93, $payload93, array(
 	'fpw_work_revision' => '0',
-	'fpw_work' => array( 'lines' => array( array( 'quantity' => '4', 'price' => '890' ) ), 'destination' => 'x', 'dispatch_amount' => '5' ),
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '4', 'price' => '890' ) ), 'pickup_location' => 'mostazal', 'destination' => 'x', 'dispatch_amount' => '5' ),
 ), 1 );
 check( ( $save93['state'] ?? '' ) === 'saved', 'the mail-rejected journey saves its complete work' );
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '93' );
@@ -999,7 +999,7 @@ check( fpw_create_request_draft( $order94 ) === true, 'the mail-unknown journey 
 $payload94 = fpw_read_request_draft( 94 );
 check( ( fpw_save_draft_work( 94, $payload94, array(
 	'fpw_work_revision' => '0',
-	'fpw_work' => array( 'lines' => array( array( 'quantity' => '2', 'price' => '2400' ) ), 'destination' => 'x', 'dispatch_amount' => '5' ),
+	'fpw_work' => array( 'lines' => array( array( 'quantity' => '2', 'price' => '2400' ) ), 'pickup_location' => 'los-paltos', 'destination' => 'x', 'dispatch_amount' => '5' ),
 ), 1 )['state'] ?? '' ) === 'saved', 'the mail-unknown journey saves its complete work' );
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '94' );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );
@@ -1068,7 +1068,7 @@ function fpwd_review_for_approval( int $id, string $price = '1000' ): array {
 	$draft = fpw_read_request_draft( $id );
 	$saved = fpw_save_draft_work( $id, $draft, array(
 		'fpw_work_revision' => (string) fpw_draft_work_revision( fpw_read_draft_work( $id ) ),
-		'fpw_work' => array( 'lines' => array( array( 'quantity' => '1', 'price' => $price ) ), 'validity_days' => '7' ),
+		'fpw_work' => array( 'lines' => array( array( 'quantity' => '1', 'price' => $price ) ), 'pickup_location' => 'los-paltos', 'validity_days' => '7' ),
 	), 1 );
 	check( 'saved' === $saved['state'], 'synthetic commercial work is saved' );
 	$GLOBALS['fpwd_caps'] = array( 'manage_woocommerce' => true );
@@ -1173,7 +1173,7 @@ for ( $i = 1; $i <= 40; $i++ ) {
 }
 $GLOBALS['fpwd_orders'][103] = new FPWD_Order( 103, $items103, array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
 check( fpw_create_request_draft( $GLOBALS['fpwd_orders'][103] ), 'long-offer fixture creates its own receipt' );
-$saved103 = fpw_save_draft_work( 103, fpw_read_request_draft( 103 ), array( 'fpw_work_revision' => '0', 'fpw_work' => array( 'lines' => $work103, 'validity_days' => '7' ) ), 1 );
+$saved103 = fpw_save_draft_work( 103, fpw_read_request_draft( 103 ), array( 'fpw_work_revision' => '0', 'fpw_work' => array( 'lines' => $work103, 'pickup_location' => 'los-paltos', 'validity_days' => '7' ) ), 1 );
 check( 'saved' === $saved103['state'], 'owner saves all forty manually priced lines' );
 $_GET = array( 'page' => 'fpw-quote-draft', 'request' => '103' );
 $_POST = array( 'fpw_work_preview' => '1', 'fpw_preview_nonce' => 'offline-nonce' );

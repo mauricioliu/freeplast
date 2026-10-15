@@ -60,6 +60,28 @@
   function init() {
     if (initialized) { return; }
     initialized = true;
+    document.querySelectorAll('.fp-catalog-menu').forEach(function (menu) {
+      var summary = menu.querySelector('summary');
+      var hoverOpened = false;
+      var close = function () { menu.open = false; hoverOpened = false; };
+      menu.addEventListener('pointerenter', function (event) {
+        if (event.pointerType === 'mouse' && menu.closest('.desktop-nav') && !menu.open) { menu.open = true; hoverOpened = true; }
+      });
+      menu.addEventListener('pointerleave', function (event) {
+        if (event.pointerType === 'mouse' && hoverOpened && !menu.contains(document.activeElement)) { close(); }
+      });
+      summary.addEventListener('click', function (event) {
+        if (hoverOpened) { event.preventDefault(); hoverOpened = false; }
+      });
+      menu.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && menu.open) { event.preventDefault(); event.stopPropagation(); close(); summary.focus(); }
+      });
+      menu.addEventListener('focusout', function () {
+        setTimeout(function () { if (!menu.contains(document.activeElement)) { close(); } }, 0);
+      });
+      document.addEventListener('click', function (event) { if (!menu.contains(event.target)) { close(); } });
+      menu.querySelectorAll('a').forEach(function (link) { link.addEventListener('click', close); });
+    });
     var dialogs = document.querySelectorAll(CHROME_SELECTOR);
     if (dialogs.length === 0) { return; }
     dialogs.forEach(wireDialog);
@@ -83,6 +105,12 @@
         var here = location.pathname.replace(/\/+$/, '') || '/';
         var current = (target === here && here !== '/') || (target === '/tienda' && isProduct);
         if (current) { link.setAttribute('aria-current', 'page'); }
+        var category = document.body.classList.contains('tax-product_cat');
+        var catalogMenu = link.closest('.fp-catalog-menu');
+        if (catalogMenu && (current || isProduct || category)) {
+          catalogMenu.querySelector('summary').classList.add('is-current');
+          if (current && category && catalogMenu.closest('.menu-dialog')) { catalogMenu.open = true; }
+        }
       } catch (err) { /* non-URL hrefs stay unmarked */ }
     });
   }

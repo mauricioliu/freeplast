@@ -2,6 +2,7 @@
 /** Shared chrome does not grant access or alter the maintenance workflows. */
 define('ABSPATH', __DIR__);
 $GLOBALS['caps'] = [];
+function add_filter($hook, $callback, $priority = 10, $args = 1) { $GLOBALS['filters'][$hook] = $callback; }
 function current_user_can($cap) { return !empty($GLOBALS['caps'][$cap]); }
 function fpw_can_manage_quotations() { return current_user_can('manage_woocommerce') || current_user_can('fpw_manage_quotations'); }
 function fpw_can_manage_data() { return current_user_can('manage_woocommerce') || current_user_can('fpw_manage_data'); }
@@ -43,4 +44,21 @@ $_GET=['page'=>'fpw-quote-draft'];
 check(!fpw_workspace_surface(),'legacy draft not opted into workspace remains native');
 $_GET=['page'=>'fpw-quote-draft','workspace'=>'1'];
 check(str_contains(fpw_workspace_navigation(),'href="admin.php?page=fpw-quotations" aria-current="page"'),'draft belongs to quotation navigation');
+$notice_filter = $GLOBALS['filters']['action_scheduler_check_pastdue_actions'] ?? null;
+check(is_callable($notice_filter), 'scheduler notice policy registered');
+foreach (['fpw-quotations','fpw-quote-draft','fpw-data','fpw-price-list','fpw-sales-import'] as $page) {
+ $_GET=['page'=>$page,'workspace'=>'1'];
+ check(false === $notice_filter(true), 'scheduler notice absent from owner surface: '.$page);
+ check(false === $notice_filter(false), 'upstream denial remains denied');
+}
+foreach (['plugins','action-scheduler','dashboard',['invalid']] as $page) {
+ $_GET=['page'=>$page];
+ check(true === $notice_filter(true), 'technical administration still shows scheduler diagnostics');
+ check(false === $notice_filter(false), 'technical administration preserves upstream denial');
+}
+$_GET=['page'=>'fpw-quote-draft'];
+check(true === $notice_filter(true), 'legacy non-workspace draft keeps diagnostics');
+$GLOBALS['caps']=[];
+$_GET=['page'=>'fpw-price-list'];
+check(true === $notice_filter(true), 'unauthorized query string cannot suppress diagnostics');
 echo "workspace chrome: $n checks passed\n";

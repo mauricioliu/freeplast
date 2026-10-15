@@ -24,16 +24,18 @@ export function runOwnerWorkspaceJsTests() {
       const discard = document.querySelector('[data-fpw-discard]');
       const form = document.querySelector('[data-fpw-work]');
       const price = form.elements.namedItem('fpw_work[lines][0][price]');
-      check(save.hidden === (saved === '1') && preview.hidden === (saved !== '1'), 'clean dock reviews saved work or saves a new draft');
+      check(save.hidden && !preview.hidden && !preview.disabled, 'dock always offers review, including a new draft');
       check(discard.hidden, 'discard is hidden while clean');
       const quantity = form.elements.namedItem('fpw_work[lines][0][quantity]');
       quantity.value = '350'; quantity.dispatchEvent(new Event('input', {bubbles:true}));
-      check(!save.hidden && preview.hidden && preview.disabled && !discard.hidden, 'dirty dock offers save, never silent preview');
+      check(save.hidden && !preview.hidden && !preview.disabled && !discard.hidden, 'dirty draft can be reviewed without a separate save');
       check(document.querySelector('[data-fpw-dock-total]').textContent === '624.750 CLP' && price.value === '1500', 'quantity edit estimates total without changing chosen price');
       check(document.querySelector('[data-fpw-amount="total"]').textContent === '624.750 CLP' && document.querySelector('[data-fpw-line-total]').textContent === '525.000 CLP', 'summary and line totals update with dock');
       const attemptedReview = new dom.window.SubmitEvent('submit', {bubbles:true, cancelable:true, submitter:preview});
       form.dispatchEvent(attemptedReview);
-      check(attemptedReview.defaultPrevented, 'dirty review submission is blocked even if dispatched directly');
+      check(!attemptedReview.defaultPrevented, 'review submits current edits for server-side save and validation');
+      const reviewPosted = new FormData(form, preview);
+      check(reviewPosted.get('fpw_work_preview') === '1' && reviewPosted.get('fpw_work[lines][0][quantity]') === '350', 'review includes the current edited fields');
       const posted = new FormData(form, save);
       check(posted.get('fpw_work_save') === '1' && posted.get('fpw_work[lines][0][quantity]') === '350' && !posted.has('fpw_work_preview'), 'external dock button submits the native form and only its explicit action');
       const distance = document.querySelector('[data-distance-test]');
@@ -43,12 +45,12 @@ export function runOwnerWorkspaceJsTests() {
       form.reset();
       check(quantity.value === '100' && price.value === '1500' && preview.disabled === false, 'reset restores native fields and review availability');
       check(discard.hidden && document.querySelector('[data-fpw-dock-total]').textContent === '178.500 CLP', 'reset restores saved total and clears discard');
-      check(save.hidden === (saved === '1'), 'reset restores the appropriate dock action');
+      check(save.hidden && !preview.hidden, 'reset keeps review as the dock action');
       const small = document.querySelector('[data-price="2400"]');
       const bulk = document.querySelector('[data-price="1900"]');
       check(!small.hidden && !bulk.hidden, 'both reference choices are progressively enhanced');
       small.click();
-      check(price.value === '2400' && preview.disabled && document.activeElement === price, 'explicit small-reference choice changes only the working input and requires save');
+      check(price.value === '2400' && !preview.disabled && document.activeElement === price, 'reference price can be reviewed directly');
       bulk.click();
       check(price.value === '1900', 'bulk reference is an explicit independent choice');
       const originLegend = document.querySelector('[data-fpw-origin="0"]');
@@ -82,13 +84,13 @@ export function runOwnerWorkspaceJsTests() {
       check(legend.hidden === !unsaved, 'pending origin hidden unless server reports unsaved work');
       document.querySelector('[data-fpw-apply-price]').click();
       check(price.value === '1300' && !legend.hidden && legend.textContent === 'Cambio sin guardar.', 'reference selection reveals unsaved feedback without packaging node');
-      check(document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar') && document.querySelector('[data-fpw-preview]').disabled, 'global warning and save-before-review guard survive');
+      check(document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar') && !document.querySelector('[data-fpw-preview]').disabled, 'unsaved feedback does not block review');
       price.value = ''; price.dispatchEvent(new Event('input', {bubbles:true}));
       check(unsaved ? !legend.hidden && legend.textContent === 'Cambio sin guardar.' : legend.hidden && legend.textContent === '', 'returning to rejected fields never claims saved origin');
       price.value = '1400'; price.dispatchEvent(new Event('input', {bubbles:true}));
       form.reset();
       check(legend.hidden === !unsaved && price.value === '', 'reset restores native fields without clearing rejected-POST state');
-      if (unsaved) check(document.querySelector('[data-fpw-preview]').disabled, 'rejected POST cannot reset into approval readiness');
+      if (unsaved) check(!document.querySelector('[data-fpw-preview]').disabled, 'rejected POST can retry server validation through review');
     } finally { dom.window.close(); }
   }
   const live = (config = {}, count = 2) => {

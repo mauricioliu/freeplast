@@ -8,6 +8,15 @@ check($issuer['bank'] === 'Banco de Chile' && $issuer['account_type'] === 'Cuent
 check($issuer['address'] === 'P Picarquín sitio 52, San Fco de Mostazal, VI Región' && $issuer['email'] === 'ventas@freeplast.cl', 'approved new address and email frozen');
 check(hash('sha256', base64_decode($issuer['logo_base64'], true)) === $issuer['logo_sha256'], 'official converted logo bytes frozen');
 $h = fpw_quotation_document_html($issued, '', 'sans-serif');
+check(str_contains($h, 'class="header"') && str_contains($h, 'class="details client"') && str_contains($h, 'class="items"'), 'commercial layout separates header, client details and bordered item grid');
+check(str_contains($h, '76.543.210-K') && str_contains($h, '+56 9 1234 5678') && str_contains($h, 'Pilar'), 'client sheet displays frozen tax ID and contact details');
+$unsafe_buyer = $issued;
+$unsafe_buyer['buyer']['rut'] = '<script>tax</script>';
+$unsafe_buyer['buyer']['phone'] = '<b>phone</b>';
+check(str_contains(fpw_quotation_document_html($unsafe_buyer, '', 'sans-serif'), '&lt;script&gt;tax&lt;/script&gt;') && str_contains(fpw_quotation_document_html($unsafe_buyer, '', 'sans-serif'), '&lt;b&gt;phone&lt;/b&gt;'), 'new client fields are escaped');
+$old_buyer = $issued;
+unset($old_buyer['buyer']['rut'], $old_buyer['buyer']['phone']);
+check(!str_contains(fpw_quotation_document_html($old_buyer, '', 'sans-serif'), '76.543.210-K'), 'older buyer snapshots are not enriched from current records');
 check(str_contains($h, 'data:image/png;base64,') && str_contains($h, 'Banco de Chile') && str_contains($h, '390400602'), 'PDF HTML uses frozen logo and bank');
 check(str_contains($h, 'stock disponible') && str_contains($h, 'Pago contado') && !str_contains($h, 'retiro en bodega'), 'dispatch offer has stock/cash terms, not pickup');
 $pickup = $issued;

@@ -2,40 +2,37 @@
 
 <!-- wp:group {"tagName":"main"} -->
 <main class="wp-block-group">
-	<!-- wp:group {"className":"fp-hero-section","layout":{"type":"default"}} -->
-	<div class="wp-block-group fp-hero-section">
-		<!-- wp:group {"className":"fp-hero","layout":{"type":"default"}} -->
-		<div class="wp-block-group fp-hero">
-			<!-- wp:group {"layout":{"type":"constrained"}} -->
-			<div class="wp-block-group">
-				<!-- wp:heading {"level":1,"className":"fp-hero-title"} -->
-				<h1 class="wp-block-heading fp-hero-title">Venta Mayorista de <br>Productos Plásticos</h1>
-				<!-- /wp:heading -->
-
-				<!-- wp:paragraph {"className":"fp-hero-sub"} -->
-				<p class="fp-hero-sub">Estamos en la VI Región y en Santiago. Ofrecemos un servicio rápido y confiable</p>
-				<!-- /wp:paragraph -->
-
-				<!-- wp:buttons -->
-				<div class="wp-block-buttons">
-					<!-- wp:button {"className":"fp-btn"} -->
-					<div class="wp-block-button fp-btn"><a class="wp-block-button__link wp-element-button" href="/tienda/">Ver productos y cotizar</a></div>
-					<!-- /wp:button -->
-				</div>
-				<!-- /wp:buttons -->
+	<!-- wp:html -->
+	<section class="fp-original-banner" aria-label="Productos plásticos Freeplast" aria-roledescription="carrusel">
+		<div class="fp-banner-slide" role="group" aria-roledescription="diapositiva" aria-label="1 de 2">
+			<img class="fp-banner-photo" src="{{FREEPLAST_THEME_URL}}/assets/img/banner-original-1.webp" alt="" fetchpriority="high" />
+			<div class="fp-banner-copy">
+				<h1>Venta Mayorista de Productos Plásticos</h1>
+				<p>Estamos en la VI Región y en Santiago. Ofrecemos un servicio rápido y confiable</p>
+				<a class="fp-banner-cta" href="/tienda/">Cotiza Online</a>
 			</div>
-			<!-- /wp:group -->
-
-			<!-- wp:image {"className":"fp-hero-figure"} -->
-			<figure class="wp-block-image fp-hero-figure">
-				<img src="{{FREEPLAST_THEME_URL}}/assets/img/warehouse.webp" alt="Bodega Freeplast con cajas plásticas apiladas" width="1800" height="615" />
-				<figcaption class="fp-hero-chip"><b>Cajas Universales, cosecheras 3/4, fruteras, polleras, traversas,…</b><span>Los mejores productos, durables y resistentes</span></figcaption>
-			</figure>
-			<!-- /wp:image -->
 		</div>
-		<!-- /wp:group -->
-	</div>
-	<!-- /wp:group -->
+		<div class="fp-banner-slide fp-banner-slide-green" role="group" aria-roledescription="diapositiva" aria-label="2 de 2" hidden>
+			<img class="fp-banner-photo" src="{{FREEPLAST_THEME_URL}}/assets/img/banner-original-2.webp" alt="" />
+			<div class="fp-banner-copy">
+				<h2>Cajas Universales, cosecheras 3/4, fruteras, polleras, traversas,...</h2>
+				<p>Los mejores productos, durables y resistentes</p>
+				<a class="fp-banner-cta" href="/tienda/">Cotiza Online</a>
+			</div>
+		</div>
+		<div class="fp-banner-controls" hidden>
+			<button class="fp-banner-prev" type="button" aria-label="Diapositiva anterior">‹</button>
+			<button class="fp-banner-next" type="button" aria-label="Diapositiva siguiente">›</button>
+			<div class="fp-banner-pagination">
+				<button type="button" data-slide="0" aria-label="Mostrar diapositiva 1" aria-current="true"><span></span></button>
+				<button type="button" data-slide="1" aria-label="Mostrar diapositiva 2"><span></span></button>
+				<button type="button" class="fp-banner-pause">Pausar rotación</button>
+			</div>
+		</div>
+		<p class="screen-reader-text fp-banner-status" aria-live="polite" aria-atomic="true"></p>
+	</section>
+	<script src="{{FREEPLAST_THEME_URL}}/assets/js/banner.js" defer></script>
+	<!-- /wp:html -->
 
 	<!-- wp:group {"className":"fp-woo-shell"} --><div class="wp-block-group fp-woo-shell"><!-- wp:heading --><h2 class="wp-block-heading">Productos destacados</h2><!-- /wp:heading --><!-- wp:freeplast-woo/featured-products {"limit":8,"columns":4} /--></div><!-- /wp:group -->
 
@@ -112,26 +109,6 @@
 	</div>
 	<!-- /wp:group -->
 
-	<!-- wp:group {"className":"fp-home-contact"} -->
-	<div class="wp-block-group fp-home-contact">
-		<!-- wp:heading {"level":2} -->
-		<h2 class="wp-block-heading">Contacto</h2>
-		<!-- /wp:heading -->
-
-		<!-- wp:list {"className":"fp-home-contact-list"} -->
-		<ul class="wp-block-list fp-home-contact-list">
-			<li><b>Visítanos:</b> P Picarquín sitio 52, San Fco de Mostazal, VI Región</li>
-			<li><b>Llámanos:</b> <a href="tel:+56968444265">+56 9 6844 4265</a> · <a href="https://api.whatsapp.com/send?phone=56968444265">WhatsApp</a></li>
-			<li><b>Escríbenos:</b> <a href="mailto:ventas@freeplast.cl">ventas@freeplast.cl</a></li>
-			<li><b>Horario:</b> Lun a Vie 09:00 a 13:00 hrs y 14:00 a 18:00 hrs</li>
-		</ul>
-		<!-- /wp:list -->
-
-		<!-- wp:paragraph -->
-		<p><a class="fp-home-more" href="/contacto/">Todos los datos de contacto</a></p>
-		<!-- /wp:paragraph -->
-	</div>
-	<!-- /wp:group -->
 </main>
 <!-- /wp:group -->
 

@@ -1,4 +1,13 @@
 /* Shared owner workspace — scoped to authorized quotation and maintenance screens. */
+.fpw-workspace .fpw-pickup{border:0;padding:0;margin:0;min-width:0}
+.fpw-pickup legend{font-weight:650;margin-bottom:12px}
+.fpw-pickup-options{display:grid;gap:12px}
+.fpw-workspace .fpw-pickup-option{display:flex;align-items:center;gap:12px;min-height:64px;padding:16px;border:1px solid var(--chrome-border,#a0a2af);border-radius:8px;cursor:pointer;margin:0}
+.fpw-pickup-option span{overflow-wrap:anywhere}
+.fpw-pickup-option:has(input:checked){border-color:var(--blue,#100090);background:var(--blue-soft,#eeedf8);box-shadow:inset 0 0 0 1px var(--blue,#100090)}
+.fpw-pickup-option:has(input:focus-visible){outline:2px solid var(--blue,#100090);outline-offset:3px}
+.fpw-workspace .fpw-pickup-option input{width:20px;height:20px;min-height:0;flex:0 0 20px;margin:0;accent-color:var(--blue,#100090)}
+@media(min-width:700px){.fpw-pickup-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .fpw-workspace-navigation{display:flex;flex-wrap:wrap;gap:4px 16px;padding:8px 16px;background:var(--paper);border-bottom:1px solid var(--line)}
 .fpw-workspace-navigation a{display:inline-flex;align-items:center;min-height:44px;padding:8px 4px;text-decoration:none;border-bottom:2px solid transparent;font-weight:650;font-size:14px}
 .fpw-workspace-navigation a[aria-current]{border-bottom-color:var(--blue);background:var(--blue-soft)}
@@ -55,7 +64,7 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace :is(.fpw-button,.fpw-secondary):hover{background:var(--blue-soft);color:var(--blue)}
 .fpw-workspace :is(button,input,select,textarea):disabled{cursor:not-allowed;background:var(--tint);color:var(--muted);border-color:var(--line);opacity:1}
 .fpw-workspace label{display:grid;gap:6px;font-size:14px;font-weight:650;min-width:0}
-.fpw-workspace :is(input:not([type=checkbox]):not([type=hidden]),textarea,select){display:block;width:100%;max-width:100%;min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit;font-size:16px;padding:10px 12px;box-shadow:none}
+.fpw-workspace :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select){display:block;width:100%;max-width:100%;min-height:48px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit;font-size:16px;padding:10px 12px;box-shadow:none}
 .fpw-workspace input[type=number]{text-align:right;font-variant-numeric:tabular-nums}
 .fpw-workspace input[type=checkbox]{width:20px;height:20px;accent-color:var(--blue);margin:0}
 .fpw-workspace input::placeholder,.fpw-workspace textarea::placeholder{color:var(--muted);opacity:1}

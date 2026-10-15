@@ -169,17 +169,50 @@ foreach ( array( array(), array( 'rate_permille' => 0, 'applies_to_dispatch' => 
 }
 $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = $tax_filters;
 $posted_values = fpw_draft_work_values( $draft, $work );
-$_POST = array( 'fpw_work' => $posted_values, 'fpw_work_revision' => fpw_draft_work_revision( $work ), 'fpw_preview_nonce' => 'offline-nonce' );
+$_POST = array( 'fpw_work' => $posted_values, 'fpw_work_revision' => fpw_draft_work_revision( $work ), 'fpw_preview_nonce' => 'offline-nonce', 'fpw_draft_nonce' => 'offline-nonce', 'fpw_refresh_nonce' => 'offline-nonce' );
 check( fpw_workspace_guard_clean_action( $id, $draft, 'preview' ), 'no-JS unchanged form can review saved work' );
 $_POST['fpw_work']['lines'][0]['price']++;
-check( ! fpw_workspace_guard_clean_action( $id, $draft, 'preview' ), 'no-JS changed price cannot bypass save-before-review' );
+check( ! fpw_workspace_guard_clean_action( $id, $draft, 'refresh' ), 'price refresh still refuses to discard unsaved edits' );
 $_GET['review'] = '1';
 $rejected = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, null );
 check( str_contains( $rejected, 'data-fpw-unsaved="1"' ) && str_contains( $rejected, 'data-fpw-discard-work' ) && ! str_contains( $rejected, 'name="fpw_work_approve"' ), 'rejected POST remains editor with explicit discard link and no approval' );
+unset( $_GET['review'] );
+fpw_pending_draft_outcome( null );
+$_GET['workspace'] = '1';
+$_POST['fpw_work_preview'] = '1';
+$before_work = fpw_read_draft_work( $id );
+$before_mail = count( $GLOBALS['fpwd_mail_calls'] );
+fpw_handle_draft_action_request( wc_get_order( $id ), $draft, 'preview' );
+$review_work = fpw_read_draft_work( $id );
+check( fpw_pending_draft_outcome()['result']['state'] === 'previewed', 'one review POST saves edits and generates preview without an earlier save' );
+check( $review_work['revision'] === $before_work['revision'] + 1 && $review_work['lines'][0]['price'] === (int) $_POST['fpw_work']['lines'][0]['price'], 'review persists the actual posted price through a new working revision' );
+check( fpw_read_draft_preview( $id )['revision'] === $review_work['revision'] && fpw_read_draft_preview( $id )['projection'] === fpw_quotation_projection( $draft, $review_work ), 'review binds the saved revision and server calculation' );
+check( count( $GLOBALS['fpwd_mail_calls'] ) === $before_mail && null === fpw_read_quotation_version( $id ), 'review neither sends mail nor issues a quotation' );
+$_POST['fpw_work_revision'] = $review_work['revision'];
+fpw_handle_draft_action_request( wc_get_order( $id ), $draft, 'preview' );
+check( fpw_read_draft_work( $id )['revision'] === $review_work['revision'], 'unchanged review does not create an unnecessary save' );
+$clean_post = $_POST;
+$_POST['fpw_work']['lines'][0]['price']++;
+$_POST['fpw_draft_nonce'] = 'forged';
+try { fpw_workspace_guard_clean_action( $id, $draft, 'preview' ); check( false, 'review save requires its save nonce' ); }
+catch ( FPWD_Die $e ) { check( '403' === $e->getMessage() && fpw_read_draft_work( $id ) === $review_work, 'forged save nonce cannot persist review edits' ); }
+$_POST = $clean_post;
+$_POST['fpw_work']['lines'][0]['price'] = '0';
+$prior_preview = fpw_read_draft_preview( $id );
+fpw_handle_draft_action_request( wc_get_order( $id ), $draft, 'preview' );
+check( fpw_pending_draft_outcome()['result']['state'] === 'workspace-invalid' && fpw_read_draft_work( $id ) === $review_work && fpw_read_draft_preview( $id ) === $prior_preview, 'invalid review changes neither saved work nor prior preview' );
+$_POST = $clean_post;
 $_POST['fpw_work_revision']--;
 check( ! fpw_workspace_guard_clean_action( $id, $draft, 'preview' ) && fpw_pending_draft_outcome()['result']['state'] === 'conflict', 'stale revision still fails closed' );
 $_POST['fpw_preview_nonce'] = 'forged';
 try { fpw_workspace_guard_clean_action( $id, $draft, 'preview' ); check( false, 'forged preview nonce must fail' ); }
 catch ( FPWD_Die $e ) { check( '403' === $e->getMessage(), 'forged preview nonce forbidden' ); }
-fpw_pending_draft_outcome( array() ); $_POST = array(); unset( $_GET['review'] );
+$saved_rows = $GLOBALS['fpwd_table'];
+unset( $GLOBALS['fpwd_table'][fpw_draft_work_row_name( $id )] );
+$_POST = array( 'fpw_work' => fpw_draft_work_values( $draft, null ), 'fpw_work_revision' => 0, 'fpw_preview_nonce' => 'offline-nonce', 'fpw_draft_nonce' => 'offline-nonce' );
+fpw_pending_draft_outcome( null );
+fpw_handle_draft_action_request( wc_get_order( $id ), $draft, 'preview' );
+check( fpw_pending_draft_outcome()['result']['state'] === 'previewed' && fpw_read_draft_work( $id )['revision'] === 1 && fpw_read_draft_preview( $id )['revision'] === 1, 'first review saves initial values even when unchanged and no draft was ever saved' );
+$GLOBALS['fpwd_table'] = $saved_rows;
+fpw_pending_draft_outcome( array() ); $_POST = array(); unset( $_GET['review'], $_GET['workspace'] );
 echo 'workspace offer: ' . ( $assertions - $start ) . " offline checks passed\n";

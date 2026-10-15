@@ -13,7 +13,7 @@ The authoritative, editable representation of the Catalog used in daily operatio
 _Avoid_: Scrape, live-site mirror
 
 **Product Category**:
-A customer-facing Catalog classification taken from Freeplast's 2026 catalog: `Agrícola` or `Otros`.
+A customer-facing section of the Catalog: `Agrícola`, `Carnes`, `Productos del mar` or `Otros` (owner-requested navigation, 2026-10-15). Each section has its own title, description and selection of Products. A Product may belong to several sections without becoming a different Product; Caja Universal appears across the agricultural, meat and seafood sections.
 _Avoid_: Tag, product family
 
 **Active Product**:
