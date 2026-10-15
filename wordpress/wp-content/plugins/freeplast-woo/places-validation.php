@@ -1,6 +1,15 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/** Only the contained local runtime can grant manual entry; never request data. */
+function fpw_manual_address_allowed(): bool {
+	return defined('FPW_LOCAL_MANUAL_ADDRESS') && true === FPW_LOCAL_MANUAL_ADDRESS
+		&& defined('WP_ENVIRONMENT_TYPE') && 'local' === WP_ENVIRONMENT_TYPE
+		&& defined('WP_HOME') && WP_HOME === getenv('FREEPLAST_LOCAL_URL')
+		&& 1 === preg_match('~\Ahttp://(?:mliu|localhost|127\.0\.0\.1):[1-9][0-9]{3,4}\z~D', WP_HOME)
+		&& function_exists('fpw_local_capture_active') && fpw_local_capture_active();
+}
+
 /** Submission-only Places confirmation. No browser key or customer notes cross this seam. */
 function fpw_confirm_place( $id ): array {
 	static $confirmed = array(); // Request-local: never reuse a confirmation across submissions.
@@ -31,6 +40,13 @@ function fpw_confirm_place( $id ): array {
 function fpw_canonical_checkout_address( array $data ): array {
 	if ( 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) {
 		foreach ( array( 'billing_fp_address', 'billing_fp_references', 'fpw_place_id', 'fpw_place_scope' ) as $key ) { $data[$key] = ''; }
+		return $data;
+	}
+	if ( fpw_manual_address_allowed() ) {
+		$address = $data['billing_fp_address'] ?? '';
+		$address = is_string($address) ? trim($address) : '';
+		$data['billing_fp_address'] = strlen($address) <= 800 && !preg_match('/[<>\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $address) && sanitize_textarea_field($address) === $address ? $address : '';
+		$data['fpw_place_id'] = $data['fpw_place_scope'] = '';
 		return $data;
 	}
 	$place = fpw_confirm_place( $data['fpw_place_id'] ?? '' );

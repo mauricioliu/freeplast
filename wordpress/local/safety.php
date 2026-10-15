@@ -10,6 +10,8 @@ if (!defined('WP_ENVIRONMENT_TYPE') || 'local' !== WP_ENVIRONMENT_TYPE ||
 add_filter('pre_option_home', static fn() => WP_HOME, PHP_INT_MAX);
 require '/opt/local-review-mail-capture.php';
 if (!fpw_local_capture_host_allowed()) { throw new RuntimeException('Local capture host rejected.'); }
+// This capability is issued only after the local runtime and capture host gates.
+define('FPW_LOCAL_MANUAL_ADDRESS', true);
 // Reusing the capture plugin is safe only after the host gate fails closed above.
 add_action('phpmailer_init', static function () {
     throw new RuntimeException('Local environment forbids real mail transport.');

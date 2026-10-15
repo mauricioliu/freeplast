@@ -9,7 +9,7 @@ const root=fileURLToPath(new URL('..',import.meta.url));
 const php=process.env.PHP_BINARY || path.join(root,'.tools/php/php');
 if(!existsSync(php)) throw Error('PHP missing. Set PHP_BINARY to your PHP executable.');
 function walk(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);}
-function run(bin,args){const result=spawnSync(bin,args,{encoding:'utf8'});if(result.status!==0)throw Error(result.stderr||result.stdout);return result.stdout.trim();}
+function run(bin,args,env=process.env){const result=spawnSync(bin,args,{encoding:'utf8',env});if(result.status!==0)throw Error(result.stderr||result.stdout);return result.stdout.trim();}
 const files=[...walk(path.join(root,'wp-content/plugins/freeplast-woo')),...walk(path.join(root,'wp-content/themes/freeplast')),...walk(path.join(root,'wp-content/mu-plugins')),...['migrate-to-woo.php','verify-woo-state.php','import-catalog-photos.php','lib/catalog-photos.php','lib/photo-release-state.php','record-state.php','migrate-catalog-photos-release.php','catalog-photos-native-test.php','local-review-mail-capture.php','generate-sample-quotation.php'].map(p=>path.join(root,'scripts',p))];
 let checks=0;
 for(const file of files){
@@ -152,6 +152,11 @@ console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php
 // Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
+for (const mode of ['allowed', 'missing', 'missing-guard', 'constant-only', 'wrong-marker', 'staging', 'production', 'bad-host', 'mismatch', 'bad-sink']) {
+  for (const test of ['checkout-places-test.php', 'checkout-form-test.php']) {
+    console.log(`${mode}: ${run(php, [path.join(root, 'scripts', test)], { ...process.env, FREEPLAST_TEST_MANUAL_MODE: mode })}`);
+  }
+}
 console.log(run(php,[path.join(root,'scripts/accessible-names-test.php')]));
 // H0 (2026-10-03 review): the TEST-ONLY local capture mu-plugin's offline self-test.
 // The file itself ships in scripts/ only; the lead installs it manually into a disposable copy.

@@ -203,7 +203,7 @@ function fpw_checkout_fields( $fields ) {
 		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-first'), 'priority'=>50 ),
 		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
 		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
-		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Selecciona una sugerencia de Google', 'custom_attributes'=>array('readonly'=>'readonly', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
+		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>fpw_manual_address_allowed() ? 'Calle, número, comuna y región (DEV)' : 'Selecciona una sugerencia de Google', 'custom_attributes'=>fpw_manual_address_allowed() ? array('rows'=>'2') : array('readonly'=>'readonly', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
 		'billing_fp_references' => array( 'label'=>'Referencias para llegar', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Portón azul, entrada por el camino lateral', 'custom_attributes'=>array('maxlength'=>'800', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>90 ),
 	);
 	$fields['shipping'] = array();
@@ -254,7 +254,7 @@ function fpw_validate_checkout( $data, $errors ) {
 		$errors->remove( 'billing_fp_dispatch_required' );
 		$errors->add('billing_fp_dispatch', 'Despacho: selecciona Con despacho o Sin despacho.', array('id'=>'billing_fp_dispatch'));
 	}
-	if ( 'si' === $dispatch && ! fpw_confirm_place( $data['fpw_place_id'] ?? '' ) ) { $errors->add('billing_fp_address', 'Dirección de despacho: selecciona una sugerencia de Google. Si Google no responde, recarga y vuelve a intentarlo; no podemos recibir solicitudes con despacho sin confirmar la dirección.', array('id'=>'billing_fp_address')); }
+	if ( 'si' === $dispatch && '' === fpw_canonical_checkout_address($data)['billing_fp_address'] ) { $errors->add('billing_fp_address', fpw_manual_address_allowed() ? 'Dirección de despacho: escribe una dirección válida con comuna y región (máximo 800 bytes, solo DEV).' : 'Dirección de despacho: selecciona una sugerencia de Google. Si Google no responde, recarga y vuelve a intentarlo; no podemos recibir solicitudes con despacho sin confirmar la dirección.', array('id'=>'billing_fp_address')); }
 	if ( 'si' === $dispatch && strlen( $data['billing_fp_references'] ?? '' ) > 800 ) { $errors->add('billing_fp_references', 'Referencias para llegar: el texto es demasiado largo (máximo 800).', array('id'=>'billing_fp_references')); }
 	$fields = fpw_checkout_fields( array() );
 	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email') as $key ) {
@@ -289,7 +289,7 @@ add_action( 'woocommerce_after_checkout_validation', 'fpw_validate_checkout', 10
 
 add_action( 'woocommerce_checkout_create_order', static function ( $order, $data ) {
 	$data = fpw_canonical_checkout_address( $data );
-	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && '' === $data['billing_fp_address'] ) { throw new Exception( 'Selecciona una dirección de Google y vuelve a intentarlo.' ); }
+	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && '' === $data['billing_fp_address'] ) { throw new Exception( fpw_manual_address_allowed() ? 'Escribe una dirección válida para despacho (solo DEV).' : 'Selecciona una dirección de Google y vuelve a intentarlo.' ); }
 	$order->update_meta_data( '_qwc_quote', '1' );
 	$order->update_meta_data( '_quote_status', 'quote-pending' );
 	$order->update_meta_data( '_fp_request', 'yes' );
@@ -350,6 +350,7 @@ function fpw_address_provenance( array $data ): array {
  * @return array{key:string, region:string, version:string}
  */
 function fpw_places_config(): array {
+	if ( fpw_manual_address_allowed() ) { return array(); }
 	$default = defined( 'FREEPLAST_GOOGLE_API_KEY' ) ? array( 'key' => FREEPLAST_GOOGLE_API_KEY, 'region' => 'CL' ) : array();
 	$config = apply_filters( 'fpw_places_config', $default );
 	if ( ! is_array( $config ) || ! isset( $config['key'] ) || ! is_string( $config['key'] ) || '' === trim( $config['key'] ) ) { return array(); }

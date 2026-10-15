@@ -26,8 +26,26 @@ por las pruebas offline. No usar datos reales.
   aborta WordPress. HTTP WordPress bloqueado; PHP `mail()` deshabilitado y PHPMailer
   rechaza cualquier intento de transporte real. Sin claves Google. CSP impide conexiones
   automáticas del navegador a terceros. Maps/Routes, actualizaciones, cron y otras
-  integraciones externas no funcionan deliberadamente; probar solicitudes **sin despacho**.
+  integraciones externas no funcionan deliberadamente. Solo este runtime local custodiado
+  permite dirección manual con despacho: texto no vacío y seguro, máximo 800 bytes, sin
+  Place ID ni procedencia Google. Sin despacho descarta el destino como antes.
   La solicitud sintética con despacho permite revisar su borrador sin consultar Maps.
+- La excepción requiere `FPW_LOCAL_MANUAL_ADDRESS === true`, emitido por `safety.php`
+  tras sus guardias, entorno `local`, URL canónica local coincidente y captura privada
+  operativa. No se activa por POST, cookie, query, Host ni una clave Google ausente.
+  Fuera de esas condiciones, staging/producción incluidos, Google sigue obligatorio.
+  El textarea y su ayuda reflejan esa misma política; no se carga Places en modo manual.
+  Si falla la contención, falla cerrada la excepción, no se habilita un fallback global.
+- **Activación tras revisión del lead:** PHP del plugin/tema, `config.php` y `safety.php`
+  se leen desde binds en cada petición, con OPcache desactivado. Los binds de directorio
+  ven el código integrado en la siguiente petición; el bind individual de `safety.php`
+  puede conservar el inode anterior si Git reemplaza el archivo. Verificar sus hashes
+  host/contenedor; si difieren, recrear solo WordPress con autorización separada para
+  renovar el bind (un restart no garantiza renovarlo). Por eso se exige respaldo
+  privado fresco/verificado de la BD DEV **antes del merge**, además de preservar la versión
+  anterior del código. No ejecutar seed/reset. `apache.conf` sí se copia al arrancar, pero
+  esta excepción no lo modifica. No recargar ni alterar el formulario abierto del usuario;
+  verificación posterior solo con sesión/carrito sintéticos dedicados, sin envío.
 - Reutiliza `scripts/local-review-mail-capture.php`: correo simulado solo si quedan JSON,
   índice y adjuntos completos; falla sin entregar si la captura no puede escribirse.
   Capturas privadas en `/var/freeplast/mail`, fuera de `/var/www/html`.

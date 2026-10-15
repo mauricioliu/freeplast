@@ -287,4 +287,39 @@ check( fpw_places_config() === array( 'key' => 'constant-browser-key-fixture', '
 $GLOBALS['registered_filters']['fpw_places_config'] = array( static function ( $config ) { return array(); } );
 check( fpw_places_config() === array(), 'filter can disable assistance even with a deployment constant' );
 
+if (getenv('FREEPLAST_TEST_MANUAL_MODE')) {
+	require __DIR__ . '/fixtures/manual-dev-runtime.php';
+	$allowed = $manual_mode === 'allowed';
+	$input = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Camino Local 123, Mostazal', 'fpw_place_id'=>'', 'fpw_place_scope'=>'exacta', 'payment_method'=>'quotes-gateway', 'manual'=>true);
+	$normalized = apply_filters('woocommerce_checkout_posted_data', $input);
+	check(($normalized['billing_fp_address'] === $input['billing_fp_address']) === $allowed, 'manual normalization only in guarded DEV: ' . $manual_mode);
+	$errors = new WP_Error();
+	fpw_validate_checkout($normalized, $errors);
+	check(!in_array('billing_fp_address', $errors->codes, true) === $allowed, 'manual validation isolated: ' . $manual_mode);
+	if (!$allowed) {
+		try { fpwp_create($input); throw new LogicException('manual creation bypassed non-DEV policy'); }
+		catch (Exception $error) { check(!($error instanceof LogicException), $error->getMessage()); }
+	}
+	if ($allowed) {
+		$count = count($GLOBALS['transport_calls']);
+		$input['fpw_place_id'] = 'ChIJfixture-place-id_0000';
+		$manual = fpwp_create($input);
+		check($manual->meta['_billing_fp_address_source'] === 'manual' && !isset($manual->meta['_billing_fp_place_id']), 'forged Google carriers cannot label manual DEV address assisted');
+		check(count($GLOBALS['transport_calls']) === $count, 'manual DEV never calls provider');
+		$GLOBALS['registered_filters']['fpw_places_config'] = array(static fn() => array('key'=>'browser-key-fixture'));
+		check(fpw_places_config() === array(), 'manual DEV suppresses Google bootstrap even with configured key/filter');
+		check(fpw_canonical_checkout_address(array_replace($input, array('billing_fp_address'=>str_repeat('a', 800))))['billing_fp_address'] === str_repeat('a', 800), 'manual address accepts 800-byte boundary');
+		check(fpw_canonical_checkout_address(array_replace($input, array('billing_fp_address'=>'  Camino Local 123  ')))['billing_fp_address'] === 'Camino Local 123', 'manual address trims outer whitespace');
+		foreach (array('', '   ', array('bad'), str_repeat('a', 801), '<script>bad</script>', "bad\x00address") as $bad) {
+			$data = array_replace($input, array('billing_fp_address'=>$bad));
+			$errors = new WP_Error(); fpw_validate_checkout($data, $errors);
+			check(in_array('billing_fp_address', $errors->codes, true), 'invalid manual address rejected');
+			try { fpwp_create($data); throw new LogicException('invalid manual creation accepted'); }
+			catch (Exception $error) { check(!($error instanceof LogicException), $error->getMessage()); }
+		}
+		$data = fpw_canonical_checkout_address(array_replace($input, array('billing_fp_dispatch'=>'no')));
+		check($data['billing_fp_address'] === '' && $data['fpw_place_id'] === '', 'no dispatch discards manual address and forged carriers');
+	}
+}
+
 echo "checkout places: $assertions offline checks passed (issue #59: provenance claim handling, persistence boundary, draft rendering)\n";

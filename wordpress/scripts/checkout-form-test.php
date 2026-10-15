@@ -67,6 +67,10 @@ function WC() {
 	return $wc;
 }
 
+require_once __DIR__ . '/../wp-content/plugins/freeplast-woo/places-validation.php';
+if (getenv('FREEPLAST_TEST_MANUAL_MODE')) { require __DIR__ . '/fixtures/manual-dev-runtime.php'; }
+function sanitize_textarea_field($value) { return trim(strip_tags((string) $value)); }
+
 /* Real adapter field definitions (billing set under test). */
 $GLOBALS['fpw_fields_only'] = true;
 $adapter_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
@@ -97,6 +101,11 @@ function verify($condition, $message) {
 	if (!$condition) { throw new RuntimeException($message); }
 	$checks++;
 }
+
+preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $html, $manual_input);
+$manual_expected = getenv('FREEPLAST_TEST_MANUAL_MODE') === 'allowed';
+verify(str_contains($manual_input[0], 'readonly="readonly"') === !$manual_expected, 'actual native address editable only in guarded DEV');
+verify(str_contains($html, 'DEV: escribe la dirección') === $manual_expected, 'helper states manual DEV policy only in guarded runtime');
 
 verify(str_contains($html, 'REVIEW-EXTENSION') && str_contains($html, 'BILLING-EXTENSION'), 'native extension hooks still execute');
 verify(!str_contains($html, 'COUPON-FORM-MARKER') && stripos($html, 'coupon') === false, 'H2: no coupon invitation, field or action renders anywhere in the quote-only form');
@@ -263,8 +272,7 @@ foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_
 	verify(str_contains($errors->get_error_message($key), $billing[$key]['label'] . ': el texto es demasiado largo. Acórtalo'), 'overlength names field and correction: ' . $key);
 }
 verify(!$validator->validate(array_replace($valid, array('billing_fp_address'=>str_repeat('a', 801))))->has_errors(), 'no-dispatch ignores an unused overlong address draft rather than blocking on a hidden field');
-verify($validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors(), 'manual destination cannot bypass Google confirmation');
-verify(str_contains($html, 'readonly="readonly"'), 'canonical address renders readonly even without JavaScript');
+verify($validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors() === !$manual_expected, 'manual destination accepted only in guarded DEV');
 verify(!$validator->validate($valid)->has_errors() && !$GLOBALS['fpw_checkout_field_errors'], 'correction/retry clears request-local errors');
 
 if ('1' === getenv('FREEPLAST_TEST_VALIDATION_JSON')) { echo json_encode($validation_fixtures, JSON_UNESCAPED_UNICODE); }
