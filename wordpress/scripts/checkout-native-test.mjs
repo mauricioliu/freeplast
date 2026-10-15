@@ -20,8 +20,8 @@ const nativeForm = execFileSync(fileURLToPath(new URL('../.tools/php/php', impor
   .replace('PAYMENT-BLOCK[#place_order]', '<div class="woocommerce-checkout-payment"><input type="radio" name="payment_method" id="payment_method_quotes-gateway" value="quotes-gateway" checked><button id="place_order" type="submit" name="woocommerce_checkout_place_order" value="Solicitar cotización">Solicitar cotización</button></div>');
 const validationFixtures = JSON.parse(execFileSync(fileURLToPath(new URL('../.tools/php/php', import.meta.url)), [fileURLToPath(new URL('./checkout-form-test.php', import.meta.url))], { encoding: 'utf8', env: { ...process.env, FREEPLAST_TEST_VALIDATION_JSON: '1' } }));
 const wait = () => new Promise(resolve => setTimeout(resolve, 30));
-async function environment(enhancement) {
-  const dom = new JSDOM(`<!doctype html><body class="woocommerce-checkout">${nativeForm}</body>`, { url: 'https://example.test/checkout/', runScripts: 'outside-only' });
+async function environment(enhancement, markup = nativeForm) {
+  const dom = new JSDOM(`<!doctype html><body class="woocommerce-checkout">${markup}</body>`, { url: 'https://example.test/checkout/', runScripts: 'outside-only' });
   dom.window.document.querySelector('.fp-edit-products').href = '#draft-saved';
   const w = dom.window, $ = jquery(w);
   w.$ = w.jQuery = $; w.matchMedia = () => ({ matches: false, addEventListener() {} });
@@ -45,6 +45,21 @@ export async function runNativeCheckoutTests(enhancement = source) {
   const instances = [];
   const env = async () => { const value = await environment(enhancement); instances.push(value); return value; };
   try {
+    {
+      const markup = execFileSync(process.env.PHP_BINARY || fileURLToPath(new URL('../.tools/php/php', import.meta.url)), [fileURLToPath(new URL('./checkout-form-test.php', import.meta.url))], { encoding: 'utf8', env: { ...process.env, FREEPLAST_TEST_FORM_HTML: '1', FREEPLAST_TEST_MANUAL_MODE: 'allowed' } });
+      const e = await environment(enhancement, markup); instances.push(e);
+      const address = e.form.querySelector('#billing_fp_address');
+      ok(!address.readOnly && address.required, 'real DEV renderer plus native fields JS allows required manual entry');
+      ok(!address.checkValidity(), 'empty manual address fails native client constraint');
+      const company = e.form.querySelector('#billing_company'); company.value = 'Empresa sintética';
+      address.value = 'Camino Local 123, Mostazal'; address.dispatchEvent(new e.w.Event('input', { bubbles: true }));
+      ok(address.checkValidity() && company.value === 'Empresa sintética', 'manual typing satisfies client constraint without changing company');
+      e.form.querySelector('#billing_fp_dispatch_no').click();
+      ok(!address.required && e.form.querySelector('.fp-address-slot').hidden, 'no-dispatch removes manual client requirement');
+      e.form.querySelector('#billing_fp_dispatch_si').click();
+      ok(address.value === 'Camino Local 123, Mostazal' && !address.readOnly && address.required, 'dispatch toggle retains editable local draft');
+      ok(!e.w.google && !e.form.querySelector('gmp-place-autocomplete'), 'manual DEV client needs no Google widget');
+    }
     {
       const e = await env();
       const button = e.form.querySelector('#place_order');
