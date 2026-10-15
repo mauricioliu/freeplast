@@ -192,45 +192,6 @@ function fpw_workspace_history( array $draft ): string {
 	return $html . '</p><a href="#fpw-products">Volver a productos</a></details>';
 }
 
-/** Native fields keep rejected input and expose the same review constraints without JavaScript. */
-function fpw_workspace_review_fields( string $html, bool $validate, bool $posted, bool $stale = false ): string {
-	$first = true;
-	$pickup = $posted ? ( wp_unslash( $_POST['fpw_work']['pickup_location'] ?? '' ) ) : ( preg_match( '/name="fpw_work\[pickup_location\]" value="([^"]*)" checked/', $html, $selection ) ? $selection[1] : '' );
-	// ponytail: only our generated input/textarea markup; extend when the editor adds another control type.
-	return preg_replace_callback( '/<(input|textarea)\b[^>]*name="(fpw_work\[[^"]+)"[^>]*>(?:[^<]*<\/textarea>)?/s', static function ( $match ) use ( $validate, $posted, $pickup, $stale, &$first ) {
-		$tag = $match[1];
-		$name = $match[2];
-		$control = $match[0];
-		preg_match_all( '/\[([^\]]+)\]/', $name, $parts );
-		$raw = wp_unslash( $_POST['fpw_work'] ?? array() );
-		foreach ( $parts[1] as $part ) { $raw = is_array( $raw ) ? ( $raw[ $part ] ?? '' ) : ''; }
-		if ( $posted && is_scalar( $raw ) ) {
-			if ( str_contains( $control, 'type="radio"' ) ) {
-				$control = str_replace( ' checked', '', $control );
-				if ( str_contains( $control, 'value="' . esc_attr( (string) $raw ) . '"' ) ) { $control = str_replace( 'type="radio"', 'type="radio" checked', $control ); }
-			} elseif ( 'input' === $tag ) { $control = preg_replace_callback( '/value="[^"]*"/', static fn() => 'value="' . esc_attr( (string) $raw ) . '"', $control ); }
-			elseif ( 'textarea' === $tag ) { $control = preg_replace_callback( '/>.*<\/textarea>/s', static fn() => '>' . esc_html( (string) $raw ) . '</textarea>', $control ); }
-		}
-		if ( 'input' === $tag ) { preg_match( '/value="([^"]*)"/', $control, $value ); $value = html_entity_decode( $value[1] ?? '', ENT_QUOTES ); }
-		else { $value = html_entity_decode( strip_tags( $control ), ENT_QUOTES ); }
-		$message = '';
-		if ( str_ends_with( $name, '[quantity]' ) && ! is_int( fpw_parse_draft_quantity( $value ) ) ) { $message = 'Ingresa una cantidad entera entre 1 y 1.000.000.'; }
-		elseif ( str_ends_with( $name, '[price]' ) || str_ends_with( $name, '[dispatch_amount]' ) ) { if ( ! is_int( fpw_parse_draft_amount( $value ) ) ) { $message = 'Ingresa un monto entero entre 1 y 99.999.999 CLP.'; } }
-		elseif ( str_ends_with( $name, '[destination]' ) && ( '' === trim( $value ) || strlen( $value ) > 800 ) ) { $message = 'Completa el destino (máximo 800 caracteres).'; }
-		elseif ( str_ends_with( $name, '[pickup_location]' ) && ! isset( fpw_pickup_locations()[ is_scalar( $pickup ) ? $pickup : '' ] ) ) { $message = 'Selecciona el punto de retiro.'; }
-		elseif ( str_ends_with( $name, '[validity_days]' ) && 'invalid' === fpw_parse_draft_validity( $value ) ) { $message = 'Ingresa una vigencia entre 1 y 365 días, o deja el valor por defecto.'; }
-		if ( $stale && str_ends_with( $name, '[dispatch_amount]' ) ) { $message = 'Revisa el monto de despacho: cambió el destino o las cantidades.'; }
-		$attributes = ' data-fpw-review-field';
-		if ( $validate && $message ) {
-			$id = 'fpw-error-' . md5( $name . $value );
-			$attributes .= ' aria-invalid="true" aria-describedby="' . $id . '"' . ( $first ? ' autofocus' : '' );
-			$first = false;
-			$control .= '<span class="fpw-field-error" id="' . $id . '">' . esc_html( $message ) . '</span>';
-		}
-		return preg_replace( '/^<' . $tag . '\b/', '<' . $tag . $attributes, $control );
-	}, $html );
-}
-
 function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?array $notice ): string {
 	if ( ! $draft || ! $order ) { return fpw_workspace_shell( '<a href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a>' . fpw_quote_draft_markup( $order, $draft, $work, $notice ) ); }
 	$id = (int) $order->get_id();
@@ -251,13 +212,6 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	$body = '<a class="fpw-back" href="' . esc_url( fpw_workspace_url() ) . '">Solicitudes</a><h1>' . esc_html( $draft['identity']['company'] ?: $draft['reference'] ) . '</h1><p class="fpw-muted">Solicitud ' . esc_html( $draft['reference'] ) . ' · ' . esc_html( wp_date( 'd/m/Y', (int) $draft['received_at'] ) ) . '</p>' . fpw_draft_notice_html( $notice );
 	$blocked = $id === ( $pending['order_id'] ?? null ) && in_array( $pending['result']['state'] ?? '', array( 'workspace-unsaved', 'workspace-invalid', 'invalid', 'conflict' ), true );
 	$review = ! $blocked && ( '1' === ( $_GET['review'] ?? '' ) || isset( $_POST['fpw_work_preview'] ) || isset( $_POST['fpw_work_approve'] ) );
-	$review_invalid = ! $version && ( ( $id === ( $pending['order_id'] ?? null ) && in_array( $pending['result']['state'] ?? '', array( 'workspace-invalid', 'invalid' ), true ) ) || ( $review && ! $projection['complete'] ) );
-	if ( $review_invalid ) {
-		$review = false;
-		$body .= '<div class="fpw-workspace-notice" role="alert" tabindex="-1" data-fpw-review-error>Completa los datos señalados antes de revisar la cotización.' . ( ! fpw_quotation_tax_config() ? ' Falta la política fiscal confirmada (IVA). Solicita su configuración; no debes corregir un campo del formulario.' : '' ) . '<ul>';
-		foreach ( $projection['missing'] as $missing ) { $body .= '<li>' . esc_html( $missing ) . '</li>'; }
-		$body .= '</ul></div>';
-	}
 	if ( $review ) {
 		$body .= '<a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">' . ( $version ? 'Volver a la cotización' : 'Volver a ajustar' ) . '</a><div id="fpw-summary" tabindex="-1" class="fpw-workspace-preview">' . ( $version ? fpw_workspace_issued_html( $version ) : fpw_workspace_preview_html( $draft, $work, fpw_read_draft_preview( $id ) ) ) . '</div>';
 		return fpw_workspace_shell( $body, $id, $projection['total'] ?? null );
@@ -267,10 +221,8 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	if ( $version ) {
 		return fpw_workspace_shell( $body . '<div id="fpw-summary" class="fpw-workspace-preview" tabindex="-1">' . fpw_workspace_issued_html( $version ) . '</div>' . $contact . fpw_workspace_history( $draft ), $id, $projection['total'] );
 	}
-	$preserve_post = $review_invalid && isset( $_POST['fpw_work'] ) && 'conflict' !== ( $pending['result']['state'] ?? '' );
-	$unsaved = $unsaved || $preserve_post;
 	$calculation = array( 'tax' => fpw_quotation_tax_config(), 'dispatch' => fpw_draft_requests_dispatch( $draft ), 'savedAmount' => $work['dispatch_amount'] ?? null, 'conditions' => $work['dispatch_conditions'] ?? null );
-	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" novalidate data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
+	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
 		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false ) . wp_nonce_field( fpw_draft_preview_action( $id ), 'fpw_preview_nonce', true, false ) . wp_nonce_field( fpw_draft_refresh_action( $id ), 'fpw_refresh_nonce', true, false ) . '<fieldset><legend class="screen-reader-text">Preparar cotización</legend><section id="fpw-products" tabindex="-1"><h2>Productos a cotizar</h2><p class="fpw-muted">Revisa cantidades y precios netos por unidad.</p>';
 	foreach ( $draft['items'] as $index => $line ) { $body .= fpw_workspace_product_html( $line, $values['lines'][ $index ], $index, $projection['lines'][ $index ]['line_total'] ?? null, false ); }
 	$body .= '</section><section class="fpw-workspace-dispatch"><h2>' . ( fpw_draft_requests_dispatch( $draft ) ? 'Despacho' : 'Retiro - Sin Despacho' ) . '</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : fpw_draft_pickup_html( $values['pickup_location'] ) ) . '<p data-fpw-dispatch-warning hidden></p></section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
@@ -285,6 +237,5 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button><p class="fpw-muted">Al revisar se guardan y validan los cambios. Solo se envía al aprobar.</p>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
 		. $contact . fpw_workspace_history( $draft );
-	$body = fpw_workspace_review_fields( $body, $review_invalid, $preserve_post, fpw_draft_dispatch_stale( $work ) );
 	return fpw_workspace_shell( $body, $id, $projection['total'] ?? null, true );
 }

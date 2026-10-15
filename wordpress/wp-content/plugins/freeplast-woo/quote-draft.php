@@ -628,10 +628,6 @@ function fpw_handle_draft_preview_request( $order, array $draft ): void {
 	$order_id   = (int) $order->get_id();
 	$work       = fpw_read_draft_work( $order_id );
 	$projection = fpw_quotation_projection( $draft, $work );
-	if ( ! $projection['complete'] ) {
-		fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => 'workspace-invalid', 'errors' => $projection['missing'] ) ) );
-		return;
-	}
 	$payload    = array(
 		'schema'     => 1,
 		'order_id'   => $order_id,
