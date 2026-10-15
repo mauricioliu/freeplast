@@ -66,16 +66,23 @@ export async function runCardControlsTests() {
   namesDom.window.close(); sheetDom.window.close();
 
   stepper.stepValue(input, 1);
-  ok(input.value === '3', '+ steps the native input');
+  ok(input.value === '12', '+ steps the native input by 10 (2 -> 12)');
   stepper.mirrorQuantity(first);
-  ok(first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '3', 'the mirrored data-quantity follows the input');
+  ok(first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '12', 'the mirrored data-quantity follows the input');
   stepper.stepValue(input, -1);
-  ok(input.value === '2', '− steps back down');
+  ok(input.value === '2', '− steps back down by 10');
   stepper.stepValue(input, -1);
   stepper.stepValue(input, -1);
   ok(input.value === '1', 'stepping never goes below the input min');
   stepper.mirrorQuantity(first);
   ok(input.value === '1' && first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '1', 'a clamped value keeps the mirrored quantity coherent');
+
+  /* Step 3: manually entered 75 must remain valid above minimum */
+  input.value = '75';
+  input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  stepper.mirrorQuantity(first);
+  ok(first.querySelector('.add_to_cart_button').getAttribute('aria-disabled') === 'false', 'manually entered 75 is valid above minimum');
+  ok(first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '75', 'manually entered 75 is mirrored');
 
   /* The delivered script binds its own document listeners: run it inside a
      live page so a real click travels the full native path. */
@@ -85,9 +92,15 @@ export async function runCardControlsTests() {
   const clickCard = clickDom.window.document.querySelector('[data-fpw-loop-add]');
   const clickInput = clickCard.querySelector('input.qty');
   clickCard.querySelector('.fp-qty-step--plus').dispatchEvent(new clickDom.window.MouseEvent('click', { bubbles: true }));
-  ok(clickInput.value === '3' && clickCard.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '3', '+ steps the native input and mirrors data-quantity through the delivered listeners');
+  ok(clickInput.value === '12' && clickCard.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '12', '+ steps the native input by 10 and mirrors data-quantity through the delivered listeners');
   clickCard.querySelector('.fp-qty-step--minus').dispatchEvent(new clickDom.window.MouseEvent('click', { bubbles: true }));
-  ok(clickInput.value === '2' && clickCard.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '2', '− steps back down and re-mirrors');
+  ok(clickInput.value === '2' && clickCard.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '2', '− steps back down by 10 and re-mirrors');
+
+  /* ArrowUp and ArrowDown keyboard support */
+  clickInput.dispatchEvent(new clickDom.window.KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+  ok(clickInput.value === '12', 'ArrowUp steps by 10');
+  clickInput.dispatchEvent(new clickDom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  ok(clickInput.value === '2', 'ArrowDown steps by 10');
 
   const capped = second.querySelector('input.qty');
   stepper.stepValue(capped, 1);
@@ -114,10 +127,95 @@ export async function runCardControlsTests() {
   clickDom.window.document.body.appendChild(form);
   stepper.initSteppers(form);
   form.querySelector('.fp-qty-step--plus').click();
-  ok(form.querySelector('input').value === '6', 'product-sheet stepper works without a catalog wrapper, using the real step');
+  ok(form.querySelector('input').value === '9', 'product-sheet stepper caps at max (9)');
   form.querySelector('input').disabled = true;
   form.querySelector('.fp-qty-step--minus').click();
-  ok(form.querySelector('input').value === '6', 'disabled variation quantity cannot be changed by the enhancement');
+  ok(form.querySelector('input').value === '9', 'disabled variation quantity cannot be changed by the enhancement');
+
+  /* Requirement 2 regressions: Spanish validation on BOTH card and ficha (form.cart),
+     valid 75 clears errors, integer/max/badinput states, variant refresh. */
+
+  // 1. Card Spanish underflow, 75 clearing, max, and badInput
+  clickInput.min = '70';
+  clickInput.max = '100';
+  clickInput.value = '30';
+  clickInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(clickInput.validity.rangeUnderflow === true, 'card 30 < min 70 triggers native rangeUnderflow');
+  ok(clickInput.validity.customError === true, 'card 30 < min 70 sets customError');
+  ok(clickInput.validationMessage === 'El valor debe ser mayor o igual a 70.', 'card underflow message is in Spanish with exact min');
+
+  clickInput.value = '75';
+  clickInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(clickInput.validity.rangeUnderflow === false, 'card 75 clears rangeUnderflow');
+  ok(clickInput.validity.customError === false, 'card 75 clears customError');
+  ok(clickInput.validity.valid === true, 'card 75 is valid');
+  ok(clickInput.validationMessage === '', 'card 75 has empty validationMessage');
+
+  clickInput.value = '120';
+  clickInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(clickInput.validity.rangeOverflow === true, 'card 120 > max 100 triggers rangeOverflow');
+  ok(clickInput.validity.customError === true, 'card overflow sets customError');
+  ok(clickInput.validationMessage === 'El valor debe ser menor o igual a 100.', 'card overflow message is in Spanish with exact max');
+
+  clickInput.value = '75.5';
+  clickInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(clickInput.validity.stepMismatch === true, 'card decimal with step=1 triggers stepMismatch');
+  ok(clickInput.validity.customError === true, 'card stepMismatch sets customError');
+  ok(clickInput.validationMessage === 'Ingresa una cantidad válida.', 'card bad/fractional input message is in Spanish');
+
+  // 2. Ficha (form.cart) Spanish underflow, 75 clearing, max, badInput, and variant refresh
+  const fichaForm = clickDom.window.document.createElement('form');
+  fichaForm.className = 'cart';
+  fichaForm.innerHTML = '<input type="number" class="qty" min="70" max="200" step="1" value="70"><button type="submit" class="single_add_to_cart_button">Cotizar</button>';
+  clickDom.window.document.body.appendChild(fichaForm);
+  stepper.initSteppers(fichaForm);
+  const fichaInput = fichaForm.querySelector('input.qty');
+
+  ok(fichaInput.validity.valid === true && fichaInput.validity.customError === false, 'ficha initial 70 is valid');
+
+  fichaInput.value = '30';
+  fichaInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(fichaInput.validity.rangeUnderflow === true, 'ficha 30 < min 70 triggers rangeUnderflow');
+  ok(fichaInput.validity.customError === true, 'ficha 30 < min 70 sets customError');
+  ok(fichaInput.validationMessage === 'El valor debe ser mayor o igual a 70.', 'ficha underflow message is in Spanish with exact min');
+
+  fichaInput.value = '75';
+  fichaInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(fichaInput.validity.rangeUnderflow === false, 'ficha 75 clears rangeUnderflow');
+  ok(fichaInput.validity.customError === false, 'ficha 75 clears customError');
+  ok(fichaInput.validity.valid === true, 'ficha 75 is valid');
+  ok(fichaInput.validationMessage === '', 'ficha 75 has empty validationMessage');
+
+  fichaInput.value = '250';
+  fichaInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(fichaInput.validity.rangeOverflow === true, 'ficha 250 > max 200 triggers rangeOverflow');
+  ok(fichaInput.validity.customError === true, 'ficha overflow sets customError');
+  ok(fichaInput.validationMessage === 'El valor debe ser menor o igual a 200.', 'ficha overflow message is in Spanish with exact max');
+
+  fichaInput.value = '75.2';
+  fichaInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(fichaInput.validity.stepMismatch === true, 'ficha fractional input triggers stepMismatch');
+  ok(fichaInput.validity.customError === true, 'ficha stepMismatch sets customError');
+  ok(fichaInput.validationMessage === 'Ingresa una cantidad válida.', 'ficha bad/fractional input message is in Spanish');
+
+  // Variant refresh: min changes to 50, value 40 triggers underflow, value 60 clears it
+  fichaInput.min = '50';
+  fichaInput.value = '40';
+  fichaInput.dispatchEvent(new clickDom.window.Event('change', { bubbles: true }));
+  ok(fichaInput.validity.rangeUnderflow === true, 'variant change to min 50 triggers underflow on 40');
+  ok(fichaInput.validity.customError === true, 'variant change sets customError');
+  ok(fichaInput.validationMessage === 'El valor debe ser mayor o igual a 50.', 'variant refresh underflow message is in Spanish with new min');
+
+  fichaInput.value = '60';
+  fichaInput.dispatchEvent(new clickDom.window.Event('change', { bubbles: true }));
+  ok(fichaInput.validity.rangeUnderflow === false && fichaInput.validity.customError === false, 'variant value 60 clears errors');
+
+  // Disabled and readOnly inputs preserve native behavior without customError
+  fichaInput.disabled = true;
+  fichaInput.value = '10';
+  fichaInput.dispatchEvent(new clickDom.window.Event('input', { bubbles: true }));
+  ok(fichaInput.validity.customError === false, 'disabled input does not set customError');
+  fichaInput.disabled = false;
 
   /* Header count + dock bridge (realm-bound like the stepper). */
   const dockDom = new JSDOM(

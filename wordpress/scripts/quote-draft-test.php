@@ -599,8 +599,11 @@ check( ! str_contains( fpw_quote_draft_markup( $manual2, null ), 'fpw_work' ), '
  * revision the owner actually reviewed — obsolete after any later commercial
  * save, issuing no version, no PDF and no mail. */
 
-/* Fiscal policy and default validity: configuration seams, absent by default. */
-check( fpw_quotation_tax_config() === array(), 'without a delivered configuration there is no fiscal policy: no IVA rate is invented' );
+/* Fiscal policy and default validity: confirmed default policy (19% on products + dispatch), filterable. */
+check( fpw_quotation_tax_config() === array( 'rate_permille' => 190, 'applies_to_dispatch' => true ), 'unfiltered default fiscal policy applies confirmed 19% IVA to products and dispatch' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array() );
+check( fpw_quotation_tax_config() === array(), 'an explicit empty delivery degrades to absent so IVA and total stay pending' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
 check( fpw_quotation_default_validity_days() === 15, 'the offer validity defaults to fifteen days' );
 $GLOBALS['registered_filters']['fpw_quotation_default_validity_days'] = array( fn() => 'junk' );
 check( fpw_quotation_default_validity_days() === 15, 'a malformed default-validity delivery falls back to fifteen' );
@@ -615,6 +618,7 @@ $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => arra
 check( fpw_quotation_tax_config() === array( 'rate_permille' => 0, 'applies_to_dispatch' => false ), 'a confirmed 0‰ policy is representable and distinct from absent' );
 $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => true ) );
 check( fpw_quotation_tax_config() === array( 'rate_permille' => 190, 'applies_to_dispatch' => true ), 'a delivered policy is validated and carried with the dispatch treatment' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
 
 /* The deterministic tax kernel: exact integer arithmetic, nearest half-up — never a float. */
 check( fpw_quotation_tax_amount( 3195, 190 ) === 607, '3.195 × 19% = 607.05 rounds to 607' );
@@ -622,6 +626,14 @@ check( fpw_quotation_tax_amount( 1050, 190 ) === 200, '199.5 rounds half-up to 2
 check( fpw_quotation_tax_amount( 1058, 190 ) === 201, '201.02 rounds down to 201' );
 check( fpw_quotation_tax_amount( 0, 190 ) === 0 && fpw_quotation_tax_amount( 3195, 0 ) === 0, 'a zero base or a confirmed 0‰ policy yields a true zero tax' );
 check( fpw_quotation_tax_amount( 99999999 * 1000000, 5000 ) === 499999995000000, 'the kernel stays exact at the accepted input limits (no float, no overflow)' );
+/* Owner confirmation: 200 × 1.000 CLP = 200.000 net, 38.000 IVA (19%), 238.000 total; plus dispatch case */
+$test_qty = 200; $test_unit_price = 1000;
+$test_net = $test_qty * $test_unit_price;
+$test_tax = fpw_quotation_tax_amount( $test_net, 190 );
+check( 200000 === $test_net && 38000 === $test_tax && 238000 === ( $test_net + $test_tax ), '200 × 1.000 CLP yields 200.000 net, 38.000 IVA and 238.000 total' );
+$test_dispatch = 10000;
+$test_tax_with_dispatch = fpw_quotation_tax_amount( $test_net + $test_dispatch, 190 );
+check( 39900 === $test_tax_with_dispatch && 249900 === ( $test_net + $test_dispatch + $test_tax_with_dispatch ), 'dispatch joined into taxable base: 210.000 base -> 39.900 IVA, 249.900 total' );
 
 /* The shared projection over a completed manual draft: exact deterministic amounts. */
 $save91 = fpw_save_draft_work( 91, $payload91, array(
@@ -651,10 +663,11 @@ check( 10 === $projection['validity_days'] && $projection['complete'] === true &
 $GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array( 'rate_permille' => 190, 'applies_to_dispatch' => true ) );
 $projected_with_dispatch_tax = fpw_quotation_projection( $payload91, $work91 );
 check( 4195 === $projected_with_dispatch_tax['taxable_base'] && 797 === $projected_with_dispatch_tax['tax'] && 4992 === $projected_with_dispatch_tax['total'], 'the delivered fiscal treatment decides whether dispatch joins the taxable base' );
-$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array( fn() => array() );
 $projected_no_policy = fpw_quotation_projection( $payload91, $work91 );
-check( null === $projected_no_policy['tax'] && null === $projected_no_policy['total'] && 3195 === $projected_no_policy['subtotal'], 'without a confirmed policy the IVA and total stay pending while the net amounts stand' );
+check( null === $projected_no_policy['tax'] && null === $projected_no_policy['total'] && 3195 === $projected_no_policy['subtotal'], 'an explicit unconfigured policy leaves the IVA and total pending while the net amounts stand' );
 check( array_contains_string( $projected_no_policy['missing'], 'política fiscal' ) && $projected_no_policy['complete'] === false, 'the missing policy is an explicit faltante that blocks the complete offer' );
+$GLOBALS['registered_filters']['fpw_quotation_tax_config'] = array();
 
 /* Faltantes are named and distinguished from zero — history and Maps never block. */
 $projected_fresh = fpw_quotation_projection( $payload91, null );

@@ -120,11 +120,11 @@ $plugin_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-w
 verify(!str_contains($plugin_source, "add_action( 'woocommerce_single_product_summary'"), 'no dead summary-hook registration remains: the active theme seam owns the message');
 $GLOBALS['sheet_meta'] = array(21 => array('_fp_quote_min_qty' => '70'));
 $sheet70 = render_sheet($base);
-verify(str_contains($sheet70, 'Mínimo por solicitud: 70 unidades'), 'the real active sheet renders the confirmed minimum (70) beside the quantity control');
+verify(str_contains($sheet70, 'Cantidad mínima: 70 unidades'), 'the real active sheet renders the confirmed minimum (70) beside the quantity control');
 verify(substr_count($sheet70, 'class="fpw-minimum') === 1, 'the confirmed message also renders exactly once');
 $GLOBALS['sheet_meta'] = array(21 => array('_fp_quote_min_qty' => '50'));
 $sheet50 = render_sheet(array_merge($base, array('name' => 'Traversa para Bins Tipo UPC')));
-verify(str_contains($sheet50, 'Mínimo por solicitud: 50 unidades'), 'the traversa exception (50) renders on the real active sheet');
+verify(str_contains($sheet50, 'Cantidad mínima: 50 unidades'), 'the traversa exception (50) renders on the real active sheet');
 unset($GLOBALS['sheet_meta']);
 verify(str_contains($sheet, 'RELATED-BLOCK'), 'related products render through the native block');
 verify(!str_contains($sheet, 'price') && !str_contains($sheet, 'clp'), 'no price surface on the sheet');

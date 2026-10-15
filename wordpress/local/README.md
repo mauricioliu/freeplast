@@ -148,7 +148,7 @@ cli wp eval-file /opt/freeplast/upgrade.php contacto plan contacto.json
 FREEPLAST_LOCAL_BACKUP_VERIFIED=1 # exportar en el entorno que llama a cli(), o -e ante compose run
 cli wp eval-file /opt/freeplast/upgrade.php minima apply minima.json <token>
 cli wp eval-file /opt/freeplast/upgrade.php contacto apply contacto.json <token>
-curl --noproxy '*' -s http://mliu:8131/producto/caja-cosechera-3-4/ | grep -F 'Mínimo por solicitud: 70'
+curl --noproxy '*' -s http://mliu:8131/producto/caja-cosechera-3-4/ | grep -F 'Cantidad mínima: 70 unidades'
 curl --noproxy '*' -s http://mliu:8131/contacto/ | grep -F 'P Picarquín sitio 52'
 # 3) rollback puntual (nunca reset amplio):
 cli wp eval-file /opt/freeplast/upgrade.php contacto rollback contacto.json <token>
