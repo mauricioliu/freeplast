@@ -1545,13 +1545,13 @@ function fpw_quote_minimum_parent_id( $product ): int {
 	return $id;
 }
 
-/** The public minimum wording of one product: the confirmed minimum, or the explicit pending note for unknowns — requestable either way. Rendered ONCE by the active product sheet's product-options area (content-single-product.php composes its own summary and never fires woocommerce_single_product_summary, so no summary hook may carry it). */
+/** The public minimum wording of one product: the confirmed minimum, or the explicit pending note for unknowns — requestable either way. Rendered by card selector and active product sheet. */
 function fpw_quote_minimum_html( int $product_id ): string {
 	$minimum = fpw_quote_minimum( $product_id );
 	if ( null === $minimum ) {
 		return '<p class="fpw-minimum fpw-minimum--unknown">Mínimo por confirmar: solicita la cantidad que necesites y la revisamos contigo antes de cotizar.</p>';
 	}
-	return '<p class="fpw-minimum">Mínimo por solicitud: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' ' . ( 1 === $minimum ? 'unidad' : 'unidades' ) . '.</p>';
+	return '<p class="fpw-minimum">Cantidad mínima: ' . esc_html( number_format( $minimum, 0, ',', '.' ) ) . ' ' . ( 1 === $minimum ? 'unidad' : 'unidades' ) . '</p>';
 }
 
 /** The ficha names its minimum (or its explicit pending state) through the ACTIVE theme seam: content-single-product.php calls this once inside product-options. */
@@ -1673,10 +1673,12 @@ add_filter('woocommerce_loop_add_to_cart_args', static function($args,$product) 
 }, 100, 2);
 add_filter('woocommerce_loop_add_to_cart_link', static function($html,$product,$args) {
 	if ( ! $product->is_type('simple') || ! $product->is_purchasable() || ! $product->is_in_stock() || ! function_exists('woocommerce_quantity_input') ) { return $html; }
-	$floor = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) ) ?? 1;
+	$minimum = fpw_quote_minimum( fpw_quote_minimum_parent_id( $product ) );
+	$floor = $minimum ?? 1;
 	$quantity = woocommerce_quantity_input( array( 'input_value' => $floor, 'min_value' => $floor, 'step' => 1 ), $product, false );
 	$lines = function_exists( 'WC' ) && WC()->cart ? WC()->cart->get_cart() : array();
-	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$quantity.$html.fpw_card_selection( $product->get_id(), $lines ).'</div>';
+	$min_html = null !== $minimum ? fpw_quote_minimum_html( (int) $product->get_id() ) : '';
+	return '<div class="fpw-loop-add" data-fpw-loop-add>'.$min_html.$quantity.$html.fpw_card_selection( $product->get_id(), $lines ).'</div>';
 }, 100, 3);
 add_action('init', static function() {
 	load_textdomain('quote-wc', WP_PLUGIN_DIR.'/quotes-for-woocommerce/languages/quote-wc-es_ES.mo');

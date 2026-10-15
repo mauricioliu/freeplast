@@ -26,10 +26,18 @@
   function stepValue(input, direction) {
     if (!input || input.disabled || input.readOnly) { return; }
     var before = input.value;
-    try {
-      if (direction < 0) { input.stepDown(-direction); }
-      else { input.stepUp(direction); }
-    } catch (error) { return; }
+    var current = parseInt(input.value, 10);
+    var min = input.min !== '' ? parseInt(input.min, 10) : 1;
+    var max = input.max !== '' ? parseInt(input.max, 10) : Infinity;
+    var step = 10;
+    if (isNaN(current)) {
+      current = isNaN(min) ? 1 : min;
+    } else {
+      current = current + (direction * step);
+    }
+    if (!isNaN(min) && current < min) { current = min; }
+    if (!isNaN(max) && current > max) { current = max; }
+    input.value = String(current);
     if (input.value !== before) {
       /* The native input stays authoritative: notify it and the mirror.
          Events are built from the input's own realm so injected/replaced
@@ -95,13 +103,34 @@
   }
 
   function initSteppers(root) {
-    (root || document).querySelectorAll(WRAP_SELECTOR + ' input.qty, form.cart input.qty').forEach(buildStepper);
+    (root || document).querySelectorAll(WRAP_SELECTOR + ' input.qty, form.cart input.qty').forEach(function (input) {
+      buildStepper(input);
+      syncValidityMessage(input);
+    });
+  }
+
+  function syncValidityMessage(input) {
+    if (!input || typeof input.setCustomValidity !== 'function') { return; }
+    input.setCustomValidity('');
+    if (input.disabled || input.readOnly) { return; }
+    var val = input.validity;
+    if (!val) { return; }
+    if (val.rangeUnderflow) {
+      var minVal = input.min || '1';
+      input.setCustomValidity('El valor debe ser mayor o igual a ' + minVal + '.');
+    } else if (val.rangeOverflow) {
+      var maxVal = input.max;
+      input.setCustomValidity('El valor debe ser menor o igual a ' + maxVal + '.');
+    } else if (val.stepMismatch || val.badInput || val.valueMissing) {
+      input.setCustomValidity('Ingresa una cantidad válida.');
+    }
   }
 
   function mirrorQuantity(wrap) {
     var input = wrap.querySelector('input.qty');
     var button = wrap.querySelector('.add_to_cart_button');
     if (!input || !button) { return; }
+    syncValidityMessage(input);
     var value = Number(input.value);
     var valid = Number.isSafeInteger(value) && value > 0 && input.checkValidity();
     button.setAttribute('aria-disabled', valid ? 'false' : 'true');
@@ -116,34 +145,80 @@
       if (wrap) { stepValue(wrap.querySelector('input.qty'), target.classList.contains('fp-qty-step--plus') ? 1 : -1); }
       return;
     }
-    var wrapForInput = target.closest(WRAP_SELECTOR);
-    if (wrapForInput) { mirrorQuantity(wrapForInput); }
+    var input = (target.matches && target.matches('input.qty')) ? target : target.closest('input.qty');
+    if (input) {
+      syncValidityMessage(input);
+      var wrapForInput = input.closest(WRAP_SELECTOR);
+      if (wrapForInput) { mirrorQuantity(wrapForInput); }
+    }
+  }
+
+  function onQuantityKeydown(event) {
+    var target = event.target;
+    if (!target || !target.matches || !target.matches('input.qty')) { return; }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      stepValue(target, 1);
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      stepValue(target, -1);
+    }
   }
 
   /* 'input' covers typing, spinner arrows and keyboard steps live; 'change'
-     covers the commits some browsers only deliver there (pickers, autofill). */
+     covers the commits some browsers only deliver there (pickers, autofill).
+     'invalid' (capture phase) catches native constraint evaluation before UI popups. */
   if (typeof document !== 'undefined') {
     document.addEventListener('click', onQuantityEvent);
     document.addEventListener('input', onQuantityEvent);
     document.addEventListener('change', onQuantityEvent);
+    document.addEventListener('keydown', onQuantityKeydown);
+    document.addEventListener('invalid', function (event) {
+      var target = event.target;
+      if (target && target.matches && target.matches('input.qty')) {
+        syncValidityMessage(target);
+      }
+    }, true);
+  }
+
+  if (typeof window !== 'undefined' && window.jQuery) {
+    window.jQuery(document).on('found_variation reset_data hide_variation show_variation', 'form.cart', function () {
+      var form = this;
+      setTimeout(function () {
+        if (!form || !form.querySelectorAll) { return; }
+        form.querySelectorAll('input.qty').forEach(syncValidityMessage);
+      }, 20);
+    });
   }
 
   function boot() {
     initSteppers(document);
     document.querySelectorAll(WRAP_SELECTOR).forEach(mirrorQuantity);
+    document.querySelectorAll('form.cart input.qty').forEach(syncValidityMessage);
   }
 
   if (typeof document !== 'undefined') {
     document.addEventListener('click', function (event) {
-      var button = event.target.closest && event.target.closest(WRAP_SELECTOR + ' .add_to_cart_button');
+      var button = event.target.closest && event.target.closest(WRAP_SELECTOR + ' .add_to_cart_button, form.cart .single_add_to_cart_button, form.cart button[type="submit"]');
       if (!button) { return; }
       var wrapper = button.closest(WRAP_SELECTOR);
-      var input = wrapper.querySelector('input.qty');
-      mirrorQuantity(wrapper);
-      if (button.classList.contains('loading') || button.getAttribute('aria-disabled') === 'true') {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (input && !button.classList.contains('loading')) { input.reportValidity(); input.focus(); }
+      if (wrapper) {
+        var input = wrapper.querySelector('input.qty');
+        mirrorQuantity(wrapper);
+        if (button.classList.contains('loading') || button.getAttribute('aria-disabled') === 'true') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          if (input && !button.classList.contains('loading')) {
+            input.reportValidity();
+            input.focus();
+          }
+        }
+      } else {
+        var form = button.closest('form.cart');
+        var sheetInput = form && form.querySelector('input.qty');
+        if (sheetInput) {
+          syncValidityMessage(sheetInput);
+        }
       }
     }, true);
   }
@@ -157,6 +232,6 @@
   }
 
   if (typeof module === 'object' && module.exports) {
-    module.exports = { initSteppers: initSteppers, stepValue: stepValue, mirrorQuantity: mirrorQuantity };
+    module.exports = { initSteppers: initSteppers, stepValue: stepValue, mirrorQuantity: mirrorQuantity, syncValidityMessage: syncValidityMessage };
   }
 })();

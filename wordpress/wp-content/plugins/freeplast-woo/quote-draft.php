@@ -58,10 +58,10 @@
  * server-side projection (fpw_quotation_projection) computes, with exact
  * integer CLP arithmetic, the buyer-facing lines, subtotal, dispatch, IVA and
  * total from the saved working state — the same calculation the later issuance
- * (cut 7) must consume, never parallel math per screen. The fiscal policy is a
- * configuration seam ABSENT by default (fpw_quotation_tax_config): no rate is
- * invented, and without a delivered policy the IVA and total stay pending and
- * the offer stays incomplete. The offer validity defaults to fifteen days
+ * (cut 7) must consume, never parallel math per screen. The confirmed fiscal
+ * policy defaults to 19% IVA on products plus dispatch (fpw_quotation_tax_config),
+ * filterable; an explicit empty or malformed delivery leaves IVA and total pending
+ * and the offer stays incomplete. The offer validity defaults to fifteen days
  * (filterable) and is editable per draft in the working state. "Generar vista
  * previa" stores the projection of the revision the owner actually reviewed in
  * its own row, fpw_draft_preview_<order_id>; any later commercial save makes
@@ -902,19 +902,19 @@ function fpw_quotation_default_validity_days(): int {
 }
 
 /**
- * The confirmed fiscal policy (issue #55): a configuration delivered ONLY
- * through this filter, exactly like the Places key — the owner's confirmed
- * IVA rate and the fiscal treatment of dispatch. ABSENT by default: the 19%
- * of the prototype and its arithmetic are not a fiscal approval, so no rate
- * is ever invented here — without a delivered policy the projection's IVA and
- * total stay pending and the offer stays incomplete. A malformed delivery
- * (non-integer rate, out of 0–5000‰) degrades to absent instead of becoming
- * authority.
+ * The confirmed fiscal policy (issue #55): the owner-confirmed IVA rate (19%)
+ * and fiscal treatment of dispatch (applies to products plus dispatch) by
+ * default. Filterable via fpw_quotation_tax_config. An explicit empty or
+ * malformed delivery (non-integer rate, out of 0–5000‰) degrades to absent
+ * so the projection's IVA and total stay pending when no valid policy exists.
  *
  * @return array{rate_permille:int, applies_to_dispatch:bool}|array{} Empty when no confirmed policy is configured.
  */
 function fpw_quotation_tax_config(): array {
-	$config = apply_filters( 'fpw_quotation_tax_config', array() );
+	$config = apply_filters( 'fpw_quotation_tax_config', array(
+		'rate_permille'       => 190,
+		'applies_to_dispatch' => true,
+	) );
 	if ( ! is_array( $config ) ) { return array(); }
 	$rate = $config['rate_permille'] ?? null;
 	if ( ! is_int( $rate ) || $rate < 0 || $rate > FPW_QUOTATION_MAX_RATE_PERMILLE ) { return array(); }
