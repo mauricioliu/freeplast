@@ -179,6 +179,56 @@ export function runOwnerWorkspaceJsTests() {
     validity.set('[validity_days]','7'); validity.set('[lines][0][price]','1');
     check(validity.amount('total') === 'Guardado', 'returning all values restores original saved totals');
   } finally { validity.dom.window.close(); }
+  // Regression: the actual review action must stay in the editor and name every missing field.
+  for (const dispatch of [false, true]) {
+    const dom = new JSDOM(`<div class="fpw-workspace"><form id="fpw-work-form" data-fpw-work data-fpw-calculation='${JSON.stringify({tax:{rate_permille:190},dispatch})}'>
+      <section><h3>Bases plásticas para pediluvios</h3><label>Cantidad<input data-fpw-review-field name="fpw_work[lines][0][quantity]" value="10"></label><label>Precio ofrecido<input data-fpw-review-field name="fpw_work[lines][0][price]" value=""></label></section>
+      ${dispatch ? '<label>Destino<textarea data-fpw-review-field name="fpw_work[destination]"></textarea></label><label>Despacho<input data-fpw-review-field name="fpw_work[dispatch_amount]" value=""></label>' : '<label><input data-fpw-review-field type="radio" name="fpw_work[pickup_location]" value="a">Punto A</label><label><input data-fpw-review-field type="radio" name="fpw_work[pickup_location]" value="b">Punto B</label>'}
+      <label>Vigencia<input data-fpw-review-field name="fpw_work[validity_days]" value=""></label></form>
+      <button form="fpw-work-form" type="submit" name="fpw_work_preview" data-fpw-preview>Revisar cotización</button>
+      <button form="fpw-work-form" type="submit" name="fpw_work_save">Guardar borrador</button></div>`, {runScripts:'outside-only'});
+    try {
+      dom.window.TextEncoder = TextEncoder;
+      dom.window.eval(source);
+      const {document, SubmitEvent, Event} = dom.window;
+      const form = document.querySelector('form');
+      const submit = name => { const event = new SubmitEvent('submit', {bubbles:true,cancelable:true,submitter:document.querySelector(`[name="${name}"]`)}); form.dispatchEvent(event); return event; };
+      check(submit('fpw_work_preview').defaultPrevented, 'incomplete review must not advance');
+      const price = form.elements.namedItem('fpw_work[lines][0][price]');
+      check(price.getAttribute('aria-invalid') === 'true', 'missing price is highlighted');
+      check(document.activeElement === price, 'first missing field receives focus');
+      const summary = document.querySelector('[data-fpw-review-error]');
+      check(summary?.getAttribute('role') === 'alert' && summary.textContent.includes('Bases plásticas para pediluvios'), 'error summary identifies the product whose price is missing');
+      check(summary.textContent.includes(dispatch ? 'destino' : 'retiro'), 'error summary details missing delivery information');
+      check(form.querySelectorAll('[aria-invalid="true"]').length === 3, 'all missing controls highlighted, including both pickup choices');
+      check(!form.hasAttribute('aria-busy'), 'blocked review never enters submitting state');
+      price.value = '1500'; price.dispatchEvent(new Event('input', {bubbles:true}));
+      check(!price.hasAttribute('aria-invalid') && !summary.textContent.includes('Bases plásticas para pediluvios'), 'corrected price clears its highlight and summary entry');
+      if (dispatch) {
+        form.elements.namedItem('fpw_work[destination]').value = 'Calle 1';
+        form.elements.namedItem('fpw_work[dispatch_amount]').value = '10000';
+      } else form.querySelector('input[type="radio"]').checked = true;
+      form.dispatchEvent(new Event('change', {bubbles:true}));
+      check(!submit('fpw_work_preview').defaultPrevented && summary.hidden, 'complete review proceeds and hides error summary');
+      for (const value of ['0', '-1', '1.5', '100000000']) {
+        price.value = value;
+        check(submit('fpw_work_preview').defaultPrevented && price.getAttribute('aria-invalid') === 'true', `invalid price ${value} cannot advance`);
+      }
+      price.value = '1500';
+      const quantity = form.elements.namedItem('fpw_work[lines][0][quantity]');
+      quantity.value = '0';
+      check(submit('fpw_work_preview').defaultPrevented && summary.textContent.includes('Cantidad de'), 'invalid quantity is named in the summary');
+      quantity.value = '10';
+      const validity = form.elements.namedItem('fpw_work[validity_days]');
+      validity.value = '366';
+      check(submit('fpw_work_preview').defaultPrevented && summary.textContent.includes('Vigencia'), 'out-of-range validity cannot advance');
+      validity.value = '';
+      check(!submit('fpw_work_preview').defaultPrevented, 'blank validity uses the default and permits complete review');
+      check(document.querySelectorAll('[data-fpw-review-error]').length === 1, 'repeated attempts reuse one error summary');
+      price.value = ''; price.dispatchEvent(new Event('input', {bubbles:true}));
+      check(!submit('fpw_work_save').defaultPrevented, 'saving an incomplete draft stays allowed');
+    } finally { dom.window.close(); }
+  }
   const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas Históricas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
   try {
     const {document,Event,MouseEvent,KeyboardEvent} = menuDom.window;

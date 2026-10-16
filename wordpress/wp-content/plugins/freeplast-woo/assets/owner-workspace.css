@@ -93,7 +93,7 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-product-photo{flex:0 0 60px;width:60px;height:64px;display:grid;place-items:center;background:var(--tint);border-radius:8px}
 .fpw-product-photo img{width:60px;height:64px;object-fit:contain}
 .fpw-photo-missing{font-size:12px;color:var(--muted);text-align:center}
-.fpw-product-inputs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:12px}
+.fpw-product-inputs{display:grid;align-items:start;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:12px}
 .fpw-product-inputs input{font-size:20px!important;font-weight:750}
 .fpw-product-inputs label>span{font-weight:400}
 .fpw-workspace .fpw-offered-price input:focus{border-color:var(--blue)}
@@ -172,6 +172,15 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace-dock strong{font-size:16px;color:var(--ink)}
 .fpw-workspace-dock button{max-width:60%}
 #fpw-products,#fpw-history{scroll-margin-top:16px}
+.fpw-workspace [aria-invalid="true"]{outline:2px solid var(--blue,#100090);outline-offset:2px;background:#eeedf8;scroll-margin-block:100px}
+.fpw-workspace label:has(input[type="radio"][aria-invalid="true"]){border-color:var(--blue,#100090);background:#eeedf8}
+.fpw-workspace .fpw-pickup-option:has(.fpw-field-error){display:grid;grid-template-columns:20px minmax(0,1fr)}
+.fpw-pickup-option:has(.fpw-field-error)>span:not(.fpw-field-error){grid-column:2;grid-row:1}
+.fpw-pickup-option>.fpw-field-error{grid-column:2;grid-row:2}
+.fpw-field-error{display:block;color:var(--ink);font-size:14px;line-height:1.5;margin-block:8px}
+.fpw-workspace [data-fpw-review-error]{scroll-margin-top:24px}
+.fpw-workspace [data-fpw-review-error] ul{margin:8px 0 0 18px;list-style:disc}
+.fpw-field-error[hidden],.fpw-workspace [data-fpw-review-error][hidden]{display:none}
 @media(min-width:600px){.fpw-workspace-body{padding:24px 24px 48px}.fpw-request-views{max-width:560px}.fpw-workspace-search{max-width:760px}.fpw-product-inputs{max-width:560px}.fpw-workspace-editor>form,.fpw-workspace-summary{padding:24px}.fpw-workspace table{font-size:14px}}
 @media(min-width:900px){.fpw-workspace-dock{display:none}.fpw-workspace-editable .fpw-workspace-body{padding-bottom:48px}.fpw-workspace-editor{grid-template-columns:minmax(0,1fr) 300px}.fpw-workspace-summary{position:sticky;top:24px}}
 @media(min-width:1150px){.fpw-workspace-editor{grid-template-columns:minmax(0,1fr) 340px}.fpw-workspace-row,.fpw-inbox-head{grid-template-columns:minmax(240px,2fr) minmax(200px,1fr) 160px 76px;align-items:center;gap:20px}.fpw-inbox-head{display:grid;padding:16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}.fpw-workspace-row>div:first-child,.fpw-workspace-row>.fpw-request-state{grid-column:auto}.fpw-workspace-row-total{text-align:right}.fpw-workspace-row .fpw-request-state{display:grid}}
