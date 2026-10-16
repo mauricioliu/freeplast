@@ -5,10 +5,14 @@ import hashlib
 import json
 root = Path(__file__).resolve().parents[1]
 home = (root / 'wp-content/themes/freeplast/templates/front-page.html').read_text()
-assert 'P Picarquín sitio 52, San Fco de Mostazal, VI Región' in home
-assert 'Camino El Arrayán' not in home and 'maps.app.goo.gl/QtGSdagB55W7rnRj7' not in home
-assert 'href="https://api.whatsapp.com/send?phone=56968444265"' in home
-assert 'href="mailto:ventas@freeplast.cl"' in home
+# The redesigned home renders contact details through its shared footer.
+# Keep the approved address and retired-map prohibition, not the old markup location.
+footer = (root / 'wp-content/themes/freeplast/parts/footer.html').read_text()
+assert '"slug":"footer"' in home, 'home must render the shared contact footer'
+assert 'P Picarquín sitio 52, San Fco de Mostazal, VI Región' in footer
+assert 'Camino El Arrayán' not in home + footer and 'maps.app.goo.gl/QtGSdagB55W7rnRj7' not in home + footer
+assert 'href="https://api.whatsapp.com/send?phone=56968444265"' in footer
+assert 'href="mailto:ventas@freeplast.cl"' in footer
 # Public wording is not an authorization to change routing coordinates/origin.
 assert "define( 'FPW_DISTANCE_ORIGIN', 'Camino El Arrayán 52, San Francisco de Mostazal' );" in (root / 'wp-content/plugins/freeplast-woo/dispatch-distance.php').read_text()
 # The ficha's fine print must state the packaging/minimum distinction accurately — the obsolete denial of any minimum is rejected.

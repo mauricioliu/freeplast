@@ -548,9 +548,9 @@ $footer=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/parts/footer.
 foreach(array(
 	array($header,'class="header-inner"','A header inner row'),
 	array($header,'class="brand" href="/"','Brand navigates the real Home destination'),
-	array($header,'href="/tienda/"','Catálogo real destination'),
+	array($header,'{{FREEPLAST_CATALOG_LINKS}}','Catalog destinations supplied by the shared category renderer'),
 	array($header,'href="/nosotros/"','Nosotros stays available in the shared nav'),
-	array($header,'href="/contacto/"','Contacto real destination'),
+	array($header,'href="mailto:ventas@freeplast.cl"','Contact remains available in shared chrome'),
 	array($header,'class="header-selection" href="/cotizacion/"','Productos a Cotizar links the native cart page'),
 	array($header,'aria-label="Abrir menú"','Menu trigger is a named control'),
 	array($header,'aria-expanded="false"','Menu trigger exposes its collapsed state'),
@@ -566,7 +566,7 @@ foreach(array(
 	array($footer,'class="footer-content"','A footer content row'),
 	array($footer,'href="/politica-de-privacidad/"','Privacy keeps its real destination in the footer'),
 	array($footer,'¿Necesitas ayuda?','Footer help keeps the reference label'),
-	array($footer,'Productos plásticos. Nuevas posibilidades.','Footer keeps the reference tagline'),
+	array($footer,'Mejores productos y a mejores precios','Footer keeps the committed tagline'),
 ) as $contract){
 	check(str_contains($contract[0],$contract[1]),$contract[2]);
 }
