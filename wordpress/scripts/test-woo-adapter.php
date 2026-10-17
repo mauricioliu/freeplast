@@ -587,7 +587,7 @@ check(!str_contains($navjs,'localStorage') && !str_contains($navjs,'sessionStora
 // defect). The block executes the SAME native Woo [products] shortcode inside do_blocks, where no
 // wpautop runs, so the delivered card markup is Woo's own loop with self-naming links.
 $front_page=file_get_contents(__DIR__.'/../wp-content/themes/freeplast/templates/front-page.html');
-check(str_contains($front_page,'wp:freeplast-woo/featured-products {"limit":8,"columns":4}'),'Home renders the featured grid through the plugin-rendered dynamic block');
+check(str_contains($front_page,'wp:freeplast-woo/featured-products {"limit":9,"columns":4}'),'Home renders the featured grid through the plugin-rendered dynamic block');
 check(!str_contains($front_page,'wp:shortcode') && !str_contains($front_page,'[products'),'Home no longer exposes the shortcode output to the wp:shortcode wpautop renderer');
 $init_callbacks=$registered_actions['init'] ?? array();
 check(count($init_callbacks)>0,'The adapter registers init actions');
@@ -606,7 +606,7 @@ if (!function_exists('do_shortcode')) { function do_shortcode($text) { $GLOBALS[
 $GLOBALS['fpw_shortcode_input']='';
 check(fpw_render_featured_products(array('limit'=>8,'columns'=>4))==='NATIVE-WOO-LOOP-MARKUP','The featured grid block returns the native Woo loop markup unchanged (no own card markup)');
 check($GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order"]','The featured grid block delegates to the native Woo products shortcode verbatim');
-check(fpw_render_featured_products(array())==='NATIVE-WOO-LOOP-MARKUP' && $GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order"]','Defaults reproduce the reviewed featured grid');
+check(fpw_render_featured_products(array())==='NATIVE-WOO-LOOP-MARKUP' && $GLOBALS['fpw_shortcode_input']==='[products limit="9" columns="4" visibility="featured" orderby="menu_order"]','Defaults reproduce the reviewed featured grid');
 unset($GLOBALS['fpw_shortcode_input']);
 
 // Card add-to-cart (2026-09-07): the reviewed label is «Agregar a Cotización»

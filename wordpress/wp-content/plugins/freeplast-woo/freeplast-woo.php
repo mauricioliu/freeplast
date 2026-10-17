@@ -116,7 +116,7 @@ function fpw_cart_line_count(): int {
  */
 function fpw_render_featured_products( $attributes ): string {
 	if ( ! function_exists( 'WC' ) || ! function_exists( 'do_shortcode' ) ) { return ''; }
-	$limit   = max( 1, absint( $attributes['limit'] ?? 8 ) );
+	$limit   = max( 1, absint( $attributes['limit'] ?? 9 ) );
 	$columns = max( 1, absint( $attributes['columns'] ?? 4 ) );
 	return do_shortcode( '[products limit="' . $limit . '" columns="' . $columns . '" visibility="featured" orderby="menu_order"]' );
 }
@@ -126,7 +126,7 @@ add_action( 'init', static function () {
 	register_block_type( 'freeplast-woo/featured-products', array(
 		'api_version'     => 2,
 		'attributes'      => array(
-			'limit'   => array( 'type' => 'number', 'default' => 8 ),
+			'limit'   => array( 'type' => 'number', 'default' => 9 ),
 			'columns' => array( 'type' => 'number', 'default' => 4 ),
 		),
 		'render_callback' => 'fpw_render_featured_products',

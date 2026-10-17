@@ -32,6 +32,7 @@ run(php,['-l',path.join(root,'local/upgrade.php')]);checks++;
 console.log(run(php,[path.join(root,'scripts/contacto-address-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-issuer-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-migration-test.php')]));
+console.log(run(php,[path.join(root,'scripts/catalog-selection-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-pdf-release-test.php')]));
 console.log(run('python3',[path.join(root,'scripts/catalog-pdf-package-test.py')]));
 for (const file of ['catalog-pdf-release/run.php','catalog-pdf-release/policy.php','catalog-pdf-release-fingerprint.php']) { run(php,['-l',path.join(root,'scripts',file)]); checks++; }
