@@ -25,10 +25,11 @@
   }
   function dispatchState() {
     enhanceDispatch();
-    var field = document.getElementById('billing_fp_address');
-    var wrapper = document.getElementById('billing_fp_address_field');
-    if (!field || !wrapper) return;
     var needed = dispatchValue() === 'si';
+    ['billing_fp_address', 'billing_fp_commune'].forEach(function (name) {
+    var field = document.getElementById(name);
+    var wrapper = document.getElementById(name + '_field');
+    if (!field || !wrapper) return;
     wrapper.hidden = !needed; field.required = needed;
     var slot = wrapper.closest('.fp-address-slot'); if (slot) slot.hidden = !needed;
     field.setAttribute('aria-required', String(needed)); wrapper.classList.toggle('validate-required', needed);
@@ -39,6 +40,12 @@
       marker.setAttribute('data-fpw-required', ''); wrapper.querySelector('label').appendChild(marker);
     }
     if (marker) marker.hidden = !needed;
+    });
+    if (!needed) {
+      ['billing_fp_address', 'billing_fp_commune', 'billing_fp_location_url', 'billing_fp_references'].forEach(function (name) {
+        var field = document.getElementById(name); if (field) field.value = '';
+      });
+    }
   }
   $(dispatchState);
   $(document.body).on('updated_checkout', dispatchState);

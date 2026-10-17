@@ -142,6 +142,8 @@ th{text-align:left;font-size:8pt;padding:5pt}td{padding:5pt;vertical-align:top;o
 		. '<table class="items"><colgroup><col style="width:11%"><col style="width:43%"><col style="width:23%"><col style="width:23%"></colgroup><thead><tr><th class="number" style="width:11%">Cant.</th><th style="width:43%">Artículos</th><th class="number" style="width:23%">Valor unit. neto</th><th class="number" style="width:23%">Valor neto</th></tr></thead><tbody>' . $rows . '</tbody></table>'
 		. '<table class="totals-layout"><tr><td style="width:48%">' . ( ! $p['dispatch_requested'] && ! empty( $p['pickup_address'] ) ? '<div class="pickup-details"><h2>Retiro - Sin Despacho</h2><p>' . $esc( $p['pickup_address'] ) . '</p><p>No incluye flete.</p></div>' : '' ) . '</td><td style="width:52%"><table class="summary">' . $summary . '</table></td></tr></table><div class="conditions">'
 		. ( $p['dispatch_requested'] ? '<h2>Destino de la oferta</h2><p>' . $esc( $p['destination'] ) . '</p>' : '' )
+		. ( $p['dispatch_requested'] && ! empty( $p['commune'] ) ? '<p>Comuna de despacho: ' . $esc( $p['commune'] ) . '</p>' : '' )
+		. ( $p['dispatch_requested'] && ! empty( $p['location_url'] ) ? '<p>Enlace de ubicación: ' . $esc( $p['location_url'] ) . '</p>' : '' )
 		. ( $p['dispatch_requested'] && ! empty( $p['references'] ) ? '<p>Referencias para llegar: ' . $esc( $p['references'] ) . '</p>' : '' )
 		. '<p><strong>Vigencia de la oferta: ' . (int) $p['validity_days'] . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>' . $terms . '</div></body></html>';
 }

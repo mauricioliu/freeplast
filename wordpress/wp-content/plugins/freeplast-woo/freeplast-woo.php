@@ -203,7 +203,9 @@ function fpw_checkout_fields( $fields ) {
 		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-first'), 'priority'=>50 ),
 		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
 		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
-		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>fpw_manual_address_allowed() ? 'Calle, número, comuna y región (DEV)' : 'Selecciona una sugerencia de Google', 'custom_attributes'=>fpw_manual_address_allowed() ? array('rows'=>'2') : array('readonly'=>'readonly', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
+		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Predio Santa Ana, camino rural s/n', 'custom_attributes'=>array('rows'=>'2', 'maxlength'=>'800'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
+		'billing_fp_commune' => array( 'label'=>'Comuna de despacho', 'required'=>false, 'type'=>'text', 'custom_attributes'=>array('maxlength'=>'240'), 'class'=>array('form-row-wide'), 'priority'=>82 ),
+		'billing_fp_location_url' => array( 'label'=>'Enlace de ubicación', 'required'=>false, 'type'=>'text', 'placeholder'=>'https://…', 'custom_attributes'=>array('maxlength'=>'2048', 'inputmode'=>'url'), 'class'=>array('form-row-wide'), 'priority'=>84 ),
 		'billing_fp_references' => array( 'label'=>'Referencias para llegar', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Portón azul, entrada por el camino lateral', 'custom_attributes'=>array('maxlength'=>'800', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>90 ),
 	);
 	$fields['shipping'] = array();
@@ -254,7 +256,13 @@ function fpw_validate_checkout( $data, $errors ) {
 		$errors->remove( 'billing_fp_dispatch_required' );
 		$errors->add('billing_fp_dispatch', 'Despacho: selecciona Con despacho o Sin despacho.', array('id'=>'billing_fp_dispatch'));
 	}
-	if ( 'si' === $dispatch && '' === fpw_canonical_checkout_address($data)['billing_fp_address'] ) { $errors->add('billing_fp_address', fpw_manual_address_allowed() ? 'Dirección de despacho: escribe una dirección válida con comuna y región (máximo 800 bytes, solo DEV).' : 'Dirección de despacho: selecciona una sugerencia de Google. Si Google no responde, recarga y vuelve a intentarlo; no podemos recibir solicitudes con despacho sin confirmar la dirección.', array('id'=>'billing_fp_address')); }
+	$destination = fpw_canonical_checkout_address( $data );
+	if ( 'si' === $dispatch ) {
+		foreach ( array( 'billing_fp_address'=>'Dirección de despacho: escribe la dirección o predio (máximo 800 bytes). El número es opcional.', 'billing_fp_commune'=>'Comuna de despacho: escribe la comuna (máximo 240 bytes).' ) as $key => $message ) {
+			if ( '' === $destination[$key] ) { $errors->add( $key, $message, array('id'=>$key) ); }
+		}
+		if ( ! fpw_valid_location_url( $data['billing_fp_location_url'] ?? '' ) ) { $errors->add( 'billing_fp_location_url', 'Enlace de ubicación: usa una URL http o https válida, sin usuario ni contraseña (máximo 2048 bytes).', array('id'=>'billing_fp_location_url') ); }
+	}
 	if ( 'si' === $dispatch && strlen( $data['billing_fp_references'] ?? '' ) > 800 ) { $errors->add('billing_fp_references', 'Referencias para llegar: el texto es demasiado largo (máximo 800).', array('id'=>'billing_fp_references')); }
 	$fields = fpw_checkout_fields( array() );
 	foreach ( array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email') as $key ) {
@@ -289,16 +297,16 @@ add_action( 'woocommerce_after_checkout_validation', 'fpw_validate_checkout', 10
 
 add_action( 'woocommerce_checkout_create_order', static function ( $order, $data ) {
 	$data = fpw_canonical_checkout_address( $data );
-	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && '' === $data['billing_fp_address'] ) { throw new Exception( fpw_manual_address_allowed() ? 'Escribe una dirección válida para despacho (solo DEV).' : 'Selecciona una dirección de Google y vuelve a intentarlo.' ); }
+	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && ( '' === $data['billing_fp_address'] || '' === $data['billing_fp_commune'] || ! fpw_valid_location_url( $data['billing_fp_location_url'] ?? '' ) ) ) { throw new Exception( 'Revisa la dirección, comuna y enlace de ubicación para despacho.' ); }
 	$order->update_meta_data( '_qwc_quote', '1' );
 	$order->update_meta_data( '_quote_status', 'quote-pending' );
 	$order->update_meta_data( '_fp_request', 'yes' );
-	foreach ( array('rut','giro','dispatch','address','references') as $field ) {
+	foreach ( array('rut','giro','dispatch','address','commune','location_url','references') as $field ) {
 		$value = $data['billing_fp_'.$field] ?? '';
-		if ( in_array( $field, array('address','references'), true ) && 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { $value = ''; }
+		if ( in_array( $field, array('address','commune','location_url','references'), true ) && 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { $value = ''; }
 		$order->update_meta_data( '_billing_fp_'.$field, sanitize_textarea_field( $value ) );
 	}
-	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch')) ) + array('billing_fp_references'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? sanitize_textarea_field($data['billing_fp_references'] ?? '') : '', 'billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
+	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch','billing_fp_commune','billing_fp_location_url')) ) + array('billing_fp_references'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? sanitize_textarea_field($data['billing_fp_references'] ?? '') : '', 'billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
 	// Issue #59: the address provenance the record may keep — see
 	// fpw_address_provenance(). Only the confirmed address plus its allowed
 	// identification persist; never coordinates, never raw provider responses,
@@ -345,7 +353,7 @@ function fpw_address_provenance( array $data ): array {
  * FREEPLAST_GOOGLE_API_KEY constant — a browser key with
  * HTTP-referrer restrictions, quotas and terms arranged SEPARATELY from the
  * code (external prerequisite still pending; ADR-0007). Absent configuration
- * means the assistant never loads and dispatch submissions fail closed.
+ * means the assistant never loads; manual dispatch remains available.
  *
  * @return array{key:string, region:string, version:string}
  */
@@ -369,6 +377,9 @@ add_filter( 'woocommerce_order_number', static function ( $number, $order ) {
 function fpw_draft_keys() { return array_merge(array_keys(fpw_checkout_fields(array())['billing']),array('order_comments')); }
 add_action( 'woocommerce_checkout_update_order_review', static function ( $serialized ) {
 	parse_str( $serialized, $data );
+	if ( 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) {
+		foreach ( array( 'address', 'commune', 'location_url', 'references' ) as $field ) { $data['billing_fp_' . $field] = ''; }
+	}
 	foreach ( fpw_draft_keys() as $key ) {
 		if ( isset($data[$key]) && is_string($data[$key]) ) { WC()->session->set( 'fpw_'.$key, mb_substr(sanitize_textarea_field($data[$key]),0,4000) ); }
 	}
@@ -382,11 +393,11 @@ add_action( 'woocommerce_cart_emptied', static function () {
 
 add_action( 'wp_enqueue_scripts', static function () {
 	if ( function_exists('is_checkout') && is_checkout() && ! is_order_received_page() ) {
-		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.4', true);
-		// Without browser configuration, no Google script ships; dispatch fails closed.
+		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.5', true);
+		// Without browser configuration, no Google script ships; manual dispatch still works.
 		$places = fpw_places_config();
 		if ( $places ) {
-			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.1.0', true);
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.2.0', true);
 			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}
@@ -1459,6 +1470,8 @@ function fpw_details( $order ) {
 		'Giro' => $order->get_meta('_billing_fp_giro'),
 		'Despacho' => 'si' === $order->get_meta('_billing_fp_dispatch') ? 'Con despacho' : 'Sin despacho',
 		'Dirección de despacho' => $order->get_meta('_billing_fp_address'),
+		'Comuna de despacho' => $order->get_meta('_billing_fp_commune'),
+		'Enlace de ubicación' => $order->get_meta('_billing_fp_location_url'),
 		'Referencias para llegar' => $order->get_meta('_billing_fp_references'),
 	);
 }

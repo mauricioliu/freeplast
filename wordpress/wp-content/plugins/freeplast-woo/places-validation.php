@@ -1,7 +1,7 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-/** Only the contained local runtime can grant manual entry; never request data. */
+/** Local capture suppresses Google loading; manual entry is valid in every environment. */
 function fpw_manual_address_allowed(): bool {
 	return defined('FPW_LOCAL_MANUAL_ADDRESS') && true === FPW_LOCAL_MANUAL_ADDRESS
 		&& defined('WP_ENVIRONMENT_TYPE') && 'local' === WP_ENVIRONMENT_TYPE
@@ -39,19 +39,31 @@ function fpw_confirm_place( $id ): array {
 /** Canonicalize before Woo validation and creation; hidden address/scope are never authority. */
 function fpw_canonical_checkout_address( array $data ): array {
 	if ( 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) {
-		foreach ( array( 'billing_fp_address', 'billing_fp_references', 'fpw_place_id', 'fpw_place_scope' ) as $key ) { $data[$key] = ''; }
+		foreach ( array( 'billing_fp_address', 'billing_fp_commune', 'billing_fp_location_url', 'billing_fp_references', 'fpw_place_id', 'fpw_place_scope' ) as $key ) { $data[$key] = ''; }
 		return $data;
 	}
-	if ( fpw_manual_address_allowed() ) {
-		$address = $data['billing_fp_address'] ?? '';
-		$address = is_string($address) ? trim($address) : '';
-		$data['billing_fp_address'] = strlen($address) <= 800 && !preg_match('/[<>\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $address) && sanitize_textarea_field($address) === $address ? $address : '';
+	foreach ( array( 'billing_fp_address' => 800, 'billing_fp_commune' => 240 ) as $key => $limit ) {
+		$value = $data[$key] ?? '';
+		$value = is_string( $value ) ? trim( $value ) : '';
+		$data[$key] = strlen( $value ) <= $limit && ! preg_match( '/[<>\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value ) && sanitize_textarea_field( $value ) === $value ? $value : '';
+	}
+	$place = fpw_manual_address_allowed() ? array() : fpw_confirm_place( $data['fpw_place_id'] ?? '' );
+	// An edited address must never inherit the previous Google association.
+	if ( ! $place || $data['billing_fp_address'] !== $place['address'] ) {
 		$data['fpw_place_id'] = $data['fpw_place_scope'] = '';
-		return $data;
+	} else {
+		$data['fpw_place_scope'] = $place['scope'];
 	}
-	$place = fpw_confirm_place( $data['fpw_place_id'] ?? '' );
-	$data['billing_fp_address'] = $place['address'] ?? '';
-	$data['fpw_place_scope'] = $place['scope'] ?? '';
 	return $data;
 }
 add_filter( 'woocommerce_checkout_posted_data', 'fpw_canonical_checkout_address', 20 );
+
+/** Store text only: never fetch, resolve or calculate distance from this URL. */
+function fpw_valid_location_url( $value ): bool {
+	if ( ! is_string( $value ) || strlen( $value ) > 2048 || preg_match( '/[<>\s\x00-\x1F\x7F]/', $value ) ) { return false; }
+	if ( '' === $value ) { return true; }
+	$parts = parse_url( $value );
+	return false !== filter_var( $value, FILTER_VALIDATE_URL ) && is_array( $parts )
+		&& in_array( strtolower( $parts['scheme'] ?? '' ), array( 'http', 'https' ), true )
+		&& ! isset( $parts['user'] ) && ! isset( $parts['pass'] );
+}

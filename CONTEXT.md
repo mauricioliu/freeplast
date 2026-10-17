@@ -113,7 +113,7 @@ The bounded, consultable record of one applied Sales Register import — acting 
 _Avoid_: Upload log, file backup, invoice
 
 **Delivery Address**:
-The complete destination supplied by the customer when dispatch is requested, including street, number, commune and region. It is distinct from the company's fiscal information; supplying text does not imply the site has geocoded or verified the destination.
+The destination supplied when dispatch is requested: a required manual address or rural property and a separately editable, required commune; number, location link and access references are optional. It is distinct from fiscal information; neither manual text nor a location link implies geocoding or verification, and Google assistance is never required.
 _Avoid_: Billing address, company address
 
 **Address Provenance**:

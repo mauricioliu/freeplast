@@ -103,9 +103,9 @@ function verify($condition, $message) {
 }
 
 preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $html, $manual_input);
-$manual_expected = getenv('FREEPLAST_TEST_MANUAL_MODE') === 'allowed';
-verify(str_contains($manual_input[0], 'readonly="readonly"') === !$manual_expected, 'actual native address editable only in guarded DEV');
-verify(str_contains($html, 'DEV: escribe la dirección') === $manual_expected, 'helper states manual DEV policy only in guarded runtime');
+verify(!str_contains($manual_input[0], 'readonly="readonly"'), 'native address editable in production and without JavaScript');
+verify(str_contains($html, 'Google es solo una ayuda.'), 'helper states optional Google policy');
+verify(str_contains($html, 'name="billing_fp_commune"') && str_contains($html, 'name="billing_fp_location_url"'), 'native commune and optional location link render');
 
 verify(str_contains($html, 'REVIEW-EXTENSION') && str_contains($html, 'BILLING-EXTENSION'), 'native extension hooks still execute');
 verify(!str_contains($html, 'COUPON-FORM-MARKER') && stripos($html, 'coupon') === false, 'H2: no coupon invitation, field or action renders anywhere in the quote-only form');
@@ -165,7 +165,7 @@ verify(!str_contains($html, 'fpw_attempt" value=""') , 'no literal attempt marku
 $functions = file_get_contents(__DIR__ . '/../wp-content/themes/freeplast/functions.php');
 verify(str_contains($functions, 'checkout-form.js'), 'the checkout enhancement script is enqueued');
 $adapter = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
-verify(str_contains($adapter, "'1.0.4'"), 'fields.js enqueue version follows its radio change');
+verify(str_contains($adapter, "'1.0.5'"), 'fields.js enqueue version follows destination contract change');
 
 /* Native server validation + both native notice shapes, without WP storage/HTTP. */
 require_once __DIR__ . '/../.build/wp/wp-includes/class-wp-error.php';
@@ -224,6 +224,8 @@ $validation_fixtures = array();
 $invalid_cases = array();
 foreach ($required as $key) { $invalid_cases[$key] = array($key=>''); }
 $invalid_cases['address'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'   ');
+$invalid_cases['commune'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'');
+$invalid_cases['location'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'javascript:alert(1)');
 $invalid_cases['dispatch-invalid'] = array('billing_fp_dispatch'=>'otra');
 $invalid_cases['email-format'] = array('billing_email'=>'correo-invalido');
 $invalid_cases['multiple'] = array('billing_first_name'=>'', 'billing_fp_giro'=>'', 'billing_fp_dispatch'=>'si', 'billing_fp_address'=>'');
@@ -232,7 +234,7 @@ foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_
 	if ('billing_fp_address' === $key) { $invalid_cases[$key . '-long']['billing_fp_dispatch'] = 'si'; }
 }
 foreach ($invalid_cases as $case=>$overrides) {
-	$data = array_replace($valid, $overrides);
+	$data = array_replace($valid, array('billing_fp_commune'=>'Mostazal'), $overrides);
 	$errors = $validator->validate($data);
 	$notices = array();
 	foreach ($errors->get_error_codes() as $code) {
@@ -272,7 +274,7 @@ foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_
 	verify(str_contains($errors->get_error_message($key), $billing[$key]['label'] . ': el texto es demasiado largo. Acórtalo'), 'overlength names field and correction: ' . $key);
 }
 verify(!$validator->validate(array_replace($valid, array('billing_fp_address'=>str_repeat('a', 801))))->has_errors(), 'no-dispatch ignores an unused overlong address draft rather than blocking on a hidden field');
-verify($validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Calle Prueba 123, Comuna Prueba, Región Prueba')))->has_errors() === !$manual_expected, 'manual destination accepted only in guarded DEV');
+verify(!$validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal')))->has_errors(), 'manual rural destination accepted without number, region, Google or JavaScript');
 verify(!$validator->validate($valid)->has_errors() && !$GLOBALS['fpw_checkout_field_errors'], 'correction/retry clears request-local errors');
 
 if ('1' === getenv('FREEPLAST_TEST_VALIDATION_JSON')) { echo json_encode($validation_fixtures, JSON_UNESCAPED_UNICODE); }

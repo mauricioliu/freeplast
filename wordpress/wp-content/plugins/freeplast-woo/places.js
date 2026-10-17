@@ -1,15 +1,15 @@
-/* Google selection is mandatory for dispatch; the server confirms the ID.
+/* Google is optional assistance; manual rural destinations remain valid.
    Only the search query reaches the widget, never the separate delivery notes. */
 (function () {
   'use strict';
   var config = window.FPW_PLACES || {};
   var TEXTS = {
-    confirmed: 'Dirección confirmada con el asistente de direcciones.',
+    confirmed: 'Dirección seleccionada con el asistente. Revisa la comuna de despacho.',
     broad: 'Seleccionaste una calle o sector. Puedes agregar referencias para llegar debajo de la dirección.',
-    manual: 'La búsqueda cambió. Selecciona otra sugerencia de Google.',
-    unconfirmed: 'Google no confirmó esa dirección. Selecciona otra sugerencia o recarga y vuelve a intentarlo.',
-    empty: 'Busca tu dirección y selecciona una sugerencia de Google.',
-    failed: 'Google no está disponible. No podemos recibir solicitudes con despacho sin confirmar la dirección. Recarga y vuelve a intentarlo.'
+    manual: 'Dirección manual. Puedes escribir el predio y la comuna sin seleccionar una sugerencia.',
+    unconfirmed: 'No se obtuvo la sugerencia. Puedes escribir la dirección y comuna manualmente.',
+    empty: 'Escribe la dirección o predio y la comuna. El número es opcional.',
+    failed: 'Google no está disponible. Escribe la dirección o predio y la comuna manualmente.'
   };
   /* A route, commune or region is a REFERENCE, not a certified delivery point:
      the recorded scope lets the private review judge it (no access claim). */
@@ -39,8 +39,6 @@
 
   function clearProvenance(form) {
     state.revision += 1;
-    var field = form.querySelector('#billing_fp_address');
-    if (field) { field.value = ''; }
     var fields = carriers(form);
     if (!fields.id || !fields.scope) { return; }
     fields.id.value = '';
@@ -152,20 +150,11 @@
     if (row && row.parentNode === slot) { slot.insertBefore(host, row); } else { slot.insertBefore(host, slot.firstChild); }
     if (row && row.nextSibling) { slot.insertBefore(status, row.nextSibling); } else { slot.appendChild(status); }
     var context = { form: form, field: field, status: status, region: (config.region || 'CL').toUpperCase() };
-    field.readOnly = true;
+    field.readOnly = false;
     field.rows = 2;
     clearProvenance(form);
-    form.addEventListener('submit', function (event) {
-      if (wantsDispatch(form) && !carriers(form).id.value) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        announce(status, TEXTS.empty);
-        if (state.widget) { state.widget.focus(); }
-      }
-    }, true);
 
     field.addEventListener('input', function () {
-      if (!state.provenance) { return; }
       clearProvenance(form);
       announce(status, field.value.trim() ? TEXTS.manual : TEXTS.empty);
     });
@@ -177,6 +166,10 @@
         // The destination and its associations leave the record at the server;
         // here the claim is dropped so nothing stale rides the next submit.
         clearProvenance(form);
+        ['billing_fp_address', 'billing_fp_commune', 'billing_fp_location_url', 'billing_fp_references'].forEach(function (name) {
+          var input = form.querySelector('[name="' + name + '"]');
+          if (input) { input.value = ''; }
+        });
         status.hidden = true;
         status.textContent = '';
         if (state.widget) { state.widget.disabled = true; }

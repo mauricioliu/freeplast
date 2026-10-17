@@ -143,6 +143,8 @@ function fpw_build_request_draft_payload( $order ): array {
 		'destination'       => array(
 			'dispatch' => (string) $order->get_meta( '_billing_fp_dispatch' ),
 			'address'  => (string) $order->get_meta( '_billing_fp_address' ),
+			'commune' => (string) $order->get_meta( '_billing_fp_commune' ),
+			'location_url' => (string) $order->get_meta( '_billing_fp_location_url' ),
 			'references' => (string) $order->get_meta( '_billing_fp_references' ),
 			'source'   => (string) $order->get_meta( '_billing_fp_address_source' ),
 			'place_id' => (string) $order->get_meta( '_billing_fp_place_id' ),
@@ -834,6 +836,8 @@ function fpw_draft_facts_html( array $identity, array $destination, bool $with_d
 	);
 	if ( $with_dispatch ) {
 		$facts[] = array( 'Dirección de despacho', (string) ( $destination['address'] ?? '' ) );
+		$facts[] = array( 'Comuna de despacho', (string) ( $destination['commune'] ?? '' ) );
+		$facts[] = array( 'Enlace de ubicación', (string) ( $destination['location_url'] ?? '' ) );
 		$facts[] = array( 'Referencias para llegar', (string) ( $destination['references'] ?? '' ) );
 	}
 	$html = '';
@@ -1059,7 +1063,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 		'total'                   => $total,
 		'missing'                 => $missing,
 		'complete'                => empty( $missing ),
-	) + ( $with_dispatch && ! empty( $draft['destination']['references'] ) ? array( 'references' => (string) $draft['destination']['references'] ) : array() );
+	) + ( $with_dispatch ? array_filter( array_intersect_key( $draft['destination'] ?? array(), array_flip( array( 'commune', 'location_url', 'references' ) ) ), static fn( $value ) => '' !== (string) $value ) : array() );
 }
 
 /** One amount as the owner entered it: plain integer input, pending placeholder when absent. */
@@ -1371,6 +1375,8 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 		. '</tbody></table>';
 	if ( ! empty( $projection['dispatch_requested'] ) && '' !== (string) ( $projection['destination'] ?? '' ) ) {
 		$html .= '<p class="fpw-draft__preview-dest">Destino de la oferta: ' . esc_html( (string) $projection['destination'] ) . '</p>';
+		if ( ! empty( $projection['commune'] ) ) { $html .= '<p>Comuna de despacho: ' . esc_html( $projection['commune'] ) . '</p>'; }
+		if ( ! empty( $projection['location_url'] ) ) { $html .= '<p>Enlace de ubicación: ' . esc_html( $projection['location_url'] ) . '</p>'; }
 		if ( ! empty( $projection['references'] ) ) { $html .= '<p>Referencias para llegar: ' . esc_html( $projection['references'] ) . '</p>'; }
 	}
 	if ( empty( $projection['dispatch_requested'] ) && ! empty( $projection['pickup_address'] ) ) {
