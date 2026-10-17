@@ -108,6 +108,22 @@ function check(ok, message) {
   if (!ok) throw Error(`stack harness: ${message}`);
 }
 
+export function checkCatalogFixture(fixture, reference, publicIds, check) {
+  for (const entry of reference) {
+    const matches = fixture.products.filter((product) => product.slug === entry.slug && product.source_id === entry.source_id);
+    check(matches.length === 1, `historical Woo identity must exist exactly once: ${entry.slug}`);
+  }
+  const expected = fixture.products.filter((product) => product.public).map((product) => product.id).sort((a, b) => a - b);
+  const actual = [...publicIds].sort((a, b) => a - b);
+  check(JSON.stringify(actual) === JSON.stringify(expected), `public catalog must match active Woo products (actual: ${actual}; expected: ${expected})`);
+  const archived = fixture.products.find((product) => product.slug === 'bases-plasticas-para-pediluvios');
+  if (fixture.selection_applied || archived?.status === 'draft') {
+    check(archived?.status === 'draft' && archived?.visibility === 'hidden', 'archived pediluvios must remain draft/hidden in Woo');
+    check(!publicIds.includes(archived?.id), 'archived pediluvios must be absent from the public shop');
+  }
+  check(fixture.variations === 5, `the reference color product carries its 5 named variations (got ${fixture.variations})`);
+}
+
 export async function runStackHarness() {
   if (process.env.FREEPLAST_SKIP_STACK === '1') {
     console.log('stack harness: skipped (FREEPLAST_SKIP_STACK=1)');
@@ -605,22 +621,45 @@ register_shutdown_function( static function () {
         sindespacho: await placesJourney({ billing_fp_dispatch: 'no', billing_fp_address: '', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'amplia' }, 'sin-despacho'),
       };
 
-      /* The controlled reference fixture: all 17 products, categories, and the
-         two 5-color variable products — synthetic run-owned data only. */
+      /* Historical identities survive archival; only active native Woo products
+         belong in the public shop. Supports seed-only and migrated fixtures. */
       const seeded = sh(PHP, [WPCLI, 'eval', `
-        $names = array();
-        foreach (get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'numberposts' => -1)) as $post) { $names[] = $post->post_name; }
+        $products = array();
+        foreach (get_posts(array('post_type' => 'product', 'post_status' => 'any', 'numberposts' => -1)) as $post) {
+          $product = wc_get_product($post->ID);
+          if (!$product) { throw new RuntimeException('Missing native Woo product: ' . $post->ID); }
+          $visibility = $product->get_catalog_visibility();
+          $public = $product->get_status() === 'publish' && in_array($visibility, array('visible', 'catalog'), true)
+            && (get_option('woocommerce_hide_out_of_stock_items') !== 'yes' || $product->is_in_stock());
+          $products[] = array('id' => $product->get_id(), 'slug' => $product->get_slug(), 'source_id' => $product->get_meta('_fp_source_id'), 'status' => $product->get_status(), 'visibility' => $visibility, 'public' => $public);
+        }
         $variable = get_posts(array('post_type' => 'product', 'name' => 'caja-universal-cerrada-color', 'post_status' => 'any', 'numberposts' => 1));
         $variations = 0;
         if ($variable) { $product = wc_get_product($variable[0]->ID); $variations = $product ? count($product->get_children()) : 0; }
-        echo wp_json_encode(array('names' => $names, 'variations' => $variations));
+        echo wp_json_encode(array('products' => $products, 'variations' => $variations, 'selection_applied' => (bool) get_option('freeplast_catalog_selection_pg22')));
       `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
       const fixture = JSON.parse(seeded.split('\n').pop());
       const reference = JSON.parse(readFileSync(join(WORDPRESS_DIR, 'data', 'products.json'), 'utf8'));
-      const referenceSlugs = (Array.isArray(reference) ? reference : reference.products).map((item) => item.slug);
-      const missing = referenceSlugs.filter((slug) => !fixture.names.includes(slug));
-      check(missing.length === 0, `the disposable catalog must seed all 17 reference products (missing: ${missing.join(', ')})`);
-      check(fixture.variations === 5, `the reference color product carries its 5 named variations (got ${fixture.variations})`);
+      const publicIds = [];
+      const visited = new Set();
+      let catalogPath = '/tienda/';
+      while (catalogPath) {
+        check(!visited.has(catalogPath) && visited.size <= fixture.products.length, 'public catalog pagination must terminate without repeating pages');
+        visited.add(catalogPath);
+        const page = new JSDOM(await fetchBody(catalogPath));
+        try {
+          for (const card of page.window.document.querySelectorAll('li.product-card')) {
+            const id = Number(card.className.match(/\bpost-(\d+)\b/)?.[1]);
+            check(id > 0, 'each public product card exposes its native Woo identity');
+            publicIds.push(id);
+          }
+          const next = page.window.document.querySelector('.woocommerce-pagination a.next')?.getAttribute('href');
+          const url = next ? new URL(next, SITE_URL) : null;
+          check(!url || url.origin === new URL(SITE_URL).origin, 'catalog pagination remains on the disposable site');
+          catalogPath = url ? url.pathname + url.search : null;
+        } finally { page.window.close(); }
+      }
+      checkCatalogFixture(fixture, Array.isArray(reference) ? reference : reference.products, publicIds, check);
     }
 
     /* 3. Home + race(repeated) + replay + correct + renew + lost + inflight
