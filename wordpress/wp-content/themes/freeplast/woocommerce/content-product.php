@@ -95,6 +95,7 @@ $fp_selection = function_exists( 'fpw_card_selection' ) && function_exists( 'WC'
 	</div>
 	<?php if ( $fp_is_variable ) : ?>
 		<div class="fpw-loop-add product-controls variant-controls" data-fpw-loop-add>
+			<?php if ( function_exists( 'fpw_quote_minimum_html' ) ) { echo fpw_quote_minimum_html( (int) $product->get_id() ); } ?>
 			<span class="color-hint"><span class="color-dots" aria-hidden="true"><i class="color-dot"></i><i class="color-dot red"></i><i class="color-dot yellow"></i><i class="color-dot blue"></i><i class="color-dot green"></i></span><?php echo esc_html( count( $fp_colors ) ? count( $fp_colors ) . ' colores · sujetos a disponibilidad' : 'Colores sujetos a disponibilidad' ); ?></span>
 			<a class="button secondary" href="<?php echo esc_url( $fp_card_link ); ?>">Elegir color <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16"><path d="M4 12h15M13 5l7 7-7 7"/></svg></a>
 			<?php echo $fp_selection; ?>

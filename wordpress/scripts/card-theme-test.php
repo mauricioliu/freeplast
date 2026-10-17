@@ -28,6 +28,14 @@ function wc_product_class($class, $product) { echo 'class="product type-product 
 function wp_get_post_terms($id, $tax, $args) { return array('Agrícola'); }
 function woocommerce_template_loop_add_to_cart() { echo 'ADAPTER-LOOP-ADD-MARKER'; }
 
+// Render the active card with the actual adapter minimum helpers, not a markup stub.
+function get_post_meta($id, $key, $single = false) { return $id === 21 && $key === '_fp_quote_min_qty' ? '70' : ''; }
+$adapter_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
+foreach (array('fpw_quote_minimum', 'fpw_quote_minimum_html') as $function) {
+    if (!preg_match('/\nfunction ' . $function . '\( .*?\n\}/s', $adapter_source, $match)) { throw new RuntimeException('Missing adapter helper: ' . $function); }
+    eval($match[0]);
+}
+
 class CardThemeProduct {
     public function __construct(private array $data) {}
     public function __call($name, $args) {
@@ -108,6 +116,11 @@ verify(str_contains($variable, 'data-fpw-loop-add') && str_contains($variable, '
 verify(!str_contains($variable, 'add_to_cart_button') && !str_contains($variable, 'ADAPTER-LOOP-ADD-MARKER'), 'no direct add path bypasses the variation form');
 verify(!str_contains($variable, '<select'), 'no card-level color picker is introduced');
 verify(str_contains($variable, 'Caja Universal Cerrada Color &lt;negro&gt;'), 'names are escaped');
+verify(str_contains($variable, 'Mínimo 70 unidades') && substr_count($variable, 'class="fpw-minimum"') === 1, 'active variable card renders the informative minimum exactly once');
+verify(strpos($variable, 'Mínimo 70 unidades') < strpos($variable, 'Elegir color'), 'minimum is visible beside the color-selection action');
+$unknownVariable = render_card(array('id'=>23, 'type'=>'variable', 'name'=>'Variable pendiente', 'permalink'=>'/producto/pendiente/', 'image_id'=>0, 'variation_attributes'=>array()));
+verify(str_contains($unknownVariable, 'Mínimo por confirmar: solicita la cantidad que necesites') && substr_count($unknownVariable, 'class="fpw-minimum') === 1, 'active variable card keeps unknown minimum explicitly pending');
+verify(str_contains($unknownVariable, 'Elegir color') && !str_contains($unknownVariable, '<input') && !str_contains($unknownVariable, 'ADAPTER-LOOP-ADD-MARKER'), 'pending minimum introduces neither a quantity constraint nor a direct add path');
 
 /* Long names wrap instead of overflowing. */
 $long = render_card(array('id' => 22, 'type' => 'simple', 'name' => 'Bases Plásticas para Pediluvios con Nombre Larguísimo de Prueba', 'permalink' => '/p/', 'image_id' => 2));
