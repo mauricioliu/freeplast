@@ -105,6 +105,8 @@ function verify($condition, $message) {
 preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $html, $manual_input);
 verify(!str_contains($manual_input[0], 'readonly="readonly"'), 'native address editable in production and without JavaScript');
 verify(str_contains($html, 'Google es solo una ayuda.'), 'helper states optional Google policy');
+verify(str_contains($html, 'La dirección o predio y la comuna solo son obligatorios con despacho. El número es opcional.'), 'rendered required-fields hint matches rural dispatch rules');
+verify(!str_contains($html, 'comuna y región'), 'rendered checkout never claims a mandatory region');
 verify(str_contains($html, 'name="billing_fp_commune"') && str_contains($html, 'name="billing_fp_location_url"'), 'native commune and optional location link render');
 
 verify(str_contains($html, 'REVIEW-EXTENSION') && str_contains($html, 'BILLING-EXTENSION'), 'native extension hooks still execute');
@@ -155,7 +157,7 @@ verify(!str_contains($html, 'El precio se confirma con ventas.'), 'summary does 
 verify(str_contains(file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/payment.php'), "wc_get_template( 'checkout/terms.php' )"), 'pinned native payment calls the exercised terms template');
 verify(!str_contains($html, 'checkbox') || !str_contains($html, 'consentimiento'), 'no consent checkbox invented');
 verify(!str_contains($html, 'registro') || !str_contains($html, 'Regístrate'), 'no registration requirement invented');
-verify(str_contains($html, 'Los datos de contacto, empresa y la opción de despacho son obligatorios.') && str_contains($html, 'La dirección, con comuna y región, solo se exige con despacho. Mensaje es opcional.'), 'the required-fields hint matches the conditional and optional rules');
+verify(str_contains($html, 'Los datos de contacto, empresa y la opción de despacho son obligatorios.') && str_contains($html, 'La dirección o predio y la comuna solo son obligatorios con despacho. El número es opcional. Mensaje es opcional.'), 'the required-fields hint matches the conditional and optional rules');
 
 /* Steps: step 2 active. */
 verify(str_contains($html, 'aria-current="step"') && str_contains($html, 'step-number">2<'), 'the details step is current');

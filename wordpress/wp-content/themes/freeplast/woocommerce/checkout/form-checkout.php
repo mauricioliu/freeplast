@@ -96,7 +96,7 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 	</aside>
 
 	<div class="fp-checkout-form">
-	<p class="fp-required-hint fp-fine">Los datos de contacto, empresa y la opción de despacho son obligatorios. La dirección, con comuna y región, solo se exige con despacho. Mensaje es opcional.</p>
+	<p class="fp-required-hint fp-fine">Los datos de contacto, empresa y la opción de despacho son obligatorios. La dirección o predio y la comuna solo son obligatorios con despacho. El número es opcional. Mensaje es opcional.</p>
 	<?php if ( $fp_errors ) : ?>
 	<div class="fp-error-summary" role="alert" tabindex="-1">
 		<h2><?php echo esc_html( 'Revisa ' . count( $fp_errors ) . ( 1 === count( $fp_errors ) ? ' campo' : ' campos' ) . ' para continuar.' ); ?></h2>
