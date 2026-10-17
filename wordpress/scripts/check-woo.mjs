@@ -103,6 +103,10 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 
 // Issue #42: A · Directa card controls — stepper around Woo's own quantity
 // input, data-quantity mirror, header count + dock store bridge.
+{ const {runQuantityHoldReactTests}=await import('./quantity-hold-react-test.mjs');
+  checks+=await runQuantityHoldReactTests(); }
+{ const {runQuantityHoldTests}=await import('./quantity-hold-test.mjs');
+  checks+=await runQuantityHoldTests(); }
 { const {runCardControlsTests}=await import('./card-controls-test.mjs');
   checks+=await runCardControlsTests(); }
 { const {runCartPresentationTests}=await import('./cart-presentation-test.mjs');

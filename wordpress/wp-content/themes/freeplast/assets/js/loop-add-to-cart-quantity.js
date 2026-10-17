@@ -137,7 +137,7 @@
   }
 
   // Cart block retains its own input handler, intent event, debounce and rollback.
-  function onCartStep(event) {
+  function onCartStep(event, draft) {
     var button = event.target.closest && event.target.closest('.wc-block-components-quantity-selector__button');
     if (!button || button.disabled) { return; }
     var row = button.closest('.wc-block-cart-items__row');
@@ -151,13 +151,89 @@
     if (!Number.isSafeInteger(current) || current < 1) { return; }
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (!draft && window.freeplastQuantityPending) { return; }
     var direction = button.classList.contains('wc-block-components-quantity-selector__button--plus') ? 1 : -1;
     var next = Math.max(1, current + direction * delta);
     if (input.max !== '') { next = Math.min(next, Number(input.max)); }
     if (next === current) { return; }
     var view = input.ownerDocument.defaultView;
     Object.getOwnPropertyDescriptor(view.HTMLInputElement.prototype, 'value').set.call(input, String(next));
-    input.dispatchEvent(new view.Event('input', { bubbles: true }));
+    if (!draft) { input.dispatchEvent(new view.Event('input', { bubbles: true })); }
+    return input;
+  }
+
+  // Draft cart values never enter React until release: one native change, one debounce.
+  var held = null;
+  var suppressClick = null;
+  var holdSelector = '.fp-qty-step, .wc-block-components-quantity-selector__button';
+
+  function holdState(busy) {
+    window.freeplastQuantityHolding = busy;
+    document.dispatchEvent(new window.Event('fp-quantity-hold'));
+  }
+
+  function stopHold(event) {
+    if (!held) { return; }
+    if (event && (event.type.indexOf('pointer') === 0 || event.type === 'lostpointercapture') && event.pointerId !== held.pointerId) { return; }
+    var previous = held;
+    held = null;
+    clearTimeout(previous.timer);
+    previous.observer.disconnect();
+    if (event && event.type === 'pointercancel') { suppressClick = null; }
+    if (previous.pointerId !== undefined && previous.button.hasPointerCapture && previous.button.hasPointerCapture(previous.pointerId)) {
+      previous.button.releasePointerCapture(previous.pointerId);
+    }
+    if (previous.cart && previous.input.isConnected && !previous.input.disabled && !previous.input.readOnly) {
+      previous.input.dispatchEvent(new window.Event('input', { bubbles: true }));
+    }
+    holdState(false);
+  }
+
+  function startHold(event) {
+    var button = event.target.closest && event.target.closest(holdSelector);
+    if (!button || button.disabled) { suppressClick = null; return; }
+    var keyboard = event.type === 'keydown';
+    if (keyboard && event.key !== ' ' && event.key !== 'Enter') { return; }
+    if (!keyboard && (event.button !== 0 || event.isPrimary === false)) { return; }
+    if (keyboard && event.repeat) { event.preventDefault(); return; }
+    stopHold();
+    var cart = button.matches('.wc-block-components-quantity-selector__button');
+    var input = button.parentNode.querySelector(cart ? 'input' : 'input.qty');
+    if (!input || input.disabled || input.readOnly) { return; }
+    if (cart) {
+      var row = button.closest('.wc-block-cart-items__row');
+      var link = row && row.querySelector('.wc-block-components-product-name');
+      if (!link || !(window.freeplastQuantityDeltas || {})[link.href]) { return; }
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (cart && window.freeplastQuantityPending) { return; }
+    button.focus({ preventScroll: true });
+    suppressClick = button;
+    held = { button: button, input: input, cart: cart, pointerId: event.pointerId, key: event.key };
+    if (!keyboard && button.setPointerCapture) {
+      try { button.setPointerCapture(event.pointerId); } catch (err) { /* Pointer already cancelled. */ }
+    }
+    held.observer = new MutationObserver(function () {
+      if (held && (!button.isConnected || !input.isConnected || button.disabled || input.disabled)) { stopHold(); }
+    });
+    held.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    if (cart) { holdState(true); }
+    function tick() {
+      if (!held) { return; }
+      if (!button.isConnected || !input.isConnected || button.disabled || input.disabled || input.readOnly) { stopHold(); return; }
+      if (cart) {
+        onCartStep({ target: button, preventDefault: function () {}, stopImmediatePropagation: function () {} }, true);
+      } else {
+        stepValue(input, button.classList.contains('fp-qty-step--plus') ? 1 : -1);
+      }
+    }
+    tick();
+    function repeat() {
+      tick();
+      if (held) { held.timer = setTimeout(repeat, 100); }
+    }
+    if (held) { held.timer = setTimeout(repeat, 400); }
   }
 
   function onQuantityKeydown(event) {
@@ -176,6 +252,27 @@
      covers the commits some browsers only deliver there (pickers, autofill).
      'invalid' (capture phase) catches native constraint evaluation before UI popups. */
   if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', startHold, true);
+    document.addEventListener('keydown', startHold, true);
+    document.addEventListener('keyup', function (event) {
+      if (held && event.key === held.key) { event.preventDefault(); stopHold(); }
+    }, true);
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (type) {
+      document.addEventListener(type, stopHold, true);
+    });
+    document.addEventListener('focusout', function (event) {
+      if (held && event.target === held.button) { stopHold(); }
+    }, true);
+    window.addEventListener('blur', function () { stopHold(); });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) { stopHold(); } });
+    document.addEventListener('click', function (event) {
+      var button = event.target.closest && event.target.closest(holdSelector);
+      if (button && button === suppressClick) {
+        suppressClick = null;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    }, true);
     document.addEventListener('click', onCartStep, true);
     document.addEventListener('click', onQuantityEvent);
     document.addEventListener('input', onQuantityEvent);

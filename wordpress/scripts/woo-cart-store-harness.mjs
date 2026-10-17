@@ -325,6 +325,33 @@ export async function runCartStoreScenarios(bundlePath, scriptPath) {
   const pendingOf = (win) => win.wp.data.select(CART_STORE).getItemsPendingQuantityUpdate();
   const quiet = (win) => win.watcher.inflight() === 0 && pendingOf(win).length === 0;
 
+  // Hold + the native component's 400ms debounce must not unlock navigation.
+  for (const outcome of ['ok', 'offline']) {
+    const win = makeFakeWindow(bundleSource);
+    win.transport.push(outcome, storeCart(140, 25));
+    win.watcher = attachScript(win, scriptSource).watcher;
+    receiveCartOf(win, storeCart(140, 5));
+    win.freeplastQuantityHolding = true;
+    win.watcher.evaluateIntents();
+    assert(submitOf(win).getAttribute('aria-disabled') === 'true', 'hold locks CTA before native mutation');
+    assert(win.transport.calls.length === 0, 'hold produces no request');
+    const product = win.wp.data.select(CART_STORE).getCartItem('variant-line');
+    win.wp.hooks.doAction(INTENT_EVENT, { product, quantity: 25 });
+    win.freeplastQuantityHolding = false;
+    win.watcher.evaluateIntents();
+    await new Promise(resolve => setTimeout(resolve, 450));
+    assert(submitOf(win).getAttribute('aria-disabled') === 'true', 'released intent stays locked through native debounce without premature verdict');
+    assert(!failureVisible(win) && !savedVisible(win), 'debounce is not mistaken for failed persistence');
+    const event = { type: 'click', prevented: false, preventDefault() { this.prevented = true; } };
+    submitOf(win).dispatch(event);
+    assert(event.prevented, 'CTA activation blocked before request begins');
+    win.wp.data.dispatch(CART_STORE).changeCartItemQuantity('variant-line', 25).catch(() => {});
+    await settled(() => outcome === 'ok' ? savedVisible(win) : failureVisible(win), 'held final quantity gets native verdict');
+    assert(quantity(win, 'variant-line') === (outcome === 'ok' ? 25 : 5), 'native store persists or rolls back final held value');
+    assert(win.transport.calls.length === 1, 'one final native request, no tick requests');
+    assert(submitOf(win).getAttribute('aria-disabled') === 'false', 'native final verdict unlocks CTA');
+  }
+
   // 1 · Successful change through the real store: stated 6 → persisted 6, polite confirmation.
   {
     const win = makeFakeWindow(bundleSource);

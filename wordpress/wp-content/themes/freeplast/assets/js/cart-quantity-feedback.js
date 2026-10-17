@@ -153,7 +153,11 @@
        body reader and Woo's ensuing promise continuations, not only headers. */
     function operationsPending() {
       var storeBusy = typeof store.hasPendingItemsOperations === 'function' && store.hasPendingItemsOperations();
-      return storeBusy || store.getItemsPendingQuantityUpdate().length > 0 || inflight > 0;
+      var waiting = Object.keys(intents).some(function (key) {
+        var item = store.getCartItem(key);
+        return item && intents[key].awaiting && item.quantity !== intents[key].quantity;
+      });
+      return !!windowObj.freeplastQuantityHolding || waiting || storeBusy || store.getItemsPendingQuantityUpdate().length > 0 || inflight > 0;
     }
 
     /* aria state of the «Datos y envío» CTA follows pending quantity
@@ -163,8 +167,9 @@
     function syncSubmit() {
       if (submit && typeof submit.isConnected !== 'undefined' && !submit.isConnected) { submit = null; }
       if (!submit) { submit = doc.querySelector(SUBMIT_SELECTOR); }
-      if (!submit || typeof submit.setAttribute !== 'function') { return; }
       var busy = operationsPending();
+      windowObj.freeplastQuantityPending = busy;
+      if (!submit || typeof submit.setAttribute !== 'function') { return; }
       submit.setAttribute('aria-disabled', busy ? 'true' : 'false');
       if (busy && typeof submit.getAttribute === 'function' && submit.getAttribute('data-fp-submit-guard') !== 'true') {
         submit.setAttribute('data-fp-submit-guard', 'true');
@@ -203,6 +208,10 @@
 
     function evaluateIntents() {
       cancelVerdict();
+      var pending = store.getItemsPendingQuantityUpdate();
+      Object.keys(intents).forEach(function (key) {
+        if (pending.indexOf(key) !== -1) { intents[key].awaiting = false; }
+      });
       var remaining = false;
       for (var key in intents) {
         if (verdictWaiting()) { syncSubmit(); return; }
@@ -279,19 +288,45 @@
     }
 
     if (windowObj.wp && windowObj.wp.hooks && typeof windowObj.wp.hooks.addAction === 'function') {
+      windowObj.wp.hooks.addAction('experimental__woocommerce_blocks-cart-remove-item', EVENT_NAMESPACE, function (payload) {
+        if (payload && payload.product) { delete intents[payload.product.key]; }
+        evaluateIntents();
+      });
       windowObj.wp.hooks.addAction(INTENT_EVENT, EVENT_NAMESPACE, function (payload) {
         var item = payload && payload.product;
         var quantity = payload && payload.quantity;
         if (!item || typeof item.key !== 'string' || typeof quantity !== 'number' || !isFinite(quantity)) { return; }
         intents[item.key] = {
           name: typeof item.name === 'string' ? item.name : '',
-          quantity: quantity
+          quantity: quantity,
+          awaiting: store.getItemsPendingQuantityUpdate().indexOf(item.key) === -1
         };
         rememberFocus();
+        syncSubmit();
       });
     }
     if (typeof wpdata.subscribe === 'function') {
       wpdata.subscribe(evaluateIntents, CART_STORE);
+    }
+    if (typeof doc.addEventListener === 'function') {
+      doc.addEventListener('fp-quantity-hold', evaluateIntents);
+      // Woo's input debounce precedes its intent event by 600ms; guard that gap too.
+      doc.addEventListener('input', function (event) {
+        var input = event.target;
+        if (!input.matches || !input.matches('.wc-block-components-quantity-selector__input')) { return; }
+        var row = input.closest('[data-cart-item-key]');
+        var item = row && store.getCartItem(row.getAttribute('data-cart-item-key'));
+        var quantity = Number(input.value);
+        if (!item) { return; }
+        if (!Number.isSafeInteger(quantity) || quantity < 1 || !input.checkValidity()) {
+          if (intents[item.key] && intents[item.key].awaiting) { delete intents[item.key]; }
+          evaluateIntents();
+          return;
+        }
+        intents[item.key] = { name: item.name, quantity: quantity, awaiting: true };
+        rememberFocus();
+        evaluateIntents();
+      }, true);
     }
     watchTransport();
     syncSubmit();
