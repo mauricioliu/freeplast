@@ -862,8 +862,9 @@ function fpw_draft_submitted_details_html( $details ): string {
 /** Owner-selectable pickup locations. Addresses are frozen in each approved projection. */
 function fpw_pickup_locations(): array {
 	return array(
-		'los-paltos' => 'Los Paltos 2794, La Pintana.',
-		'mostazal' => 'San Francisco de Mostazal (Fresia 1610, La Pintana)',
+		'los-paltos' => 'Los Paltos 2794, La Pintana',
+		'mostazal' => 'Camino El Arrayán 52, San Francisco de Mostazal',
+		'fresia' => 'Fresia 1610, La Pintana',
 	);
 }
 
