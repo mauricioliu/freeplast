@@ -58,6 +58,11 @@ function fpw_canonical_checkout_address( array $data ): array {
 }
 add_filter( 'woocommerce_checkout_posted_data', 'fpw_canonical_checkout_address', 20 );
 
+// Woo's text sanitizer deletes percent escapes; validate the original URL at checkout instead.
+add_filter( 'woocommerce_process_checkout_field_billing_fp_location_url', static function ( $value ) {
+	return isset( $_POST['billing_fp_location_url'] ) ? wp_unslash( $_POST['billing_fp_location_url'] ) : $value;
+} );
+
 /** Store text only: never fetch, resolve or calculate distance from this URL. */
 function fpw_valid_location_url( $value ): bool {
 	if ( ! is_string( $value ) || strlen( $value ) > 2048 || preg_match( '/[<>\s\x00-\x1F\x7F]/', $value ) ) { return false; }

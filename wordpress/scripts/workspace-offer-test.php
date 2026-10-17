@@ -35,6 +35,31 @@ fpwd_review_for_approval( 195 );
 $version = fpw_read_quotation_version( 91 );
 $before_rows = $GLOBALS['fpwd_table'];
 $before_mail = count( $GLOBALS['fpwd_mail_calls'] );
+// SP-2: exercise active review/issued consumers, not only the legacy draft renderer.
+$rural_draft = fpw_read_request_draft(91);
+$rural_draft['destination']['commune'] = 'Mostazal <rural>';
+$rural_draft['destination']['location_url'] = 'https://maps.example.test/Predio%20Ana%2Fsur?q=a%26b&z=1';
+$rural_projection = fpw_quotation_projection($rural_draft, fpw_read_draft_work(91));
+$rural_version = $version;
+$rural_version['projection'] = $rural_projection;
+$rural_preview = fpw_read_draft_preview(91);
+$rural_preview['projection'] = $rural_projection;
+foreach (array(
+	fpw_workspace_preview_html($rural_draft, fpw_read_draft_work(91), $rural_preview),
+	fpw_workspace_issued_html($rural_version),
+	fpw_quotation_email_html($rural_version),
+) as $surface) {
+	check(str_contains($surface, 'Comuna de despacho: Mostazal &lt;rural&gt;'), 'active review/issued/email escapes structured commune');
+	check(str_contains($surface, 'Enlace de ubicación: ' . esc_html($rural_projection['location_url'])), 'active review/issued/email preserves encoded location');
+}
+foreach (array(fpw_workspace_offer_html($legacy_projection), fpw_quotation_email_html($version)) as $surface) {
+	check(!str_contains($surface, 'Enlace de ubicación:') && !str_contains($surface, 'Comuna de despacho:'), 'historical absent fields introduce no invented destination');
+}
+$rural_version['projection']['dispatch_requested'] = false;
+foreach (array(fpw_workspace_offer_html($rural_version['projection']), fpw_quotation_email_html($rural_version)) as $surface) {
+	check(!str_contains($surface, 'Enlace de ubicación:') && !str_contains($surface, 'Comuna de despacho:'), 'no-dispatch surfaces exclude destination extras');
+}
+check($GLOBALS['fpwd_table'] === $before_rows && count($GLOBALS['fpwd_mail_calls']) === $before_mail, 'destination presentation neither rewrites issued bytes nor sends mail');
 $response = fpw_workspace_pdf_response( 91, 1, 'offline-nonce' );
 check( $response['bytes'] === base64_decode( $version['pdf_base64'], true ), 'download returns the exact approved bytes, not a rendered replacement' );
 check( $response['filename'] === 'cotizacion-91-v1.pdf', 'download filename contains only server-bound numeric IDs' );

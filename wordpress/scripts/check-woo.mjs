@@ -158,6 +158,7 @@ console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/sales-h
 console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php')]));
 // Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
+console.log(run(php,[path.join(root,'scripts/encoded-location-url-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
 for (const mode of ['allowed', 'missing', 'missing-guard', 'constant-only', 'wrong-marker', 'staging', 'production', 'bad-host', 'mismatch', 'bad-sink']) {
   for (const test of ['checkout-places-test.php', 'checkout-form-test.php']) {

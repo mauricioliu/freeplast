@@ -295,7 +295,7 @@ add_action( 'woocommerce_checkout_create_order', static function ( $order, $data
 	foreach ( array('rut','giro','dispatch','address','commune','location_url','references') as $field ) {
 		$value = $data['billing_fp_'.$field] ?? '';
 		if ( in_array( $field, array('address','commune','location_url','references'), true ) && 'si' !== ( $data['billing_fp_dispatch'] ?? '' ) ) { $value = ''; }
-		$order->update_meta_data( '_billing_fp_'.$field, sanitize_textarea_field( $value ) );
+		$order->update_meta_data( '_billing_fp_'.$field, 'location_url' === $field ? $value : sanitize_textarea_field( $value ) );
 	}
 	$order->update_meta_data( '_fp_submitted_details', array_intersect_key( $data, array_flip(array('billing_first_name','billing_company','billing_phone','billing_email','billing_fp_rut','billing_fp_giro','billing_fp_dispatch','billing_fp_commune','billing_fp_location_url')) ) + array('billing_fp_references'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? sanitize_textarea_field($data['billing_fp_references'] ?? '') : '', 'billing_fp_address'=>'si' === ($data['billing_fp_dispatch'] ?? '') ? ($data['billing_fp_address'] ?? '') : '') );
 	// Issue #59: the address provenance the record may keep — see
@@ -372,7 +372,10 @@ add_action( 'woocommerce_checkout_update_order_review', static function ( $seria
 		foreach ( array( 'address', 'commune', 'location_url', 'references' ) as $field ) { $data['billing_fp_' . $field] = ''; }
 	}
 	foreach ( fpw_draft_keys() as $key ) {
-		if ( isset($data[$key]) && is_string($data[$key]) ) { WC()->session->set( 'fpw_'.$key, mb_substr(sanitize_textarea_field($data[$key]),0,4000) ); }
+		if ( isset($data[$key]) && is_string($data[$key]) ) {
+			$value = 'billing_fp_location_url' === $key ? ( fpw_valid_location_url( $data[$key] ) ? $data[$key] : '' ) : mb_substr(sanitize_textarea_field($data[$key]),0,4000);
+			WC()->session->set( 'fpw_'.$key, $value );
+		}
 	}
 } );
 add_filter( 'woocommerce_checkout_get_value', static function ( $value, $key ) {

@@ -16,7 +16,7 @@ function add_filter( ...$args ) { global $registered_filters; $registered_filter
 function register_activation_hook( ...$args ) {}
 function wp_json_encode( $data, $flags = 0 ) { return json_encode( $data, $flags ); }
 function absint( $value ) { return abs( (int) $value ); }
-function sanitize_textarea_field( $value ) { return trim( strip_tags( (string) $value ) ); }
+if ( ! function_exists('sanitize_textarea_field') ) { function sanitize_textarea_field( $value ) { return trim( strip_tags( (string) $value ) ); } }
 function apply_filters( $tag, $value, ...$args ) { global $registered_filters; foreach ( $registered_filters[ $tag ] ?? array() as $callback ) { $value = $callback( $value, ...$args ); } return $value; }
 class WP_Error {
 	public array $codes = array();
@@ -56,7 +56,7 @@ function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $ech
 }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
-function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
+if ( ! function_exists('sanitize_text_field') ) { function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); } }
 function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}
 $GLOBALS['fpwp_options'] = array( 'date_format' => 'j F Y' );
