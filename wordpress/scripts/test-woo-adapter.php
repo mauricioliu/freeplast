@@ -642,14 +642,14 @@ $anchor='<a href="/?add-to-cart=22" data-quantity="10" class="add_to_cart_button
 ob_start();
 $wrapped=apply_filters('woocommerce_loop_add_to_cart_link',$anchor,new FPW_Fake_Simple_Product(22),array());
 $echoed_input=ob_get_clean();
-check($GLOBALS['fpw_test_quantity_args']===array('input_value'=>70,'min_value'=>70,'step'=>1),'Card selectors start at the confirmed minimum and step by one without overriding the stock maximum');
+check($GLOBALS['fpw_test_quantity_args']===array('input_value'=>70,'min_value'=>1,'step'=>1),'Card selectors start at the confirmed minimum and step by one without overriding the stock maximum');
 check(str_contains($wrapped,'<div class="fpw-loop-add" data-fpw-loop-add>'),'Simple cards wrap the native anchor in the selector container');
 check(str_contains($wrapped,$anchor),'The native anchor markup passes through untouched by the filter');
 check(str_contains($echoed_input,'class="qty"'),'The quantity input renders through Woo\'s own hook beside the anchor');
 ob_start();
 $variable_anchor='<a href="/producto/x/" class="product_type_variable add_to_cart_button">Elegir color</a>';
 $passed=apply_filters('woocommerce_loop_add_to_cart_link',$variable_anchor,new FPW_Fake_Variable_Product(),array());
-check(ob_get_clean()==='' && $passed===$variable_anchor,'Variable cards keep the native link with no selector');
+check(ob_get_clean()==='' && str_ends_with($passed,$variable_anchor) && str_contains($passed,'fpw-minimum'),'Variable cards show the informative minimum and keep native link, no selector');
 $loop_quantity_script=__DIR__.'/../wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js';
 check(is_file($loop_quantity_script),'The theme owns the card quantity mirror script');
 $loop_quantity_source=file_get_contents($loop_quantity_script);
@@ -670,21 +670,21 @@ $quantity_args = array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Basket and other non-product routes keep their quantity rules');
 $GLOBALS['fpw_test_is_product']=true;
 $sheet_args=apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product);
-check($sheet_args===array('input_value'=>70,'min_value'=>70,'max_value'=>100,'step'=>1),'Product sheets start at the confirmed minimum and step by one, preserving maximum');
+check($sheet_args===array('input_value'=>70,'min_value'=>1,'max_value'=>100,'step'=>1),'Product sheets start at the confirmed minimum and step by one, preserving maximum');
 $quantity_args['input_value']=90;
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===90,'Submitted sheet quantities above the minimum are not reset');
 $quantity_args['input_value']=30;
-check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===70,'A submitted quantity below the minimum floors back to it');
+check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)['input_value']===30,'A submitted quantity below the minimum is preserved');
 $unknown_product = new class {
     public function is_sold_individually() { return false; }
     public function get_id(): int { return 23; }
 };
 check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1),$unknown_product)===array('input_value'=>1,'min_value'=>1,'max_value'=>100,'step'=>1),'An unknown minimum keeps the native one-unit rules — never reinterpreted as more');
 $GLOBALS['fpw_test_is_cart']=true;
-check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),$quantity_product)===array('input_value'=>30,'min_value'=>30,'max_value'=>100,'step'=>1),'A persisted below-floor classic-basket line keeps its own quantity as floor: no silent rewrite to 70');
+check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),$quantity_product)===array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),'Persisted classic quantities remain editable down to one');
 $GLOBALS['fpw_test_is_cart']=false;
 $variation_data=array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false);
-check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>70,'max_qty'=>100,'is_sold_individually'=>false),'Selecting or switching colors retains the inherited minimum and native maximum');
+check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false),'Color changes retain floor one and native maximum');
 $quantity_product->individual=true;
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Individually sold products retain native quantity controls');
 check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===$variation_data,'Individually sold variations retain native limits');

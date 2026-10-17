@@ -77,7 +77,35 @@ export async function runCardControlsTests() {
   stepper.mirrorQuantity(first);
   ok(input.value === '1' && first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '1', 'a clamped value keeps the mirrored quantity coherent');
 
-  /* Step 3: manually entered 75 must remain valid above minimum */
+  for (const [start, delta, expected] of [[65,5,70], [128,1,129], [2000,200,2200], [73,10,83]]) {
+    input.className = `qty fpw-delta-${delta}`;
+    input.value = String(start);
+    stepper.stepValue(input, 1);
+    ok(input.value === String(expected) && input.step === '1', `button ${start} + ${delta}, HTML step stays one`);
+    input.value = '2'; stepper.stepValue(input, -1);
+    ok(input.value === '1', 'all decrements floor at one');
+    input.value = '3'; stepper.mirrorQuantity(first);
+    ok(first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '3', 'non-multiple below minimum mirrors unchanged');
+  }
+  input.className = 'qty';
+
+  {
+  const cartDom = new JSDOM('<table><tbody><tr class="wc-block-cart-items__row"><td><a class="wc-block-components-product-name" href="/product/frutera/">Frutera</a><input class="wc-block-components-quantity-selector__input" type="number" min="1" step="1" value="65"><button class="wc-block-components-quantity-selector__button wc-block-components-quantity-selector__button--plus">+</button><button class="wc-block-components-quantity-selector__button wc-block-components-quantity-selector__button--minus">−</button></td></tr></tbody></table>', {url:'https://example.test/cart/',runScripts:'outside-only'});
+  cartDom.window.freeplastQuantityDeltas = {'https://example.test/product/frutera/':5};
+  loadApi(cartDom.window, stepperSource);
+  const cartInput = cartDom.window.document.querySelector('input');
+  let cartInputs = 0, nativeClicks = 0;
+  cartInput.addEventListener('input', () => { cartInputs++; });
+  cartDom.window.document.body.addEventListener('click', () => { nativeClicks++; });
+  cartDom.window.document.querySelector('button').click();
+  ok(cartInput.value === '70' && cartInputs === 1 && nativeClicks === 0 && cartInput.step === '1', 'cart delta drives one native input event, no duplicate button action or multiple constraint');
+  cartInput.value = '2';
+  cartDom.window.document.querySelector('button:last-child').click();
+  ok(cartInput.value === '1' && cartInputs === 2, 'cart decrement floors at one');
+  cartDom.window.close();
+  }
+
+  /* Manually entered integers need not match button deltas. */
   input.value = '75';
   input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   stepper.mirrorQuantity(first);

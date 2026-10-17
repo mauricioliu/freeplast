@@ -74,4 +74,9 @@ try {
     $wpdb->commands=array(); $wpdb->failCommit=true;
     check(minimum_invoke(array('apply',$receipt,$r['token']))[0] === 1 && !in_array('ROLLBACK',$wpdb->commands,true), 'uncertain commit never claims rollback or replays');
 } finally { unlink($receipt); rmdir($dir); unlink(ABSPATH.'.maintenance'); rmdir(ABSPATH); }
+// The PG22 patch may change only a button delta, including on unknown-minimum products.
+$unknown_before = fp_minimum_protected(fp_pdf_snapshot($products[16]));
+fp_minimum_apply($products[16], array('_fp_quote_step'=>'10'));
+check($products[16]->get_meta('_fp_quote_min_qty') === '' && $products[16]->get_meta('_fp_quote_step') === '10', 'delta-only patch never invents an unknown minimum');
+check(fp_minimum_protected(fp_pdf_snapshot($products[16])) === $unknown_before, 'delta-only patch preserves commercial data');
 echo "catalog minimums: $checks cumulative offline checks passed; native transaction trial withheld\n";

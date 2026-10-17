@@ -179,7 +179,7 @@ foreach (array('is_email', 'sanitize_email') as $function) {
 	eval($match[0]);
 }
 require_once __DIR__ . '/../wp-content/plugins/freeplast-woo/places-validation.php';
-foreach (array('fpw_is_place_id', 'fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_quote_minimum', 'fpw_validate_checkout') as $function) {
+foreach (array('fpw_is_place_id', 'fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_quote_minimum', 'fpw_valid_public_quantity', 'fpw_validate_checkout') as $function) {
 	preg_match('/function ' . $function . '\(.*?\n\}/s', $adapter_source, $match);
 	eval($match[0]);
 }
@@ -206,16 +206,18 @@ function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fpm_meta
 function get_the_title( $id = 0 ) { return 11 === (int) $id ? 'Caja de prueba' : ( 'Producto ' . (int) $id ); }
 $valid = array('billing_first_name'=>'Persona Prueba', 'billing_phone'=>'+56 9 0000 0000', 'billing_email'=>'prueba@example.invalid', 'billing_company'=>'Empresa Sintética', 'billing_fp_rut'=>'RUT de prueba', 'billing_fp_giro'=>'Actividad de prueba', 'billing_fp_dispatch'=>'no', 'billing_fp_address'=>'', 'order_comments'=>'', 'payment_method'=>'quotes-gateway');
 verify(!$validator->validate($valid)->has_errors(), 'complete fixture and empty optional message accepted; no invented RUT/phone rules');
-/* Step 3 — "enviar la solicitud" server boundary: confirmed basket minimums refuse submission, unknowns stay requestable, variations aggregate per product. */
+/* Sending accepts below-minimum quantities, including separate colors. */
 $GLOBALS['fpm_meta'][11]['_fp_quote_min_qty'] = '5';
 $errors = $validator->validate($valid);
-verify($errors->has_errors() && in_array('fpw_minimum_11', $errors->get_error_codes(), true), 'a below-minimum basket line refuses the submission with its own code');
-$refusal = (string) ( $errors->get_error_messages('fpw_minimum_11')[0] ?? '' );
-verify(str_contains($refusal, 'Caja de prueba') && str_contains($refusal, 'el mínimo por solicitud es 5') && str_contains($refusal, 'lleva 2'), 'the refusal names the product, the confirmed minimum and the carried quantity');
+verify(!$errors->has_errors(), 'below-minimum basket accepted at submission');
 StubCart::$items = array('a' => array('product_id' => 11, 'variation_id' => 310, 'quantity' => 3), 'b' => array('product_id' => 11, 'variation_id' => 311, 'quantity' => 3));
 verify(!$validator->validate($valid)->has_errors(), 'two variations of one product aggregate their quantities (3+3 ≥ 5)');
 StubCart::$items['b']['quantity'] = 1;
-verify($validator->validate($valid)->has_errors(), 'splitting one product across variations cannot undercut its minimum (3+1 < 5 refuses)');
+verify(!$validator->validate($valid)->has_errors(), 'below-minimum variations accepted');
+foreach (array(0, -1, 1.5, 'invalid') as $bad) {
+    StubCart::$items['b']['quantity'] = $bad;
+    verify(in_array('fpw_quantity', $validator->validate($valid)->get_error_codes(), true), 'invalid cart quantities block submission');
+}
 unset($GLOBALS['fpm_meta'][11]);
 StubCart::$items = array('k' => array('product_id' => 12, 'variation_id' => 0, 'quantity' => 1));
 verify(!$validator->validate($valid)->has_errors(), 'an unknown minimum is never reinterpreted as 1: any quantity stays requestable');
