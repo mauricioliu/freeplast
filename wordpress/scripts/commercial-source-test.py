@@ -29,11 +29,13 @@ for p in catalog:
     assert s['minimum_quantity'] == (50 if p['slug'].startswith('traversa-') else s['units_per_pallet'])
 assert {p['slug'] for p in catalog if p['specs']['minimum_quantity'] is None} == {'bases-plasticas-para-pediluvios', 'ladrillo-plastico'}
 assert all(p['lifecycle'] == 'active' for p in catalog)
-# Whole public-runtime surface: the only remaining Arrayán reference is the separately reviewed route origin.
+# Arrayán is approved for the route origin and owner pickup, not public contact details.
 for base in ['wp-content/themes/freeplast', 'wp-content/plugins/freeplast-woo']:
     for path in (root / base).rglob('*'):
         if path.is_file() and path.suffix in ('.php', '.html', '.js', '.css') and 'vendor' not in path.parts:
             text = path.read_text(errors='replace')
+            if path.name == 'quote-draft.php':
+                text = text.replace("'mostazal' => 'Camino El Arrayán 52, San Francisco de Mostazal'", '')
             assert 'Arrayán' not in text or path.name == 'dispatch-distance.php', path
             assert 'maps.app.goo.gl' not in text, path
 # The guarded /contacto/ migration quotes the approved address itself, never the retired plugin as authority.

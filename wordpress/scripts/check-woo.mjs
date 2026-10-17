@@ -142,6 +142,7 @@ console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 // Issue #50 (cut 1 of #49): one private quotation draft per durably received request.
 // Includes the complete quote-draft offline suite plus frozen-document access and owner UI states.
 console.log(run(php,[path.join(root,'scripts/workspace-offer-test.php')]));
+console.log(run(php,[path.join(root,'scripts/pickup-location-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-access-test.php')]));
 console.log(run(php,[path.join(root,'scripts/workspace-chrome-test.php')]));
 console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/workspace-request-query-test.py')]));
