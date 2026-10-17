@@ -537,7 +537,7 @@ register_shutdown_function( static function () {
       check(!/places\.js\?ver=/.test(detailsHtml) && !/maps\.googleapis\.com/.test(detailsHtml), 'without an authorized Places configuration the assistant never loads and no Google contact ships (issue #59)');
       check(/name="woocommerce_checkout_place_order"/.test(detailsHtml), 'the native place-order trigger is preserved');
       check(/checkout-form\.js\?ver=/.test(detailsHtml), 'the A checkout enhancement ships');
-      check(/fields\.js\?ver=1\.0\.4/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
+      check(/fields\.js\?ver=1\.0\.5/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
       check(!serverRenderedText(detailsHtml).includes('$'), 'no currency amount in server-rendered details text');
       /* Issue #48: corporate pages keep the shared chrome without inheriting
          the product grid; Home carries the A cards through the native loop. */
@@ -565,8 +565,8 @@ register_shutdown_function( static function () {
       const zeroPage = await (await jarFetch('/')).text();
       check(headerCount(zeroPage) === 0, `the empty selection server-renders the zero state (got ${headerCount(zeroPage)})`);
 
-      /* Native POST with mocked Places transport: reject missing/forged IDs,
-         persist canonical exact/broad CL matches and separate references,
+      /* Native POST with mocked Places transport: reject missing commune,
+         persist unchanged exact/broad CL matches and separate references,
          exclude all destination data without dispatch. No real Google calls. */
       const placesAddress = 'Camino El Arrayán 52, San Francisco de Mostazal';
       const hiddenValues = (html) => {
@@ -593,15 +593,15 @@ register_shutdown_function( static function () {
           ...fields };
         const response = await jar('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted).toString() });
         const payload = await response.json();
-        if (rejected) { check(payload.result === 'failure' && !payload.redirect, `places journey ${label}: unconfirmed dispatch rejected`); return null; }
+        if (rejected) { check(payload.result === 'failure' && !payload.redirect, `places journey ${label}: invalid destination rejected`); return null; }
         check(payload && payload.result === 'success' && /\/order-received\/(\d+)/.test(String(payload.redirect || '')), `places journey ${label}: a valid request lands natively (got ${JSON.stringify(payload).slice(0, 140)})`);
         return Number((String(payload.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
       };
       await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, fpw_place_id: 'no space allowed' }, 'forged', true);
       await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress }, 'missing', true);
       placesJourneyIds = {
-        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Forged client address', billing_fp_references: 'Portón azul', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
-        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Forged rural address', fpw_place_id: 'ChIJbroad-stack-fixture', fpw_place_scope: 'exacta' }, 'amplia'),
+        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, billing_fp_commune: 'Mostazal', billing_fp_references: 'Portón azul', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
+        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Camino rural, Mostazal', billing_fp_commune: 'Mostazal', fpw_place_id: 'ChIJbroad-stack-fixture', fpw_place_scope: 'exacta' }, 'amplia'),
         sindespacho: await placesJourney({ billing_fp_dispatch: 'no', billing_fp_address: '', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'amplia' }, 'sin-despacho'),
       };
 
@@ -1328,7 +1328,7 @@ register_shutdown_function( static function () {
           billing_email: 'precios-52@example.invalid', billing_company: 'PRUEBA NO COMERCIAL',
           billing_fp_rut: '76.876.543-4', billing_fp_giro: 'Prueba local',
           payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
-          billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal', fpw_place_id: 'ChIJprices-stack-fixture' };
+          billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal', billing_fp_commune: 'Mostazal', fpw_place_id: 'ChIJprices-stack-fixture' };
         const response52 = await jar52('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted52).toString() });
         const payload52 = await response52.json();
         check(payload52 && payload52.result === 'success' && /\/order-received\/(\d+)/.test(String(payload52.redirect || '')), `the price-journey request lands natively (got ${JSON.stringify(payload52).slice(0, 140)})`);

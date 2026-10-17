@@ -57,7 +57,13 @@ export async function runNativeCheckoutTests(enhancement = source) {
       e.form.querySelector('#billing_fp_dispatch_no').click();
       ok(!address.required && e.form.querySelector('.fp-address-slot').hidden, 'no-dispatch removes manual client requirement');
       e.form.querySelector('#billing_fp_dispatch_si').click();
-      ok(address.value === 'Camino Local 123, Mostazal' && !address.readOnly && address.required, 'dispatch toggle retains editable local draft');
+      ok(address.value === '' && !address.readOnly && address.required, 'no-dispatch discards address instead of resurrecting it');
+      const commune = e.form.querySelector('#billing_fp_commune');
+      ok(commune.required && !commune.readOnly && !commune.checkValidity(), 'separate editable commune required for dispatch');
+      commune.value = 'Mostazal';
+      ok(commune.checkValidity(), 'manual commune satisfies native constraint');
+      e.form.querySelector('#billing_fp_dispatch_no').click();
+      ok(!commune.required && commune.value === '', 'no-dispatch clears commune and its requirement');
       ok(!e.w.google && !e.form.querySelector('gmp-place-autocomplete'), 'manual DEV client needs no Google widget');
     }
     {
@@ -175,7 +181,7 @@ export async function runNativeCheckoutTests(enhancement = source) {
       e.form.querySelector('#billing_fp_address').value = 'Dirección de prueba conservada';
       e.form.querySelector('#billing_fp_dispatch_no').click();
       ok(e.form.querySelector('.fp-address-slot').hidden && !e.form.querySelector('#billing_fp_address').required, 'no-dispatch removes the whole address layout slot and requirement');
-      ok(e.form.querySelector('#billing_fp_address').value === 'Dirección de prueba conservada', 'local address draft is retained; server decides not to persist a destination');
+      ok(e.form.querySelector('#billing_fp_address').value === '', 'no-dispatch discards the local destination too');
       await wait(); for (const request of e.requests) success(request); await wait();
     }
     {

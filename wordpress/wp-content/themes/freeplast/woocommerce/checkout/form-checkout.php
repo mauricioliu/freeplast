@@ -40,7 +40,7 @@ if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_requir
 }
 
 $fp_billing = $checkout->get_checkout_fields( 'billing' );
-if ( isset( $fp_billing['billing_fp_address'] ) ) { $fp_billing['billing_fp_address']['required'] = 'si' === $checkout->get_value( 'billing_fp_dispatch' ); }
+foreach ( array( 'billing_fp_address', 'billing_fp_commune' ) as $key ) { if ( isset( $fp_billing[$key] ) ) { $fp_billing[$key]['required'] = 'si' === $checkout->get_value( 'billing_fp_dispatch' ); } }
 $fp_errors = $GLOBALS['fpw_checkout_field_errors'] ?? array();
 $fp_field = static function ( $key, $args, $value ) use ( $fp_errors ) {
 	if ( empty( $fp_errors[$key] ) ) { woocommerce_form_field( $key, $args, $value ); return; }
@@ -150,10 +150,10 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 				<?php
 				if ( isset( $fp_billing['billing_fp_address'] ) ) {
 					$fp_field( 'billing_fp_address', $fp_billing['billing_fp_address'], $checkout->get_value( 'billing_fp_address' ) );
+					$fp_field( 'billing_fp_commune', $fp_billing['billing_fp_commune'], $checkout->get_value( 'billing_fp_commune' ) );
+					$fp_field( 'billing_fp_location_url', $fp_billing['billing_fp_location_url'], $checkout->get_value( 'billing_fp_location_url' ) );
 					$fp_field( 'billing_fp_references', $fp_billing['billing_fp_references'], $checkout->get_value( 'billing_fp_references' ) );
-					echo function_exists('fpw_manual_address_allowed') && fpw_manual_address_allowed()
-						? '<p>DEV: escribe la dirección con comuna y región. Ingreso manual solo en este entorno local, sin confirmación de Google.</p>'
-						: '<p>Selecciona una sugerencia de Google para solicitar despacho. Si no carga, recarga la página y vuelve a intentarlo.</p>';
+					echo '<p>Escribe la dirección o predio y la comuna. El número y el enlace de ubicación son opcionales. Google es solo una ayuda.</p>';
 				}
 				?>
 			</div>

@@ -232,7 +232,7 @@ check( $payload['items'][0] === array( 'name' => 'Caja Cosechera 3/4', 'product_
 check( $payload['items'][1]['quantity'] === 25 && $payload['items'][1]['variation_id'] === 310, 'the variant line keeps its own identity and quantity' );
 check( $payload['items'][1]['options'] === array( array( 'key' => 'pa_color', 'value' => 'Azul' ) ), 'the chosen option comes from the record; internal meta stays out' );
 check( $payload['identity'] === array( 'name' => 'Pilar', 'company' => 'Agrícola de prueba SpA', 'rut' => '76.543.210-K', 'giro' => 'Producción agrícola', 'phone' => '+56 9 1234 5678', 'email' => 'compras@prueba.invalid' ), 'identity comes from the persisted record' );
-check( $payload['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'references' => '', 'source' => '', 'place_id' => '', 'scope' => '' ), 'the destination comes from the record; a record without provenance carries no invented one (issue #59)' );
+check( $payload['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'commune' => '', 'location_url' => '', 'references' => '', 'source' => '', 'place_id' => '', 'scope' => '' ), 'the destination comes from the record; a record without provenance carries no invented one (issue #59)' );
 check( $payload['submitted_details'] === $order68->get_meta( '_fp_submitted_details' ), 'Submitted Details are preserved verbatim' );
 check( $payload['enrichment'] === array( 'prices' => 'pending', 'history' => 'pending', 'dispatch' => 'pending' ), 'missing enrichment is an explicit pending — never a zero price, never a customer verdict' );
 foreach ( $payload['items'] as $line ) { check( ! array_key_exists( 'price', $line ) && ! array_key_exists( 'total', $line ), 'no line carries a fabricated amount' ); }
@@ -926,6 +926,11 @@ check( str_starts_with( $pdf, '%PDF-' ) && str_ends_with( rtrim( $pdf ), '%%EOF'
 $text = preg_replace( '/\s+/u', ' ', $probe['text'] );
 check( str_contains( $probe['fonts'], 'Manrope-Regular' ) && str_contains( $probe['fonts'], 'Manrope-Bold' ), 'the authorized Manrope font is embedded for normal and emphasized text' );
 check( str_contains( $text, 'FP-2026-000091' ), 'the PDF names the request reference and its version' );
+$rural_version = $version;
+$rural_version['projection'] = array_replace($version['projection'], array('destination'=>'Predio Santa Ana, camino rural s/n', 'commune'=>'Mostazal', 'location_url'=>'https://maps.example.test/predio?x=1&y=2', 'references'=>'Portón azul'));
+$rural_probe = fpw_test_pdf_probe(fpw_quotation_render_document($rural_version));
+foreach (array('Predio Santa Ana, camino rural s/n', 'Comuna de despacho: Mostazal', 'https://maps.example.test/predio?x=1&y=2', 'Portón azul') as $fact) { check(str_contains(preg_replace('/\s+/u', ' ', $rural_probe['text']), $fact), 'synthetic rural PDF retains '.$fact); }
+check(fpw_read_quotation_version(91)['pdf_base64'] === $version['pdf_base64'], 'rendering a new rural document never changes issued bytes');
 check( str_contains( $text, '3.210 CLP' ) && str_contains( $text, '1.000 CLP' ) && str_contains( $text, '610 CLP' ) && str_contains( $text, '4.820 CLP' ), 'the PDF shows the exact approved amounts (3.210 + 1.000 + 610 = 4.820)' );
 $bounds = new DOMDocument();
 $bounds->loadXML( $probe['bounds'] );

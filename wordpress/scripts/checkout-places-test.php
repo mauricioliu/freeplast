@@ -155,10 +155,10 @@ function is_wp_error( $response ) { return $response instanceof WP_Error; }
 function wp_remote_retrieve_response_code( $response ) { return $response['response']['code']; }
 function wp_remote_retrieve_body( $response ) { return $response['body']; }
 $order = fpwp_create( array(
-	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Camino de prueba 123, Mostazal',
+	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Canonical Google address, Chile', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'https://maps.example.test/predio?x=1&y=2',
 	'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro', 'fpw_place_id' => 'ChIJfixture-place-id_0000', 'fpw_place_scope' => 'amplia', 'billing_fp_references' => 'Portón azul',
 ) );
-check( $order->meta['_billing_fp_address'] === 'Canonical Google address, Chile', 'forged address replaced with canonical response' );
+check( $order->meta['_billing_fp_address'] === 'Canonical Google address, Chile', 'unchanged Google address retained with confirmed provenance' );
 check( $order->meta['_billing_fp_references'] === 'Portón azul' && $order->meta['_fp_submitted_details']['billing_fp_references'] === 'Portón azul', 'references saved separately in native and submitted details' );
 check( ! str_contains(json_encode($GLOBALS['transport_calls']), 'Portón azul'), 'references never reach provider' );
 foreach (array(800, 801) as $length) {
@@ -167,7 +167,7 @@ foreach (array(800, 801) as $length) {
 	check(in_array('billing_fp_references', $errors->codes, true) === ($length > 800), 'reference length boundary validated: ' . $length);
 }
 $posted = apply_filters('woocommerce_checkout_posted_data', array('billing_fp_dispatch'=>'si', 'fpw_place_id'=>'ChIJfixture-place-id_0000', 'billing_fp_address'=>'Forged', 'fpw_place_scope'=>'amplia'));
-check($posted['billing_fp_address'] === 'Canonical Google address, Chile' && $posted['fpw_place_scope'] === 'exacta', 'registered Woo posted-data filter canonicalizes before validation');
+check($posted['billing_fp_address'] === 'Forged' && $posted['fpw_place_scope'] === '' && $posted['fpw_place_id'] === '', 'editing text invalidates Google association instead of overwriting manual text');
 check( ( $order->meta['_billing_fp_address_source'] ?? '' ) === 'asistida', 'an assisted confirmation records its provenance' );
 check( ( $order->meta['_billing_fp_place_id'] ?? '' ) === 'ChIJfixture-place-id_0000', 'the allowed place identification persists' );
 check( ( $order->meta['_billing_fp_place_scope'] ?? '' ) === 'exacta', 'the reported match scope persists' );
@@ -178,7 +178,7 @@ $rejected = false;
 try {
 	fpwp_create( array( 'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Forged address', 'fpw_place_id' => 'no space allowed' ) );
 } catch ( Exception $e ) { $rejected = true; }
-check( $rejected, 'manual dispatch is rejected even at creation' );
+check( $rejected, 'missing commune is rejected even at creation' );
 
 $order_none = fpwp_create( array(
 	'billing_fp_dispatch' => 'no', 'billing_fp_address' => 'Stale address', 'billing_fp_references' => 'Stale notes', 'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro',
@@ -215,7 +215,7 @@ $assisted = new FPWP_Order( array(
 $GLOBALS['fpwp_caps'] = array( 'manage_woocommerce' => true );
 $draft = fpw_build_request_draft_payload( $assisted );
 check( $draft['schema'] === 2, 'the draft schema marks the destination-provenance shape' );
-check( $draft['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'references' => '', 'source' => 'asistida', 'place_id' => $place_id_evil, 'scope' => 'amplia' ), 'the snapshot carries the recorded provenance exactly as the record kept it' );
+check( $draft['destination'] === array( 'dispatch' => 'si', 'address' => 'Camino de prueba 123, Mostazal', 'commune' => '', 'location_url' => '', 'references' => '', 'source' => 'asistida', 'place_id' => $place_id_evil, 'scope' => 'amplia' ), 'the snapshot carries the recorded provenance exactly as the record kept it' );
 $html = fpw_quote_draft_markup( $assisted, $draft );
 check( ! str_contains( $html, 'Procedencia de la dirección' ) && str_contains( $html, 'Camino de prueba 123, Mostazal' ), 'private review keeps the address without provenance metadata' );
 check( str_contains( $html, 'Revisa el número y la comuna de entrega.' ), 'a broad match is named as needing review, never as a certified delivery point' );
@@ -287,10 +287,11 @@ check( fpw_places_config() === array( 'key' => 'constant-browser-key-fixture', '
 $GLOBALS['registered_filters']['fpw_places_config'] = array( static function ( $config ) { return array(); } );
 check( fpw_places_config() === array(), 'filter can disable assistance even with a deployment constant' );
 
+// The same production contract holds under every legacy local-mode fixture.
 if (getenv('FREEPLAST_TEST_MANUAL_MODE')) {
 	require __DIR__ . '/fixtures/manual-dev-runtime.php';
-	$allowed = $manual_mode === 'allowed';
-	$input = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Camino Local 123, Mostazal', 'fpw_place_id'=>'', 'fpw_place_scope'=>'exacta', 'payment_method'=>'quotes-gateway', 'manual'=>true);
+	$allowed = true;
+	$input = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Camino Local 123, Mostazal', 'billing_fp_commune'=>'Mostazal', 'fpw_place_id'=>'', 'fpw_place_scope'=>'exacta', 'payment_method'=>'quotes-gateway', 'manual'=>true);
 	$normalized = apply_filters('woocommerce_checkout_posted_data', $input);
 	check(($normalized['billing_fp_address'] === $input['billing_fp_address']) === $allowed, 'manual normalization only in guarded DEV: ' . $manual_mode);
 	$errors = new WP_Error();
@@ -305,9 +306,9 @@ if (getenv('FREEPLAST_TEST_MANUAL_MODE')) {
 		$input['fpw_place_id'] = 'ChIJfixture-place-id_0000';
 		$manual = fpwp_create($input);
 		check($manual->meta['_billing_fp_address_source'] === 'manual' && !isset($manual->meta['_billing_fp_place_id']), 'forged Google carriers cannot label manual DEV address assisted');
-		check(count($GLOBALS['transport_calls']) === $count, 'manual DEV never calls provider');
+		check(count($GLOBALS['transport_calls']) === $count, 'cached or local confirmation does not repeat transport');
 		$GLOBALS['registered_filters']['fpw_places_config'] = array(static fn() => array('key'=>'browser-key-fixture'));
-		check(fpw_places_config() === array(), 'manual DEV suppresses Google bootstrap even with configured key/filter');
+		check((fpw_places_config() === array()) === ($manual_mode === 'allowed'), 'only local capture suppresses configured Google bootstrap');
 		check(fpw_canonical_checkout_address(array_replace($input, array('billing_fp_address'=>str_repeat('a', 800))))['billing_fp_address'] === str_repeat('a', 800), 'manual address accepts 800-byte boundary');
 		check(fpw_canonical_checkout_address(array_replace($input, array('billing_fp_address'=>'  Camino Local 123  ')))['billing_fp_address'] === 'Camino Local 123', 'manual address trims outer whitespace');
 		foreach (array('', '   ', array('bad'), str_repeat('a', 801), '<script>bad</script>', "bad\x00address") as $bad) {
@@ -321,5 +322,27 @@ if (getenv('FREEPLAST_TEST_MANUAL_MODE')) {
 		check($data['billing_fp_address'] === '' && $data['fpw_place_id'] === '', 'no dispatch discards manual address and forged carriers');
 	}
 }
+
+$rural = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'https://maps.example.test/predio?x=1&y=2', 'billing_fp_references'=>'Portón azul', 'payment_method'=>'quotes-gateway');
+$before = count($GLOBALS['transport_calls']);
+$rural_order = fpwp_create($rural);
+check(count($GLOBALS['transport_calls']) === $before, 'manual submission makes no Google call');
+check($rural_order->meta['_billing_fp_address_source'] === 'manual', 'production rural address is manual, never verified');
+foreach (array('commune', 'location_url') as $key) {
+	check($rural_order->meta['_billing_fp_'.$key] === $rural['billing_fp_'.$key] && $rural_order->meta['_fp_submitted_details']['billing_fp_'.$key] === $rural['billing_fp_'.$key], 'new destination field persists in receipt: '.$key);
+}
+$rural_draft = fpw_build_request_draft_payload(new FPWP_Order($rural_order->meta));
+$rural_projection = fpw_quotation_projection($rural_draft, null);
+foreach (array('commune', 'location_url', 'references') as $key) { check($rural_projection[$key] === $rural['billing_fp_'.$key], 'destination survives projection: '.$key); }
+check(str_contains(fpw_draft_facts_html(array(), $rural_draft['destination'], true), 'x=1&amp;y=2'), 'location is escaped inert text in review');
+foreach (array('javascript:alert(1)', 'data:text/html,bad', '//evil.test/path', 'https://user:pass@example.test/', 'https://example.test/ bad', str_repeat('a', 2049), array('bad')) as $bad) {
+	$input = array_replace($rural, array('billing_fp_location_url'=>$bad));
+	$errors = new WP_Error(); fpw_validate_checkout($input, $errors);
+	check(in_array('billing_fp_location_url', $errors->codes, true), 'unsafe location rejected beside field');
+	try { fpwp_create($input); throw new LogicException('invalid location accepted'); }
+	catch (Exception $error) { check(!($error instanceof LogicException), $error->getMessage()); }
+}
+$none = fpwp_create(array_replace($rural, array('billing_fp_dispatch'=>'no')));
+foreach (array('address', 'commune', 'location_url', 'references') as $key) { check($none->meta['_billing_fp_'.$key] === '' && $none->meta['_fp_submitted_details']['billing_fp_'.$key] === '', 'no dispatch clears '.$key); }
 
 echo "checkout places: $assertions offline checks passed (issue #59: provenance claim handling, persistence boundary, draft rendering)\n";
