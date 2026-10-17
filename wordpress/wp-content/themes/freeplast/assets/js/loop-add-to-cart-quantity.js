@@ -1,24 +1,6 @@
-/* Product-card quantity selector (A · Directa stepper, issue #42).
-   Two responsibilities, both projections onto Woo's own controls:
-
-   1. Stepper: wrap Woo's native quantity input with −/+ buttons (44px
-      targets, A geometry) and step the input's own value through its own
-      min/max/step semantics. Without JavaScript the native input stands
-      alone; no invented limits or multiples are ever introduced.
-
-   2. Mirror: reflect the input's value into the add-to-cart anchor's
-      data-quantity. WooCommerce's own AJAX handler reads data-quantity from
-      the anchor's DOM dataset at click time (pinned Woo 11.1.0
-      add-to-cart.js prefers data attributes over jQuery data), so keeping
-      that one attribute current is the whole integration: no fetches, no
-      own cart state (ADR-0001), and the native loading/added button states
-      keep working untouched. A cleared or below-min value mirrors as the
-      server-side default (1); values above max are left for WooCommerce's
-      own add and stock validation to reject. Without JavaScript the anchor
-   adds one unit, exactly as before this script existed. Enqueued on every
-   route: any surface may render a product loop (home featured grid, shop
-   archive, search results), and the script is inert wherever no
-   [data-fpw-loop-add] wrapper exists. */
+/* Public button deltas are separate from HTML step=1 and informative minimums.
+   Cards mirror valid quantities into Woo's native AJAX anchor; sheets and Cart
+   block keep native input handlers, persistence and stock validation. */
 (function () {
   'use strict';
   var WRAP_SELECTOR = '[data-fpw-loop-add]';
@@ -29,7 +11,8 @@
     var current = parseInt(input.value, 10);
     var min = input.min !== '' ? parseInt(input.min, 10) : 1;
     var max = input.max !== '' ? parseInt(input.max, 10) : Infinity;
-    var step = 10;
+    var deltaClass = (input.className || '').match(/\bfpw-delta-(1|5|10|200)\b/);
+    var step = deltaClass ? Number(deltaClass[1]) : 10;
     if (isNaN(current)) {
       current = isNaN(min) ? 1 : min;
     } else {
@@ -153,6 +136,30 @@
     }
   }
 
+  // Cart block retains its own input handler, intent event, debounce and rollback.
+  function onCartStep(event) {
+    var button = event.target.closest && event.target.closest('.wc-block-components-quantity-selector__button');
+    if (!button || button.disabled) { return; }
+    var row = button.closest('.wc-block-cart-items__row');
+    var link = row && row.querySelector('.wc-block-components-product-name');
+    var input = row && row.querySelector('.wc-block-components-quantity-selector__input');
+    if (!link || !input || input.disabled || input.readOnly) { return; }
+    var deltas = window.freeplastQuantityDeltas || {};
+    var delta = deltas[link.href];
+    if (!delta) { return; }
+    var current = Number(input.value);
+    if (!Number.isSafeInteger(current) || current < 1) { return; }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    var direction = button.classList.contains('wc-block-components-quantity-selector__button--plus') ? 1 : -1;
+    var next = Math.max(1, current + direction * delta);
+    if (input.max !== '') { next = Math.min(next, Number(input.max)); }
+    if (next === current) { return; }
+    var view = input.ownerDocument.defaultView;
+    Object.getOwnPropertyDescriptor(view.HTMLInputElement.prototype, 'value').set.call(input, String(next));
+    input.dispatchEvent(new view.Event('input', { bubbles: true }));
+  }
+
   function onQuantityKeydown(event) {
     var target = event.target;
     if (!target || !target.matches || !target.matches('input.qty')) { return; }
@@ -169,6 +176,7 @@
      covers the commits some browsers only deliver there (pickers, autofill).
      'invalid' (capture phase) catches native constraint evaluation before UI popups. */
   if (typeof document !== 'undefined') {
+    document.addEventListener('click', onCartStep, true);
     document.addEventListener('click', onQuantityEvent);
     document.addEventListener('input', onQuantityEvent);
     document.addEventListener('change', onQuantityEvent);
@@ -232,6 +240,6 @@
   }
 
   if (typeof module === 'object' && module.exports) {
-    module.exports = { initSteppers: initSteppers, stepValue: stepValue, mirrorQuantity: mirrorQuantity, syncValidityMessage: syncValidityMessage };
+    module.exports = { initSteppers: initSteppers, stepValue: stepValue, mirrorQuantity: mirrorQuantity, syncValidityMessage: syncValidityMessage, onCartStep: onCartStep };
   }
 })();

@@ -287,13 +287,13 @@ check( str_contains( $html, 'Mínimo por confirmar: revisa la cantidad' ) && ! s
 $GLOBALS['fpwd_post_meta'][25]['_fp_quote_min_qty'] = '100';
 $html = fpw_quote_draft_markup( $order68, $payload );
 check( str_contains( $html, 'Mínimo por solicitud: 100 unidades — el pedido pide 25' ) && str_contains( $html, 'Mínimo por solicitud: 70 unidades — cubierto' ), 'a below-minimum line names the confirmed minimum and the requested quantity' );
-/* Step 3 server boundary of "agregar productos": the native add-to-cart validation refuses below-minimum adds, unknowns pass, quantities above the minimum need no multiples. */
+/* Public minimums inform, never block simple products or variations. */
 $add_validation = $registered_filters['woocommerce_add_to_cart_validation'][0];
 $notices_before = count( $GLOBALS['fpwd_notices'] );
-check( false === $add_validation( true, 22, 69, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 1 && str_contains( (string) end( $GLOBALS['fpwd_notices'] )['message'], 'el mínimo por solicitud es 70' ), 'a below-minimum add is refused with a named notice' );
-check( true === $add_validation( true, 22, 70, 0 ) && true === $add_validation( true, 22, 71, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 1, 'the exact minimum and any higher non-multiple quantity are accepted' );
-check( false === $add_validation( true, 25, 25, 310 ) && str_contains( (string) end( $GLOBALS['fpwd_notices'] )['message'], 'el mínimo por solicitud es 100' ), 'a variation inherits its parent product minimum' );
-check( true === $add_validation( true, 999, 1, 0 ) && count( $GLOBALS['fpwd_notices'] ) === $notices_before + 2, 'an unknown minimum never blocks adding: one unit stays requestable' );
+foreach (array(array(22,69,0), array(22,70,0), array(22,71,0), array(25,25,310), array(999,1,0)) as [$id,$qty,$variation]) {
+    check(true === $add_validation(true,$id,$qty,$variation), 'every positive integer passes public add');
+}
+check(count($GLOBALS['fpwd_notices']) === $notices_before, 'no minimum rejection notices');
 check( str_contains( $html, 'compras@prueba.invalid' ), 'the stored identity renders' );
 check( ! str_contains( $html, 'Datos originales recibidos' ) && '' === fpw_draft_submitted_details_html( $payload['submitted_details'] ), 'Submitted Details remain stored but are never rendered' );
 check( '' === fpw_draft_provenance_facts_html( array( 'source' => 'asistida', 'scope' => 'exacta', 'place_id' => 'private-place-id' ) ), 'exact address metadata is not rendered' );

@@ -34,6 +34,34 @@ function fp_minimum_plan(array $catalog): array {
     if (count($rows) !== 17 || count(array_unique(array_column($rows, 'id'))) !== 17) { throw new RuntimeException('Expected 17 distinct catalog identities'); }
     return $rows;
 }
+/** Only approved quantity metadata changes; every other live commercial value is preserved. */
+function fp_public_quantity_plan(): array {
+    $rows = array(); $seen = array();
+    $special = array('caja-frutillera'=>200, 'caja-frutera'=>5, 'caja-merlucera'=>5, 'caja-tomatera'=>1, 'traversa-para-bins-tipo-g1'=>1, 'traversa-para-bins-tipo-upc'=>1, 'traversa-para-bins-tipo-romano'=>1);
+    foreach (get_posts(array('post_type'=>'product', 'post_status'=>'any', 'fields'=>'ids', 'numberposts'=>-1, 'orderby'=>'ID', 'order'=>'ASC')) as $id) {
+        $product = wc_get_product($id);
+        if (!$product) { throw new RuntimeException('Missing native product'); }
+        $slug = $product->get_slug('edit');
+        if ($product->get_meta('_fp_source_id', true, 'edit') !== 'fp-' . $slug || $product->get_sku('edit') !== 'fp-' . $slug || isset($seen[$slug])) { throw new RuntimeException('Unknown/ambiguous native identity: ' . $slug); }
+        $seen[$slug] = true;
+        $after = array('_fp_quote_step'=>(string)($special[$slug] ?? 10));
+        if ($slug === 'caja-frutillera') { $after['_fp_quote_min_qty'] = '2000'; }
+        $before = array();
+        foreach ($after as $key=>$value) {
+            if (count($product->get_meta($key, false, 'edit')) > 1) { throw new RuntimeException('Duplicate quantity metadata'); }
+            $before[$key] = (string)$product->get_meta($key, true, 'edit');
+        }
+        $children = array();
+        foreach ($product->get_children() as $child_id) {
+            $child = wc_get_product($child_id);
+            if (!$child) { throw new RuntimeException('Missing variation'); }
+            $children[$child_id] = fp_pdf_snapshot($child);
+        }
+        $rows[] = array('id'=>(int)$id, 'slug'=>$slug, 'before'=>$before, 'after'=>$after, 'product'=>fp_pdf_snapshot($product), 'children'=>$children);
+    }
+    if (array_diff_key($special, $seen)) { throw new RuntimeException('Required quantity identities missing'); }
+    return $rows;
+}
 function fp_minimum_apply($product, array $values): void {
     foreach ($values as $key=>$value) {
         if (!in_array($key, array('_fp_quote_min_qty', '_fp_quote_step'), true)) { throw new RuntimeException('Unexpected metadata'); }
