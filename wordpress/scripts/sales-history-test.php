@@ -30,7 +30,7 @@ check( ! str_contains( $html, '<script>' ) && ! str_contains( $html, '<b>Origina
 check( 2 === substr_count( $html, 'Total línea: 15,0579625 CLP' ) && str_contains( $html, '30,115925 CLP' ), 'exact decimal line and invoice totals kept distinct' );
 check( str_contains( $html, 'Archivo: No disponible' ), 'missing provenance explicit' );
 $html = fpw_sales_history_markup( $sales, array( 'sale_id' => 'sale-1', 'history_page' => '2', 'action' => 'evil' ) );
-check( str_contains( $html, 'history_page=2' ) && ! str_contains( $html, 'action=' ), 'return keeps page only' );
+check( str_contains( $html, 'history_page=2' ) && ! str_contains( $html, 'action=evil' ), 'return keeps page only' );
 check( str_contains( $html, 'Desglose por líneas no disponible' ) && str_contains( $html, 'No disponible en origen' ), 'legacy omissions explicit' );
 check( str_contains( $html, '123.456.789.012,123456789012 CLP' ), 'large decimal exact' );
 foreach ( array( array( 'sale_id' => array() ), array( 'sale_id' => '' ), array( 'history_page' => array() ), array( 'history_page' => '-1' ), array( 'history_page' => '1e2' ), array( 'sale_id' => str_repeat( 'a', FPW_SALES_MAX_ID + 1 ) ) ) as $query ) {
@@ -54,5 +54,55 @@ foreach ( array( array( 'fpw_manage_data' => true ), array( 'manage_woocommerce'
 }
 $legacy_source = array( 'id' => 'legacy', 'workbook_source' => $multi['workbook_source'] );
 check( str_contains( fpw_sales_history_detail( $legacy_source ), 'Fila original 2' ), 'available raw provenance remains visible without lines' );
+// Synthetic search evidence only: no customer lookup or importer writes.
+$search_sales = array(
+ array( 'id' => 'named', 'date' => '2024-02-29', 'rut' => '12.345.678-5', 'invoice' => 'FAC-007', 'workbook_source' => array( 'rows' => array( array( 'raw' => array( 'D' => 'Árbol Sur' ) ) ) ) ),
+ array( 'id' => 'legacy', 'date' => '2024-03-01', 'rut' => '76543210K', 'invoice' => 'FAC-008', 'customer_name' => 'Inventado' ),
+ array( 'id' => 'undated', 'rut' => '123456785', 'invoice' => 'FAC-009' ),
+);
+foreach ( array( 'árbol', 'SUR', '12.345.678-5', '12345678-5', '123456785', 'FAC-007', '007' ) as $term ) {
+ $matches = fpw_sales_history_filter( $search_sales, array( 'history_search' => $term ) );
+ check( 'named' === $matches[0]['id'], 'stored name, invoice and normalized RUT search: ' . $term );
+}
+check( 'legacy' === fpw_sales_history_filter( $search_sales, array( 'history_search' => '76.543.210-k' ) )[0]['id'], 'legacy nameless record found by RUT with lowercase K' );
+check( ! fpw_sales_history_filter( $search_sales, array( 'history_search' => 'Inventado' ) ), 'unproven customer name never searched' );
+check( count( fpw_sales_history_filter( array( $multi ), array( 'history_search' => 'Otra variante' ) ) ) === 1, 'all original name variants searchable' );
+check( count( fpw_sales_history_filter( $search_sales, array( 'history_from' => '2024-02-29', 'history_to' => '2024-03-01' ) ) ) === 2, 'date boundaries inclusive; undated excluded' );
+check( count( fpw_sales_history_filter( $search_sales, array( 'history_to' => '2024-02-29' ) ) ) === 1, 'upper bound alone' );
+check( count( fpw_sales_history_filter( $search_sales, array( 'history_from' => '2024-03-01' ) ) ) === 1, 'lower bound alone' );
+check( count( fpw_sales_history_filter( $search_sales, array( 'history_search' => 'árbol', 'history_from' => '2024-02-29', 'history_to' => '2024-02-29' ) ) ) === 1, 'combined search and same-day range' );
+check( ! fpw_sales_history_filter( $search_sales, array( 'history_search' => 'árbol', 'history_from' => '2024-03-01' ) ), 'search AND date range' );
+foreach ( array( array( 'history_search' => array() ), array( 'history_search' => null ), array( 'history_search' => 123 ), array( 'history_search' => str_repeat( 'á', 101 ) ), array( 'history_search' => "bad\nquery" ), array( 'history_search' => "\xff" ), array( 'history_from' => array() ), array( 'history_to' => null ), array( 'history_from' => '2023-02-29' ), array( 'history_to' => '2024-04-31' ), array( 'history_from' => '0000-01-01' ), array( 'history_to' => '2024-3-01' ), array( 'history_from' => '2024-03-01', 'history_to' => '2024-02-29' ), array( 'history_page' => null ) ) as $query ) {
+ check( str_contains( fpw_sales_history_markup( $search_sales, $query ), 'Parámetros inválidos' ), 'invalid filters rejected without type errors' );
+}
+check( array( 'history_search' => 'árbol' ) === fpw_sales_history_filters( array( 'history_search' => ' árbol ', 'history_from' => '', 'action' => 'evil' ) ), 'trim search; discard empty and foreign parameters' );
+check( null !== fpw_sales_history_filters( array( 'history_search' => str_repeat( 'á', 100 ) ) ), '100 Unicode characters accepted' );
+check( str_contains( fpw_sales_history_markup( $search_sales, array( 'history_search' => 'absent' ) ), 'No hay ventas que coincidan' ), 'no matches distinct from empty history' );
+check( str_contains( fpw_sales_history_markup( array(), array( 'history_search' => 'absent' ) ), 'Aún no hay ventas' ), 'empty underlying history remains explicit with filters' );
+$html = fpw_sales_history_markup( $search_sales, array( 'history_search' => '\"><script>bad</script>' ) );
+check( ! str_contains( $html, '<script>' ), 'reflected search escaped' );
+
+// Follow actual generated links through search -> page -> detail -> back.
+$filters = array( 'history_search' => '12.345.678-5', 'history_from' => '2026-01-01', 'history_to' => '2026-01-28' );
+$html = fpw_sales_history_markup( $sales, $filters + array( 'action' => 'evil', 'import' => 'evil', 'redirect_to' => 'https://evil.invalid' ) );
+check( str_contains( $html, '1322 registros' ) && substr_count( $html, '>Abrir sale-' ) === 25, 'filter before pagination with bounded results and count' );
+check( preg_match( '/href="([^"]+)">Siguiente<\/a>/', $html, $link ) === 1, 'next link available' );
+parse_str( parse_url( html_entity_decode( $link[1] ), PHP_URL_QUERY ), $next_query );
+check( $next_query === array( 'page' => 'fpw-sales-history' ) + $filters + array( 'history_page' => '2' ), 'next link keeps only owned context' );
+$html = fpw_sales_history_markup( $sales, $next_query );
+check( preg_match( '/href="([^"]+)">Abrir sale-/', $html, $link ) === 1, 'page two detail link available' );
+parse_str( parse_url( html_entity_decode( $link[1] ), PHP_URL_QUERY ), $detail_query );
+check( '2' === $detail_query['history_page'] && $filters === array_intersect_key( $detail_query, $filters ), 'detail keeps search dates and page' );
+$html = fpw_sales_history_markup( $sales, $detail_query );
+check( preg_match( '/href="([^"]+)">Volver al historial<\/a>/', $html, $link ) === 1, 'detail has return link' );
+parse_str( parse_url( html_entity_decode( $link[1] ), PHP_URL_QUERY ), $back_query );
+check( $back_query === $next_query, 'return exactly restores filtered page without sale ID' );
+check( str_contains( fpw_sales_history_markup( $sales, $back_query ), 'Página 2 de 53' ), 'returned filtered page renders' );
+check( preg_match( '/href="([^"]+)">Limpiar filtros<\/a>/', $html, $link ) === 1, 'clear link available' );
+parse_str( parse_url( html_entity_decode( $link[1] ), PHP_URL_QUERY ), $clear_query );
+check( array( 'page' => 'fpw-sales-history' ) === $clear_query, 'clear removes filters page and selected sale' );
+$filtered = fpw_sales_history_filter( $sales, array( 'history_from' => '2026-01-28', 'history_to' => '2026-01-28' ) );
+check( 47 === count( $filtered ) && 22 === count( fpw_sales_history_page( $filtered, 2 )['sales'] ), 'date subset paginated only after filtering' );
+check( str_contains( $html, 'method="get"' ) && ! str_contains( $html, '<script' ), 'filter form and links work without JavaScript' );
 check( $before === $GLOBALS['fpws_table'], 'no persisted rows changed by browsing' );
 echo "sales history: {$assertions} checks passed (including register regression)\n";
