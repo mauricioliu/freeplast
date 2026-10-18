@@ -105,9 +105,14 @@ function fpw_workbook_map( array $rows, array $legacy, array $existing ): array 
 		}
 		$reasons = array_values( array_unique( $reasons ) );
 		ksort( $lines );
+		$total = null;
+		if ( ! $reasons ) {
+			try { $total = fpw_workbook_sum( array_column( $lines, 'total' ) ); }
+			catch ( InvalidArgumentException $e ) { $reasons[] = 'invoice_total_out_of_range'; }
+		}
 		$results[] = array( 'id' => $id, 'invoice' => $invoice, 'status' => $reasons ? 'pending' : $status, 'reasons' => $reasons,
 			'rut' => $ruts[0], 'date' => $dates[0], 'movements' => array_values( array_unique( $movements ) ),
-			'lines' => array_values( $lines ), 'total' => $reasons ? null : fpw_workbook_sum( array_column( $lines, 'total' ) ), 'rows' => $group );
+			'lines' => array_values( $lines ), 'total' => $total, 'rows' => $group );
 	}
 	return $results;
 }

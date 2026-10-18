@@ -2,7 +2,8 @@
 
 Contrato de mapeo puro: `wp-content/plugins/freeplast-woo/sales-workbook-contract.php`.
 Prueba: `php wordpress/scripts/sales-workbook-contract-test.php` desde raíz.
-No está conectado todavía al upload ni a la persistencia. CSV v1 queda intacto.
+Conectado a carga/vista previa mediante `sales-workbook.php`; persistencia XLSX
+bloqueada hasta ticket 3. CSV v1 queda intacto. Ver [carga y evidencia privada](sales-workbook-upload.md).
 
 ## Entrada y procedencia
 
@@ -134,8 +135,9 @@ otro delta: comparar preview completo contra el hash/conciliación vigente.
 
 ## Fuera de este corte
 
-No upload, UI, schema migration, confirmación, cancelación, navegación ni cambios
-DEV. Tickets 2/3 deben integrar el mapper, persistir decimales/snapshot sin romper
+El corte original del ticket 1 no incluía upload, UI, schema migration,
+confirmación, cancelación, navegación ni cambios DEV. Ticket 2 integra carga,
+vista previa y cancelación; ticket 3 debe persistir decimales/snapshot sin romper
 historial CSV antiguo, comparar entidades completas, bloquear conflictos sin
 parcialidad, conservar recibos y procedencia y mostrar pendientes al dueño.
 Ticket 4 debe verificar hash, respaldo, ensayo y delta antes de escribir DEV.

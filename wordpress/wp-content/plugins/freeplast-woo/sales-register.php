@@ -20,9 +20,9 @@
  * receipt per applied batch written as a PLAIN INSERT — the exactly-once
  * anchor that makes repeated confirmation merge nothing twice.
  *
- * The upload is bounded text CSV (UTF-8, 2 MB, capped rows and cells).
- * Binary/ZIP workbooks are refused outright and no cell is ever evaluated:
- * there are no macros, formulas or external references in the read path.
+ * Uploads accept bounded CSV v1 or official XLSX stored values (2 MB).
+ * XLSX preview uses the separate bounded reader; confirmation stays blocked
+ * until the v2 persistence contract is installed. No formula is evaluated.
  * Nothing here touches the Price List, drafts, requests or issued documents,
  * and requests/quotations never become completed sales.
  *
@@ -48,6 +48,7 @@ define( 'FPW_SALES_MAX_ID', 100 );
 define( 'FPW_SALES_PREVIEW_ROWS', 40 );
 define( 'FPW_SALES_LIST_LIMIT', 100 );
 define( 'FPW_SALES_RECEIPT_KEEP', 20 );
+require_once __DIR__ . '/sales-workbook.php';
 
 /**
  * The customer key: normalize a company RUT's presentation so equivalent
@@ -258,7 +259,8 @@ function fpw_sales_sweep_receipts(): void {
  * History is NOT changed: confirmation is a separate, explicit action.
  */
 function fpw_sales_process_upload_string( string $content, string $filename ): array {
-	$parsed = fpw_sales_parse_csv( $content );
+	$xlsx = 'xlsx' === strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) ) || str_starts_with( $content, "PK\x03\x04" );
+	$parsed = $xlsx ? fpw_sales_parse_xlsx( $content ) : fpw_sales_parse_csv( $content );
 	if ( empty( $parsed['ok'] ) ) { return array( 'ok' => false, 'message' => (string) ( $parsed['error'] ?? 'El archivo fue rechazado.' ) ); }
 	$batch = $parsed['batch'];
 	$batch['token']    = bin2hex( random_bytes( 16 ) );
@@ -266,7 +268,9 @@ function fpw_sales_process_upload_string( string $content, string $filename ): a
 	$batch['actor']    = fpw_sales_actor();
 	$batch['at']       = time();
 	fpw_sales_write_row( FPW_SALES_PENDING_ROW, $batch );
-	return array( 'ok' => true, 'message' => 'Carga recibida y previsualizada: el historial de compras NO cambió. Revisa la vista previa y confirma para aplicarla, o cancela sin efectos.' );
+	return array( 'ok' => true, 'message' => $xlsx
+		? 'Excel recibido: el historial NO cambió. Revisa la vista previa o cancela sin efectos; la confirmación XLSX aún está bloqueada.'
+		: 'Carga recibida y previsualizada: el historial de compras NO cambió. Revisa la vista previa y confirma para aplicarla, o cancela sin efectos.' );
 }
 
 /**
@@ -319,6 +323,9 @@ function fpw_sales_confirm( string $token ): array {
 	}
 	if ( ! hash_equals( (string) ( $pending['token'] ?? '' ), $token ) ) {
 		return array( 'ok' => false, 'message' => 'El lote revisado ya no está disponible: la vista previa fue reemplazada por una carga posterior. Vuelve a revisar y confirmar la carga actual.' );
+	}
+	if ( 'xlsx' === ( $pending['format'] ?? '' ) ) {
+		return array( 'ok' => false, 'message' => 'La confirmación XLSX está bloqueada: esta versión permite revisar y cancelar, sin aplicar ventas.' );
 	}
 	$register = fpw_sales_register();
 	$plan = fpw_sales_plan( $register['sales'], is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
@@ -495,7 +502,7 @@ function fpw_sales_verify_nonce( string $action ): void {
 /** The $_FILES boundary of the upload: type/size checks, then the shared text parser. */
 function fpw_sales_handle_upload(): array {
 	if ( ! isset( $_FILES['fpw_sales_file'] ) || ! is_array( $_FILES['fpw_sales_file'] ) ) {
-		return array( 'ok' => false, 'message' => 'No se recibió ningún archivo: elige el CSV y vuelve a intentar.' );
+		return array( 'ok' => false, 'message' => 'No se recibió ningún archivo: elige el CSV o XLSX y vuelve a intentar.' );
 	}
 	$error = (int) ( $_FILES['fpw_sales_file']['error'] ?? UPLOAD_ERR_NO_FILE );
 	if ( UPLOAD_ERR_OK !== $error ) {
@@ -507,7 +514,7 @@ function fpw_sales_handle_upload(): array {
 	if ( '' === $tmp || ! is_uploaded_file( $tmp ) ) { return array( 'ok' => false, 'message' => 'La carga no provino de un formulario válido.' ); }
 	$size = (int) ( $_FILES['fpw_sales_file']['size'] ?? 0 );
 	if ( $size <= 0 || $size > FPW_SALES_MAX_BYTES ) { return array( 'ok' => false, 'message' => 'El archivo supera el máximo de 2 MB por carga.' ); }
-	$content = file_get_contents( $tmp );
+	$content = file_get_contents( $tmp, false, null, 0, FPW_SALES_MAX_BYTES + 1 );
 	if ( false === $content ) { return array( 'ok' => false, 'message' => 'No se pudo leer el archivo subido.' ); }
 	return fpw_sales_process_upload_string( $content, (string) ( $_FILES['fpw_sales_file']['name'] ?? 'ventas.csv' ) );
 }
@@ -530,6 +537,8 @@ function fpw_sales_screen_shell( string $inner ): string {
 		. '.fpw-sales th{background:#f6f7f7;font-weight:600}'
 		. '.fpw-sales code{font-size:13px;overflow-wrap:anywhere}'
 		. '.fpw-sales form{margin:12px 0 0}'
+		. '.fpw-sales details{margin:8px 0}.fpw-sales summary{cursor:pointer;overflow-wrap:anywhere}'
+		. '.fpw-sales dd{margin-left:16px;overflow-wrap:anywhere}'
 		. '.fpw-sales .button{margin-right:8px}'
 		. '.fpw-sales__note{color:#60626d;font-size:14px;margin:8px 0 0}'
 		. '.fpw-sales__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}'
@@ -551,6 +560,7 @@ function fpw_sales_banner_html( array $banner ): string {
 function fpw_sales_pending_preview_html(): string {
 	$pending = fpw_sales_pending_batch();
 	if ( ! is_array( $pending ) ) { return ''; }
+	if ( 'xlsx' === ( $pending['format'] ?? '' ) ) { return fpw_sales_workbook_preview_html( $pending ); }
 	$url           = fpw_sales_import_screen_url();
 	$nonce_confirm = wp_nonce_field( FPW_SALES_NONCE_CONFIRM, 'fpw_sales_nonce', true, false );
 	$nonce_cancel  = wp_nonce_field( FPW_SALES_NONCE_CANCEL, 'fpw_sales_nonce', true, false );
@@ -633,11 +643,11 @@ function fpw_sales_import_markup( array $banner = array() ): string {
 	$url          = fpw_sales_import_screen_url();
 	$nonce_upload = wp_nonce_field( FPW_SALES_NONCE_UPLOAD, 'fpw_sales_nonce', true, false );
 
-	$upload = '<section><h2>Cargar CSV</h2><form action="' . esc_url( $url ) . '" method="post" enctype="multipart/form-data">'
+	$upload = '<section><h2>Cargar CSV o Excel oficial</h2><form action="' . esc_url( $url ) . '" method="post" enctype="multipart/form-data">'
 		. '<input type="hidden" name="fpw_sales_action" value="upload">' . $nonce_upload
-		. '<p><input type="file" name="fpw_sales_file" accept=".csv,text/csv" required></p>'
+		. '<p><label for="fpw-sales-file">Planilla de ventas (CSV o XLSX, máximo 2 MB)</label><br><input id="fpw-sales-file" type="file" name="fpw_sales_file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></p>'
 		. '<p><button type="submit" class="button button-primary">Previsualizar carga</button></p></form>'
-		. '<p class="fpw-sales__note">Subir y previsualizar NO cambia el historial: solo la confirmación aplica el lote revisado.</p></section>';
+		. '<p class="fpw-sales__note">Subir y previsualizar NO cambia el historial. CSV permite confirmar; Excel oficial permite revisar y cancelar, con confirmación aún bloqueada.</p></section>';
 
 	return fpw_sales_screen_shell(
 		'<h1>Importar ventas</h1>'
