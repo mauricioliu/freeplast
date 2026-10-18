@@ -3669,25 +3669,32 @@ body.fpw-has-dock.fpw-has-selection {
   color: #757680;
 }
 
-.fp-checkout-page .fp-fields .form-row.woocommerce-invalid input.input-text,
-.fp-checkout-page .fp-fields .form-row.woocommerce-invalid textarea {
-  border-color: var(--fp-blue);
+/* Semantic exception to the brand palette, limited to request field errors. */
+.fp-checkout-page {
+  --fp-validation-error: #b42318;
 }
 
 body.woocommerce-checkout .fp-checkout-page form .form-row.woocommerce-invalid label {
   color: var(--fp-ink);
 }
 
-.fp-checkout-page .fp-fields .form-row input[aria-invalid="true"],
-.fp-checkout-page .fp-fields .form-row textarea[aria-invalid="true"] {
-  border: 2px solid var(--fp-blue);
-  padding: 11px 13px;
+.fp-checkout-page form.checkout .fp-fields .form-row.woocommerce-invalid :is(input, textarea, select),
+.fp-checkout-page form.checkout .fp-fields .form-row :is(input, textarea, select)[aria-invalid="true"] {
+  border-color: var(--fp-validation-error);
+  accent-color: var(--fp-validation-error); /* Native radios ignore border-color. */
+  box-shadow: none;
 }
 
-.fp-checkout-page .fp-fields .form-row .fp-field-error {
+.fp-checkout-page form.checkout .fp-fields .form-row.woocommerce-invalid :is(input, textarea, select):focus,
+.fp-checkout-page form.checkout .fp-fields .form-row :is(input, textarea, select)[aria-invalid="true"]:focus {
+  outline: 2px solid var(--fp-validation-error);
+  outline-offset: 2px;
+}
+
+.fp-checkout-page .fp-fields .form-row :is(.fp-field-error, .checkout-inline-error-message) {
   display: block;
   font-size: 13px;
-  color: var(--fp-blue);
+  color: var(--fp-validation-error);
   margin-top: 7px;
   line-height: 1.5;
 }
@@ -3737,6 +3744,21 @@ body.woocommerce-checkout .fp-checkout-page form .form-row.woocommerce-invalid l
   accent-color: var(--fp-blue);
   margin: 0;
   flex-shrink: 0;
+}
+
+/* Keep both native sibling labels and enhanced radio tiles in the error state. */
+.fp-checkout-page .fp-fields .fp-dispatch-options .woocommerce-invalid label.radio,
+.fp-checkout-page .fp-fields .fp-dispatch-options label.radio:has(input[aria-invalid="true"]),
+.fp-checkout-page .fp-fields .fp-dispatch-options input[aria-invalid="true"] + label.radio {
+  border-color: var(--fp-validation-error);
+  box-shadow: none;
+}
+
+.fp-checkout-page .fp-fields .fp-dispatch-options .woocommerce-invalid label.radio:focus-within,
+.fp-checkout-page .fp-fields .fp-dispatch-options label.radio:has(input[aria-invalid="true"]:focus),
+.fp-checkout-page .fp-fields .fp-dispatch-options input[aria-invalid="true"]:focus + label.radio {
+  outline: 2px solid var(--fp-validation-error);
+  outline-offset: 2px;
 }
 
 .fp-checkout-page .fp-address-slot .form-row[hidden] {

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Solicitud — validación sintética, sin envío</title>
+<link rel="stylesheet" href="../../wp-content/themes/freeplast/style.css">
+<style>
+/* Native Woo declarations deliberately loaded AFTER the theme to test specificity. */
+:root { --wc-red: #a00; }
+.woocommerce form .form-row.woocommerce-invalid label { color: var(--wc-red); }
+.woocommerce form .form-row.woocommerce-invalid input.input-text,
+.woocommerce form .form-row.woocommerce-invalid select { border-color: var(--wc-red); }
+.woocommerce-checkout .checkout .checkout-inline-error-message { color: var(--wc-red); font-size: .75em; margin-bottom: 0; }
+</style></head>
+<body class="woocommerce woocommerce-checkout">
+<main class="fp-checkout-page">
+<h1>Solicitud de cotización</h1><p>Prueba sintética de estilos. No envía datos. Estados simulados; no valida RUT.</p>
+<form class="checkout woocommerce-checkout" onsubmit="return false">
+<div class="fp-checkout-form"><fieldset class="fp-form-section"><legend>Contacto y empresa</legend><div class="fp-fields">
+<p class="form-row" id="rut_field"><label for="rut">RUT (aria-invalid)</label><input class="input-text" id="rut" value="12.345.678-0" aria-invalid="true" aria-describedby="rut_error"><span id="rut_error" class="fp-field-error">Revisa el RUT ingresado.</span></p>
+<p class="form-row woocommerce-invalid woocommerce-invalid-email" id="email_field"><label for="email">Email (Woo)</label><input class="input-text" id="email" type="email" value="correo-incompleto" aria-describedby="email_error"><span id="email_error" class="checkout-inline-error-message">Ingresa un email válido.</span></p>
+<p class="form-row woocommerce-invalid" id="name_field"><label for="name">Nombre (ambos estados)</label><input class="input-text" id="name" aria-invalid="true" aria-describedby="name_error"><span id="name_error" class="fp-field-error checkout-inline-error-message">Nombre es un campo obligatorio.</span></p>
+<p class="form-row" id="valid_field"><label for="valid">Empresa (sin error)</label><input class="input-text" id="valid" value="Empresa de prueba"></p>
+<p class="form-row" id="untouched_field"><label for="untouched">Teléfono (intacto)</label><input id="untouched" type="tel" required></p>
+</div></fieldset>
+<fieldset class="fp-form-section"><legend>Despacho</legend><div class="fp-fields">
+<p class="form-row woocommerce-invalid" id="address_field"><label for="address">Dirección (Woo)</label><textarea id="address" aria-describedby="address_error"></textarea><span id="address_error" class="checkout-inline-error-message">Indica la dirección de despacho.</span></p>
+<p class="form-row" id="commune_field"><label for="commune">Comuna (aria-invalid)</label><select id="commune" aria-invalid="true" aria-describedby="commune_error"><option value="">Selecciona una comuna</option><option>Mostazal</option></select><span id="commune_error" class="fp-field-error">Selecciona una comuna.</span></p>
+<div class="fp-dispatch-options"><p class="form-row woocommerce-invalid" id="dispatch_field"><label id="dispatch_label">¿Necesitas despacho? (Woo)</label><span class="woocommerce-input-wrapper" data-fp-dispatch-enhanced role="radiogroup" aria-labelledby="dispatch_label"><label class="radio"><input id="dispatch_si" type="radio" name="dispatch" value="si" aria-describedby="dispatch_error">Sí</label><label class="radio"><input id="dispatch_no" type="radio" name="dispatch" value="no" aria-describedby="dispatch_error">No</label></span><span id="dispatch_error" class="fp-field-error">Indica si necesitas despacho.</span></p></div>
+<div class="fp-dispatch-options"><p class="form-row" id="aria_dispatch_field"><label for="aria_dispatch">Opción marcada (aria-invalid)</label><span data-fp-dispatch-enhanced><label class="radio"><input id="aria_dispatch" type="radio" name="aria_dispatch" checked aria-invalid="true" aria-describedby="aria_dispatch_error">Sí</label></span><span id="aria_dispatch_error" class="checkout-inline-error-message">Revisa la opción de despacho.</span></p></div>
+<div class="fp-dispatch-options"><p class="form-row" id="native_dispatch_field"><label for="native_dispatch">Radio sin mejora JS</label><span><input id="native_dispatch" type="radio" name="native_dispatch" aria-invalid="true" aria-describedby="native_dispatch_error"><label class="radio" for="native_dispatch">Sí</label></span><span id="native_dispatch_error" class="fp-field-error">Indica si necesitas despacho.</span></p></div>
+</div></fieldset></div></form>
+</main>
+<section aria-label="Control fuera del formulario"><form><p class="form-row woocommerce-invalid"><label for="outside">Otro formulario (sin excepción)</label><input class="input-text" id="outside" aria-invalid="true"><span class="fp-field-error" id="outside_error">Mensaje ajeno</span></p></form></section>
+<script>
+/* Browser-only computed cascade checks. State changes simulate Woo; no business validation. */
+window.runCheckoutValidationStyleChecks = function () {
+  let checks = 0;
+  const red = 'rgb(180, 35, 24)', blue = 'rgb(16, 0, 144)', ink = 'rgb(23, 24, 28)';
+  const form = document.querySelector('form.checkout'), original = form.innerHTML;
+  const get = id => document.getElementById(id);
+  const css = node => getComputedStyle(node);
+  const ok = (condition, message) => { checks++; if (!condition) throw new Error(message); };
+  try {
+    for (const id of ['rut', 'email', 'name', 'address', 'commune', 'dispatch_si', 'aria_dispatch', 'native_dispatch']) {
+      const control = get(id), row = control.closest('.form-row');
+      // Native appearance:auto radios paint their accent, not a CSS border.
+      ok((control.type === 'radio' ? css(control).accentColor : css(control).borderTopColor) === red, id + ': red border/accent');
+      if (control.type !== 'radio') ok(css(control).color === ink, id + ': normal value color');
+      ok(css(row.querySelector('label')).color === ink, id + ': normal label color');
+      const message = get(control.getAttribute('aria-describedby'));
+      ok(css(message).color === red, id + ': red associated message');
+      control.focus();
+      ok(document.activeElement === control, id + ': keyboard-focusable');
+      ok(css(control).outlineColor === red && css(control).outlineStyle === 'solid', id + ': red focus');
+      ok(!css(control).boxShadow.includes(blue), id + ': no blue shadow');
+    }
+    for (const id of ['dispatch_si', 'aria_dispatch', 'native_dispatch']) {
+      const control = get(id), tile = control.closest('label.radio') || control.nextElementSibling;
+      control.focus();
+      ok(css(tile).borderTopColor === red, id + ': red radio tile');
+      ok(css(tile).outlineColor === red && css(tile).outlineStyle === 'solid', id + ': red tile focus');
+      ok(css(tile).boxShadow === 'none', id + ': no selected blue inset');
+    }
+    // Exercise each supported control under each signal, including aria-invalid=false.
+    for (const id of ['rut', 'email', 'untouched', 'address', 'commune', 'dispatch_si', 'aria_dispatch', 'native_dispatch']) {
+      const control = get(id), row = control.closest('.form-row');
+      for (const signal of ['woo', 'aria', 'both', 'valid']) {
+        row.classList.toggle('woocommerce-invalid', signal === 'woo' || signal === 'both');
+        control.setAttribute('aria-invalid', String(signal === 'aria' || signal === 'both'));
+        control.focus();
+        const invalid = signal !== 'valid';
+        if (control.type === 'radio') {
+          const tile = control.closest('label.radio') || control.nextElementSibling;
+          ok(css(control).accentColor === (invalid ? red : blue), id + '/' + signal + ': native radio accent state');
+          ok((css(tile).borderTopColor === red) === invalid, id + '/' + signal + ': visible tile border state');
+          ok(invalid ? css(tile).boxShadow === 'none' : (control.checked ? css(tile).boxShadow.includes(blue) : css(tile).boxShadow === 'none'), id + '/' + signal + ': selected inset state');
+        } else {
+          ok((css(control).borderTopColor === red) === invalid, id + '/' + signal + ': border state');
+        }
+        ok(css(control).outlineColor === (invalid ? red : blue), id + '/' + signal + ': focus state');
+      }
+    }
+    for (const id of ['valid', 'untouched']) {
+      const control = get(id);
+      ok(css(control).borderTopColor !== red, id + ': no premature error');
+      control.focus();
+      ok(css(control).outlineColor === blue, id + ': normal blue focus');
+    }
+    ok(css(get('outside')).borderTopColor !== red, 'no control leakage');
+    ok(css(get('outside_error')).color !== red, 'no message leakage');
+    ok(document.documentElement.scrollWidth <= innerWidth, 'no horizontal overflow');
+    return { checks, width: innerWidth, status: 'PASS' };
+  } finally {
+    form.innerHTML = original;
+    get('rut').focus();
+  }
+};
+</script></body></html>

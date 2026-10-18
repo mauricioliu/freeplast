@@ -22,6 +22,7 @@ colors:
   chrome-line: "#dedfe6"
   chrome-border: "#a0a2af"
   chrome-muted: "#60626d"
+  validation-error: "#b42318"
 typography:
   display:
     fontFamily: "Manrope, ui-sans-serif, system-ui, sans-serif"
@@ -149,16 +150,17 @@ island for shared navigation; v6 tokens still govern corporate page bodies.
 
 **Key Characteristics:**
 - Flat surfaces structured by hairlines; shadows reserved for dialog overlays and hover response
-- Two hues only — blue for action, green for the recycled accent — plus a strict neutral set
+- Brand hues: blue for action, green for the recycled accent, plus neutrals; request field validation alone uses semantic red
 - Manrope everywhere, tabular numerals, headings in deep blue (#0b078c)
-- 44px minimum touch targets; visible 2px blue focus ring everywhere
+- 44px minimum touch targets; visible 2px blue focus ring (red on invalid request fields)
 - Server-first: navigation and quoting work with JavaScript disabled
 - Real photography in white/tint wells; tinted bordered panels for every empty or failed state
 
 ## Colors
 
-A cool paper world structured by blue-tinted hairlines, with exactly two living hues: a
+A cool paper world structured by blue-tinted hairlines, with two brand hues: a
 deep electric blue that acts and an agricultural green that tells the recycled story.
+Semantic red is reserved for invalid fields in the Solicitud de cotización.
 
 ### Primary
 - **Azul Bodega** (#100090): The one voice of action — primary buttons, links, the basket
@@ -193,12 +195,20 @@ deep electric blue that acts and an agricultural green that tells the recycled s
 
 ### Named Rules
 **The No-New-Hues Rule.** Every color derives from Azul Bodega, Verde Reciclaje, or the
-neutral set above. Tints and softs of those two hues are allowed; new hues are not. This is
-a frozen contract, not a preference.
+neutral set above. Tints and softs of those two hues are allowed; new brand hues are not.
+The sole semantic exception is request field validation below.
 
-**The No-Red-Alarm Rule.** Failure is never red-only: errors render as a tint panel with
-ink text and a blue-tinted border, inline validation uses blue/tint. The system never
-shouts in a color the brand does not own.
+**The No-Red-Only-Alarm Rule.** Failure is never conveyed by color alone. Invalid fields
+in the active Solicitud de cotización use `--fp-validation-error` (#b42318) for borders,
+focus outlines, native radio accents and inline messages, including native Woo messages
+and dispatch tiles. Native radios keep their platform appearance; their tile supplies the
+visible error border.
+Messages and accessible associations remain; labels and entered values keep their normal
+colors. Only `woocommerce-invalid` or `aria-invalid="true"` activates this state, never
+untouched fields. Correction restores existing styling and normal blue focus. The token
+exceeds 4.5:1 on paper, tint and blue-soft backgrounds (also exceeding 3:1 for borders
+and outlines). Summaries, other error surfaces, administration and historical prototypes
+retain their existing tint/ink/blue treatment.
 
 **The One Voice Rule.** Blue is the only primary-action color; green accents and reports
 (the ✓ added state) but never replaces the CTA.
@@ -295,7 +305,8 @@ stays native.
 - **Style:** 12px/16px padding, 1px blue-tinted hairline (native Woo inputs 1px #767676),
   8px radius, paper background, ink text, 48px minimum.
 - **Focus:** Blue border + 3px rgba(16, 0, 144, 0.14) ring; global :focus-visible is a 2px
-  solid blue outline offset 2px (Verde Suave on dark).
+  solid blue outline offset 2px (Verde Suave on dark). Invalid request fields instead
+  use the solid semantic red outline and border; no blue ring overrides their error.
 
 ### Basket Pill ("Productos a Cotizar")
 Azul Calmo (#eeedf8) full pill, blue text, with a circular Azul Bodega count badge (24px
@@ -312,7 +323,8 @@ bottom («✓ N unidades agregadas» + Quitar). Hover: border shifts to #aca7d1 
 ### Empty & Status States
 Tinted bordered panels (#f4f5f7, 1px blue-tinted hairline, 6–8px radius, 32px padding)
 that name the situation in a heading and always offer a recovery link back to the catalog.
-Status notes follow the same vocabulary (✓ confirmation included); failures never use red.
+Status notes follow the same vocabulary (✓ confirmation included); only the request
+field validation exception above uses red, not these panels.
 
 ### Navigation (A · Directa chrome)
 Compact sticky bar, 76/84px, white rgba(255, 255, 255, 0.97) with a 1px #dedfe6 bottom
@@ -335,11 +347,11 @@ permanent FP-YYYY-NNNNNN reference, persisted lines, stored dispatch fact, and n
 
 ### Do:
 - **Do** keep every hue inside Azul Bodega #100090, Verde Reciclaje #306020, and the
-  neutral set; tints of those hues are the only stretching allowed.
+  neutral set, except semantic red for invalid request fields.
 - **Do** reserve blue for actions and links; let green accent (kickers, facts, the ✓ added
   state) — it never leads the CTA.
 - **Do** keep every interactive target ≥44px with a visible 2px blue focus ring (offset
-  2px; Verde Suave on dark).
+  2px; Verde Suave on dark, semantic red on invalid request fields).
 - **Do** set quantities, measurements, and FP references in tabular-nums.
 - **Do** use real product photography only (`assets/`, the 2026 catalog PDF); missing
   photos get the tint placeholder well, honestly labeled.
@@ -349,7 +361,7 @@ permanent FP-YYYY-NNNNNN reference, persisted lines, stored dispatch fact, and n
 - **Do** design at ~412px and adapt only with min-width media queries.
 
 ### Don't:
-- **Don't** introduce new hues, display faces, or the v5 editorial vocabulary
+- **Don't** introduce new brand hues, display faces, or the v5 editorial vocabulary
   (Newsreader/Outfit, square geometry, hairline paper grid) — rejected and hash-frozen.
 - **Don't** signal failure with red alone.
 - **Don't** put resting shadows on controls or cards; depth is hairlines plus hover
