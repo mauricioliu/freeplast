@@ -25,6 +25,10 @@ check( str_starts_with( fpw_sales_history_client( $multi ), 'Variantes en origen
 $html = fpw_sales_history_markup( array_merge( array( $multi ), $sales ), array() );
 check( ! str_contains( $html, 'Total línea' ) && ! str_contains( $html, 'Fila original' ), 'list never renders line or provenance detail' );
 check( str_contains( $html, 'sale_id=invoice%2Fid%3C%26' ), 'stable ID URL encoded' );
+check( str_contains( $html, 'role="region" aria-label="Ventas históricas" tabindex="0"' ), 'scrolling table region named and keyboard focusable' );
+check( str_contains( $html, '.fpw-history a,.fpw-history button{min-height:44px;min-width:44px;' ), 'viewer links and buttons retain 44px targets' );
+check( str_contains( $html, '.fpw-history summary{min-height:44px;' ) && str_contains( $html, '.fpw-history :focus-visible{outline:2px solid #100090;outline-offset:2px}' ), 'disclosures have touch targets and all viewer controls visible focus' );
+check( str_contains( $html, '.fpw-history-table{max-width:100%;overflow-x:auto}' ) && str_contains( $html, 'gap:4px;min-width:0;max-width:100%' ), 'table scroll and shrinking filter labels scoped to viewer' );
 $html = fpw_sales_history_markup( array( $multi ), array( 'sale_id' => $multi['id'] ) );
 check( ! str_contains( $html, '<script>' ) && ! str_contains( $html, '<b>Original' ), 'source content escaped' );
 check( 2 === substr_count( $html, 'Total línea: 15,0579625 CLP' ) && str_contains( $html, '30,115925 CLP' ), 'exact decimal line and invoice totals kept distinct' );

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
+import { runSalesHistoryTests } from './sales-history-native.mjs';
 
 // Agreed seam: authenticated WordPress screens and their real form actions.
 // Setup creates only run-owned synthetic native records; no customer/import data.
@@ -91,6 +92,8 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       ['Ventas históricas', '/wp-admin/admin.php?page=fpw-sales-history'],
       ['Importar ventas', '/wp-admin/admin.php?page=fpw-sales-import'],
     ]), 'workspace: history opens viewer by default and importer stays separately reachable');
+    await runSalesHistoryTests({ wpEval, check, owner, dataActor, quoteActor, staff, guest, asSitePath, suffix,
+      maintenanceUrl: asSitePath(maintenance.find(a => a.textContent === 'Ventas históricas').href) });
     check(doc.querySelector('h1')?.textContent === 'Solicitudes de clientes', 'workspace: visible quotation inbox heading');
     const link = [...doc.querySelectorAll('a')].find(a => a.textContent.includes(`Empresa workspace ${suffix}`));
     check(!!link, 'workspace: inbox links the real received request, not a demo');
