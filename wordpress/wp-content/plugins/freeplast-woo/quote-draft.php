@@ -1297,7 +1297,7 @@ function fpw_draft_history_section( array $draft ): string {
 	$lines = '';
 	foreach ( $history['sales'] as $sale ) {
 		$total = fpw_sales_format_clp( $sale['total'] ?? null );
-		$lines .= '<li><span class="fpw-draft__sale-date">' . esc_html( (string) ( $sale['date'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-id">' . esc_html( (string) ( $sale['id'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-total">' . esc_html( $total ) . '</span></li>';
+		$lines .= '<li><span class="fpw-draft__sale-date">' . esc_html( (string) ( $sale['date'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-id">' . esc_html( (string) ( $sale['id'] ?? '' ) ) . '</span> · <span class="fpw-draft__sale-total">' . esc_html( $total ) . '</span>' . fpw_sales_detail_html( $sale ) . '</li>';
 	}
 	$fresh      = $history['freshness'];
 	$fresh_note = is_array( $fresh )
@@ -1306,7 +1306,7 @@ function fpw_draft_history_section( array $draft ): string {
 	return '<section><h2>Historial de compras</h2>'
 		. '<p>' . count( $history['sales'] ) . ' ' . esc_html( 1 === count( $history['sales'] ) ? 'venta importada' : 'ventas importadas' ) . ' para el RUT ' . esc_html( $rut ) . ':</p>'
 		. '<ul class="fpw-draft__history">' . $lines . '</ul>'
-		. '<p class="fpw-draft__aside-note">Fuente: importaciones del Registro de ventas. ' . $fresh_note . 'El detalle por producto no está disponible en la fuente importada.</p>'
+		. '<p class="fpw-draft__aside-note">Fuente: importaciones del Registro de ventas. ' . $fresh_note . 'Abre el detalle y la procedencia cuando la importación incluya líneas.</p>'
 		. $import_link . '</section>';
 }
 

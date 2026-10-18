@@ -179,15 +179,17 @@ function fpw_workspace_history( array $draft ): string {
 		return $html . '<p><strong>Sin historial asociado.</strong> No hay compras vinculadas al RUT de esta solicitud. Esto no indica que el cliente sea nuevo.</p></details>';
 	}
 	$html .= '<p>Registros importados asociados por RUT. No son solicitudes ni cotizaciones. Los datos ausentes en la importación se muestran con —.</p><div class="fpw-history-scroll" role="region" aria-label="Compras registradas" tabindex="0"><table><caption>Compras registradas</caption><thead><tr><th scope="col">Fecha</th><th scope="col">Producto</th><th scope="col" class="fpw-numeric">Total Cajas</th><th scope="col" class="fpw-numeric">Precio</th><th scope="col" class="fpw-numeric">Neto</th><th scope="col" class="fpw-numeric">Total</th></tr></thead><tbody>';
-	foreach ( array_slice( $history['sales'], 0, 50 ) as $sale ) {
+	foreach ( $history['sales'] as $sale ) {
 		$html .= '<tr><td>' . esc_html( $sale['date'] ) . '</td><th scope="row">' . esc_html( '' === ( $sale['producto'] ?? '' ) ? '—' : $sale['producto'] ) . '</th>'
 			. '<td class="fpw-numeric">' . esc_html( null === ( $sale['total_cajas'] ?? null ) ? '—' : number_format( (int) $sale['total_cajas'], 0, ',', '.' ) ) . '</td>';
 		foreach ( array( 'precio', 'neto', 'total' ) as $field ) {
 			$html .= '<td class="fpw-numeric">' . esc_html( fpw_sales_format_clp( $sale[ $field ] ?? null ) ) . '</td>';
 		}
 		$html .= '</tr>';
+		$detail = fpw_sales_detail_html( $sale );
+		if ( '' !== $detail ) { $html .= '<tr><td colspan="6">' . $detail . '</td></tr>'; }
 	}
-	$html .= '</tbody></table></div><p class="fpw-muted">Mostrando hasta 50 de ' . count( $history['sales'] ) . ' registros.';
+	$html .= '</tbody></table></div><p class="fpw-muted">Mostrando ' . count( $history['sales'] ) . ' registros.';
 	if ( is_array( $history['freshness'] ?? null ) ) { $html .= ' Última carga: ' . esc_html( wp_date( 'd/m/Y', (int) $history['freshness']['at'] ) ) . '.'; }
 	return $html . '</p><a href="#fpw-products">Volver a productos</a></details>';
 }

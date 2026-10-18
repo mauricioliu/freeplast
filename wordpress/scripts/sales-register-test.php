@@ -88,6 +88,7 @@ class FPWS_Fake_wpdb {
 		return 0;
 	}
 	public function get_var( $sql ) {
+		if ( str_starts_with( $sql, 'SELECT ENGINE FROM information_schema.TABLES' ) ) { return 'InnoDB'; }
 		if ( preg_match( "/SELECT option_value FROM \{?\w*options\}? WHERE option_name = '(.+)'$/", $sql, $m ) ) {
 			return $GLOBALS['fpws_table'][ $m[1] ] ?? null;
 		}
@@ -284,7 +285,7 @@ check( str_contains( $html, 'H-1' ) && str_contains( $html, 'H-2' ), 'the draft 
 check( str_contains( $html, '2025-11-03' ) && str_contains( $html, '240.000 CLP' ), 'dates and totals render in the supported-source shape (no fabricated metrics)' );
 check( ! str_contains( $html, '$' ), 'no price-notation amounts appear on the draft: history totals are not draft prices' );
 check( ! str_contains( $html, 'historial-k.csv' ) && str_contains( $html, 'Registro de ventas' ) && str_contains( $html, 'Última carga aplicada el' ), 'history keeps business freshness without source filename' );
-check( str_contains( $html, 'detalle por producto' ), 'the view states that per-product detail is not supported by the source' );
+check( str_contains( $html, 'detalle y la procedencia' ), 'the view explains that line detail is available when supplied by the import' );
 check( str_contains( $html, 'page=fpw-sales-import' ), 'the section links the owner to the importer' );
 $htmlNobody = fpw_quote_draft_markup( fpws_make_order( 91, '11.222.333-4' ), array( 'schema' => 1, 'order_id' => 91, 'identity' => array( 'rut' => '11.222.333-4' ) ) );
 check( str_contains( $htmlNobody, 'Sin historial asociado' ) && ! str_contains( $htmlNobody, 'Cliente nuevo' ), 'a valid RUT without imported sales reads as unresolved, not as a verdict' );

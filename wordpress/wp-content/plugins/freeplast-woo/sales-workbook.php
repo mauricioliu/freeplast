@@ -164,9 +164,9 @@ function fpw_sales_workbook_plan( array $rows, array $legacy, array $sales ): ar
 		$old = $existing[$entity['id']] ?? null;
 		if ( null === $old ) { continue; }
 		$entity['status'] = 'existing'; $fill = array();
-		foreach ( array( 'date', 'rut', 'total', 'lines' ) as $key ) {
+		foreach ( array( 'date', 'rut', 'total', 'lines', 'invoice', 'movements' ) as $key ) {
 			if ( ! isset( $old[$key] ) || '' === $old[$key] ) { $fill[] = $key; continue; }
-			$equal = 'lines' === $key ? $old[$key] === $entity[$key] : (string) $old[$key] === (string) $entity[$key];
+			$equal = in_array( $key, array( 'lines', 'movements' ), true ) ? $old[$key] === $entity[$key] : (string) $old[$key] === (string) $entity[$key];
 			if ( ! $equal ) { $entity['reasons'][] = 'existing_conflict_' . $key; }
 		}
 		$entity['status'] = $entity['reasons'] ? 'conflict' : ( $fill ? 'enrich' : 'existing' );
@@ -174,6 +174,48 @@ function fpw_sales_workbook_plan( array $rows, array $legacy, array $sales ): ar
 	}
 	unset( $entity );
 	return $entities;
+}
+
+/** Build only whole-entity, empty-field deltas from freshly authenticated evidence. */
+function fpw_sales_workbook_changes( array $pending, array $sales ): array {
+	$plan = array( 'new' => array(), 'same' => 0, 'enrich' => array(), 'conflicts' => array(), 'pending' => array() );
+	$existing = array_column( $sales, null, 'id' );
+	foreach ( fpw_sales_workbook_plan( $pending['rows'], fpw_sales_workbook_legacy(), $sales ) as $entity ) {
+		$id = $entity['id'] ?? '';
+		if ( 'pending' === $entity['status'] ) { $plan['pending'][] = array( 'id' => $id, 'reasons' => $entity['reasons'], 'movements' => $entity['movements'] ?? array(), 'rows' => array_column( $entity['rows'], 'source_row' ) ); continue; }
+		if ( 'conflict' === $entity['status'] ) { $plan['conflicts'][] = $id; continue; }
+		if ( 'existing' === $entity['status'] ) { $plan['same']++; continue; }
+		$source = array( 'sha256' => $pending['source_sha256'], 'sheet' => $pending['sheet'], 'filename' => $pending['filename'], 'batch' => $pending['token'], 'rows' => $entity['rows'] );
+		if ( 'enrich' === $entity['status'] ) {
+			$fields = array_intersect_key( $entity, array_flip( $entity['fill_fields'] ) );
+			// Prior provenance is immutable, even when a new workbook supplies missing lines.
+			if ( ! isset( $existing[$id]['workbook_source'] ) || '' === $existing[$id]['workbook_source'] ) { $fields['workbook_source'] = $source; }
+			$plan['enrich'][$id] = $fields;
+		} else {
+			$plan['new'][] = array_intersect_key( $entity, array_flip( array( 'id', 'invoice', 'date', 'rut', 'total', 'lines', 'movements' ) ) ) + array( 'workbook_source' => $source );
+		}
+	}
+	return $plan;
+}
+
+/** Shared private history disclosure: invoice total stays separate from line totals. */
+function fpw_sales_detail_html( array $sale ): string {
+	if ( empty( $sale['lines'] ) ) { return ''; }
+	$labels = array( 'sale' => 'Venta', 'adjustment' => 'Ajuste', 'cancellation' => 'Anulación', 'return' => 'Devolución' );
+	$movements = array_map( static fn( $type ) => $labels[$type] ?? $type, $sale['movements'] ?? array( 'sale' ) );
+	$html = '<details><summary>Factura ' . esc_html( $sale['invoice'] ?? $sale['id'] ) . ': detalle y procedencia</summary><p>Movimiento: ' . esc_html( implode( ', ', $movements ) ) . '</p><ul>';
+	foreach ( $sale['lines'] as $line ) {
+		$html .= '<li>' . esc_html( $line['producto'] . ' · Cajas: ' . $line['total_cajas'] . ' · Precio: ' . fpw_sales_format_clp( $line['precio'] ) . ' · Neto: ' . fpw_sales_format_clp( $line['neto'] ) . ' · Total línea: ' . fpw_sales_format_clp( $line['total'] ) ) . '</li>';
+	}
+	$html .= '</ul>';
+	$source = $sale['workbook_source'] ?? array();
+	$html .= '<p>Archivo: ' . esc_html( $source['filename'] ?? '' ) . ' · Hoja: ' . esc_html( $source['sheet'] ?? '' ) . ' · SHA256: <span style="overflow-wrap:anywhere">' . esc_html( $source['sha256'] ?? '' ) . '</span> · Lote: ' . esc_html( $source['batch'] ?? $sale['batch'] ?? '' ) . '</p>';
+	foreach ( $source['rows'] ?? array() as $row ) {
+		$html .= '<details><summary>Fila original ' . (int) $row['source_row'] . '</summary><dl>';
+		foreach ( $row['raw'] ?? array() as $column => $value ) { $html .= '<dt>' . esc_html( $column ) . '</dt><dd>' . esc_html( $value ) . '</dd>'; }
+		$html .= '</dl></details>';
+	}
+	return $html . '</details>';
 }
 
 /** All entities accessible using native disclosures; exact strings, escaped source detail. */
@@ -184,7 +226,7 @@ function fpw_sales_workbook_preview_html( array $pending ): string {
 	$counts = array_count_values( array_column( $entities, 'status' ) );
 	$column_labels = array();
 	foreach ( fpw_workbook_headers() as $i => $label ) { $column_labels[$i < 26 ? chr( 65 + $i ) : 'A' . chr( 65 + $i - 26 )] = $label; }
-	$html = '<section><h2>Vista previa XLSX</h2><p>Solo lectura: confirmación XLSX aún bloqueada. Cancelar elimina esta vista previa, sin cambiar ventas.</p><p>';
+	$html = '<section><h2>Vista previa XLSX</h2><p>Confirma solo novedades y campos vacíos. Conflictos y pendientes no se aplican. Cancelar elimina esta vista previa, sin cambiar ventas.</p><p>';
 	foreach ( $labels as $status => $label ) { $html .= esc_html( $label ) . ': ' . ( $counts[$status] ?? 0 ) . '. '; }
 	$html .= '</p><p>' . count( $pending['rows'] ) . ' filas; ' . (int) $pending['blank_rows'] . ' filas vacías. Importes exactos en CLP; total por factura suma O una vez por línea.</p>';
 	if ( ! $legacy ) { $html .= '<p>Evidencia histórica privada no disponible: identidades anteriores quedan bloqueadas.</p>'; }
@@ -200,5 +242,6 @@ function fpw_sales_workbook_preview_html( array $pending ): string {
 		}
 		$html .= '</details>';
 	}
+	$html .= '<form action="' . esc_url( fpw_sales_import_screen_url() ) . '" method="post"><input type="hidden" name="fpw_sales_action" value="confirm"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $pending['token'] ) . '">' . wp_nonce_field( FPW_SALES_NONCE_CONFIRM, 'fpw_sales_nonce', true, false ) . '<button type="submit" class="button button-primary">Confirmar importación</button></form>';
 	return $html . '<form action="' . esc_url( fpw_sales_import_screen_url() ) . '" method="post"><input type="hidden" name="fpw_sales_action" value="cancel"><input type="hidden" name="fpw_sales_token" value="' . esc_attr( $pending['token'] ) . '">' . wp_nonce_field( FPW_SALES_NONCE_CANCEL, 'fpw_sales_nonce', true, false ) . '<button type="submit" class="button">Cancelar sin efectos</button></form></section>';
 }

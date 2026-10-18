@@ -21,8 +21,8 @@
  * anchor that makes repeated confirmation merge nothing twice.
  *
  * Uploads accept bounded CSV v1 or official XLSX stored values (2 MB).
- * XLSX preview uses the separate bounded reader; confirmation stays blocked
- * until the v2 persistence contract is installed. No formula is evaluated.
+ * XLSX preview uses the separate bounded reader; confirmation applies immutable snapshots
+ * inside a verified transaction. No formula is evaluated.
  * Nothing here touches the Price List, drafts, requests or issued documents,
  * and requests/quotations never become completed sales.
  *
@@ -47,7 +47,7 @@ define( 'FPW_SALES_MAX_CELL', 200 );
 define( 'FPW_SALES_MAX_ID', 100 );
 define( 'FPW_SALES_PREVIEW_ROWS', 40 );
 define( 'FPW_SALES_LIST_LIMIT', 100 );
-define( 'FPW_SALES_RECEIPT_KEEP', 20 );
+
 require_once __DIR__ . '/sales-workbook.php';
 
 /**
@@ -175,27 +175,31 @@ function fpw_sales_actor(): string {
 function fpw_sales_read_row( string $name ): ?array {
 	global $wpdb;
 	$raw = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) );
+	if ( ! empty( $wpdb->last_error ) ) { throw new RuntimeException( 'No se pudo leer el registro.' ); }
 	if ( ! is_string( $raw ) || '' === $raw ) { return null; }
 	$payload = json_decode( $raw, true );
-	return is_array( $payload ) ? $payload : null;
+	if ( ! is_array( $payload ) ) { throw new RuntimeException( 'Registro almacenado inválido; se requiere revisión.' ); }
+	return $payload;
 }
 
 /** The imported Purchase History: the ONLY source of completed sales. Requests, quotations and drafts never appear here. */
 function fpw_sales_register(): array {
 	$row = fpw_sales_read_row( FPW_SALES_REGISTER_ROW );
-	if ( ! is_array( $row ) || ! isset( $row['sales'] ) || ! is_array( $row['sales'] ) ) { return array( 'schema' => 1, 'sales' => array() ); }
+	if ( null === $row ) { return array( 'schema' => 1, 'sales' => array() ); }
+	if ( ! isset( $row['sales'] ) || ! is_array( $row['sales'] ) ) { throw new RuntimeException( 'Historial inválido; no se puede reemplazar.' ); }
 	return $row;
 }
 
 /** Upsert one JSON options row — INSERT when absent, UPDATE when present. The register and the pending slot are both written this way. */
 function fpw_sales_write_row( string $name, array $payload ): void {
 	global $wpdb;
-	$json = (string) wp_json_encode( $payload );
+	$json = wp_json_encode( $payload );
+	if ( false === $json ) { throw new RuntimeException( 'No se pudo serializar el registro.' ); }
 	if ( null === fpw_sales_read_row( $name ) ) {
-		$wpdb->query( $wpdb->prepare( "INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )", $name, $json ) );
+		if ( 1 !== $wpdb->query( $wpdb->prepare( "INSERT INTO {$wpdb->options} ( option_name, option_value, autoload ) VALUES ( %s, %s, 'off' )", $name, $json ) ) ) { throw new RuntimeException( 'No se pudo guardar el registro.' ); }
 		return;
 	}
-	$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $json, $name ) );
+	if ( false === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $json, $name ) ) || fpw_sales_read_row( $name ) !== $payload ) { throw new RuntimeException( 'No se pudo guardar el registro.' ); }
 }
 
 /** The ONE pending batch slot: a new upload replaces it, so a stale reviewed batch can never silently apply. */
@@ -205,7 +209,7 @@ function fpw_sales_pending_batch(): ?array {
 
 function fpw_sales_clear_pending(): void {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s", FPW_SALES_PENDING_ROW ) );
+	if ( false === $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s", FPW_SALES_PENDING_ROW ) ) ) { throw new RuntimeException( 'No se pudo cerrar la vista previa.' ); }
 }
 
 /** The exactly-once anchor: a plain INSERT — the second apply of the same batch loses here, before any merge. Receipt times are kept monotonic (same-second applies advance one second) so "newest" is always the truly last apply. */
@@ -242,18 +246,6 @@ function fpw_sales_receipts( int $limit = 10 ): array {
 	return array_slice( $all, 0, max( 1, $limit ) );
 }
 
-/** Bounded retention: old receipts are swept past the keep-list (provenance stays consultable; raw workbooks are never retained). */
-function fpw_sales_sweep_receipts(): void {
-	global $wpdb;
-	$all = fpw_sales_receipts( PHP_INT_MAX );
-	foreach ( array_slice( $all, FPW_SALES_RECEIPT_KEEP ) as $old ) {
-		$token = (string) ( $old['token'] ?? '' );
-		if ( '' !== $token ) {
-			$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s", FPW_SALES_RECEIPT_PREFIX . $token ) );
-		}
-	}
-}
-
 /**
  * Parse and stage one upload as the pending preview proposal. The Purchase
  * History is NOT changed: confirmation is a separate, explicit action.
@@ -267,9 +259,13 @@ function fpw_sales_process_upload_string( string $content, string $filename ): a
 	$batch['filename'] = mb_substr( sanitize_text_field( $filename ), 0, 200 );
 	$batch['actor']    = fpw_sales_actor();
 	$batch['at']       = time();
-	fpw_sales_write_row( FPW_SALES_PENDING_ROW, $batch );
+	$staged = fpw_sales_transaction( static function () use ( $batch ) {
+		fpw_sales_write_row( FPW_SALES_PENDING_ROW, $batch );
+		return array( 'ok' => true );
+	} );
+	if ( empty( $staged['ok'] ) ) { return $staged; }
 	return array( 'ok' => true, 'message' => $xlsx
-		? 'Excel recibido: el historial NO cambió. Revisa la vista previa o cancela sin efectos; la confirmación XLSX aún está bloqueada.'
+		? 'Excel recibido: el historial NO cambió. Revisa y confirma la vista previa, o cancela sin efectos.'
 		: 'Carga recibida y previsualizada: el historial de compras NO cambió. Revisa la vista previa y confirma para aplicarla, o cancela sin efectos.' );
 }
 
@@ -315,7 +311,38 @@ function fpw_sales_plan( array $sales, array $rows ): array {
  * Identical re-imports are no-ops; conflicting content keeps the imported
  * truth and is reported.
  */
+/** Serialize upload/confirm/cancel; receipt, register and consumption commit together. */
+function fpw_sales_transaction( callable $operation ): array {
+	global $wpdb;
+	$started = false;
+	try {
+		if ( ! defined( 'SQLITE_DB_DROPIN_VERSION' ) ) {
+			$engine = $wpdb->get_var( $wpdb->prepare( 'SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s', $wpdb->options ) );
+			if ( 'innodb' !== strtolower( (string) $engine ) ) { throw new RuntimeException( 'Se requiere almacenamiento transaccional.' ); }
+		}
+		if ( false === $wpdb->query( 'START TRANSACTION' ) ) { throw new RuntimeException( 'No se pudo iniciar la transacción.' ); }
+		$started = true;
+		// An UPDATE takes a write lock on both supported engines, before any snapshot read.
+		if ( false === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = option_value WHERE option_name = %s", FPW_SALES_PENDING_ROW ) ) ) { throw new RuntimeException( 'No se pudo bloquear el lote.' ); }
+		if ( false === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = option_value WHERE option_name = %s", FPW_SALES_REGISTER_ROW ) ) ) { throw new RuntimeException( 'No se pudo bloquear el historial.' ); }
+		$result = $operation();
+		if ( empty( $result['ok'] ) ) { $wpdb->query( 'ROLLBACK' ); return $result; }
+		if ( false === $wpdb->query( 'COMMIT' ) ) {
+			$wpdb->query( 'ROLLBACK' );
+			return array( 'ok' => false, 'message' => 'Resultado de confirmación incierto. Revisa el recibo y el historial antes de cualquier reintento.' );
+		}
+		return $result;
+	} catch ( Throwable $e ) {
+		if ( $started ) { $wpdb->query( 'ROLLBACK' ); }
+		return array( 'ok' => false, 'message' => 'No se aplicó el lote: falló el almacenamiento transaccional. Conserva el archivo y revisa el historial antes de reintentar.' );
+	}
+}
+
 function fpw_sales_confirm( string $token ): array {
+	return fpw_sales_transaction( static fn() => fpw_sales_confirm_locked( $token ) );
+}
+
+function fpw_sales_confirm_locked( string $token ): array {
 	if ( '' === $token ) { return array( 'ok' => false, 'message' => 'Falta el identificador de la vista previa; confirma desde la pantalla del importador.' ); }
 	$pending = fpw_sales_pending_batch();
 	if ( ! is_array( $pending ) ) {
@@ -324,11 +351,9 @@ function fpw_sales_confirm( string $token ): array {
 	if ( ! hash_equals( (string) ( $pending['token'] ?? '' ), $token ) ) {
 		return array( 'ok' => false, 'message' => 'El lote revisado ya no está disponible: la vista previa fue reemplazada por una carga posterior. Vuelve a revisar y confirmar la carga actual.' );
 	}
-	if ( 'xlsx' === ( $pending['format'] ?? '' ) ) {
-		return array( 'ok' => false, 'message' => 'La confirmación XLSX está bloqueada: esta versión permite revisar y cancelar, sin aplicar ventas.' );
-	}
 	$register = fpw_sales_register();
-	$plan = fpw_sales_plan( $register['sales'], is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
+	$xlsx = 'xlsx' === ( $pending['format'] ?? '' );
+	$plan = $xlsx ? fpw_sales_workbook_changes( $pending, $register['sales'] ) : fpw_sales_plan( $register['sales'], is_array( $pending['rows'] ?? null ) ? $pending['rows'] : array() );
 	$aplicadas = count( $plan['new'] );
 	$ya = $plan['same'];
 	$conflictos = $plan['conflicts'];
@@ -342,14 +367,17 @@ function fpw_sales_confirm( string $token ): array {
 		'actor'             => fpw_sales_actor(),
 		'at'                => $now,
 		'filename'          => (string) ( $pending['filename'] ?? '' ),
+		'source_sha256'     => (string) ( $pending['source_sha256'] ?? '' ),
+		'pendientes'        => $plan['pending'] ?? array(),
+		'pendientes_total'  => count( $plan['pending'] ?? array() ),
 		'filas'             => count( ( $pending['rows'] ?? array() ) ),
 		'aplicadas'         => $aplicadas,
 		'ya_importadas'     => $ya,
-		'conflictos'        => array_slice( $conflictos, 0, 50 ),
+		'conflictos'        => $conflictos,
 		'conflictos_total'  => count( $conflictos ),
 		'enriquecidas'      => count( $plan['enrich'] ),
 		'campos_enriquecidos' => array_sum( array_map( 'count', $plan['enrich'] ) ),
-		'cambios'           => array_slice( array_map( static fn( $id, $fields ) => array( 'id' => $id, 'campos' => $fields ), array_keys( $plan['enrich'] ), $plan['enrich'] ), 0, 50 ),
+		'cambios'           => array_map( static fn( $id, $fields ) => array( 'id' => $id, 'campos' => $fields ), array_keys( $plan['enrich'] ), $plan['enrich'] ),
 		'sin_asociacion'    => (int) ( $pending['sin_asociacion_total'] ?? 0 ),
 		'errores_total'     => (int) ( $pending['errores_total'] ?? 0 ),
 	);
@@ -359,9 +387,11 @@ function fpw_sales_confirm( string $token ): array {
 	foreach ( $register['sales'] as $i => $sale ) {
 		$fields = $plan['enrich'][ (string) ( $sale['id'] ?? '' ) ] ?? null;
 		if ( null === $fields ) { continue; }
+		if ( isset( $sale['enriched'] ) && ! is_array( $sale['enriched'] ) ) { throw new RuntimeException( 'Procedencia de enriquecimiento inválida.' ); }
 		$register['sales'][ $i ] = array_merge( $sale, $fields, array( 'enriched' => array_merge( (array) ( $sale['enriched'] ?? array() ), array( array( 'batch' => $token, 'at' => $receipt['at'], 'fields' => array_keys( $fields ) ) ) ) ) );
 	}
 	foreach ( $plan['new'] as $row ) {
+		if ( $xlsx ) { $register['sales'][] = $row + array( 'batch' => $token, 'imported_at' => $now ); continue; }
 		$register['sales'][] = array(
 			'id'          => (string) $row['id'],
 			'rut'         => (string) ( $row['rut_norm'] ?? '' ),
@@ -377,15 +407,19 @@ function fpw_sales_confirm( string $token ): array {
 	}
 	fpw_sales_write_row( FPW_SALES_REGISTER_ROW, $register );
 	fpw_sales_clear_pending();
-	fpw_sales_sweep_receipts();
+	// Receipts remain durable exactly-once anchors; do not sweep applied tokens.
 	$message = 'Importación aplicada: ' . $aplicadas . ' ventas nuevas, ' . $receipt['enriquecidas'] . ' enriquecidas con detalle, ' . $ya . ' ya importadas (sin duplicar), '
 		. count( $conflictos ) . ' en conflicto (se conservó lo importado), ' . $receipt['sin_asociacion']
-		. ' asociaciones sin resolver, ' . $receipt['errores_total'] . ' filas con error.';
+		. ' asociaciones sin resolver, ' . $receipt['errores_total'] . ' filas con error, ' . $receipt['pendientes_total'] . ' entidades pendientes de revisión.';
 	return array( 'ok' => true, 'message' => $message, 'receipt' => $receipt );
 }
 
 /** Cancel the reviewed preview: the register and everything else stay exactly as they were. */
 function fpw_sales_cancel( string $token ): array {
+	return fpw_sales_transaction( static fn() => fpw_sales_cancel_locked( $token ) );
+}
+
+function fpw_sales_cancel_locked( string $token ): array {
 	$pending = fpw_sales_pending_batch();
 	if ( ! is_array( $pending ) || ! hash_equals( (string) ( $pending['token'] ?? '' ), $token ) ) {
 		return array( 'ok' => false, 'message' => 'No hay una vista previa vigente con ese identificador: no se cambió nada.' );
@@ -521,7 +555,9 @@ function fpw_sales_handle_upload(): array {
 
 /** One CLP amount as the source supports it; an absent total is an em dash, never zero. */
 function fpw_sales_format_clp( $total ): string {
-	return null === $total ? '—' : number_format( (int) $total, 0, ',', '.' ) . ' CLP';
+	if ( null === $total || '' === $total ) { return '—'; }
+	$parts = explode( '.', (string) $total, 2 );
+	return preg_replace( '/\B(?=(\d{3})+(?!\d))/', '.', $parts[0] ) . ( isset( $parts[1] ) ? ',' . $parts[1] : '' ) . ' CLP';
 }
 
 /** The mobile-first screen shell and its styles. */
@@ -630,11 +666,18 @@ function fpw_sales_receipts_html(): string {
 	foreach ( $receipts as $receipt ) {
 		$conflictos = (int) ( $receipt['conflictos_total'] ?? 0 );
 		$receipt_rows .= '<tr><td>' . esc_html( date_i18n( get_option( 'date_format' ), (int) ( $receipt['at'] ?? 0 ) ) ) . '</td><td>' . esc_html( (string) ( $receipt['actor'] ?? '' ) ) . '</td>'
-			. '<td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['enriquecidas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
+			. '<td>' . (int) ( $receipt['pendientes_total'] ?? 0 ) . '</td><td>' . (int) ( $receipt['aplicadas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['enriquecidas'] ?? 0 ) . '</td><td>' . (int) ( $receipt['ya_importadas'] ?? 0 ) . '</td><td>' . $conflictos . '</td><td>' . (int) ( $receipt['sin_asociacion'] ?? 0 ) . '</td><td>' . (int) ( $receipt['errores_total'] ?? 0 ) . '</td>'
 			. '</tr>';
+		if ( ! empty( $receipt['source_sha256'] ) ) {
+			$receipt_rows .= '<tr><td colspan="9"><details><summary>Procedencia y casos no aplicados</summary><p>' . esc_html( $receipt['filename'] . ' · SHA256: ' . $receipt['source_sha256'] ) . '</p><p>Conflictos: ' . esc_html( implode( ', ', $receipt['conflictos'] ?? array() ) ) . '</p><ul>';
+			foreach ( $receipt['pendientes'] ?? array() as $item ) {
+				$receipt_rows .= '<li>' . esc_html( $item['id'] . ' · Filas: ' . implode( ', ', $item['rows'] ) . ' · ' . implode( ', ', $item['reasons'] ) . ' · ' . implode( ', ', $item['movements'] ) ) . '</li>';
+			}
+			$receipt_rows .= '</ul></details></td></tr>';
+		}
 	}
 	return '<section><h2>Importaciones aplicadas</h2>'
-		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Nuevas</th><th scope="col">Enriquecidas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
+		. '<table><thead><tr><th scope="col">Fecha</th><th scope="col">Hecha por</th><th scope="col">Pendientes</th><th scope="col">Nuevas</th><th scope="col">Enriquecidas</th><th scope="col">Ya importadas</th><th scope="col">Conflictos</th><th scope="col">Sin asociación</th><th scope="col">Errores</th></tr></thead><tbody>' . $receipt_rows . '</tbody></table>'
 		. '<p class="fpw-sales__note">Estas son las cargas confirmadas y sus resultados. Las filas con errores o conflictos no se importan.</p></section>';
 }
 

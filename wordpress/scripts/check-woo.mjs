@@ -154,6 +154,7 @@ console.log(run(php,[path.join(root,'scripts/price-list-test.php')]));
 console.log(run(php,[path.join(root,'scripts/dispatch-distance-test.php')]));
 // Issue #54 (cut 5 of #49): manual Sales Register import + Purchase History by normalized RUT.
 console.log(run(php,[path.join(root,'scripts/sales-workbook-test.php')])); // includes CSV regression
+console.log(run(php,[path.join(root,'scripts/sales-workbook-persistence-test.php')]));
 console.log(run(php,[path.join(root,'scripts/sales-workbook-contract-test.php')]));
 console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/sales-history-workbook-test.py')]));
 console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php')]));

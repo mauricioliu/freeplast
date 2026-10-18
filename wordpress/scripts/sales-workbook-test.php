@@ -71,10 +71,9 @@ check( 'xlsx' === $pending['format'] && hash( 'sha256', $xlsx ) === $pending['so
 $html = fpw_sales_pending_preview_html();
 check( str_contains( $html, '24.0975' ) && str_contains( $html, '12.04875' ), 'exact entity and line decimals displayed without rounding' );
 check( str_contains( $html, '&lt;script&gt;' ) && ! str_contains( $html, '<script>' ), 'source cells escaped' );
-check( ! str_contains( $html, 'value="confirm"' ) && str_contains( $html, 'good-fpw_sales_cancel' ), 'only nonce-protected cancel, no XLSX confirm control' );
-check( ! fpw_sales_confirm( $pending['token'] )['ok'], 'forged direct XLSX confirm blocked' );
+check( str_contains( $html, 'value="confirm"' ) && str_contains( $html, 'good-fpw_sales_confirm' ) && str_contains( $html, 'good-fpw_sales_cancel' ), 'nonce-protected confirm and cancel controls' );
 check( fpw_sales_cancel( $pending['token'] )['ok'], 'XLSX cancels' );
-check( $protected === $GLOBALS['fpws_table'], 'preview, blocked confirm and cancel leave protected state identical' );
+check( $protected === $GLOBALS['fpws_table'], 'preview and cancel leave protected state identical' );
 $sheet = 'xl/worksheets/sheet1.xml';
 $variants = array(
 	'wrong header' => str_replace( '>RUT<', '>Wrong<', $parts[$sheet] ),
