@@ -52,13 +52,18 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     for (const [slug, active, field] of [
       ['fpw-data', 'Mantenedores', '.fpw-data-row'],
       ['fpw-price-list', 'Precios', '[name="fpw_price_nonce"]'],
-      ['fpw-sales-import', 'Ventas Históricas', '[name="fpw_sales_nonce"]'],
+      ['fpw-sales-history', 'Ventas históricas', '.fpw-history'],
+      ['fpw-sales-import', 'Importar ventas', '[name="fpw_sales_nonce"]'],
     ]) {
       const response = await owner('/wp-admin/admin.php?page=' + slug);
       check(response.status === 200, 'workspace: native maintenance submenu opens: ' + slug);
       const screen = document(await response.text());
       check(screen.querySelectorAll('.fpw-workspace-header').length === 1 && screen.querySelector('.fpw-workspace-header img')?.getAttribute('src') === doc.querySelector('.fpw-workspace-header img')?.getAttribute('src'), 'workspace: same banner on ' + slug);
-      check(screen.querySelector('.fpw-workspace-navigation [aria-current="page"]')?.textContent === active, 'workspace: maintenance active navigation ' + slug);
+      const current = screen.querySelectorAll('.fpw-workspace-navigation [aria-current="page"]');
+      check(current.length === 1 && current[0].textContent === active, 'workspace: maintenance active navigation ' + slug);
+      if (slug !== 'fpw-data') {
+        check(asSitePath(current[0].href) === '/wp-admin/admin.php?page=' + slug, 'workspace: active maintenance link targets its own screen ' + slug);
+      }
       check(!!screen.querySelector(field), 'workspace: native maintenance callback and form render: ' + slug);
       check([...screen.querySelectorAll('.fpw-workspace-navigation a')].some(a => asSitePath(a.href) === inbox), 'workspace: maintenance links back to inbox ' + slug);
       check((await staff('/wp-admin/admin.php?page=' + slug)).status === 403, 'workspace: unrelated sales staff stays denied ' + slug);
@@ -66,7 +71,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const dataActor = makeCookieFetch(), quoteActor = makeCookieFetch();
     check(await wpLogin(dataActor, `workspace-data-${suffix}`, fixture.password) === 302, 'workspace: data maintainer authenticates');
     check(await wpLogin(quoteActor, `workspace-quote-${suffix}`, fixture.password) === 302, 'workspace: quotation manager authenticates');
-    for (const slug of ['fpw-data', 'fpw-price-list', 'fpw-sales-import']) {
+    for (const slug of ['fpw-data', 'fpw-price-list', 'fpw-sales-history', 'fpw-sales-import']) {
       const response = await dataActor('/wp-admin/admin.php?page=' + slug);
       check(response.status === 200, 'workspace: data-only account opens native submenu ' + slug);
       const screen = document(await response.text());
@@ -79,7 +84,13 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const quoteDoc = document(await quotePage.text());
     check(!quoteDoc.querySelector('.fpw-workspace-maintenance') && quoteDoc.querySelectorAll('.fpw-workspace-navigation a').length === 1, 'workspace: quotation-only inbox offers no forbidden maintenance links');
     check(!doc.querySelector('.fpw-workspace-maintenance') && doc.querySelectorAll('.fpw-workspace-navigation > a').length === 1 && doc.querySelectorAll('.fpw-maintenance-menu').length === 1, 'workspace: inbox has one maintenance dropdown, no duplicate sidebar or top-level price links');
-    check(doc.querySelectorAll('.fpw-maintenance-options a').length === 2 && !doc.querySelector('.fpw-maintenance-menu').hasAttribute('open'), 'workspace: exactly two maintenance options start collapsed');
+    const maintenance = [...doc.querySelectorAll('.fpw-maintenance-options a')];
+    check(maintenance.length === 3 && !doc.querySelector('.fpw-maintenance-menu').hasAttribute('open'), 'workspace: exactly three maintenance options start collapsed');
+    check(JSON.stringify(maintenance.map(a => [a.textContent, asSitePath(a.href)])) === JSON.stringify([
+      ['Precios', '/wp-admin/admin.php?page=fpw-price-list'],
+      ['Ventas históricas', '/wp-admin/admin.php?page=fpw-sales-history'],
+      ['Importar ventas', '/wp-admin/admin.php?page=fpw-sales-import'],
+    ]), 'workspace: history opens viewer by default and importer stays separately reachable');
     check(doc.querySelector('h1')?.textContent === 'Solicitudes de clientes', 'workspace: visible quotation inbox heading');
     const link = [...doc.querySelectorAll('a')].find(a => a.textContent.includes(`Empresa workspace ${suffix}`));
     check(!!link, 'workspace: inbox links the real received request, not a demo');

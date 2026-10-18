@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 function fpw_workspace_surface(): bool {
 	$page = $_GET['page'] ?? '';
 	if ( ! is_string( $page ) ) { return false; }
-	if ( in_array( $page, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import' ), true ) ) { return fpw_can_manage_data(); }
+	if ( in_array( $page, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import', 'fpw-sales-history' ), true ) ) { return fpw_can_manage_data(); }
 	return fpw_can_manage_quotations() && ( 'fpw-quotations' === $page || ( 'fpw-quote-draft' === $page && '1' === ( $_GET['workspace'] ?? '' ) ) );
 }
 
@@ -29,11 +29,12 @@ function fpw_workspace_navigation(): string {
 		$links .= '<a href="' . esc_url( fpw_workspace_url() ) . '"' . ( $current ? ' aria-current="page"' : '' ) . '>Cotizaciones</a>';
 	}
 	if ( fpw_can_manage_data() ) {
-		$active = in_array( $page, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import' ), true );
+		$active = in_array( $page, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import', 'fpw-sales-history' ), true );
 		$links .= '<details class="fpw-maintenance-menu"><summary aria-controls="fpw-maintenance-options"' . ( $active ? ' data-active="true"' : '' ) . ( 'fpw-data' === $page ? ' aria-current="page"' : '' ) . '>Mantenedores<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary><div id="fpw-maintenance-options" class="fpw-maintenance-options">';
 		foreach ( array(
 			array( 'fpw-price-list', 'Precios', fpw_price_screen_url() ),
-			array( 'fpw-sales-import', 'Ventas Históricas', fpw_sales_import_screen_url() ),
+			array( 'fpw-sales-history', 'Ventas históricas', fpw_sales_history_url() ),
+			array( 'fpw-sales-import', 'Importar ventas', fpw_sales_import_screen_url() ),
 		) as [ $slug, $label, $url ] ) {
 			$links .= '<a href="' . esc_url( $url ) . '"' . ( $page === $slug ? ' aria-current="page"' : '' ) . '>' . esc_html( $label ) . '</a>';
 		}

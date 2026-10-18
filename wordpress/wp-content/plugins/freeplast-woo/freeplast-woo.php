@@ -1511,6 +1511,7 @@ require_once __DIR__ . '/data-hub.php';
 
 // Registro de ventas importado (issue #54, corte 5 de #49): the owner's manual CSV import (preview → confirm/cancel, receipts, owner-only screen) and the Purchase History lookups the drafts render. Loads before the draft so its screen can read the history.
 require_once __DIR__ . '/sales-register.php';
+require_once __DIR__ . '/sales-history.php';
 
 // Borrador privado de cotización (issue #50, corte 1 de #49): one durable initial draft per received request + the owner-only screen that reads it.
 require_once __DIR__ . '/quotation-access.php';

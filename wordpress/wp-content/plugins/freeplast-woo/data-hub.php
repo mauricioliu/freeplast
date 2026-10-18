@@ -15,8 +15,13 @@ function fpw_data_hub_entries(): array {
 			'url'         => fpw_price_screen_url(),
 		),
 		array(
-			'title'       => 'Ventas',
-			'description' => 'Carga de planillas históricas e historial de compras por RUT.',
+			'title'       => 'Ventas históricas',
+			'description' => 'Consultar registros cargados y su detalle original.',
+			'url'         => fpw_sales_history_url(),
+		),
+		array(
+			'title'       => 'Importar ventas',
+			'description' => 'Carga de planillas históricas.',
 			'url'         => fpw_sales_import_screen_url(),
 		),
 	) );

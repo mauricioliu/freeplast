@@ -112,7 +112,7 @@ function fpw_quotation_route_allowed( string $script, array $query ): bool {
 function fpw_data_route_allowed( string $script, array $query ): bool {
 	if ( 'profile.php' === $script ) { return true; }
 	if ( 'admin.php' !== $script || isset( $query['action'] ) || isset( $query['import'] ) ) { return false; }
-	return in_array( $query['page'] ?? null, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import' ), true );
+	return in_array( $query['page'] ?? null, array( 'fpw-data', 'fpw-price-list', 'fpw-sales-import', 'fpw-sales-history' ), true );
 }
 
 add_action( 'admin_init', static function () {

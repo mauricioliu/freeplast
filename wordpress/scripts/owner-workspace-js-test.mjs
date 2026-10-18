@@ -229,7 +229,7 @@ export function runOwnerWorkspaceJsTests() {
       check(!submit('fpw_work_save').defaultPrevented, 'saving an incomplete draft stays allowed');
     } finally { dom.window.close(); }
   }
-  const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas Históricas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
+  const menuDom = new JSDOM('<div class="fpw-workspace"><nav><a href="/inbox">Cotizaciones</a><details class="fpw-maintenance-menu"><summary aria-controls="options">Mantenedores</summary><div id="options"><a href="/prices">Precios</a><a href="/sales">Ventas históricas</a><a href="/import">Importar ventas</a></div></details></nav></div>', {runScripts:'outside-only',url:'https://freeplast.test/'});
   try {
     const {document,Event,MouseEvent,KeyboardEvent} = menuDom.window;
     menuDom.window.eval(source);

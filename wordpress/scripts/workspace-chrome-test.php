@@ -11,6 +11,7 @@ function fpw_workspace_url() { return 'admin.php?page=fpw-quotations'; }
 function fpw_data_hub_url() { return 'admin.php?page=fpw-data'; }
 function fpw_price_screen_url() { return 'admin.php?page=fpw-price-list'; }
 function fpw_sales_import_screen_url() { return 'admin.php?page=fpw-sales-import'; }
+function fpw_sales_history_url() { return 'admin.php?page=fpw-sales-history'; }
 function esc_url($s) { return htmlspecialchars($s, ENT_QUOTES); }
 function esc_html($s) { return htmlspecialchars($s, ENT_QUOTES); }
 function admin_url() { return '/wp-admin/'; }
@@ -22,10 +23,10 @@ $n=0;
 function check($ok,$label) { global $n; $n++; if(!$ok) throw new RuntimeException($label); }
 foreach ([['manage_woocommerce'=>true],['fpw_manage_quotations'=>true],['fpw_manage_data'=>true],[]] as $caps) {
  $GLOBALS['caps']=$caps;
- foreach (['fpw-quotations','fpw-quote-draft','fpw-data','fpw-price-list','fpw-sales-import','plugins',['evil']] as $page) {
+ foreach (['fpw-quotations','fpw-quote-draft','fpw-data','fpw-price-list','fpw-sales-import','fpw-sales-history','plugins',['evil']] as $page) {
   $_GET=['page'=>$page,'workspace'=>'1'];
   $quote = in_array($page,['fpw-quotations','fpw-quote-draft'],true);
-  $data = in_array($page,['fpw-data','fpw-price-list','fpw-sales-import'],true);
+  $data = in_array($page,['fpw-data','fpw-price-list','fpw-sales-import','fpw-sales-history'],true);
   check(fpw_workspace_surface() === (($quote && fpw_can_manage_quotations()) || ($data && fpw_can_manage_data())), 'chrome limited to authorized exact surfaces');
  }
  $_GET=['page'=>'fpw-price-list'];
@@ -40,13 +41,20 @@ foreach ([['manage_woocommerce'=>true],['fpw_manage_quotations'=>true],['fpw_man
  check(str_contains($header,'Administración')===current_user_can('manage_woocommerce'),'restricted accounts get logout, not administration');
 }
 $GLOBALS['caps']=['manage_woocommerce'=>true];
+foreach (['fpw-sales-history'=>'Ventas históricas','fpw-sales-import'=>'Importar ventas'] as $slug=>$label) {
+ $_GET=['page'=>$slug];
+ $nav=fpw_workspace_navigation();
+ check(substr_count($nav,'aria-current="page"')===1,'exactly one active sales destination');
+ check(str_contains($nav,'href="admin.php?page='.$slug.'" aria-current="page">'.$label.'</a>'),'sales active label and destination match');
+ check(str_contains($nav,'href="admin.php?page=fpw-sales-history"') && str_contains($nav,'href="admin.php?page=fpw-sales-import"'),'viewer and importer remain distinct reachable options');
+}
 $_GET=['page'=>'fpw-quote-draft'];
 check(!fpw_workspace_surface(),'legacy draft not opted into workspace remains native');
 $_GET=['page'=>'fpw-quote-draft','workspace'=>'1'];
 check(str_contains(fpw_workspace_navigation(),'href="admin.php?page=fpw-quotations" aria-current="page"'),'draft belongs to quotation navigation');
 $notice_filter = $GLOBALS['filters']['action_scheduler_check_pastdue_actions'] ?? null;
 check(is_callable($notice_filter), 'scheduler notice policy registered');
-foreach (['fpw-quotations','fpw-quote-draft','fpw-data','fpw-price-list','fpw-sales-import'] as $page) {
+foreach (['fpw-quotations','fpw-quote-draft','fpw-data','fpw-price-list','fpw-sales-import','fpw-sales-history'] as $page) {
  $_GET=['page'=>$page,'workspace'=>'1'];
  check(false === $notice_filter(true), 'scheduler notice absent from owner surface: '.$page);
  check(false === $notice_filter(false), 'upstream denial remains denied');

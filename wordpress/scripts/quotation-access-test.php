@@ -89,6 +89,8 @@ foreach (array(
  ['admin.php',['page'=>'fpw-data'],true],
  ['admin.php',['page'=>'fpw-price-list'],true],
  ['admin.php',['page'=>'fpw-sales-import'],true],
+ ['admin.php',['page'=>'fpw-sales-history'],true],
+ ['admin.php',['page'=>'fpw-sales-history','action'=>'evil'],false],
  ['profile.php',[],true],
  ['admin.php',['page'=>'fpw-quotations'],false],
  ['admin.php',['page'=>'fpw-quote-draft','workspace'=>'1'],false],
@@ -100,6 +102,7 @@ foreach (array(
 ) as [$script,$query,$allowed]) {
  check(fpw_data_route_allowed($script,$query)===$allowed, 'Data allowlist is exactly the hub, prices and sales');
 }
+check(!fpw_quotation_route_allowed('admin.php',['page'=>'fpw-sales-history']), 'Quotation-only role cannot open history');
 $GLOBALS['caps']=array('fpw_manage_data'=>true);
 check(fpw_can_manage_data() && !fpw_can_manage_quotations(), 'Data permission never grants quotations');
 check(fpw_restricted_user((object)['roles'=>['fpw_data_manager']]), 'The data role is a restricted account');
