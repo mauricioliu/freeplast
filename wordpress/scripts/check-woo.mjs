@@ -157,6 +157,8 @@ console.log(run(php,[path.join(root,'scripts/sales-workbook-test.php')])); // in
 console.log(run(php,[path.join(root,'scripts/sales-workbook-persistence-test.php')]));
 console.log(run(php,[path.join(root,'scripts/sales-workbook-contract-test.php')]));
 console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/sales-history-workbook-test.py')]));
+console.log(run(process.env.PYTHON || 'python3',[path.join(root,'scripts/sales-workbook-dev-verify-test.py')]));
+for (const file of ['sales-workbook-dev-snapshot.php','sales-workbook-dev-operation.php']) { run(php,['-l',path.join(root,'scripts',file)]); checks++; }
 console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php')]));
 // Issue #59 (cut 10 of #49): dispatch-address assistance without losing manual entry.
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
