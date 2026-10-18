@@ -40,6 +40,14 @@ function fpw_workbook_sum( array $values ): string {
 	return fpw_workbook_decimal( $total );
 }
 
+function fpw_workbook_movement( array $row ): string {
+	$marker = ( $row['notes'] ?? '' ) . ' ' . ( $row['payment'] ?? '' );
+	if ( preg_match( '/anul|cancel/iu', $marker ) ) { return 'cancellation'; }
+	if ( preg_match( '/devol|devuel/iu', $marker ) ) { return 'return'; }
+	if ( preg_match( '/cr[eé]dito|ajuste/iu', $marker ) ) { return 'adjustment'; }
+	return 'sale';
+}
+
 /**
  * Input rows: source_row, invoice, date (ISO), rut, producto, total_cajas,
  * precio, neto, total, payment, notes, plus raw cells/provenance retained verbatim.
@@ -52,7 +60,9 @@ function fpw_workbook_map( array $rows, array $legacy, array $existing ): array 
 	foreach ( $rows as $row ) {
 		$invoice = trim( (string) ( $row['invoice'] ?? '' ) );
 		if ( ! preg_match( '/^[1-9]\d{0,11}$/D', $invoice ) ) {
-			$results[] = array( 'status' => 'pending', 'reasons' => array( 'invoice_unproven' ), 'rows' => array( $row ) );
+			$movement = fpw_workbook_movement( $row );
+			$results[] = array( 'status' => 'pending', 'reasons' => 'sale' === $movement ? array( 'invoice_unproven' ) : array( 'invoice_unproven', 'special_movement_review' ),
+				'movements' => 'sale' === $movement ? array() : array( $movement ), 'rows' => array( $row ) );
 			continue;
 		}
 		$groups[$invoice][] = $row;
@@ -67,11 +77,7 @@ function fpw_workbook_map( array $rows, array $legacy, array $existing ): array 
 			$date = (string) ( $row['date'] ?? '' ); $dates[] = $date;
 			if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/D', $date ) || ! checkdate( (int) substr( $date, 5, 2 ), (int) substr( $date, 8, 2 ), (int) substr( $date, 0, 4 ) ) ) { $reasons[] = 'invalid_date'; }
 			$note = trim( (string) ( $row['notes'] ?? '' ) );
-			$marker = strtolower( $note . ' ' . ( $row['payment'] ?? '' ) );
-			$movement = 'sale';
-			if ( preg_match( '/anul|cancel/u', $marker ) ) { $movement = 'cancellation'; }
-			elseif ( preg_match( '/devol|devuel/u', $marker ) ) { $movement = 'return'; }
-			elseif ( preg_match( '/cr[eé]dito|ajuste/u', $marker ) ) { $movement = 'adjustment'; }
+			$movement = fpw_workbook_movement( $row );
 			if ( 'sale' !== $movement ) { $reasons[] = 'special_movement_review'; }
 			elseif ( '' !== $note && 'OK' !== strtoupper( $note ) ) { $reasons[] = 'observation_review'; }
 			$movements[] = $movement;

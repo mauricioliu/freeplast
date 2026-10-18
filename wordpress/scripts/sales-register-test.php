@@ -332,6 +332,7 @@ check( fpw_sales_pending_batch() === null, 'the POSTed confirm consumed the pend
 fpw_sales_process_upload_string( "id_venta,fecha,rut,total\nP-1,2026-09-01,76123456-7,5000\n", 'pendiente.csv' );
 ob_start(); fpw_render_sales_import_screen(); $page = ob_get_clean();
 check( str_contains( $page, 'Importar ventas' ) && str_contains( $page, 'Cargar CSV' ), 'the owner retains the import screen and neighboring CSV upload' );
+check( str_contains( $page, 'CSV y Excel oficial permiten revisar y confirmar la importación, o cancelar sin efectos.' ) && ! str_contains( $page, 'confirmación aún bloqueada' ), 'upload instructions describe enabled confirmation for both formats' );
 check( str_contains( $page, 'name="fpw_sales_nonce"' ) && str_contains( $page, 'multipart/form-data' ), 'the upload form carries its CSRF nonce' );
 check( substr_count( $page, 'fpw_sales_nonce' ) >= 3, 'upload, confirm and cancel each carry their own nonce' );
 check( str_contains( $page, 'P-1' ) && str_contains( $page, 'Confirmar e importar' ) && str_contains( $page, 'Cancelar sin efectos' ), 'the pending preview renders its review, confirm and cancel actions' );

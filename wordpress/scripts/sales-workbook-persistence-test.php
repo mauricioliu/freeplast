@@ -93,6 +93,22 @@ try {
 	$pending = $newrow; $pending['notes'] = 'devolución';
 	persistence_stage( array( $pending ), 'movement' ); $r = fpw_sales_confirm( 'movement' );
 	check( 1 === $r['receipt']['pendientes_total'] && array( 'return' ) === $r['receipt']['pendientes'][0]['movements'] && $original === fpw_sales_register(), 'special movements pending, not purchases' );
+	$prior_receipts = fpw_sales_receipts( PHP_INT_MAX );
+	foreach ( array( 'CRÉDITO' => 'adjustment', 'DEVOLUCIÓN' => 'return', 'ANULADA' => 'cancellation' ) as $marker => $movement ) {
+		foreach ( array( '456', '', 'S/F' ) as $invoice ) {
+			$pending = array_replace( $newrow, array( 'invoice' => $invoice, 'payment' => $marker, 'notes' => '' ) );
+			$token = 'pending-' . $movement . '-' . ( '' === $invoice ? 'missing' : $invoice );
+			persistence_stage( array( $pending ), $token );
+			$html = fpw_sales_pending_preview_html();
+			check( str_contains( $html, $movement ) && str_contains( $html, 'special_movement_review' ), 'pending preview retains explicit movement' );
+			$r = fpw_sales_confirm( $token );
+			$receipt = fpw_sales_receipt( $token );
+			check( $r['ok'] && 0 === $receipt['aplicadas'] && 0 === $receipt['enriquecidas'] && 1 === $receipt['pendientes_total'] && $original === fpw_sales_register() && null === fpw_sales_pending_batch(), 'movement stays unapplied after confirmation' );
+			$item = $receipt['pendientes'][0];
+			check( array( $movement ) === $item['movements'] && array( $pending['source_row'] ) === $item['rows'] && ( '456' === $invoice || ( '' === $item['id'] && in_array( 'invoice_unproven', $item['reasons'], true ) ) ), 'durable pending receipt keeps movement and unproven identity' );
+		}
+	}
+	foreach ( $prior_receipts as $receipt ) { check( $receipt === fpw_sales_receipt( $receipt['token'] ), 'prior audit receipt remains immutable' ); }
 	$invalid = $newrow; $invalid['date'] = '2023-02-29';
 	check( 'pending' === fpw_sales_workbook_plan( array( $invalid ), array(), array() )[0]['status'], 'invalid calendar date pending' );
 	$invalid['date'] = '2024-02-29'; $invalid['rut'] = 'bad';

@@ -690,7 +690,7 @@ function fpw_sales_import_markup( array $banner = array() ): string {
 		. '<input type="hidden" name="fpw_sales_action" value="upload">' . $nonce_upload
 		. '<p><label for="fpw-sales-file">Planilla de ventas (CSV o XLSX, máximo 2 MB)</label><br><input id="fpw-sales-file" type="file" name="fpw_sales_file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></p>'
 		. '<p><button type="submit" class="button button-primary">Previsualizar carga</button></p></form>'
-		. '<p class="fpw-sales__note">Subir y previsualizar NO cambia el historial. CSV permite confirmar; Excel oficial permite revisar y cancelar, con confirmación aún bloqueada.</p></section>';
+		. '<p class="fpw-sales__note">Subir y previsualizar NO cambia el historial. CSV y Excel oficial permiten revisar y confirmar la importación, o cancelar sin efectos.</p></section>';
 
 	return fpw_sales_screen_shell(
 		'<h1>Importar ventas</h1>'

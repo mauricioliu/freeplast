@@ -22,6 +22,17 @@ foreach ( array( 'Se anuló' => 'cancellation', 'Devolución' => 'return', 'Nota
 	$r = $map( array( array_replace( $row, array( 'notes' => $note ) ) ) )[0];
 	check( 'pending' === $r['status'] && array( $movement ) === $r['movements'], 'special movement ' . $movement );
 }
+foreach ( array( 'notes', 'payment' ) as $field ) {
+	foreach ( array( 'ANULACIÓN' => 'cancellation', 'DEVOLUCIÓN' => 'return', 'NOTA DE CRÉDITO' => 'adjustment', 'AJUSTE' => 'adjustment' ) as $marker => $movement ) {
+		foreach ( array( '42', '', 'S/F', '042' ) as $invoice ) {
+			$r = $map( array( array_replace( $row, array( $field => $marker, 'invoice' => $invoice ) ) ) )[0];
+			check( 'pending' === $r['status'] && array( $movement ) === $r['movements'] && in_array( 'special_movement_review', $r['reasons'], true ), 'explicit Unicode movement retained: ' . $field . '/' . $marker . '/' . $invoice );
+			check( null === ( $r['total'] ?? null ) && ( '42' === $invoice || ( ! isset( $r['id'] ) && in_array( 'invoice_unproven', $r['reasons'], true ) ) ), 'unproven invoice never gains identity or total' );
+		}
+	}
+}
+$r = $map( array( array_replace( $row, array( 'invoice' => '' ) ) ) )[0];
+check( array() === $r['movements'] && array( 'invoice_unproven' ) === $r['reasons'] && ! isset( $r['id'], $r['total'] ), 'missing identity alone never infers a movement' );
 check( 'pending' === $map( array( array_replace( $row, array( 'notes' => 'deben saldo' ) ) ) )[0]['status'], 'ambiguous observation' );
 foreach ( array( 'invoice' => '', 'rut' => '', 'total' => '1,25', 'precio' => '-2', 'date' => '2025-02-30', 'total_cajas' => '1.5' ) as $key => $value ) {
 	check( 'pending' === $map( array( array_replace( $row, array( $key => $value ) ) ) )[0]['status'], 'invalid ' . $key );
