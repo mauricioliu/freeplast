@@ -184,6 +184,8 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 /* Editor validation overrides selected tiles and price/keyboard focus without recoloring values. */
 .fpw-workspace-editable{--fp-validation-error:#b42318}
 .fpw-workspace-editable #fpw-work-form [aria-invalid="true"]{border-color:var(--fp-validation-error);outline:2px solid var(--fp-validation-error);outline-offset:2px;box-shadow:none;accent-color:var(--fp-validation-error)}
+/* WordPress admin paints checked radios itself, so accent-color alone cannot recolor them. */
+.fpw-workspace-editable #fpw-work-form input[type="radio"][aria-invalid="true"]:checked{background:var(--fp-validation-error)}
 .fpw-workspace-editable #fpw-work-form .fpw-pickup-option:has(input[aria-invalid="true"]){border-color:var(--fp-validation-error);outline-color:var(--fp-validation-error);box-shadow:inset 0 0 0 1px var(--fp-validation-error)}
 .fpw-workspace-editable #fpw-work-form .fpw-field-error,.fpw-workspace-editable [data-fpw-review-error]{color:var(--fp-validation-error)}
 .fpw-workspace-editable [data-fpw-review-error]{border-color:var(--fp-validation-error)}

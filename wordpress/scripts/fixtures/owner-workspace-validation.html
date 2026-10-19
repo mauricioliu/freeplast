@@ -4,6 +4,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Validación del editor · fixture sintética</title>
+<style id="wp-admin-radio-baseline">
+/* WordPress 7.1 wp-admin/css/forms.css radio subset; admin default theme from base-styles. */
+:root{--wp-admin-theme-color:#3858e9}
+input[type="radio"]{border:1px solid #1e1e1e;background:#fff;color:#1e1e1e;cursor:pointer;line-height:0;height:1rem;outline:0;padding:0!important;text-align:center;vertical-align:middle;width:1rem;min-width:1rem;-webkit-appearance:none;box-shadow:none;display:inline-flex;border-radius:50%;margin-right:.25rem;align-items:center;justify-content:center}
+input[type="radio"]:focus{border-color:#1e1e1e;box-shadow:0 0 0 2px #fff,0 0 0 4px var(--wp-admin-theme-color);outline:2px solid transparent}
+input[type="radio"]:checked{background:var(--wp-admin-theme-color);border-color:var(--wp-admin-theme-color)}
+input[type="radio"]:checked::before{float:left;display:inline-block;vertical-align:middle;content:"";border-radius:50%;width:.5rem;height:.5rem;margin:auto;background-color:#fff;outline:4px solid transparent}
+</style>
 <link rel="stylesheet" href="../../wp-content/plugins/freeplast-woo/assets/owner-workspace.css">
 <style>body{margin:0} .fixture-controls{padding:16px} .fixture-controls button{margin:4px}</style>
 <div class="fpw-workspace fpw-workspace-editable">
@@ -45,7 +53,7 @@
         <div id="conflict" class="fpw-draft__notice">Conflicto ficticio: otra versión existe.</div>
       </aside>
     </div>
-    <section id="maintenance"><h2>Mantenedor fuera del editor</h2><label>Otro campo<input id="outside" aria-invalid="true" value="0" aria-describedby="outside-error"><span id="outside-error" class="fpw-field-error">Error de otro mantenedor.</span></label></section>
+    <section id="maintenance"><h2>Mantenedor fuera del editor</h2><label>Otro campo<input id="outside" aria-invalid="true" value="0" aria-describedby="outside-error"><span id="outside-error" class="fpw-field-error">Error de otro mantenedor.</span></label><label>Radio de otro mantenedor<input id="outside-radio" type="radio" name="outside-pickup" checked aria-invalid="true"></label></section>
   </div>
 </div>
 <div class="fpw-workspace"><div id="outside-summary" class="fpw-workspace-notice" data-fpw-review-error>Resumen fuera del editor activo.</div></div>
@@ -73,7 +81,7 @@ window.runOwnerValidationStyleChecks = () => {
   const red = 'rgb(180, 35, 24)', blue = 'rgb(16, 0, 144)';
   const css = node => getComputedStyle(node);
   const get = id => document.getElementById(id);
-  const outside = ['outside', 'outside-error', 'outside-summary', 'public', 'info', 'success', 'conflict', 'untouched'];
+  const outside = ['outside', 'outside-radio', 'outside-error', 'outside-summary', 'public', 'info', 'success', 'conflict', 'untouched'];
   const fingerprint = node => ['color', 'borderTopColor', 'outlineColor', 'boxShadow', 'backgroundColor', 'accentColor'].map(key => css(node)[key]).join('|');
   const isolated = outside.map(id => fingerprint(get(id)));
   const properties = ['borderTopColor', 'outlineColor', 'outlineStyle', 'outlineWidth', 'boxShadow', 'accentColor', 'color', 'backgroundColor'];
@@ -82,6 +90,9 @@ window.runOwnerValidationStyleChecks = () => {
   const checked = get('pickup-a').checked;
   try {
     setOwnerValidationState(false);
+    for (const field of fields.filter(field => field.type === 'radio')) {
+      ok(css(field).appearance === 'none' && (!field.checked || css(field).backgroundColor === 'rgb(56, 88, 233)'), field.id + ': real admin baseline, not native accent rendering');
+    }
     const baseline = fields.map(field => { field.focus(); return capture(field); });
     const tileBaseline = fields.filter(field => field.type === 'radio').map(field => { field.focus(); return capture(field.closest('label')); });
     setOwnerValidationState(true);
@@ -94,7 +105,13 @@ window.runOwnerValidationStyleChecks = () => {
       const message = get(field.getAttribute('aria-describedby'));
       ok(message && !message.hidden && css(message).color === red, field.id + ': associated red message');
       if (field.type === 'radio') {
-        ok(css(field).accentColor === red && css(field).appearance === 'auto', field.id + ': native red accent');
+        ok(css(field).accentColor === red && css(field).appearance === 'none', field.id + ': red accent preserves admin appearance');
+        field.checked = true;
+        ok(css(field).backgroundColor === red && getComputedStyle(field, '::before').backgroundColor === 'rgb(255, 255, 255)', field.id + ': actual selected fill red, admin dot preserved');
+        field.checked = false;
+        ok(css(field).backgroundColor !== red, field.id + ': unchecked fill unchanged');
+        get('pickup-a').checked = checked;
+        get('pickup-b').checked = !checked;
         const tile = css(field.closest('label'));
         ok(tile.borderTopColor === red && tile.borderTopStyle === 'solid' && parseFloat(tile.borderTopWidth) >= 1, field.id + ': actual tile border');
         ok(tile.boxShadow.includes(red) && !tile.boxShadow.includes(blue), field.id + ': selected inset');

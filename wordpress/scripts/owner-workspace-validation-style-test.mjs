@@ -20,13 +20,20 @@ export function runOwnerWorkspaceValidationStyleTests() {
     const errorRules = rules.filter(rule => rule.cssText.includes('--fp-validation-error'));
     const matching = (node, property) => errorRules.some(rule => rule.style.getPropertyValue(property).includes('var(--fp-validation-error)') && node.matches(rule.selectorText));
     const get = id => document.getElementById(id);
-    ok(errorRules.length === 5, 'bounded token/control/tile/message/summary overrides');
+    const adminRules = [...get('wp-admin-radio-baseline').sheet.cssRules];
+    const adminRadio = adminRules.find(rule => rule.selectorText === 'input[type="radio"]');
+    const adminChecked = adminRules.find(rule => rule.selectorText === 'input[type="radio"]:checked');
+    ok(adminRadio?.style.getPropertyValue('-webkit-appearance') === 'none', 'fixture reproduces WP admin appearance suppression');
+    ok(adminChecked?.style.getPropertyValue('background') === 'var(--wp-admin-theme-color)', 'fixture reproduces WP admin checked fill');
+    ok(adminRules.some(rule => rule.selectorText === 'input[type="radio"]:checked::before' && rule.style.getPropertyValue('background-color') === '#fff'), 'fixture preserves admin selected dot');
+    ok(errorRules.length === 6, 'bounded token/control/checked-radio/tile/message/summary overrides');
     ok(errorRules.every(rule => rule.selectorText.split(',').every(selector => selector.trim().startsWith('.fpw-workspace-editable'))), 'all overrides scoped to editable workspace');
     ok(errorRules.some(rule => rule.selectorText === '.fpw-workspace-editable' && rule.style.getPropertyValue('--fp-validation-error') === '#b42318'), 'reuse accessible semantic token');
     const controlRule = errorRules.find(rule => rule.selectorText.endsWith('#fpw-work-form [aria-invalid="true"]'));
     ok(controlRule && controlRule.style.getPropertyValue('box-shadow') === 'none', 'form ID specificity beats price and global focus; suppress blue shadow');
     ok(controlRule.style.getPropertyValue('accent-color') === 'var(--fp-validation-error)', 'native radios use accent');
     ok(!controlRule.style.getPropertyValue('color'), 'values retain ink');
+    ok(errorRules.every(rule => !rule.style.getPropertyValue('appearance') && !rule.style.getPropertyValue('-webkit-appearance')), 'preserve incumbent radio appearance');
     ok(errorRules.every(rule => !rule.selectorText.includes(':invalid')), 'untouched native invalidity never triggers red');
     for (const field of document.querySelectorAll('#fpw-work-form [aria-describedby]')) {
       ok(matching(field, 'border-color') && matching(field, 'outline'), field.id + ': invalid border and focus');
@@ -35,22 +42,26 @@ export function runOwnerWorkspaceValidationStyleTests() {
       const tile = field.type === 'radio' ? field.closest('label') : null;
       if (tile) {
         ok(matching(tile, 'border-color') && matching(tile, 'outline-color') && matching(tile, 'box-shadow'), field.id + ': tile selected/focus overrides');
-        field.checked = !field.checked;
+        field.checked = true;
+        ok(matching(field, 'background'), field.id + ': admin checked fill uses red');
+        field.checked = false;
+        ok(!matching(field, 'background'), field.id + ': unchecked fill retained');
         ok(matching(tile, 'border-color'), field.id + ': checked/unchecked');
+        field.checked = true;
       }
       for (const state of ['false', null]) {
         if (state === null) field.removeAttribute('aria-invalid');
         else field.setAttribute('aria-invalid', state);
         ok(!matching(field, 'border-color') && !matching(field, 'outline'), field.id + ': corrected ' + state);
-        if (tile) ok(!matching(tile, 'border-color'), field.id + ': corrected tile ' + state);
+        if (tile) ok(!matching(tile, 'border-color') && !matching(field, 'background'), field.id + ': corrected tile and selected fill ' + state);
       }
     }
     for (const id of ['server-summary', 'js-summary']) {
       ok(matching(get(id), 'color') && matching(get(id), 'border-color'), id + ': both summary placements');
     }
-    for (const id of ['outside', 'outside-error', 'outside-summary', 'public', 'info', 'success', 'conflict', 'untouched']) {
+    for (const id of ['outside', 'outside-radio', 'outside-error', 'outside-summary', 'public', 'info', 'success', 'conflict', 'untouched']) {
       ok(!errorRules.some(rule => rule.style.getPropertyValue('color') && get(id).matches(rule.selectorText)), id + ': no red text leak');
-      ok(!matching(get(id), 'border-color') && !matching(get(id), 'outline'), id + ': no red control leak');
+      ok(!matching(get(id), 'border-color') && !matching(get(id), 'outline') && !matching(get(id), 'background'), id + ': no red control/fill leak');
     }
     document.querySelector('.fpw-workspace-editable').classList.remove('fpw-workspace-editable');
     ok(!matching(get('server-summary'), 'color'), 'summary excluded when editor inactive');
