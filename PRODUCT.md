@@ -72,10 +72,12 @@ plus Santiago coverage, and fast, reliable service with direct quote intake.
   arrows) — reference the real asset, never redraw.
 - Palette: brand blue `#100090`, heading blue `#0B078C`, green `#306020`, product ink
   `#17181C`; brand hues derive from blue/green/neutrals (frozen v6 contract).
-  Sole semantic exception: active Solicitud de cotización field errors use accessible
-  red `#b42318` for borders, focus outlines and inline messages, never labels or values.
-  Existing validation timing and accessible explanations stay intact; valid fields retain
-  blue focus. Summaries and other error surfaces keep their existing treatment.
+  Sole semantic exception: active Solicitud de cotización and internal quotation editor
+  field errors use accessible red `#b42318` for borders, focus outlines, radio accents
+  and inline messages, never labels or values. The editor's validation summary also uses
+  red text and border. Existing validation timing and accessible explanations stay intact;
+  corrected fields recover incumbent styling and blue focus. Public request summaries,
+  other maintainers and information/success/conflict notices keep their existing treatment.
 - Typeface: Manrope, loaded from a local OFL-licensed file (frozen v6 contract).
 - Voice: "Plástico que vuelve a servir" · "Venta mayorista de productos plásticos" ·
   "Estamos en la VI Región y en Santiago. Servicio rápido y confiable".

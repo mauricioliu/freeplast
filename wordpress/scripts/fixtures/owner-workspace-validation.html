@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Validación del editor · fixture sintética</title>
+<link rel="stylesheet" href="../../wp-content/plugins/freeplast-woo/assets/owner-workspace.css">
+<style>body{margin:0} .fixture-controls{padding:16px} .fixture-controls button{margin:4px}</style>
+<div class="fpw-workspace fpw-workspace-editable">
+  <div class="fpw-workspace-body">
+    <h1>Editor · datos ficticios</h1>
+    <p>Prueba sintética de estilos, no WordPress E2E. No guarda ni envía. Retiro y despacho juntos solo para cobertura.</p>
+    <div class="fixture-controls">
+      <button type="button" id="show-errors">Mostrar errores</button>
+      <button type="button" id="clear-errors">Corregir estados</button>
+    </div>
+    <div id="server-summary" class="fpw-workspace-notice" role="alert" tabindex="-1" data-fpw-review-error><p>No se puede revisar la cotización. Completa los datos señalados:</p><ul><li>Completa precio, cantidad, retiro, destino, despacho y vigencia.</li></ul></div>
+    <div class="fpw-workspace-editor">
+      <form id="fpw-work-form" novalidate>
+        <div id="js-summary" class="fpw-workspace-notice" role="alert" tabindex="-1" data-fpw-review-error hidden><p>Resumen insertado dentro del formulario por JavaScript.</p></div>
+        <section class="fpw-workspace-product">
+          <h2>Productos a cotizar</h2><h3>Caja de prueba</h3>
+          <div class="fpw-product-inputs">
+            <label>Cantidad<input id="quantity" name="fpw_work[lines][0][quantity]" value="0" aria-invalid="true" aria-describedby="quantity-error"><span class="fpw-field-error" id="quantity-error">Ingresa una cantidad entera entre 1 y 1.000.000.</span></label>
+            <label class="fpw-offered-price">Precio neto<input id="price" name="fpw_work[lines][0][price]" value="0" aria-invalid="true" aria-describedby="price-error"><span class="fpw-field-error" id="price-error">Ingresa un monto entero entre 1 y 99.999.999 CLP.</span></label>
+          </div>
+        </section>
+        <section class="fpw-workspace-dispatch">
+          <h2>Retiro</h2>
+          <fieldset class="fpw-pickup"><legend>Selecciona el punto de retiro</legend><div class="fpw-pickup-options">
+            <label class="fpw-pickup-option"><input id="pickup-a" type="radio" name="pickup" value="a" checked aria-invalid="true" aria-describedby="pickup-a-error"><span class="fpw-field-error" id="pickup-a-error">Selecciona el punto de retiro.</span><span>Bodega ficticia A</span></label>
+            <label class="fpw-pickup-option"><input id="pickup-b" type="radio" name="pickup" value="b" aria-invalid="true" aria-describedby="pickup-b-error"><span class="fpw-field-error" id="pickup-b-error">Selecciona el punto de retiro.</span><span>Bodega ficticia B</span></label>
+          </div></fieldset>
+        </section>
+        <section class="fpw-workspace-dispatch"><h2>Despacho</h2>
+          <label>Destino<textarea id="destination" aria-invalid="true" aria-describedby="destination-error"></textarea><span class="fpw-field-error" id="destination-error">Completa el destino (máximo 800 caracteres).</span></label>
+          <label>Monto de despacho<input id="freight" value="0" aria-invalid="true" aria-describedby="freight-error"><span class="fpw-field-error" id="freight-error">Revisa el monto de despacho: cambió el destino o las cantidades.</span></label>
+        </section>
+        <label>Vigencia · días desde la aprobación<input id="validity" type="number" value="366" aria-invalid="true" aria-describedby="validity-error"><span class="fpw-field-error" id="validity-error">Ingresa una vigencia entre 1 y 365 días.</span></label>
+        <label>Campo sin validar<input id="untouched" required value=""></label>
+      </form>
+      <aside class="fpw-workspace-summary"><h2>Avisos sin cambios</h2>
+        <div id="info" class="fpw-workspace-notice">Aviso informativo ficticio.</div>
+        <div id="success" class="fpw-draft__notice is-ok">Confirmación ficticia.</div>
+        <div id="conflict" class="fpw-draft__notice">Conflicto ficticio: otra versión existe.</div>
+      </aside>
+    </div>
+    <section id="maintenance"><h2>Mantenedor fuera del editor</h2><label>Otro campo<input id="outside" aria-invalid="true" value="0" aria-describedby="outside-error"><span id="outside-error" class="fpw-field-error">Error de otro mantenedor.</span></label></section>
+  </div>
+</div>
+<div class="fpw-workspace"><div id="outside-summary" class="fpw-workspace-notice" data-fpw-review-error>Resumen fuera del editor activo.</div></div>
+<form id="public-form"><label>Formulario público ajeno<input id="public" aria-invalid="true"></label></form>
+<script>
+// Inert state simulation only; production validation is exercised by its existing JS/PHP tests.
+const form = document.getElementById('fpw-work-form');
+const fields = [...form.querySelectorAll('[aria-describedby]')];
+const summaries = [...document.querySelectorAll('.fpw-workspace-editable [data-fpw-review-error]')];
+window.setOwnerValidationState = invalid => {
+  for (const field of fields) {
+    if (invalid) field.setAttribute('aria-invalid', 'true');
+    else field.removeAttribute('aria-invalid');
+    document.getElementById(field.getAttribute('aria-describedby')).hidden = !invalid;
+  }
+  summaries[0].hidden = !invalid;
+  summaries[1].hidden = true;
+};
+document.addEventListener('submit', event => event.preventDefault(), true);
+document.getElementById('show-errors').onclick = () => setOwnerValidationState(true);
+document.getElementById('clear-errors').onclick = () => setOwnerValidationState(false);
+window.runOwnerValidationStyleChecks = () => {
+  let checks = 0;
+  const ok = (condition, message) => { checks++; if (!condition) throw new Error(message); };
+  const red = 'rgb(180, 35, 24)', blue = 'rgb(16, 0, 144)';
+  const css = node => getComputedStyle(node);
+  const get = id => document.getElementById(id);
+  const outside = ['outside', 'outside-error', 'outside-summary', 'public', 'info', 'success', 'conflict', 'untouched'];
+  const fingerprint = node => ['color', 'borderTopColor', 'outlineColor', 'boxShadow', 'backgroundColor', 'accentColor'].map(key => css(node)[key]).join('|');
+  const isolated = outside.map(id => fingerprint(get(id)));
+  const properties = ['borderTopColor', 'outlineColor', 'outlineStyle', 'outlineWidth', 'boxShadow', 'accentColor', 'color', 'backgroundColor'];
+  const capture = node => properties.map(key => css(node)[key]).join('|');
+  const savedFocus = document.activeElement;
+  const checked = get('pickup-a').checked;
+  try {
+    setOwnerValidationState(false);
+    const baseline = fields.map(field => { field.focus(); return capture(field); });
+    const tileBaseline = fields.filter(field => field.type === 'radio').map(field => { field.focus(); return capture(field.closest('label')); });
+    setOwnerValidationState(true);
+    for (const field of fields) {
+      field.focus();
+      ok(document.activeElement === field, field.id + ': focusable');
+      ok(css(field).outlineColor === red && css(field).outlineStyle === 'solid' && parseFloat(css(field).outlineWidth) >= 2, field.id + ': red focus');
+      ok(css(field).boxShadow === 'none', field.id + ': no blue focus shadow');
+      ok(css(field).color !== red && css(field.closest('label')).color !== red, field.id + ': normal value/label');
+      const message = get(field.getAttribute('aria-describedby'));
+      ok(message && !message.hidden && css(message).color === red, field.id + ': associated red message');
+      if (field.type === 'radio') {
+        ok(css(field).accentColor === red && css(field).appearance === 'auto', field.id + ': native red accent');
+        const tile = css(field.closest('label'));
+        ok(tile.borderTopColor === red && tile.borderTopStyle === 'solid' && parseFloat(tile.borderTopWidth) >= 1, field.id + ': actual tile border');
+        ok(tile.boxShadow.includes(red) && !tile.boxShadow.includes(blue), field.id + ': selected inset');
+        if (field.matches(':focus-visible')) ok(tile.outlineColor === red, field.id + ': tile keyboard focus');
+      } else ok(css(field).borderTopColor === red, field.id + ': red border');
+    }
+    for (const summary of summaries) {
+      summary.hidden = false;
+      ok(css(summary).color === red && css(summary).borderTopColor === red, summary.id + ': text/border');
+      ok(css(summary.querySelector('p')).color === red, summary.id + ': inherited paragraph');
+      summary.hidden = true;
+      ok(css(summary).display === 'none', summary.id + ': hidden');
+    }
+    setOwnerValidationState(false);
+    fields.forEach((field, i) => {
+      field.focus();
+      ok(capture(field) === baseline[i], field.id + ': restored incumbent focus/styles');
+      ok(get(field.getAttribute('aria-describedby')).hidden, field.id + ': message hidden');
+    });
+    fields.filter(field => field.type === 'radio').forEach((field, i) => {
+      field.focus(); ok(capture(field.closest('label')) === tileBaseline[i], field.id + ': restored tile');
+    });
+    outside.forEach((id, i) => ok(fingerprint(get(id)) === isolated[i] && css(get(id)).color !== red, id + ': isolated'));
+    ok(document.documentElement.scrollWidth <= innerWidth, 'no horizontal overflow');
+    return {checks, width: innerWidth, status: 'PASS', scope: 'synthetic CSS only; keyboard Tab check separate'};
+  } finally {
+    get('pickup-a').checked = checked;
+    get('pickup-b').checked = !checked;
+    setOwnerValidationState(true);
+    savedFocus?.focus();
+  }
+};
+</script>
+</html>
