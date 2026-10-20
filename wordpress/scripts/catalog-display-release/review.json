@@ -1,0 +1,1240 @@
+{
+  "schema": "freeplast-catalog-display-v1",
+  "home": "https://freeplast.mliu.site",
+  "source": "http://mliu:8131",
+  "scope": "17 existing product identities: category assignment, four category names/descriptions, featured membership/order and displayed G2 title only. No images, product metadata, variants, prices, users, requests or commercial options.",
+  "catalog": [
+    {
+      "slug": "caja-cosechera-3-4",
+      "target_id": 10,
+      "name": "Caja Cosechera 3/4",
+      "menu_order": 3,
+      "featured": true,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "caja-universal-cerrada-negra",
+      "target_id": 12,
+      "name": "Caja Universal Cerrada Negra",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola",
+        "carnes",
+        "productos-del-mar"
+      ]
+    },
+    {
+      "slug": "caja-universal-ventilada-negra",
+      "target_id": 14,
+      "name": "Caja Universal Ventilada Negra",
+      "menu_order": 1,
+      "featured": true,
+      "categories": [
+        "agricola",
+        "carnes",
+        "productos-del-mar"
+      ]
+    },
+    {
+      "slug": "caja-universal-cerrada-color",
+      "target_id": 16,
+      "name": "Caja Universal Cerrada Color",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola",
+        "carnes",
+        "productos-del-mar"
+      ]
+    },
+    {
+      "slug": "caja-universal-ventilada-color",
+      "target_id": 23,
+      "name": "Caja Universal Ventilada Color",
+      "menu_order": 2,
+      "featured": true,
+      "categories": [
+        "agricola",
+        "carnes",
+        "productos-del-mar"
+      ]
+    },
+    {
+      "slug": "caja-tomatera",
+      "target_id": 30,
+      "name": "Caja Tomatera",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "caja-frutillera",
+      "target_id": 32,
+      "name": "Caja Frutillera",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "caja-frutera",
+      "target_id": 34,
+      "name": "Caja Frutera",
+      "menu_order": 8,
+      "featured": true,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "caja-paltera",
+      "target_id": 36,
+      "name": "Caja Paltera",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "caja-merlucera",
+      "target_id": 38,
+      "name": "Caja Merlucera",
+      "menu_order": 9,
+      "featured": true,
+      "categories": [
+        "productos-del-mar"
+      ]
+    },
+    {
+      "slug": "caja-pollera",
+      "target_id": 40,
+      "name": "Caja Pollera",
+      "menu_order": 7,
+      "featured": true,
+      "categories": [
+        "carnes"
+      ]
+    },
+    {
+      "slug": "tote",
+      "target_id": 42,
+      "name": "Tote",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "traversa-para-bins-tipo-upc",
+      "target_id": 44,
+      "name": "Traversa para Bins Tipo UPC",
+      "menu_order": 5,
+      "featured": true,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "traversa-para-bins-tipo-g1",
+      "target_id": 46,
+      "name": "Traversa para Bins Tipo G1",
+      "menu_order": 4,
+      "featured": true,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "traversa-para-bins-tipo-romano",
+      "target_id": 48,
+      "name": "Traversa para Bins Tipo G2",
+      "menu_order": 6,
+      "featured": true,
+      "categories": [
+        "agricola"
+      ]
+    },
+    {
+      "slug": "bases-plasticas-para-pediluvios",
+      "target_id": 50,
+      "name": "Bases plásticas para pediluvios",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "otros"
+      ]
+    },
+    {
+      "slug": "ladrillo-plastico",
+      "target_id": 52,
+      "name": "Ladrillo plástico",
+      "menu_order": 0,
+      "featured": false,
+      "categories": [
+        "otros"
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "table": "terms",
+      "before": null,
+      "after": {
+        "term_id": "18",
+        "name": "Carnes",
+        "slug": "carnes",
+        "term_group": "0"
+      }
+    },
+    {
+      "table": "terms",
+      "before": null,
+      "after": {
+        "term_id": "19",
+        "name": "Productos del mar",
+        "slug": "productos-del-mar",
+        "term_group": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "10",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Cosechera 3/4 de PEAD reciclado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1250 g. Apilable, para cosecha de fruta, uva y paltas.",
+        "post_title": "Caja Cosechera 3/4",
+        "post_excerpt": "Caja Cosechera 3/4 apilable para cosecha de fruta, uva y paltas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-cosechera-3-4",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:18",
+        "post_modified_gmt": "2026-10-02 02:27:18",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-cosechera-3-4/",
+        "menu_order": "1",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "10",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Cosechera 3/4 de PEAD reciclado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1250 g. Apilable, para cosecha de fruta, uva y paltas.",
+        "post_title": "Caja Cosechera 3/4",
+        "post_excerpt": "Caja Cosechera 3/4 apilable para cosecha de fruta, uva y paltas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-cosechera-3-4",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:18",
+        "post_modified_gmt": "2026-10-02 02:27:18",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-cosechera-3-4/",
+        "menu_order": "3",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "12",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Universal Cerrada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1480 g. Capacidad: 46 l. Anidable y apilable, para logística, productos del mar, cecinas y carnes.",
+        "post_title": "Caja Universal Cerrada Negra",
+        "post_excerpt": "Caja Universal Cerrada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-cerrada-negra",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:18",
+        "post_modified_gmt": "2026-10-02 02:27:18",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-cerrada-negra/",
+        "menu_order": "2",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "12",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Universal Cerrada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1480 g. Capacidad: 46 l. Anidable y apilable, para logística, productos del mar, cecinas y carnes.",
+        "post_title": "Caja Universal Cerrada Negra",
+        "post_excerpt": "Caja Universal Cerrada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-cerrada-negra",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:18",
+        "post_modified_gmt": "2026-10-02 02:27:18",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-cerrada-negra/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "12",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "12",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "12",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "12",
+        "term_taxonomy_id": "18",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "12",
+        "term_taxonomy_id": "19",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "14",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Universal Ventilada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1800 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes.",
+        "post_title": "Caja Universal Ventilada Negra",
+        "post_excerpt": "Caja Universal Ventilada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-ventilada-negra",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:19",
+        "post_modified_gmt": "2026-10-02 02:27:19",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-ventilada-negra/",
+        "menu_order": "3",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "14",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:18",
+        "post_date_gmt": "2026-10-02 02:27:18",
+        "post_content": "Caja Universal Ventilada Negra de PEAD reciclado. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1800 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes.",
+        "post_title": "Caja Universal Ventilada Negra",
+        "post_excerpt": "Caja Universal Ventilada Negra de PEAD reciclado, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-ventilada-negra",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:19",
+        "post_modified_gmt": "2026-10-02 02:27:19",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-ventilada-negra/",
+        "menu_order": "1",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "14",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "14",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "14",
+        "term_taxonomy_id": "18",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "14",
+        "term_taxonomy_id": "19",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "16",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "16",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "16",
+        "term_taxonomy_id": "18",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "16",
+        "term_taxonomy_id": "19",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "23",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:19",
+        "post_date_gmt": "2026-10-02 02:27:19",
+        "post_content": "Caja Universal Ventilada Color de PEAD virgen. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1870 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes. Colores: blanco, rojo, amarillo, azul y verde.",
+        "post_title": "Caja Universal Ventilada Color",
+        "post_excerpt": "Caja Universal Ventilada Color de PEAD virgen, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-ventilada-color",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-01 23:27:25",
+        "post_modified_gmt": "2026-10-02 02:27:25",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-ventilada-color/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "23",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:19",
+        "post_date_gmt": "2026-10-02 02:27:19",
+        "post_content": "Caja Universal Ventilada Color de PEAD virgen. Medidas exteriores: 625 x 444 x 226 mm. Peso: 1870 g. Capacidad: 46 l. Anidable y apilable, para productos que requieren ventilación, como productos del mar, cecinas y carnes. Colores: blanco, rojo, amarillo, azul y verde.",
+        "post_title": "Caja Universal Ventilada Color",
+        "post_excerpt": "Caja Universal Ventilada Color de PEAD virgen, anidable y apilable, de 46 l.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-universal-ventilada-color",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-01 23:27:25",
+        "post_modified_gmt": "2026-10-02 02:27:25",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-universal-ventilada-color/",
+        "menu_order": "2",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "23",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "23",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "23",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "23",
+        "term_taxonomy_id": "18",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "23",
+        "term_taxonomy_id": "19",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "30",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:20",
+        "post_date_gmt": "2026-10-02 02:27:20",
+        "post_content": "Caja Tomatera de polipropileno (PP). Medidas exteriores: 470 x 340 x 270 mm; interiores: 450 x 320 x 260 mm. Peso: 840 g. Capacidad: 38 l. Color negro. Apilable, para frutas y verduras en general.",
+        "post_title": "Caja Tomatera",
+        "post_excerpt": "Caja Tomatera de polipropileno, apilable, de 38 l para frutas y verduras.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-tomatera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-tomatera/",
+        "menu_order": "4",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "30",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:20",
+        "post_date_gmt": "2026-10-02 02:27:20",
+        "post_content": "Caja Tomatera de polipropileno (PP). Medidas exteriores: 470 x 340 x 270 mm; interiores: 450 x 320 x 260 mm. Peso: 840 g. Capacidad: 38 l. Color negro. Apilable, para frutas y verduras en general.",
+        "post_title": "Caja Tomatera",
+        "post_excerpt": "Caja Tomatera de polipropileno, apilable, de 38 l para frutas y verduras.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-tomatera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-tomatera/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "30",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "32",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:21",
+        "post_date_gmt": "2026-10-02 02:27:21",
+        "post_content": "Caja Frutillera de polipropileno reciclado. Medidas exteriores: 500 x 300 x 110 mm; interiores: 480 x 280 x 85 mm. Peso: 300 g aprox. Color negro. Para cosecha de frutillas.",
+        "post_title": "Caja Frutillera",
+        "post_excerpt": "Caja Frutillera de polipropileno reciclado para cosecha de frutillas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-frutillera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-frutillera/",
+        "menu_order": "5",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "32",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:21",
+        "post_date_gmt": "2026-10-02 02:27:21",
+        "post_content": "Caja Frutillera de polipropileno reciclado. Medidas exteriores: 500 x 300 x 110 mm; interiores: 480 x 280 x 85 mm. Peso: 300 g aprox. Color negro. Para cosecha de frutillas.",
+        "post_title": "Caja Frutillera",
+        "post_excerpt": "Caja Frutillera de polipropileno reciclado para cosecha de frutillas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-frutillera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-frutillera/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "32",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "34",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:21",
+        "post_date_gmt": "2026-10-02 02:27:21",
+        "post_content": "Caja Frutera de PEAD reciclado. Medidas exteriores: 600 x 400 x 210 mm. Peso: 1450 g. Color negro. Especial para el transporte de frutas y hortalizas.",
+        "post_title": "Caja Frutera",
+        "post_excerpt": "Caja Frutera de PEAD reciclado para transporte de frutas y hortalizas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-frutera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-frutera/",
+        "menu_order": "6",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "34",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:21",
+        "post_date_gmt": "2026-10-02 02:27:21",
+        "post_content": "Caja Frutera de PEAD reciclado. Medidas exteriores: 600 x 400 x 210 mm. Peso: 1450 g. Color negro. Especial para el transporte de frutas y hortalizas.",
+        "post_title": "Caja Frutera",
+        "post_excerpt": "Caja Frutera de PEAD reciclado para transporte de frutas y hortalizas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-frutera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:21",
+        "post_modified_gmt": "2026-10-02 02:27:21",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-frutera/",
+        "menu_order": "8",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "38",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:22",
+        "post_date_gmt": "2026-10-02 02:27:22",
+        "post_content": "Caja Merlucera de PEAD reciclado. Medidas exteriores: 660 x 445 x 145 mm. Peso: 2260 g. Capacidad: 40 l. Color negro. Apilable, para transporte de pescados y otros productos del mar.",
+        "post_title": "Caja Merlucera",
+        "post_excerpt": "Caja Merlucera de PEAD reciclado, apilable, de 40 l para pescados y otros productos del mar.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-merlucera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:22",
+        "post_modified_gmt": "2026-10-02 02:27:22",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-merlucera/",
+        "menu_order": "8",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "38",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:22",
+        "post_date_gmt": "2026-10-02 02:27:22",
+        "post_content": "Caja Merlucera de PEAD reciclado. Medidas exteriores: 660 x 445 x 145 mm. Peso: 2260 g. Capacidad: 40 l. Color negro. Apilable, para transporte de pescados y otros productos del mar.",
+        "post_title": "Caja Merlucera",
+        "post_excerpt": "Caja Merlucera de PEAD reciclado, apilable, de 40 l para pescados y otros productos del mar.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-merlucera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:22",
+        "post_modified_gmt": "2026-10-02 02:27:22",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-merlucera/",
+        "menu_order": "9",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "38",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "38",
+        "term_taxonomy_id": "19",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "40",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:22",
+        "post_date_gmt": "2026-10-02 02:27:22",
+        "post_content": "Caja Pollera de HDPE recuperado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1350 g aprox. Color negro. Apilable, para transporte de pollo, carnes y cecinas.",
+        "post_title": "Caja Pollera",
+        "post_excerpt": "Caja Pollera de HDPE recuperado, apilable, para transporte de pollo, carnes y cecinas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-pollera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:22",
+        "post_modified_gmt": "2026-10-02 02:27:22",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-pollera/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "40",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:22",
+        "post_date_gmt": "2026-10-02 02:27:22",
+        "post_content": "Caja Pollera de HDPE recuperado. Medidas exteriores: 600 x 400 x 180 mm; interiores: 570 x 370 x 170 mm. Peso: 1350 g aprox. Color negro. Apilable, para transporte de pollo, carnes y cecinas.",
+        "post_title": "Caja Pollera",
+        "post_excerpt": "Caja Pollera de HDPE recuperado, apilable, para transporte de pollo, carnes y cecinas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "caja-pollera",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:22",
+        "post_modified_gmt": "2026-10-02 02:27:22",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/caja-pollera/",
+        "menu_order": "7",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "40",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "40",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "40",
+        "term_taxonomy_id": "18",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "42",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "42",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "44",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:23",
+        "post_date_gmt": "2026-10-02 02:27:23",
+        "post_content": "Traversa Tipo UPC de polipropileno reciclado. Largo: 1220 mm; alto: 129 mm. Peso: 2050 g. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo UPC",
+        "post_excerpt": "Traversa Tipo UPC de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-upc",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:23",
+        "post_modified_gmt": "2026-10-02 02:27:23",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-upc/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "44",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:23",
+        "post_date_gmt": "2026-10-02 02:27:23",
+        "post_content": "Traversa Tipo UPC de polipropileno reciclado. Largo: 1220 mm; alto: 129 mm. Peso: 2050 g. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo UPC",
+        "post_excerpt": "Traversa Tipo UPC de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-upc",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:23",
+        "post_modified_gmt": "2026-10-02 02:27:23",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-upc/",
+        "menu_order": "5",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "44",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "44",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "44",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "46",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:23",
+        "post_date_gmt": "2026-10-02 02:27:23",
+        "post_content": "Traversa Tipo G1 de polipropileno reciclado. Largo: 1215 mm; alto: 136 mm. Peso: 2520 g. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo G1",
+        "post_excerpt": "Traversa Tipo G1 de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-g1",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:24",
+        "post_modified_gmt": "2026-10-02 02:27:24",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-g1/",
+        "menu_order": "7",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "46",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:23",
+        "post_date_gmt": "2026-10-02 02:27:23",
+        "post_content": "Traversa Tipo G1 de polipropileno reciclado. Largo: 1215 mm; alto: 136 mm. Peso: 2520 g. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo G1",
+        "post_excerpt": "Traversa Tipo G1 de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-g1",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:24",
+        "post_modified_gmt": "2026-10-02 02:27:24",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-g1/",
+        "menu_order": "4",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "46",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "46",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "posts",
+      "before": {
+        "ID": "48",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:24",
+        "post_date_gmt": "2026-10-02 02:27:24",
+        "post_content": "Traversa para Bins Tipo Romano de polipropileno reciclado. Largo: 1220 mm; alto: 107 mm. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo Romano",
+        "post_excerpt": "Traversa para Bins Tipo Romano de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-romano",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:24",
+        "post_modified_gmt": "2026-10-02 02:27:24",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-romano/",
+        "menu_order": "0",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      },
+      "after": {
+        "ID": "48",
+        "post_author": "0",
+        "post_date": "2026-10-02 02:27:24",
+        "post_date_gmt": "2026-10-02 02:27:24",
+        "post_content": "Traversa para Bins Tipo Romano de polipropileno reciclado. Largo: 1220 mm; alto: 107 mm. Color negro. Para reposición de traversas dañadas.",
+        "post_title": "Traversa para Bins Tipo G2",
+        "post_excerpt": "Traversa para Bins Tipo Romano de PP reciclado para reposición de traversas dañadas.",
+        "post_status": "publish",
+        "comment_status": "closed",
+        "ping_status": "closed",
+        "post_password": "",
+        "post_name": "traversa-para-bins-tipo-romano",
+        "to_ping": "",
+        "pinged": "",
+        "post_modified": "2026-10-02 02:27:24",
+        "post_modified_gmt": "2026-10-02 02:27:24",
+        "post_content_filtered": "",
+        "post_parent": "0",
+        "guid": "https://freeplast.mliu.site/product/traversa-para-bins-tipo-romano/",
+        "menu_order": "6",
+        "post_type": "product",
+        "post_mime_type": "",
+        "comment_count": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "48",
+        "term_taxonomy_id": "8",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": null,
+      "after": {
+        "object_id": "48",
+        "term_taxonomy_id": "16",
+        "term_order": "0"
+      }
+    },
+    {
+      "table": "term_relationships",
+      "before": {
+        "object_id": "48",
+        "term_taxonomy_id": "17",
+        "term_order": "0"
+      },
+      "after": null
+    },
+    {
+      "table": "term_taxonomy",
+      "before": {
+        "term_taxonomy_id": "16",
+        "term_id": "16",
+        "taxonomy": "product_cat",
+        "description": "",
+        "parent": "0",
+        "count": "5"
+      },
+      "after": {
+        "term_taxonomy_id": "16",
+        "term_id": "16",
+        "taxonomy": "product_cat",
+        "description": "Cajas, totes y traversas para uso agrícola. Revisa los detalles de cada producto y agrega las cantidades que necesitas.",
+        "parent": "0",
+        "count": "13"
+      }
+    },
+    {
+      "table": "term_taxonomy",
+      "before": null,
+      "after": {
+        "term_taxonomy_id": "18",
+        "term_id": "18",
+        "taxonomy": "product_cat",
+        "description": "Cajas universales y cajas polleras. Revisa sus medidas, características y cantidades para solicitar una cotización.",
+        "parent": "0",
+        "count": "5"
+      }
+    },
+    {
+      "table": "term_taxonomy",
+      "before": null,
+      "after": {
+        "term_taxonomy_id": "19",
+        "term_id": "19",
+        "taxonomy": "product_cat",
+        "description": "Cajas merluceras y cajas universales. Consulta los detalles de cada producto y solicita tu cotización mayorista.",
+        "parent": "0",
+        "count": "5"
+      }
+    },
+    {
+      "table": "term_taxonomy",
+      "before": {
+        "term_taxonomy_id": "17",
+        "term_id": "17",
+        "taxonomy": "product_cat",
+        "description": "",
+        "parent": "0",
+        "count": "12"
+      },
+      "after": {
+        "term_taxonomy_id": "17",
+        "term_id": "17",
+        "taxonomy": "product_cat",
+        "description": "Ladrillos plásticos y bases para pediluvios. Consulta sus características y agrega los productos que necesitas cotizar.",
+        "parent": "0",
+        "count": "2"
+      }
+    },
+    {
+      "table": "term_taxonomy",
+      "before": {
+        "term_taxonomy_id": "8",
+        "term_id": "8",
+        "taxonomy": "product_visibility",
+        "description": "",
+        "parent": "0",
+        "count": "8"
+      },
+      "after": {
+        "term_taxonomy_id": "8",
+        "term_id": "8",
+        "taxonomy": "product_visibility",
+        "description": "",
+        "parent": "0",
+        "count": "9"
+      }
+    }
+  ]
+}
