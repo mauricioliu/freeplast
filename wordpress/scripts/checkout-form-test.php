@@ -181,6 +181,7 @@ foreach (array('is_email', 'sanitize_email') as $function) {
 	eval($match[0]);
 }
 require_once __DIR__ . '/../wp-content/plugins/freeplast-woo/places-validation.php';
+require_once __DIR__ . '/../wp-content/plugins/freeplast-woo/rut.php';
 foreach (array('fpw_is_place_id', 'fpw_checkout_fields', 'fpw_checkout_required_notice', 'fpw_quote_minimum', 'fpw_valid_public_quantity', 'fpw_validate_checkout') as $function) {
 	preg_match('/function ' . $function . '\(.*?\n\}/s', $adapter_source, $match);
 	eval($match[0]);
@@ -206,8 +207,8 @@ $validator = new NativeFieldValidation();
 $GLOBALS['fpm_meta'] = array();
 function get_post_meta( $id, $key, $single = false ) { return $GLOBALS['fpm_meta'][(int) $id][$key] ?? ''; }
 function get_the_title( $id = 0 ) { return 11 === (int) $id ? 'Caja de prueba' : ( 'Producto ' . (int) $id ); }
-$valid = array('billing_first_name'=>'Persona Prueba', 'billing_phone'=>'+56 9 0000 0000', 'billing_email'=>'prueba@example.invalid', 'billing_company'=>'Empresa Sintética', 'billing_fp_rut'=>'RUT de prueba', 'billing_fp_giro'=>'Actividad de prueba', 'billing_fp_dispatch'=>'no', 'billing_fp_address'=>'', 'order_comments'=>'', 'payment_method'=>'quotes-gateway');
-verify(!$validator->validate($valid)->has_errors(), 'complete fixture and empty optional message accepted; no invented RUT/phone rules');
+$valid = array('billing_first_name'=>'Persona Prueba', 'billing_phone'=>'+56 9 0000 0000', 'billing_email'=>'prueba@example.invalid', 'billing_company'=>'Empresa Sintética', 'billing_fp_rut'=>'76.591.629-1', 'billing_fp_giro'=>'Actividad de prueba', 'billing_fp_dispatch'=>'no', 'billing_fp_address'=>'', 'order_comments'=>'', 'payment_method'=>'quotes-gateway');
+verify(!$validator->validate($valid)->has_errors(), 'complete fixture with valid RUT and empty optional message accepted');
 /* Sending accepts below-minimum quantities, including separate colors. */
 $GLOBALS['fpm_meta'][11]['_fp_quote_min_qty'] = '5';
 $errors = $validator->validate($valid);
@@ -232,6 +233,7 @@ $invalid_cases['commune'] = array('billing_fp_dispatch'=>'si', 'billing_fp_addre
 $invalid_cases['location'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'javascript:alert(1)');
 $invalid_cases['dispatch-invalid'] = array('billing_fp_dispatch'=>'otra');
 $invalid_cases['email-format'] = array('billing_email'=>'correo-invalido');
+$invalid_cases['rut-format'] = array('billing_fp_rut'=>'14.442.480-3');
 $invalid_cases['multiple'] = array('billing_first_name'=>'', 'billing_fp_giro'=>'', 'billing_fp_dispatch'=>'si', 'billing_fp_address'=>'');
 foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email','billing_fp_address') as $key) {
 	$invalid_cases[$key . '-long'] = array($key=>'billing_email' === $key ? str_repeat('a', 225) . '@example.invalid' : str_repeat('a', 'billing_fp_address' === $key ? 801 : 241));
@@ -269,7 +271,7 @@ foreach ($invalid_cases as $case=>$overrides) {
 	verify(str_contains($rejected_html, 'value="' . esc_attr($data['billing_company']) . '"'), 'no-JS keeps entered company: ' . $case);
 	$validation_fixtures[$case] = $fixture;
 }
-foreach (array('billing_first_name','billing_company','billing_fp_rut','billing_fp_giro','billing_phone','billing_email') as $key) {
+foreach (array('billing_first_name','billing_company','billing_fp_giro','billing_phone','billing_email') as $key) {
 	$limit = 'billing_fp_address' === $key ? 800 : 240;
 	$value = 'billing_email' === $key ? str_repeat('a', $limit - 16) . '@example.invalid' : str_repeat('a', $limit);
 	$base = 'billing_fp_address' === $key ? array_replace($valid, array('billing_fp_dispatch'=>'si')) : $valid;

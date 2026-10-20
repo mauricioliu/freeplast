@@ -62,6 +62,13 @@ export async function runLoopAddedCountTests() {
     assert.equal(doc.body.innerHTML, before, 'invalid payload cannot invent zero or wipe the last confirmed count');
   }
 
+  const featured = new JSDOM('<div data-fpw-loop-add><div class="fpw-card-selection" data-product-id="21"></div></div>');
+  api.updateAll(featured.window.document, fragments([[21, 12], [101, 9], [102, 3]]));
+  assert.equal(featured.window.document.querySelector('.fp-added-pill__badge').textContent, '12', 'featured parent projects authoritative aggregate, not the most recently added color');
+  api.updateAll(featured.window.document, fragments([[21, 9], [101, 9]]));
+  assert.equal(featured.window.document.querySelector('.fp-added-pill__badge').textContent, '9', 'removing one color reconciles the parent from native fragments');
+  featured.window.close();
+
   const window = dom.window;
   const $ = jquery(window);
   window.jQuery = $;

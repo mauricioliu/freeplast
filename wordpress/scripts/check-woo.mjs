@@ -132,6 +132,8 @@ function variationCase(classes){return {button:fakeButton(classes),hint:fakeHint
 console.log(run(php,[path.join(root,'scripts/test-woo-adapter.php')]));
 console.log(run(php,[path.join(root,'scripts/card-selection-test.php')]));
 console.log(run(php,[path.join(root,'scripts/card-theme-test.php')]));
+console.log(run(php,[path.join(root,'scripts/featured-variants-test.php')]));
+console.log(run(process.execPath,[path.join(root,'scripts/featured-variants-test.mjs')]));
 console.log(run(php,[path.join(root,'scripts/catalog-tools-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-native-frame-test.php')]));
 { const {runDesktopVisualTests}=await import('./desktop-visual-test.mjs');
@@ -165,6 +167,8 @@ console.log(run(php,[path.join(root,'scripts/sales-enrichment-migration-test.php
 console.log(run(php,[path.join(root,'scripts/checkout-places-test.php')]));
 console.log(run(php,[path.join(root,'scripts/encoded-location-url-test.php')]));
 console.log(run(php,[path.join(root,'scripts/checkout-form-test.php')]));
+console.log(run(php,[path.join(root,'scripts/rut-test.php')]));
+console.log(run(process.execPath,[path.join(root,'scripts/checkout-rut-test.mjs')]));
 for (const mode of ['allowed', 'missing', 'missing-guard', 'constant-only', 'wrong-marker', 'staging', 'production', 'bad-host', 'mismatch', 'bad-sink']) {
   for (const test of ['checkout-places-test.php', 'checkout-form-test.php']) {
     console.log(`${mode}: ${run(php, [path.join(root, 'scripts', test)], { ...process.env, FREEPLAST_TEST_MANUAL_MODE: mode })}`);

@@ -175,6 +175,23 @@ cli wp eval-file /opt/freeplast/upgrade.php minima rollback minima.json <token>
 
 Regresiones offline: `wordpress/scripts/local-upgrade-test.php` (36 checks: guardias de contención, hash fijado, plan/apply/rollback con CAS, drift de comercio rechazado, COMMIT incierto sin rollback reclamado, placeholder/contacto byte-exacto, edición concurrente sobrevive, seed intacto; fuente alterada rechazada en proceso aislado). **No ejecutado contra el stack local**: la aplicación real espera la integración del helper por el lead y la orden `dev-local-despliegue`.
 
+## Sitemap y descubrimiento
+
+El tema sirve `/sitemap.xml` como XML dinámico (sin archivo ni regeneración manual).
+Cada petición refleja las páginas, entradas y productos publicados sin contraseña y
+las categorías de producto no vacías. Excluye productos ocultos y páginas de carrito,
+checkout y cuenta, incluidas páginas antiguas con bloques/shortcodes de esos flujos.
+`/robots.txt` conserva sus reglas y añade la URL canónica del sitemap usando `home_url()`.
+No cambia `blog_public`: las previews no indexables conservan `X-Robots-Tag: noindex`
+también en el sitemap. Prueba offline: `php wordpress/scripts/sitemap-test.php`.
+
+La portada añade cabeceras `Link` (RFC 8288) con relaciones registradas:
+`service-desc` apunta al índice REST de WordPress (rutas, métodos y argumentos),
+y `describedby` al recurso JSON de la página cuando existe una ruta REST pública.
+Se resuelven con las APIs de WordPress, sin fijar host ni ID, y se conservan las
+cabeceras Link existentes. No se crean endpoints ni se modifican permisos REST.
+Prueba offline: `php wordpress/scripts/discovery-test.php`.
+
 ## Gates offline
 
 ```bash

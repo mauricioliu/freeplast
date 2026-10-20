@@ -59,7 +59,8 @@ require_once __DIR__ . '/sales-workbook.php';
  * missing, malformed, ambiguous (leftover tokens) or oversized.
  */
 function fpw_sales_normalize_rut( string $raw ): string {
-	$stripped = preg_replace( '/[\s.\-]/', '', substr( trim( $raw ), 0, 20 ) );
+	if ( strlen( $raw ) > 40 ) { return ''; }
+	$stripped = preg_replace( '/[\s.\-]/', '', trim( $raw ) );
 	if ( ! is_string( $stripped ) ) { return ''; }
 	$clean = strtoupper( $stripped );
 	if ( '' === $clean || ! preg_match( '/^\d{7,8}[0-9K]$/', $clean ) ) { return ''; }
@@ -439,7 +440,7 @@ function fpw_sales_history_for_rut( string $rut_norm ): ?array {
 	if ( '' === $rut_norm ) { return null; }
 	$sales = array();
 	foreach ( fpw_sales_register()['sales'] as $sale ) {
-		if ( is_array( $sale ) && (string) ( $sale['rut'] ?? '' ) === $rut_norm ) { $sales[] = $sale; }
+		if ( is_array( $sale ) && fpw_sales_normalize_rut( (string) ( $sale['rut'] ?? '' ) ) === $rut_norm ) { $sales[] = $sale; }
 	}
 	usort( $sales, static fn( $a, $b ) => array( (string) ( $b['date'] ?? '' ), (string) ( $b['id'] ?? '' ) ) <=> array( (string) ( $a['date'] ?? '' ), (string) ( $a['id'] ?? '' ) ) );
 	$latest = fpw_sales_receipts( 1 )[0] ?? null;

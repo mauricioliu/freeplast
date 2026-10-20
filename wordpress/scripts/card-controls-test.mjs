@@ -38,6 +38,27 @@ export async function runCardControlsTests() {
   ok(input.getAttribute('aria-label') === 'Cantidad de Caja X', 'an already-specific Spanish label on the native input is respected');
   ok(minus.tabIndex === 0 && plus.tabIndex === 0, 'both named stepper buttons are keyboard reachable');
 
+  /* Quantity validity must never override featured color/pending guards. */
+  const featuredDom = new JSDOM(loopCard(0), { url: 'https://example.test/', runScripts: 'outside-only' });
+  const featuredApi = loadApi(featuredDom.window, stepperSource);
+  const featuredWrap = featuredDom.window.document.querySelector('[data-fpw-loop-add]');
+  const picker = featuredDom.window.document.createElement('div');
+  picker.setAttribute('data-fpw-featured-picker', '');
+  featuredWrap.appendChild(picker);
+  const featuredAdd = featuredWrap.querySelector('.add_to_cart_button');
+  featuredApi.mirrorQuantity(featuredWrap);
+  ok(featuredAdd.getAttribute('aria-disabled') === 'true', 'valid quantity cannot bypass missing featured color');
+  featuredAdd.dataset.product_id = '101';
+  featuredApi.mirrorQuantity(featuredWrap);
+  ok(featuredAdd.getAttribute('aria-disabled') === 'false', 'selected exact variant plus valid quantity enables add');
+  for (const state of ['data-fpw-pending', 'data-fpw-uncertain']) {
+    picker.setAttribute(state, '');
+    featuredApi.mirrorQuantity(featuredWrap);
+    ok(featuredAdd.getAttribute('aria-disabled') === 'true', state + ' remains blocked after quantity changes');
+    picker.removeAttribute(state);
+  }
+  featuredDom.window.close();
+
   /* H3 (2026-10-03 review): loop cards with Woo's untranslated generic label
      and a card title get product-named Spanish controls — no two cards share
      an accessible name, and no English placeholder survives. */

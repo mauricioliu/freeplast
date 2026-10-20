@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.25
+Version: 1.0.26
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -5020,6 +5020,90 @@ body ul.products.catalog-grid li.product-card .fpw-loop-add .fpw-card-selection 
   body ul.products.catalog-grid { gap: 24px; }
   body ul.products.catalog-grid li.product-card .product-photo { height: 210px; aspect-ratio: auto; }
   body ul.products.catalog-grid li.product-card .product-info { min-height: 94px; padding: 0; }
+}
+
+/* Featured-only variation shortcut; the ordinary variable card stays link-only. */
+body ul.products.catalog-grid li.product-card .fp-featured-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-picker[hidden],
+body ul.products.catalog-grid li.product-card .color-hint[hidden] { display: none; }
+body ul.products.catalog-grid li.product-card .fp-featured-colors {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-colors legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fp-ink);
+}
+body ul.products.catalog-grid li.product-card .fp-featured-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--fp-chrome-border);
+  border-radius: 8px;
+  color: var(--fp-ink);
+  background: var(--fp-paper);
+  font: inherit;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-color .color-dot { flex: 0 0 12px; height: 12px; }
+body ul.products.catalog-grid li.product-card .fp-featured-color .color-dot.black { background: #17181c; }
+body ul.products.catalog-grid li.product-card .fp-featured-color[aria-pressed="true"] {
+  border-color: var(--fp-blue);
+  background: var(--fp-blue-soft);
+  color: var(--fp-blue);
+  font-weight: 700;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-color:disabled { opacity: .6; cursor: not-allowed; }
+body ul.products.catalog-grid li.product-card .fp-featured-picker [aria-disabled="true"] { opacity: .65; cursor: not-allowed; }
+body ul.products.catalog-grid li.product-card .fp-featured-status {
+  margin: 0;
+  color: var(--fp-chrome-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-status a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  text-underline-offset: 3px;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-picker[data-fpw-uncertain] .fp-featured-status {
+  padding: 12px;
+  background: var(--fp-tint);
+  border: 1px solid var(--fp-chrome-border);
+  border-radius: 8px;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-picker .quantity { margin: 0; }
+body ul.products.catalog-grid li.product-card .fp-featured-picker .add_to_cart_button { white-space: normal; text-align: center; }
+body ul.products.catalog-grid li.product-card .fp-featured-enhanced > .button.secondary {
+  min-height: 44px;
+  padding: 8px;
+  background: transparent;
+  border-color: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* ---------- Motion safety ---------- */

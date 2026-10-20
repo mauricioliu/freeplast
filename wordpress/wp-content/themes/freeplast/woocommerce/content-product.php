@@ -8,8 +8,8 @@
  * woocommerce_loop_add_to_cart_link filter (quantity input + native anchor
  * + cart projection) keeps composing it, and the extension hooks stay
  * callable around the card. The adapter's projection slot also serves the
- * variable card, whose only action is Elegir color → the native product
- * page (never a card-level color picker).
+ * variable card. Only the explicit featured-block context can enhance a safe
+ * single-color product; all other loops retain Elegir color → the sheet.
  *
  * @package Freeplast
  */
@@ -48,6 +48,8 @@ if ( $fp_is_variable ) {
 		}
 	}
 }
+$fp_featured_colors = $fp_is_variable && function_exists( 'fpw_in_featured_products' ) && fpw_in_featured_products() && function_exists( 'fpw_featured_color_options' )
+	? fpw_featured_color_options( $product ) : array();
 $fp_category = '';
 foreach ( wp_get_post_terms( $product->get_id(), 'product_cat', array( 'fields' => 'names' ) ) as $fp_name ) {
 	$fp_category = $fp_name; // Product carries one Catalog category.
@@ -96,6 +98,22 @@ $fp_selection = function_exists( 'fpw_card_selection' ) && function_exists( 'WC'
 	<?php if ( $fp_is_variable ) : ?>
 		<div class="fpw-loop-add product-controls variant-controls" data-fpw-loop-add>
 			<?php if ( function_exists( 'fpw_quote_minimum_html' ) ) { echo fpw_quote_minimum_html( (int) $product->get_id() ); } ?>
+			<?php if ( $fp_featured_colors ) : ?>
+				<div class="fp-featured-picker" data-fpw-featured-picker hidden>
+					<fieldset class="fp-featured-colors">
+						<legend>Elige un color · obligatorio</legend>
+						<div class="fp-featured-swatches">
+						<?php foreach ( $fp_featured_colors as $fp_option ) : ?>
+							<?php $fp_dot = array( 'blanco' => 'white', 'negro' => 'black', 'rojo' => 'red', 'amarillo' => 'yellow', 'azul' => 'blue', 'verde' => 'green' )[sanitize_title( $fp_option['label'] )] ?? ''; ?>
+							<button type="button" class="fp-featured-color" aria-pressed="false" data-fpw-variant="<?php echo esc_attr( wp_json_encode( $fp_option ) ); ?>" <?php disabled( ! $fp_option['id'] ); ?>><?php if ( $fp_dot ) : ?><span class="color-dot <?php echo esc_attr( $fp_dot ); ?>" aria-hidden="true"></span><?php endif; ?><?php echo esc_html( $fp_option['label'] ); ?><?php if ( ! $fp_option['id'] ) : ?> (no disponible)<?php endif; ?></button>
+						<?php endforeach; ?>
+						</div>
+					</fieldset>
+					<p class="fp-featured-status" data-fpw-featured-status role="status" aria-atomic="true">Selecciona un color para poder agregar. Colores sujetos a disponibilidad.</p>
+					<?php echo woocommerce_quantity_input( array( 'input_value' => fpw_quote_minimum( (int) $product->get_id() ) ?? 1, 'min_value' => 1, 'step' => 1 ), $product, false ); ?>
+					<a class="button add_to_cart_button ajax_add_to_cart" href="<?php echo esc_url( $fp_card_link ); ?>" data-product_id="0" data-quantity="1" data-fpw_featured_variant="1" aria-disabled="true" aria-label="<?php echo esc_attr( 'Agregar ' . $product->get_name() . ' a Cotización' ); ?>">Agregar a Cotización</a>
+				</div>
+			<?php endif; ?>
 			<span class="color-hint"><span class="color-dots" aria-hidden="true"><i class="color-dot"></i><i class="color-dot red"></i><i class="color-dot yellow"></i><i class="color-dot blue"></i><i class="color-dot green"></i></span><?php echo esc_html( count( $fp_colors ) ? count( $fp_colors ) . ' colores · sujetos a disponibilidad' : 'Colores sujetos a disponibilidad' ); ?></span>
 			<a class="button secondary" href="<?php echo esc_url( $fp_card_link ); ?>">Elegir color <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="16" height="16"><path d="M4 12h15M13 5l7 7-7 7"/></svg></a>
 			<?php echo $fp_selection; ?>

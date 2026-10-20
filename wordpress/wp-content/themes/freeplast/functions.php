@@ -13,7 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.25' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.26' );
+require_once __DIR__ . '/inc/sitemap.php';
+require_once __DIR__ . '/inc/discovery.php';
 add_action('after_setup_theme', static function () {
 	add_theme_support('woocommerce');
 	add_theme_support('wc-product-gallery-lightbox');
@@ -101,6 +103,7 @@ add_action(
 		// Per-product quantities/removal: native Woo handlers own mutations and
 		// fragment refresh owns session restoration on cached/navigation pages.
 		wp_enqueue_script( 'freeplast-added-count', get_template_directory_uri() . '/assets/js/loop-added-count.js', array( 'jquery', 'wc-add-to-cart', 'wc-cart-fragments' ), FREEPLAST_THEME_VERSION, true );
+		wp_enqueue_script( 'freeplast-featured-variants', get_template_directory_uri() . '/assets/js/featured-variants.js', array( 'freeplast-loop-quantity', 'freeplast-added-count' ), FREEPLAST_THEME_VERSION, true );
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			wp_enqueue_script( 'freeplast-variation-state', get_template_directory_uri() . '/assets/js/variation-button-state.js', array(), FREEPLAST_THEME_VERSION, true );
 			wp_enqueue_script( 'freeplast-color-options', get_template_directory_uri() . '/assets/js/product-color-options.js', array( 'jquery', 'wc-add-to-cart-variation' ), FREEPLAST_THEME_VERSION, true );

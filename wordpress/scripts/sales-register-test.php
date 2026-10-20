@@ -141,6 +141,7 @@ check( fpw_sales_normalize_rut( '' ) === '' && fpw_sales_normalize_rut( '   ' ) 
 check( fpw_sales_normalize_rut( 'abc' ) === '' && fpw_sales_normalize_rut( '76.123.456-7 x2' ) === '', 'garbage and multi-token cells stay unusable (ambiguous, never guessed)' );
 check( fpw_sales_normalize_rut( '1234567' ) === '' && fpw_sales_normalize_rut( '12345678-52' ) === '', 'a RUT missing its verifier slot (or with two) is unusable' );
 check( fpw_sales_normalize_rut( '76.123.45.6-7' ) === '761234567', 'inner dot placement is presentation, not identity' );
+check( fpw_sales_normalize_rut( '765916291' . str_repeat( ' ', 20 ) . '2' ) === '', 'trailing tokens cannot disappear through truncation' );
 
 /* --- Contract v1 parsing: explicit columns, explicit identity, bounded --- */
 $csv = "id_venta,fecha,rut,total\n"
@@ -374,6 +375,23 @@ foreach ( array( 'total_cajas', 'precio', 'neto' ) as $field ) {
 }
 $empty_history = fpw_workspace_history( array( 'identity' => array( 'rut' => '11111111-1' ) ) );
 check( str_contains( $empty_history, 'Sin historial asociado' ) && ! str_contains( $empty_history, '<table>' ), 'empty history retains its honest existing state' );
+
+/* A newly validated request sees legacy sales regardless of stored presentation. */
+$saved_table = $GLOBALS['fpws_table'];
+fpw_sales_write_row( FPW_SALES_REGISTER_ROW, array( 'schema'=>1, 'sales'=>array(
+	array( 'id'=>'RUT-1', 'rut'=>'765916291', 'date'=>'2026-10-01', 'producto'=>'Caja compacta' ),
+	array( 'id'=>'RUT-2', 'rut'=>'76.591.629-1', 'date'=>'2026-10-02', 'producto'=>'Caja con puntos' ),
+	array( 'id'=>'RUT-3', 'rut'=>'78117890k', 'date'=>'2026-10-03', 'producto'=>'Caja K' ),
+	array( 'id'=>'OTHER', 'rut'=>'144424808', 'date'=>'2026-10-04', 'producto'=>'Otro cliente' ),
+) ) );
+$before_lookup = $GLOBALS['fpws_table'];
+$request = fpw_checkout_format_rut( array( 'billing_fp_rut'=>'765916291' ) );
+$matched_html = fpw_workspace_history( array( 'identity'=>array( 'rut'=>$request['billing_fp_rut'] ) ) );
+check( str_contains( $matched_html, 'Caja compacta' ) && str_contains( $matched_html, 'Caja con puntos' ) && ! str_contains( $matched_html, 'Otro cliente' ), 'new formatted request displays only matching imported purchases in cotizador' );
+$k_html = fpw_workspace_history( array( 'identity'=>array( 'rut'=>'78.117.890-K' ) ) );
+check( str_contains( $k_html, 'Caja K' ) && ! str_contains( $k_html, 'Caja compacta' ), 'uppercase request matches lowercase historical verifier' );
+check( $GLOBALS['fpws_table'] === $before_lookup, 'history lookup never rewrites stored sales' );
+$GLOBALS['fpws_table'] = $saved_table;
 
 /* --- Legacy history enrichment: explicit, identity-bound, never destructive --- */
 $legacy = static fn( string $id, string $date, string $rut, ?int $total, array $extra = array() ): array => array(

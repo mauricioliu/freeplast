@@ -116,6 +116,10 @@
     syncValidityMessage(input);
     var value = Number(input.value);
     var valid = Number.isSafeInteger(value) && value > 0 && input.checkValidity();
+    var picker = wrap.querySelector('[data-fpw-featured-picker]');
+    if (picker) {
+      valid = valid && Number(button.getAttribute('data-product_id')) > 0 && !picker.hasAttribute('data-fpw-pending') && !picker.hasAttribute('data-fpw-uncertain');
+    }
     button.setAttribute('aria-disabled', valid ? 'false' : 'true');
     if (valid) { button.setAttribute('data-quantity', String(value)); }
   }
@@ -308,6 +312,10 @@
       if (!button) { return; }
       var wrapper = button.closest(WRAP_SELECTOR);
       if (wrapper) {
+        // The featured shortcut guards both color and quantity at its own
+        // capture boundary, where it can focus the missing named swatch.
+        var featured = wrapper.querySelector('[data-fpw-featured-picker]');
+        if (featured && featured.dataset.fpwReady === '1') { return; }
         var input = wrapper.querySelector('input.qty');
         mirrorQuantity(wrapper);
         if (button.classList.contains('loading') || button.getAttribute('aria-disabled') === 'true') {

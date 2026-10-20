@@ -8,6 +8,8 @@
  */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+require_once __DIR__ . '/rut.php';
+
 add_action( 'before_woocommerce_init', static function () {
 	if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
 		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
@@ -118,8 +120,72 @@ function fpw_render_featured_products( $attributes ): string {
 	if ( ! function_exists( 'WC' ) || ! function_exists( 'do_shortcode' ) ) { return ''; }
 	$limit   = max( 1, absint( $attributes['limit'] ?? 9 ) );
 	$columns = max( 1, absint( $attributes['columns'] ?? 4 ) );
-	return do_shortcode( '[products limit="' . $limit . '" columns="' . $columns . '" visibility="featured" orderby="menu_order"]' );
+	$previous = $GLOBALS['fpw_featured_products_context'] ?? false;
+	$GLOBALS['fpw_featured_products_context'] = true;
+	try {
+		return do_shortcode( '[products limit="' . $limit . '" columns="' . $columns . '" visibility="featured" orderby="menu_order"]' );
+	} finally {
+		$GLOBALS['fpw_featured_products_context'] = $previous;
+	}
 }
+
+/** Explicit render scope, not a page-wide front-page condition. */
+function fpw_in_featured_products(): bool {
+	return ! empty( $GLOBALS['fpw_featured_products_context'] );
+}
+
+/** Only unambiguous, single-color variations can use the featured shortcut.
+ * Woo supplies purchasability and stock constraints; no prices are exposed.
+ * Wildcards, additional attributes or duplicate matches retain the sheet path.
+ */
+function fpw_featured_color_options( $product ): array {
+	if ( ! $product || ! $product->is_type( 'variable' ) ) { return array(); }
+	$attributes = $product->get_variation_attributes();
+	if ( count( $attributes ) !== 1 ) { return array(); }
+	$name = array_key_first( $attributes );
+	if ( ! in_array( sanitize_title( $name ), array( 'color', 'pa_color' ), true ) ) { return array(); }
+	$key = 'attribute_' . sanitize_title( $name );
+	$matches = array();
+	foreach ( $product->get_available_variations() as $variation ) {
+		$values = $variation['attributes'] ?? array();
+		if ( count( $values ) !== 1 || empty( $values[$key] ) ) { return array(); }
+		$value = (string) $values[$key];
+		if ( isset( $matches[$value] ) ) { return array(); }
+		$matches[$value] = $variation;
+	}
+	$options = array();
+	foreach ( $attributes[$name] as $value ) {
+		$label = $value;
+		if ( taxonomy_exists( $name ) ) {
+			$term = get_term_by( 'slug', $value, $name );
+			if ( ! $term || is_wp_error( $term ) ) { return array(); }
+			$label = $term->name;
+		}
+		$variation = $matches[$value] ?? array();
+		$available = ! empty( $variation['variation_id'] ) && ! empty( $variation['variation_is_active'] ) && ! empty( $variation['is_purchasable'] ) && ! empty( $variation['is_in_stock'] );
+		$options[] = array(
+			'label' => $label,
+			'id' => $available ? (int) $variation['variation_id'] : 0,
+			'max' => $variation['max_qty'] ?? '',
+			'individual' => ( $variation['is_sold_individually'] ?? 'no' ) === 'yes',
+		);
+	}
+	return $options;
+}
+
+/** Woo's native AJAX validates a variation ID before normalizing its parent.
+ * QWC checks metadata on that ID and otherwise treats it as non-quotable,
+ * clearing the existing quote basket as a mixed-mode conflict. For THIS
+ * featured operation only, use the same parent's quote rules as the sheet.
+ * Never skip QWC validation or force a non-quotable parent to be quotable.
+ */
+function fpw_featured_variation_quote_enabled( $enabled, $product_id, $quantity ) {
+	if ( ! wp_doing_ajax() || ( $_GET['wc-ajax'] ?? '' ) !== 'add_to_cart' || ( $_POST['fpw_featured_variant'] ?? '' ) !== '1' || (int) ( $_POST['product_id'] ?? 0 ) !== (int) $product_id ) { return $enabled; }
+	$product = wc_get_product( $product_id );
+	if ( ! $product || ! $product->is_type( 'variation' ) ) { return $enabled; }
+	return product_quote_enabled( $product->get_parent_id(), $quantity );
+}
+add_filter( 'qwc_product_quote_enabled', 'fpw_featured_variation_quote_enabled', 10, 3 );
 
 add_action( 'init', static function () {
 	if ( ! function_exists( 'register_block_type' ) || ! function_exists( 'WC' ) ) { return; }
@@ -200,7 +266,7 @@ function fpw_checkout_fields( $fields ) {
 		'billing_phone' => array( 'label'=>'Teléfono', 'required'=>true, 'type'=>'tel', 'autocomplete'=>'tel', 'placeholder'=>'Ej.: +56 9 1234 5678', 'class'=>array('form-row-first'), 'priority'=>20 ),
 		'billing_email' => array( 'label'=>'Email', 'required'=>true, 'type'=>'email', 'autocomplete'=>'email', 'placeholder'=>'nombre@empresa.cl', 'validate'=>array('email'), 'class'=>array('form-row-last'), 'priority'=>30 ),
 		'billing_company' => array( 'label'=>'Nombre de empresa', 'required'=>true, 'type'=>'text', 'autocomplete'=>'organization', 'placeholder'=>'Nombre o razón social', 'class'=>array('form-row-wide'), 'priority'=>40 ),
-		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'76.123.456-7', 'class'=>array('form-row-first'), 'priority'=>50 ),
+		'billing_fp_rut' => array( 'label'=>'RUT empresa', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: 76.591.629-1', 'custom_attributes'=>array('autocapitalize'=>'characters', 'spellcheck'=>'false'), 'class'=>array('form-row-first'), 'priority'=>50 ),
 		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
 		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
 		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Predio Santa Ana, camino rural s/n', 'custom_attributes'=>array('rows'=>'2', 'maxlength'=>'800'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
@@ -246,6 +312,10 @@ function fpw_checkout_required_notice( $message, $label, $key ) {
 add_filter( 'woocommerce_checkout_required_field_notice', 'fpw_checkout_required_notice', 10, 3 );
 
 function fpw_validate_checkout( $data, $errors ) {
+	$rut = (string) ( $data['billing_fp_rut'] ?? '' );
+	if ( '' !== trim( $rut ) && strlen( $rut ) <= 240 && ! fpw_rut_is_valid( $rut ) ) {
+		$errors->add( 'billing_fp_rut_validation', 'RUT empresa: ingresa un RUT válido, incluido su dígito verificador.', array( 'id' => 'billing_fp_rut' ) );
+	}
 	// Keep Woo's email verdict; replace only its wording, not its validation rule.
 	if ( in_array( 'billing_email_validation', $errors->get_error_codes(), true ) ) {
 		$errors->remove( 'billing_email_validation' );

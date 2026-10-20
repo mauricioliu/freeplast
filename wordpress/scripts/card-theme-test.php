@@ -31,10 +31,15 @@ function woocommerce_template_loop_add_to_cart() { echo 'ADAPTER-LOOP-ADD-MARKER
 // Render the active card with the actual adapter minimum helpers, not a markup stub.
 function get_post_meta($id, $key, $single = false) { return $id === 21 && $key === '_fp_quote_min_qty' ? '70' : ''; }
 $adapter_source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
-foreach (array('fpw_quote_minimum', 'fpw_quote_minimum_html') as $function) {
-    if (!preg_match('/\nfunction ' . $function . '\( .*?\n\}/s', $adapter_source, $match)) { throw new RuntimeException('Missing adapter helper: ' . $function); }
+foreach (array('fpw_quote_minimum', 'fpw_quote_minimum_html', 'fpw_in_featured_products', 'fpw_featured_color_options') as $function) {
+    if (!preg_match('/\nfunction ' . $function . '\(.*?\n\}/s', $adapter_source, $match)) { throw new RuntimeException('Missing adapter helper: ' . $function); }
     eval($match[0]);
 }
+
+function taxonomy_exists($name) { return false; }
+function wp_json_encode($value) { return json_encode($value); }
+function disabled($value) { if ($value) { echo 'disabled="disabled"'; } }
+function woocommerce_quantity_input($args, $product, $echo = false) { return '<div class="quantity"><input class="qty" type="number" min="1" step="1" value="' . $args['input_value'] . '"></div>'; }
 
 class CardThemeProduct {
     public function __construct(private array $data) {}
@@ -121,6 +126,22 @@ verify(strpos($variable, 'Mínimo 70 unidades') < strpos($variable, 'Elegir colo
 $unknownVariable = render_card(array('id'=>23, 'type'=>'variable', 'name'=>'Variable pendiente', 'permalink'=>'/producto/pendiente/', 'image_id'=>0, 'variation_attributes'=>array()));
 verify(str_contains($unknownVariable, 'Mínimo por confirmar: solicita la cantidad que necesites') && substr_count($unknownVariable, 'class="fpw-minimum') === 1, 'active variable card keeps unknown minimum explicitly pending');
 verify(str_contains($unknownVariable, 'Elegir color') && !str_contains($unknownVariable, '<input') && !str_contains($unknownVariable, 'ADAPTER-LOOP-ADD-MARKER'), 'pending minimum introduces neither a quantity constraint nor a direct add path');
+
+/* The explicit featured context is the sole exception: native AJAX, named
+ * swatches, no initial selection and a hidden (no-JS safe) enhancement. */
+$GLOBALS['fpw_featured_products_context'] = true;
+$featured = render_card(array(
+    'id'=>21, 'type'=>'variable', 'name'=>'Caja Color', 'permalink'=>'/producto/color/', 'image_id'=>1,
+    'variation_attributes'=>array('Color'=>array('Azul', 'Verde')),
+    'available_variations'=>array(array('variation_id'=>101, 'attributes'=>array('attribute_color'=>'Azul'), 'variation_is_active'=>true, 'is_purchasable'=>true, 'is_in_stock'=>true, 'max_qty'=>'')),
+));
+verify(str_contains($featured, 'data-fpw-featured-picker hidden'), 'enhancement hidden until JavaScript is ready');
+verify(str_contains($featured, 'aria-pressed="false"') && !str_contains($featured, 'aria-pressed="true"'), 'no color preselected');
+verify(str_contains($featured, 'data-product_id="0"') && str_contains($featured, 'ajax_add_to_cart'), 'exact variation required before native AJAX');
+verify(str_contains($featured, 'value="70"') && str_contains($featured, 'min="1"'), 'informative initial quantity retained, not imposed as a minimum');
+verify(str_contains($featured, 'Verde (no disponible)') && str_contains($featured, 'disabled="disabled"'), 'unavailable real color named and disabled');
+verify(str_contains($featured, 'href="/producto/color/">Elegir color'), 'native sheet fallback always available');
+$GLOBALS['fpw_featured_products_context'] = false;
 
 /* Long names wrap instead of overflowing. */
 $long = render_card(array('id' => 22, 'type' => 'simple', 'name' => 'Bases Plásticas para Pediluvios con Nombre Larguísimo de Prueba', 'permalink' => '/p/', 'image_id' => 2));

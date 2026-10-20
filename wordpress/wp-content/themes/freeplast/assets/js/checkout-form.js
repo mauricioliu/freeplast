@@ -167,11 +167,68 @@
     node.textContent = 'Email: escribe un correo completo, como nombre@empresa.cl.';
     if (!email.hasAttribute('aria-invalid')) { email.setAttribute('aria-invalid', 'true'); }
   }
+  function normalizeRut(raw) {
+    if (raw.length > 40 || /[^0-9kK.\s-]/.test(raw)) { return ''; }
+    var clean = raw.replace(/[.\s-]/g, '').toUpperCase();
+    return /^[0-9]{7,8}[0-9K]$/.test(clean) ? clean : '';
+  }
+  function formatRut(raw) {
+    var rut = normalizeRut(raw);
+    return rut ? rut.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + rut.slice(-1) : raw;
+  }
+  function validRut(raw) {
+    var rut = normalizeRut(raw);
+    if (!rut || Number(rut.slice(0, -1)) === 0) { return false; }
+    var sum = 0, factor = 2;
+    for (var i = rut.length - 2; i >= 0; i--) {
+      sum += Number(rut[i]) * factor;
+      factor = factor === 7 ? 2 : factor + 1;
+    }
+    var digit = 11 - sum % 11;
+    return rut.slice(-1) === (digit === 11 ? '0' : digit === 10 ? 'K' : String(digit));
+  }
+  function enhanceRut(form) {
+    var input = form.querySelector('#billing_fp_rut');
+    if (!input) { return; }
+    var row = input.closest('.form-row');
+    if (!row) { return; }
+    function clear() {
+      clearFieldErrors(row);
+      Array.prototype.slice.call(row.classList).forEach(function (name) {
+        if (name.indexOf('woocommerce-invalid') === 0) { row.classList.remove(name); }
+      });
+      input.removeAttribute('aria-invalid');
+    }
+    input.addEventListener('input', clear); // do not reformat under the caret while editing
+    input.addEventListener('blur', function () {
+      var previous = input.value;
+      input.value = formatRut(previous);
+      // Let Woo persist the formatted value through its existing draft mechanism.
+      if (input.value !== previous) { input.dispatchEvent(new Event('change', { bubbles: true })); }
+      window.setTimeout(function () {
+        clear();
+        if (!input.value.trim() || validRut(input.value)) { return; } // Woo owns required-field errors
+        var note = document.createElement('span');
+        note.id = 'fp-field-error-billing_fp_rut-format';
+        note.className = 'fp-field-error';
+        note.setAttribute('data-fp-field-error', '');
+        note.setAttribute('data-fp-rut-error', '');
+        note.setAttribute('aria-live', 'polite');
+        note.textContent = 'RUT empresa: ingresa un RUT válido, incluido su dígito verificador.';
+        row.appendChild(note);
+        row.classList.remove('woocommerce-validated');
+        row.classList.add('woocommerce-invalid');
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', ((input.getAttribute('aria-describedby') || '') + ' ' + note.id).trim());
+      }, 0);
+    });
+  }
   function init() {
     var form = document.querySelector('form.checkout');
     if (!form || form.hasAttribute('data-fp-checkout-enhanced')) { return; }
     form.setAttribute('data-fp-checkout-enhanced', '');
     syncSummary();
+    enhanceRut(form);
     if (typeof matchMedia === 'function') { matchMedia('(min-width: 1000px)').addEventListener('change', syncSummary); }
     form.addEventListener('click', function (event) {
       if (event.target.closest('[data-fp-summary-details] summary') && desktop()) { event.preventDefault(); }
@@ -248,6 +305,6 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
   }
   if (typeof module === 'object' && module.exports) {
-    module.exports = { syncSummary: syncSummary, enhanceErrors: enhanceErrors, markSending: markSending, restoreSending: restoreSending, buildErrorSummary: buildErrorSummary, syncEmailFormatError: syncEmailFormatError, clearEmailFormatError: clearEmailFormatError, UNCERTAIN_COPY: UNCERTAIN_COPY };
+    module.exports = { normalizeRut: normalizeRut, formatRut: formatRut, validRut: validRut, syncSummary: syncSummary, enhanceErrors: enhanceErrors, markSending: markSending, restoreSending: restoreSending, buildErrorSummary: buildErrorSummary, syncEmailFormatError: syncEmailFormatError, clearEmailFormatError: clearEmailFormatError, UNCERTAIN_COPY: UNCERTAIN_COPY };
   }
 })();

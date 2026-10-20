@@ -207,6 +207,48 @@ fixture/journey extensions for #42–#44 are implemented but unexecuted.
 Rendered side-by-side comparisons at 412/1440 and owner PC/phone review
 remain open.
 
+## Featured-only variable-card exception (2026-10-19)
+
+The earlier #42 “never a card picker” decision still applies to shop, search,
+related and ordinary loops. Only `fpw_render_featured_products()` supplies a
+scoped render context (restored in `finally`) that can offer named swatches,
+quantity and Agregar a Cotización on the homepage featured cards.
+
+- Only exact, single-color Woo variations are eligible. Additional attributes,
+  wildcard or duplicate matches retain the product-sheet fallback. Availability,
+  purchasability and quantity limits come from Woo; no color is preselected.
+- The enhancement reveals server-rendered controls only when native Woo AJAX is
+  available. Photo/name and an always-present sheet link remain usable without
+  JavaScript. Initial quantities, button deltas and informative minimums stay as
+  before; valid quantities are still any positive whole units within Woo limits.
+- `featured-variants.js` mirrors the chosen variation ID into Woo's native
+  `add_to_cart_button`. Woo owns transport, queue, validation, cart and fragments;
+  parent totals and header line count remain authoritative projections. Pending
+  operations are guarded against duplicate activation. Missing/malformed responses,
+  transport errors or a 20-second wait produce uncertainty, never an automatic
+  retry; the visitor is directed to saved selection before continuing.
+- Native AJAX validates the variation ID before converting it to a parent. QWC's
+  mixed-mode check would otherwise treat that ID as non-quotable and empty the
+  existing basket, since quote metadata lives on the parent. The marked featured
+  AJAX operation alone resolves `qwc_product_quote_enabled` through the same parent
+  and quantity as the native sheet. It does not skip validation, change metadata,
+  force quote eligibility or alter unmarked operations.
+
+Offline regression commands (no infrastructure startup):
+
+```sh
+wordpress/.tools/php/php wordpress/scripts/featured-variants-test.php
+wordpress/.tools/php/php wordpress/scripts/card-theme-test.php
+node wordpress/scripts/featured-variants-test.mjs
+```
+
+DEV's native AJAX plus Store API were exercised using an isolated in-memory HTTP
+cookie jar: two distinct colors, quantities 7 and 3, repeat-add of 2 accumulating to
+9 and 3 with two header lines, and native removal of only those test lines. The
+shop retains its link-only cards and the sheet its native variation form. Chrome
+connection verification failed, so rendered 412/1440 screenshots, touch-target
+measurement and visual confirmation remain pending; no graphical pass is claimed.
+
 ## Scoped supersession — A · Directa basket, details form and confirmation (2026-09-08, issues #45–#47)
 
 Third batch. Builds on #41–#44; A · Directa (`785e65b`) remains the only
