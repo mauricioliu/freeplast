@@ -604,7 +604,7 @@ register_shutdown_function( static function () {
         const posted = { ...hidden,
           billing_first_name: 'PRUEBA LOCAL DESPACHO', billing_phone: '+56 9 1234 5678',
           billing_email: `despacho-${label}@example.invalid`, billing_company: 'PRUEBA NO COMERCIAL',
-          billing_fp_rut: '76.123.456-7', billing_fp_giro: 'Prueba local',
+          billing_fp_rut: '76.123.456-0', billing_fp_giro: 'Prueba local',
           payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
           ...fields };
         const response = await jar('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted).toString() });
@@ -1365,7 +1365,7 @@ register_shutdown_function( static function () {
         const posted52 = { ...hidden52,
           billing_first_name: 'PRUEBA LOCAL PRECIOS', billing_phone: '+56 9 1234 5678',
           billing_email: 'precios-52@example.invalid', billing_company: 'PRUEBA NO COMERCIAL',
-          billing_fp_rut: '76.876.543-4', billing_fp_giro: 'Prueba local',
+          billing_fp_rut: '76.876.543-K', billing_fp_giro: 'Prueba local',
           payment_method: 'quotes-gateway', order_comments: 'Recorrido local automatizado (no atender)',
           billing_fp_dispatch: 'si', billing_fp_address: 'Camino de precios 123, Mostazal', billing_fp_commune: 'Mostazal', fpw_place_id: 'ChIJprices-stack-fixture' };
         const response52 = await jar52('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(posted52).toString() });
