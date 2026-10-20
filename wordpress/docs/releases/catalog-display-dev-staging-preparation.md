@@ -20,6 +20,6 @@ Writes require release-owned maintenance, InnoDB, locked exact before/after rows
 
 ## Execution evidence
 
-Pending the ordinary full project gate, paired backup, restore rehearsal, trial upgrade, live verification and smoke. The generated per-release record will provide actual outcomes. Dedicated staging cron must be suspended/restored with identical bytes; the independent staging mail shim must remain unchanged. Rollback is prepared only; because this is a migration, recovery is paired with fresh authorization and data-loss-risk acknowledgement.
+Completed as release `20261020T113034Z-405007`: full project gate, paired backup, restore rehearsal, trial upgrade, live verification and public smoke all passed. See [the release record](2026-10-20-data-405007.md) for outcomes and limits. Dedicated staging cron was suspended and restored with identical bytes/ownership/mode; the independent staging mail shim remained unchanged. An independent post-release read-only catalog comparison passed for all 17 products. Final attached-browser review failed on a transport error and stopped without fallback, so visual acceptance remains pending. Rollback is prepared only; because this is a migration, recovery is paired with fresh authorization and data-loss-risk acknowledgement.
 
 Human visual acceptance, the real commercial workflow, real email delivery, browser zoom and session state remain outside these automated checks.
