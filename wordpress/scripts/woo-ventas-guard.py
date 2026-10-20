@@ -223,7 +223,7 @@ if MODE == 'guarded':
     values.update({
         'billing_first_name': MARKER, 'billing_phone': '+56 9 5555 5555',
         'billing_email': RUN_EMAIL, 'billing_company': 'PRUEBA NO COMERCIAL',
-        'billing_fp_rut': '76.555.555-5', 'billing_fp_giro': 'Prueba del rol Ventas',
+        'billing_fp_rut': '76.555.555-8', 'billing_fp_giro': 'Prueba del rol Ventas',
         'billing_fp_dispatch': 'no', 'billing_fp_address': '',
         'payment_method': 'quotes-gateway', 'order_comments': 'Prueba técnica automatizada del rol Ventas (no atender)'})
     code, body = cust.request('/?wc-ajax=checkout', values)
@@ -257,7 +257,7 @@ if MODE == 'guarded':
     # EXITS the run before any write request; login failures likewise.
     editor = ensure_fixture_identity(ventas, ORDER, RUN_EMAIL)
     ok('detail_reads_items', 'Caja Universal' in editor and 'value="5"' in editor)
-    ok('detail_reads_dispatch_meta', 'RUT Empresa' in editor and '76.555.555-5' in editor)
+    ok('detail_reads_dispatch_meta', 'RUT Empresa' in editor and '76.555.555-8' in editor)
 
     abort_if_broken(ORDER, 'fixture_reads_complete', True)
     # Allowed: a private sales note through the native flow, with a VALID nonce.

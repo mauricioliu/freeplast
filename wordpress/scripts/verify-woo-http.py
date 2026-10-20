@@ -62,13 +62,13 @@ status,html=request('/datos-y-envio/');assert status==200
 assert '$0' not in html and 'woocommerce-Price-amount' not in html,'Datos y envío HTML leaks price amounts'
 parser=Inputs();parser.feed(html)
 values=parser.values
-values.update({'billing_first_name':'PRUEBA TÉCNICA MIGRACIÓN','billing_phone':'+56 9 1234 5678','billing_email':'quote-probe@example.invalid','billing_company':'PRUEBA NO COMERCIAL','billing_fp_rut':'76.123.456-7','billing_fp_giro':'Prueba técnica','billing_fp_dispatch':'si','billing_fp_address':'','payment_method':'quotes-gateway','order_comments':'Prueba automatizada de migración. No atender ni enviar correos reales.'})
+values.update({'billing_first_name':'PRUEBA TÉCNICA MIGRACIÓN','billing_phone':'+56 9 1234 5678','billing_email':'quote-probe@example.invalid','billing_company':'PRUEBA NO COMERCIAL','billing_fp_rut':'76.123.456-0','billing_fp_giro':'Prueba técnica','billing_fp_dispatch':'si','billing_fp_address':'','payment_method':'quotes-gateway','order_comments':'Prueba automatizada de migración. No atender ni enviar correos reales.'})
 status,body=request('/?wc-ajax=checkout',values);result=json.loads(body)
 assert result['result']=='failure' and 'dirección' in result['messages'].lower(),result
 values['billing_fp_dispatch']='no';values['billing_fp_rut']=''
 status,body=request('/?wc-ajax=checkout',values);result=json.loads(body)
 assert result['result']=='failure' and 'rut' in result['messages'].lower(),result
-values['billing_fp_rut']='76.123.456-7';values['billing_fp_address']='Dirección descartada al elegir sin despacho'
+values['billing_fp_rut']='76.123.456-0';values['billing_fp_address']='Dirección descartada al elegir sin despacho'
 status,body=request('/?wc-ajax=checkout',values);result=json.loads(body)
 assert result['result']=='success',result
 url=urllib.parse.urlparse(result['redirect']);status,confirmation=request(url.path+'?'+url.query)

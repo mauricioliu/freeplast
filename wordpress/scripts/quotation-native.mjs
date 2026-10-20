@@ -27,7 +27,7 @@ export async function runQuotationNativeFailures({ owner, makeCookieFetch, mint,
     const response = await buyer('/?wc-ajax=checkout', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ ...fields,
       billing_first_name: 'PRUEBA NO ATENDER', billing_phone: '+56 9 1234 5678',
       billing_email: `pdf-${label}-${token}@example.invalid`, billing_company: 'Agrícola Ñandú — PRUEBA LOCAL',
-      billing_fp_rut: '76.123.456-7', billing_fp_giro: 'Prueba', billing_fp_dispatch: 'no', billing_fp_address: '',
+      billing_fp_rut: '76.123.456-0', billing_fp_giro: 'Prueba', billing_fp_dispatch: 'no', billing_fp_address: '',
       payment_method: 'quotes-gateway', order_comments: 'NO COMERCIAL; correo interceptado',
     }).toString() });
     const result = await response.json();
