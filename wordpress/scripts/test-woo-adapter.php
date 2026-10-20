@@ -605,8 +605,8 @@ check(($block_registered['render_callback'] ?? '')==='fpw_render_featured_produc
 if (!function_exists('do_shortcode')) { function do_shortcode($text) { $GLOBALS['fpw_shortcode_input']=$text; return 'NATIVE-WOO-LOOP-MARKUP'; } }
 $GLOBALS['fpw_shortcode_input']='';
 check(fpw_render_featured_products(array('limit'=>8,'columns'=>4))==='NATIVE-WOO-LOOP-MARKUP','The featured grid block returns the native Woo loop markup unchanged (no own card markup)');
-check($GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order"]','The featured grid block delegates to the native Woo products shortcode verbatim');
-check(fpw_render_featured_products(array())==='NATIVE-WOO-LOOP-MARKUP' && $GLOBALS['fpw_shortcode_input']==='[products limit="9" columns="4" visibility="featured" orderby="menu_order"]','Defaults reproduce the reviewed featured grid');
+check($GLOBALS['fpw_shortcode_input']==='[products limit="8" columns="4" visibility="featured" orderby="menu_order" cache="false"]','The featured grid delegates to the native Woo shortcode with its stale ID cache disabled');
+check(fpw_render_featured_products(array())==='NATIVE-WOO-LOOP-MARKUP' && $GLOBALS['fpw_shortcode_input']==='[products limit="9" columns="4" visibility="featured" orderby="menu_order" cache="false"]','Defaults reproduce the reviewed featured grid without stale shortcode IDs');
 unset($GLOBALS['fpw_shortcode_input']);
 
 // Card add-to-cart (2026-09-07): the reviewed label is «Agregar a Cotización»
