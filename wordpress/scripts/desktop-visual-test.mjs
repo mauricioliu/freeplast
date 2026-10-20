@@ -27,7 +27,7 @@ export function runDesktopVisualTests() {
     property('.fp-checkout-page .fp-fields .fp-dispatch-options label.radio', 'justify-content', 'flex-start');
     property('.fp-checkout-summary table.shop_table.woocommerce-checkout-review-order-table', 'border', '0');
     property('.fp-error-summary', 'background', 'var(--fp-tint)');
-    property('.fp-checkout-page .fp-fields .form-row .fp-field-error', 'color', 'var(--fp-blue)');
+    property('.fp-checkout-page .fp-fields .form-row :is(.fp-field-error, .checkout-inline-error-message)', 'color', 'var(--fp-validation-error)');
     ok(all.some(r => r.selectorText?.includes('#order_comments_field') && r.style.getPropertyValue('grid-column') === '1 / -1'), 'native notes row spans both desktop tracks');
     const selector = 'body.woocommerce .fp-product-shell form.cart .variations:has([data-fp-color-superseded]):not(:has(tr:not([hidden])))';
     property(selector, 'display', 'none');
