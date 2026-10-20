@@ -1154,12 +1154,12 @@ register_shutdown_function( static function () {
       check(beforeImport.sales === 0 && !beforeImport.pending && beforeImport.receipts === 0, 'the import surface starts empty on the disposable run');
       const syntheticCsv = [
         'id_venta,fecha,rut,total',
-        'FPW-TEST-0001,2026-03-15,76123456-7,1250000',
-        'FPW-TEST-0002,2026-05-02,"76.123.456-7",890000',
+        'FPW-TEST-0001,2026-03-15,76123456-0,1250000',
+        'FPW-TEST-0002,2026-05-02,"76.123.456-0",890000',
         'FPW-TEST-0003,2026-06-11,,450000',
-        'FPW-TEST-0004,2026-06-20,"76.999.999-9",320000',
-        'FPW-TEST-0005,15/06/2026,76123456-7,100000',
-        'FPW-TEST-0006,2026-07-01,76123456-7,ilegible',
+        'FPW-TEST-0004,2026-06-20,"76.999.999-K",320000',
+        'FPW-TEST-0005,15/06/2026,76123456-0,100000',
+        'FPW-TEST-0006,2026-07-01,76123456-0,ilegible',
       ].join('\n');
       const uploadCsv = async (csv, filename) => {
         const page = await (await owner(importUrl)).text();

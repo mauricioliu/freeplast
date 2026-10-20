@@ -287,7 +287,7 @@ def seed_selection(session, tag, simple_quantity, variant_quantity):
 RACE_FIELDS = {
     'billing_first_name': 'PRUEBA LOCAL CARRERA', 'billing_phone': '+56 9 1234 5678',
     'billing_email': 'race-local@example.invalid', 'billing_company': 'PRUEBA NO COMERCIAL',
-    'billing_fp_rut': '76.123.456-7', 'billing_fp_giro': 'Prueba local',
+    'billing_fp_rut': '76.123.456-0', 'billing_fp_giro': 'Prueba local',
     'billing_fp_dispatch': 'no', 'billing_fp_address': '',
     'payment_method': 'quotes-gateway', 'order_comments': 'Carrera local automatizada (no atender)'}
 
@@ -628,7 +628,7 @@ other_values = checkout_form(other)
 other_values.update({
     'billing_first_name': 'PRUEBA LOCAL OTRA SESION', 'billing_phone': '+56 9 8765 4321',
     'billing_email': 'otra-local@example.invalid', 'billing_company': 'OTRA PRUEBA NO COMERCIAL',
-    'billing_fp_rut': '76.999.999-9', 'billing_fp_giro': 'Otra prueba',
+    'billing_fp_rut': '76.999.999-K', 'billing_fp_giro': 'Otra prueba',
     'billing_fp_dispatch': 'si', 'billing_fp_address': 'Calle Falsa 123, Mostazal, VI Región', 'billing_fp_commune': 'Mostazal', 'fpw_place_id': 'ChIJother-stack-fixture',
     'payment_method': 'quotes-gateway', 'order_comments': ''})
 submitted = post_checkout(other, other_values)

@@ -338,6 +338,7 @@ function ensureStagingControlTexts() {
 function seedReferenceCatalog() {
   const raw = JSON.parse(readFileSync(join(WORDPRESS_DIR, 'data', 'products.json'), 'utf8'));
   const items = (Array.isArray(raw) ? raw : raw.products).map((item) => ({
+    source_id: item.source_id,
     slug: item.slug,
     title: item.title,
     excerpt: item.excerpt,
@@ -379,6 +380,8 @@ function seedReferenceCatalog() {
       $product = $isVariable ? new WC_Product_Variable() : new WC_Product_Simple();
       $product->set_name($item['title']);
       $product->set_slug($item['slug']);
+      $product->set_sku($item['source_id']);
+      $product->update_meta_data('_fp_source_id', $item['source_id']);
       $product->set_description((string) $item['description']);
       $product->set_short_description((string) $item['excerpt']);
       $product->set_status('publish');
