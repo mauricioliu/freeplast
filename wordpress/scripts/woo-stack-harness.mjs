@@ -350,6 +350,33 @@ register_shutdown_function( static function () {
     writeFileSync(`${mailLog}.owner-workspace`, workspaceMail);
     writeFileSync(mailLog, '');
 
+    /* A stale Woo shortcode-ID transient must not hide a sealed catalog
+       migration. Poison the actual native cache, then inspect public HTTP
+       markup (not merely a database query or status code). Disposable stack only. */
+    {
+      const cacheFixture = JSON.parse(sh(PHP, [WPCLI, 'eval', `
+        $probe = new WC_Shortcode_Products(array('limit'=>9,'columns'=>4,'visibility'=>'featured','orderby'=>'menu_order'));
+        $key = (new ReflectionMethod($probe, 'get_transient_name'))->invoke($probe);
+        $query_args = (new ReflectionProperty($probe, 'query_args'))->getValue($probe);
+        $expected = array_map('intval', (new WP_Query($query_args))->posts);
+        if (!$expected) { throw new RuntimeException('Nonempty featured fixture required.'); }
+        set_transient($key, array('version'=>WC_Cache_Helper::get_transient_version('product_query'),
+          'value'=>(object)array('ids'=>array(),'total'=>0,'total_pages'=>0,'per_page'=>9,'current_page'=>1)), DAY_IN_SECONDS);
+        echo wp_json_encode(array('key'=>$key,'ids'=>$expected));
+      `, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']));
+      try {
+        const freshHome = new JSDOM(await fetchBody('/'));
+        try {
+          const servedIds = Array.from(freshHome.window.document.querySelectorAll('li.product-card'))
+            .map(card => Number(card.className.match(/\bpost-(\d+)\b/)?.[1]));
+          check(JSON.stringify(servedIds) === JSON.stringify(cacheFixture.ids),
+                'public Home must serve current featured IDs/order despite an existing stale Woo shortcode transient');
+        } finally { freshHome.window.close(); }
+      } finally {
+        sh(PHP, [WPCLI, 'eval', `delete_transient(${JSON.stringify(cacheFixture.key)});`, `--url=${SITE_URL}`, `--path=${WP_DIR}`, '--user=1']);
+      }
+    }
+
     /* 2b. Catalog search contract (2026-09-07 staging regression): the adapter's
        search hook forces post_type=product AND wc_query=product_query — without
        the latter wc_setup_loop() defaults total=0 and archive-product.php skips

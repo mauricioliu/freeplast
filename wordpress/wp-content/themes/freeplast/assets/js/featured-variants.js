@@ -10,8 +10,9 @@
     var input = picker.querySelector('input.qty');
     var add = picker.querySelector('.add_to_cart_button');
     var status = picker.querySelector('[data-fpw-featured-status]');
+    var select = picker.querySelector('[data-fpw-color-select]');
     var swatches = Array.from(picker.querySelectorAll('[data-fpw-variant]'));
-    if (!input || !add || !status || !swatches.length) { return; }
+    if (!input || !add || !status || !select || !swatches.length) { return; }
     var options;
     try { options = swatches.map(function (button) { return JSON.parse(button.dataset.fpwVariant); }); }
     catch (error) { return; } // Keep the visible product-page fallback.
@@ -19,7 +20,61 @@
     picker.hidden = false;
     wrap.classList.add('fp-featured-enhanced');
     var fallback = wrap.querySelector('a.button.secondary');
-    if (fallback && fallback.firstChild) { fallback.firstChild.textContent = 'Ver ficha '; }
+    if (fallback) { fallback.hidden = true; } // Photo and title still link to the sheet.
+    var card = wrap.closest('li');
+    var info = card && card.querySelector('.product-info');
+    if (info) {
+      var row = win.document.createElement('div');
+      row.className = 'fp-featured-facts';
+      var spec = info.querySelector('.product-spec');
+      if (spec) { row.appendChild(spec); }
+      var menu = win.document.createElement('details');
+      menu.className = 'fp-featured-menu';
+      var summary = win.document.createElement('summary');
+      summary.innerHTML = 'Color <span class="fp-featured-choice">Elegir</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+      menu.appendChild(summary);
+      var list = win.document.createElement('div');
+      list.className = 'fp-featured-options';
+      list.setAttribute('role', 'group');
+      list.setAttribute('aria-label', 'Color obligatorio · sujeto a disponibilidad');
+      var colors = { blanco: '#ffffff', negro: '#17181c', rojo: '#ae3636', amarillo: '#e2c23b', azul: '#31558c', verde: '#306020' };
+      options.forEach(function (option, index) {
+        var button = win.document.createElement('button');
+        button.type = 'button';
+        button.disabled = !option.id;
+        button.setAttribute('aria-pressed', 'false');
+        var dot = win.document.createElement('span');
+        dot.className = 'color-dot';
+        dot.setAttribute('aria-hidden', 'true');
+        dot.style.backgroundColor = colors[option.label.toLowerCase()] || '#f4f5f7';
+        button.appendChild(dot);
+        button.appendChild(win.document.createTextNode(option.label + (!option.id ? ' (no disponible)' : '')));
+        button.addEventListener('click', function () {
+          if (blocked()) { return; }
+          select.selectedIndex = index + 1;
+          select.dispatchEvent(new win.Event('change', { bubbles: true }));
+          list.querySelectorAll('button').forEach(function (item) { item.setAttribute('aria-pressed', item === button ? 'true' : 'false'); });
+          var choice = summary.querySelector('.fp-featured-choice');
+          choice.textContent = '';
+          choice.appendChild(dot.cloneNode(true));
+          choice.appendChild(win.document.createTextNode(option.label));
+          menu.open = false;
+          summary.focus();
+        });
+        list.appendChild(button);
+      });
+      menu.appendChild(list);
+      menu.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') { menu.open = false; summary.focus(); }
+      });
+      win.document.addEventListener('click', function (event) {
+        if (!menu.contains(event.target)) { menu.open = false; }
+      });
+      select.closest('.fp-featured-colors').hidden = true;
+      row.appendChild(menu);
+      info.appendChild(row);
+      picker.fpwColorMenu = menu;
+    }
     var watchdog;
     var hint = wrap.querySelector('.color-hint');
     if (hint) { hint.hidden = true; }
@@ -34,7 +89,11 @@
       picker.toggleAttribute('data-fpw-pending', value);
       picker.setAttribute('aria-busy', value ? 'true' : 'false');
       var locked = value || picker.hasAttribute('data-fpw-uncertain');
-      swatches.forEach(function (button, i) { button.disabled = locked || !options[i].id; });
+      select.disabled = locked;
+      if (picker.fpwColorMenu) {
+        picker.fpwColorMenu.querySelectorAll('button').forEach(function (button, i) { button.disabled = locked || !options[i].id; });
+        if (locked) { picker.fpwColorMenu.open = false; }
+      }
       input.disabled = locked;
       picker.querySelectorAll('.fp-qty-step').forEach(function (button) { button.disabled = locked || !!(selected && selected.individual); });
       sync();
@@ -50,21 +109,28 @@
       review.textContent = 'Revisar Productos a Cotizar';
       status.appendChild(review);
     }
-    swatches.forEach(function (button, i) {
-      button.addEventListener('click', function () {
-        if (blocked() || button.disabled || !options[i].id) { return; }
-        selected = options[i];
-        swatches.forEach(function (other) { other.setAttribute('aria-pressed', other === button ? 'true' : 'false'); });
+    select.addEventListener('change', function () {
+        if (blocked()) { return; }
+        var index = swatches.indexOf(select.selectedOptions[0]);
+        selected = index >= 0 && !swatches[index].disabled && options[index].id ? options[index] : null;
+        if (!selected) {
+          add.dataset.product_id = '0';
+          jq(add).data('product_id', 0);
+          status.textContent = 'Colores sujetos a disponibilidad.';
+          status.classList.remove('is-visible');
+          sync();
+          return;
+        }
         add.dataset.product_id = String(selected.id);
         jq(add).data('product_id', selected.id); // Also support native jQuery dataset readers.
         input.max = selected.max === '' ? '' : String(selected.max);
         input.readOnly = selected.individual;
         if (selected.individual) { input.value = '1'; }
         picker.querySelectorAll('.fp-qty-step').forEach(function (step) { step.disabled = selected.individual; });
-        status.textContent = 'Seleccionado: ' + selected.label + '. Colores sujetos a disponibilidad.';
+        status.textContent = 'Colores sujetos a disponibilidad.';
+        status.classList.remove('is-visible');
         input.dispatchEvent(new win.Event('input', { bubbles: true }));
         sync();
-      });
     });
     picker.addEventListener('input', sync);
     picker.addEventListener('change', sync);
@@ -77,8 +143,9 @@
         event.stopImmediatePropagation();
         if (!blocked() && !selected) {
           status.textContent = 'Elige un color antes de agregar.';
-          var available = swatches.find(function (button) { return !button.disabled; });
-          if (available) { available.focus(); }
+          status.classList.add('is-visible');
+          if (picker.fpwColorMenu) { picker.fpwColorMenu.open = true; picker.fpwColorMenu.querySelector('summary').focus(); }
+          else { select.focus(); }
         } else if (!blocked()) { input.reportValidity(); input.focus(); }
       }
     }, true);
@@ -106,6 +173,7 @@
       busy(false);
       add.classList.remove('loading');
       status.textContent = 'El agregado no se envió. Revisa los datos o continúa desde la ficha.';
+      status.classList.add('is-visible');
     });
     jq(win.document).on('ajaxError.fpwFeatured ajaxComplete.fpwFeatured', function (event, xhr, settings) {
       if (!picker.hasAttribute('data-fpw-pending') || !settings || !settings.url) { return; }

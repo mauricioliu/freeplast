@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.11
+ * Version: 1.12.12
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -123,7 +123,11 @@ function fpw_render_featured_products( $attributes ): string {
 	$previous = $GLOBALS['fpw_featured_products_context'] ?? false;
 	$GLOBALS['fpw_featured_products_context'] = true;
 	try {
-		return do_shortcode( '[products limit="' . $limit . '" columns="' . $columns . '" visibility="featured" orderby="menu_order"]' );
+		// Woo stores shortcode IDs for 30 days under product_query, a different
+		// cache group from per-product transients. Sealed SQL catalog migrations
+		// deliberately avoid product-save hooks; never let those old IDs mask
+		// the current featured membership/order. Keep other Woo loops unchanged.
+		return do_shortcode( '[products limit="' . $limit . '" columns="' . $columns . '" visibility="featured" orderby="menu_order" cache="false"]' );
 	} finally {
 		$GLOBALS['fpw_featured_products_context'] = $previous;
 	}

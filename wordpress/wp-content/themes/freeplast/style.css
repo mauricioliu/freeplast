@@ -3,7 +3,7 @@ Theme Name: Freeplast
 Theme URI: https://freeplast.mliu.site/
 Author: Freeplast
 Description: Standalone block theme that reproduces the approved v6 storefront shell and the approved v7-A product page (mobile-first, flat direction with current freeplast.cl copy). Owns presentation only — catalog, cart and requests use WooCommerce + Quotes for WooCommerce with a local Freeplast adapter.
-Version: 1.0.26
+Version: 1.0.27
 Requires at least: 7.0
 Requires PHP: 8.1
 License: GPL-2.0-or-later
@@ -5025,35 +5025,34 @@ body ul.products.catalog-grid li.product-card .fpw-loop-add .fpw-card-selection 
 /* Featured-only variation shortcut; the ordinary variable card stays link-only. */
 body ul.products.catalog-grid li.product-card .fp-featured-picker {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 body ul.products.catalog-grid li.product-card .fp-featured-picker[hidden],
+body ul.products.catalog-grid li.product-card .fp-featured-colors[hidden],
+body ul.products.catalog-grid li.product-card .fp-featured-enhanced > .button.secondary[hidden],
 body ul.products.catalog-grid li.product-card .color-hint[hidden] { display: none; }
 body ul.products.catalog-grid li.product-card .fp-featured-colors {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 4px;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
-body ul.products.catalog-grid li.product-card .fp-featured-colors legend {
+body ul.products.catalog-grid li.product-card .fp-featured-colors > span {
   padding: 0;
-  margin-bottom: 8px;
+  margin: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--fp-ink);
 }
-body ul.products.catalog-grid li.product-card .fp-featured-swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 body ul.products.catalog-grid li.product-card .fp-featured-color {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 44px;
+  width: 100%;
+  min-width: 0;
   min-height: 44px;
   max-width: 100%;
   padding: 8px 10px;
@@ -5066,17 +5065,10 @@ body ul.products.catalog-grid li.product-card .fp-featured-color {
   overflow-wrap: anywhere;
   cursor: pointer;
 }
-body ul.products.catalog-grid li.product-card .fp-featured-color .color-dot { flex: 0 0 12px; height: 12px; }
-body ul.products.catalog-grid li.product-card .fp-featured-color .color-dot.black { background: #17181c; }
-body ul.products.catalog-grid li.product-card .fp-featured-color[aria-pressed="true"] {
-  border-color: var(--fp-blue);
-  background: var(--fp-blue-soft);
-  color: var(--fp-blue);
-  font-weight: 700;
-}
 body ul.products.catalog-grid li.product-card .fp-featured-color:disabled { opacity: .6; cursor: not-allowed; }
 body ul.products.catalog-grid li.product-card .fp-featured-picker [aria-disabled="true"] { opacity: .65; cursor: not-allowed; }
 body ul.products.catalog-grid li.product-card .fp-featured-status {
+  grid-column: 1 / -1;
   margin: 0;
   color: var(--fp-chrome-muted);
   font-size: 13px;
@@ -5096,7 +5088,18 @@ body ul.products.catalog-grid li.product-card .fp-featured-picker[data-fpw-uncer
   border-radius: 8px;
 }
 body ul.products.catalog-grid li.product-card .fp-featured-picker .quantity { margin: 0; }
-body ul.products.catalog-grid li.product-card .fp-featured-picker .add_to_cart_button { white-space: normal; text-align: center; }
+body ul.products.catalog-grid li.product-card .fp-featured-picker .add_to_cart_button {
+  margin: 0;
+  min-height: 48px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: center;
+}
+@container (max-width: 289px) {
+  body ul.products.catalog-grid li.product-card .fp-featured-picker { grid-template-columns: minmax(0, 1fr); }
+}
 body ul.products.catalog-grid li.product-card .fp-featured-enhanced > .button.secondary {
   min-height: 44px;
   padding: 8px;
@@ -5104,6 +5107,91 @@ body ul.products.catalog-grid li.product-card .fp-featured-enhanced > .button.se
   border-color: transparent;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+/* Compact featured facts: the color disclosure sits beside the measurements,
+   not in a tall configuration form above the quantity. */
+body ul.products.catalog-grid li.product-card .fp-featured-facts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+}
+body ul.products.catalog-grid li.product-card .fp-featured-facts .product-spec { margin: 0; }
+.fp-featured-menu { position: relative; margin-left: 0; font-size: 13px; color: var(--fp-ink); }
+body ul.products.catalog-grid li.product-card .fp-featured-enhanced { row-gap: 8px; }
+@media (min-width: 600px) {
+  body ul.products.catalog-grid li.product-card .fp-featured-facts {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    column-gap: 12px;
+  }
+  .fp-featured-menu { margin-left: 0; }
+  body ul.products.catalog-grid li.product-card .fp-featured-enhanced { row-gap: 12px; }
+}
+.fp-featured-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 6px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+}
+.fp-featured-menu summary::-webkit-details-marker { display: none; }
+.fp-featured-menu summary:hover { background: var(--fp-blue-soft); }
+.fp-featured-choice { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--fp-blue); }
+.fp-featured-menu .color-dot { flex: 0 0 12px; width: 12px; height: 12px; border: 1px solid var(--fp-chrome-border); border-radius: 50%; }
+.fp-featured-options {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  top: 100%;
+  width: max-content;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--fp-chrome-border);
+  border-radius: 8px;
+  background: var(--fp-paper);
+}
+.fp-featured-options button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fp-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fp-featured-options button:hover,
+.fp-featured-options button[aria-pressed="true"] { background: var(--fp-blue-soft); color: var(--fp-blue); }
+.fp-featured-options button:disabled { opacity: .6; cursor: not-allowed; }
+body ul.products.catalog-grid li.product-card .fp-featured-status:not(.is-visible) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+body ul.products.catalog-grid li.product-card .fp-featured-picker[data-fpw-uncertain] .fp-featured-status,
+body ul.products.catalog-grid li.product-card .fp-featured-picker[data-fpw-pending] .fp-featured-status {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip-path: none;
 }
 
 /* ---------- Motion safety ---------- */

@@ -18,7 +18,8 @@ function do_shortcode($value) {
     return $value;
 }
 check(!fpw_in_featured_products(), 'ordinary loops start outside context');
-fpw_render_featured_products(array());
+$rendered = fpw_render_featured_products(array());
+check(str_contains($rendered, 'cache="false"'), 'featured list must bypass stale Woo shortcode IDs after a sealed catalog migration');
 check(!fpw_in_featured_products(), 'context restored after render');
 $GLOBALS['fpw_featured_products_context'] = 'outer';
 fpw_render_featured_products(array());

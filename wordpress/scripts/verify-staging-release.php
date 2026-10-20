@@ -35,4 +35,15 @@ $check( false === apply_filters( 'woocommerce_can_reduce_order_stock', true ), '
 $check( false !== has_action( 'admin_init', 'fpw_handle_tracking_post' ), 'Tracking guard registered.' );
 $check( str_contains( get_post_field( 'post_content', wc_get_page_id( 'cart' ) ), 'wp:woocommerce/cart' ), 'Native basket retained.' );
 $check( str_contains( get_post_field( 'post_content', wc_get_page_id( 'checkout' ) ), '[woocommerce_checkout]' ), 'Native classic intake retained.' );
+// Inspect rendered card identities too: status codes and a correct DB alone
+// missed the stale Woo shortcode-ID transient in the previous release.
+$featured_ids = get_posts( array(
+	'post_type' => 'product', 'post_status' => 'publish', 'numberposts' => 9,
+	'orderby' => 'menu_order', 'order' => 'ASC', 'fields' => 'ids',
+	'tax_query' => array( array( 'taxonomy' => 'product_visibility', 'field' => 'slug', 'terms' => array( 'featured' ) ) ),
+) );
+$featured_html = fpw_render_featured_products( array( 'limit' => 9, 'columns' => 4 ) );
+preg_match_all( '/<li\\b[^>]*class="[^"]*\\bpost-(\\d+)\\b/', $featured_html, $featured_matches );
+$check( count( $featured_ids ) === 9 && array_map( 'intval', $featured_matches[1] ) === array_map( 'intval', $featured_ids ), 'Rendered featured IDs/order match current catalog, not stale shortcode cache.' );
+$check( str_contains( $featured_html, 'data-fpw-color-select required' ), 'Current native color-select markup rendered.' );
 WP_CLI::success( $checks . ' native staging checks passed; read-only, no email or visual acceptance.' );

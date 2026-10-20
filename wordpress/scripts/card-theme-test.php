@@ -136,7 +136,7 @@ $featured = render_card(array(
     'available_variations'=>array(array('variation_id'=>101, 'attributes'=>array('attribute_color'=>'Azul'), 'variation_is_active'=>true, 'is_purchasable'=>true, 'is_in_stock'=>true, 'max_qty'=>'')),
 ));
 verify(str_contains($featured, 'data-fpw-featured-picker hidden'), 'enhancement hidden until JavaScript is ready');
-verify(str_contains($featured, 'aria-pressed="false"') && !str_contains($featured, 'aria-pressed="true"'), 'no color preselected');
+verify(str_contains($featured, 'data-fpw-color-select required') && str_contains($featured, '<option value="">Selecciona un color</option>') && !str_contains($featured, ' selected'), 'required native color select has no preselected color');
 verify(str_contains($featured, 'data-product_id="0"') && str_contains($featured, 'ajax_add_to_cart'), 'exact variation required before native AJAX');
 verify(str_contains($featured, 'value="70"') && str_contains($featured, 'min="1"'), 'informative initial quantity retained, not imposed as a minimum');
 verify(str_contains($featured, 'Verde (no disponible)') && str_contains($featured, 'disabled="disabled"'), 'unavailable real color named and disabled');

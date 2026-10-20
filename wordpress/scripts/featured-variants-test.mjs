@@ -7,8 +7,8 @@ const jquery = require('jquery');
 const theme = new URL('../wp-content/themes/freeplast/assets/js/', import.meta.url);
 const native = new URL('./vendor/woocommerce-11.1.0-add-to-cart.js', import.meta.url);
 function card(id) {
-  return `<li class="product"><h2 class="woocommerce-loop-product__title">Caja ${id}</h2><div data-fpw-loop-add><div data-fpw-featured-picker hidden>
-  <fieldset><button data-fpw-variant='{"id":101,"label":"Azul","max":200,"individual":false}' aria-pressed="false">Azul</button><button data-fpw-variant='{"id":102,"label":"Verde","max":"","individual":false}' aria-pressed="false">Verde</button><button data-fpw-variant='{"id":0,"label":"Rojo","max":"","individual":false}' disabled>Rojo</button></fieldset>
+  return `<li class="product"><div class="product-info"><h2 class="woocommerce-loop-product__title">Caja ${id}</h2><p class="product-spec">625 × 444 × 226 mm</p></div><div data-fpw-loop-add><div data-fpw-featured-picker hidden>
+  <label class="fp-featured-colors">Color · obligatorio<select data-fpw-color-select required><option value="">Selecciona un color</option><option value="101" data-fpw-variant='{"id":101,"label":"Azul","max":200,"individual":false}'>Azul</option><option value="102" data-fpw-variant='{"id":102,"label":"Verde","max":"","individual":false}'>Verde</option><option value="0" data-fpw-variant='{"id":0,"label":"Rojo","max":"","individual":false}' disabled>Rojo</option></select></label>
   <p data-fpw-featured-status role="status"></p><div class="quantity"><input class="qty fpw-delta-10" type="number" value="70" min="1" step="1"></div><a class="add_to_cart_button ajax_add_to_cart" href="/producto/caja/" data-product_id="0" data-fpw_featured_variant="1" aria-disabled="true">Agregar</a></div><span class="color-hint">Colores</span><a class="button secondary" href="/producto/caja/">Elegir color</a><div class="fpw-card-selection" data-product-id="${id}" data-quantity="0"></div></div></li>`;
 }
 const dom = new JSDOM(`<ul>${card(21)}${card(22)}${card(23)}</ul><span class="fpw-basket-count">0</span><div class="fpw-card-selections" data-fpw-cart-state="1" hidden></div>`, { url:'http://localhost/', runScripts:'outside-only' });
@@ -27,14 +27,31 @@ w.eval(readFileSync(native, 'utf8'));
 await new Promise(resolve => setTimeout(resolve, 30));
 const pickers = w.document.querySelectorAll('[data-fpw-featured-picker]');
 const picker = pickers[0], other = pickers[1];
-const buttons = picker.querySelectorAll('[data-fpw-variant]');
+const select = picker.querySelector('select');
+function choose(picker, value) {
+  const select = picker.querySelector('select');
+  if (select.disabled) { return; }
+  select.value = value;
+  select.dispatchEvent(new w.Event('change', {bubbles:true}));
+}
 const add = picker.querySelector('.add_to_cart_button'), input = picker.querySelector('input');
 assert.equal(picker.hidden, false);
-assert.equal(picker.querySelector('[aria-pressed="true"]'), null);
+assert.equal(select.value, '');
+assert.equal(select.required, true);
+assert.equal(select.options[3].disabled, true);
+const menu = picker.closest('li').querySelector('.fp-featured-menu');
+assert.ok(menu.closest('.product-info'), 'compact menu lives beside product facts');
+assert.equal(picker.querySelector('.fp-featured-colors').hidden, true);
+assert.equal(menu.querySelectorAll('button').length, 3);
+assert.equal(menu.querySelectorAll('button')[2].disabled, true);
 add.click();
 assert.equal(requests.length, 0, 'unselected color cannot call native AJAX');
 assert.match(picker.textContent, /Elige un color/);
-buttons[0].click();
+menu.open = true;
+menu.querySelector('button').click();
+assert.equal(menu.open, false);
+assert.match(menu.querySelector('summary').textContent, /Azul/);
+assert.equal(menu.querySelector('button').getAttribute('aria-pressed'), 'true');
 assert.equal(add.dataset.product_id, '101');
 assert.equal(other.querySelector('.add_to_cart_button').dataset.product_id, '0', 'card selection isolated');
 assert.equal(input.value, '70', 'initial quantity preserved');
@@ -50,7 +67,8 @@ assert.equal(requests[0].data.product_id, '101', 'actual native Woo transport ge
 assert.equal(requests[0].data.quantity, '7');
 assert.equal(requests[0].data.fpw_featured_variant, '1', 'native request preserves narrowly scoped QWC compatibility marker');
 assert.equal(input.disabled, true);
-buttons[1].click(); assert.equal(add.dataset.product_id, '101', 'pending operation freezes variant identity');
+assert.equal(select.disabled, true);
+choose(picker, '102'); assert.equal(add.dataset.product_id, '101', 'pending operation freezes variant identity');
 const fragments = (id, units, parentUnits, count) => ({
   'div.fpw-card-selections': `<div class="fpw-card-selections" data-fpw-cart-state="1" hidden><div class="fpw-card-selection" data-product-id="21" data-quantity="${parentUnits}"><span>${parentUnits} unidades agregadas</span></div><div class="fpw-card-selection" data-product-id="${id}" data-quantity="${units}"></div></div>`,
   'span.fpw-basket-count': `<span class="fpw-basket-count">${count}</span>`
@@ -65,13 +83,13 @@ assert.equal(input.disabled, false);
 assert.equal(w.document.querySelector('.fpw-basket-count').textContent, '1', 'native fragments update header');
 assert.match(picker.textContent, /Azul: 7 unidades/);
 assert.match(picker.closest('[data-fpw-loop-add]').querySelector('.fpw-card-selection').textContent, /7 unidades agregadas/, 'server projection updates card');
-buttons[1].click(); input.value='3'; input.dispatchEvent(new w.Event('input', {bubbles:true})); add.click();
+choose(picker, '102'); input.value='3'; input.dispatchEvent(new w.Event('input', {bubbles:true})); add.click();
 assert.equal(requests[1].data.product_id, '102');
 assert.equal(requests[1].data.quantity, '3');
 finish(requests[1], { fragments:fragments(102,3,10,2), cart_hash:'b' });
 await new Promise(resolve => setTimeout(resolve, 5));
 assert.equal(w.document.querySelector('.fpw-basket-count').textContent, '2');
-buttons[0].click(); input.value='2'; input.dispatchEvent(new w.Event('input', {bubbles:true})); add.click();
+choose(picker, '101'); input.value='2'; input.dispatchEvent(new w.Event('input', {bubbles:true})); add.click();
 finish(requests[2], { fragments:fragments(101,9,12,2), cart_hash:'c' });
 assert.match(picker.textContent, /Azul: 9 unidades/);
 assert.equal(w.document.querySelector('.fpw-basket-count').textContent, '2', 'same color accumulation uses authoritative fragments');
@@ -82,7 +100,7 @@ assert.equal(add.getAttribute('aria-disabled'), 'true');
 assert.match(picker.textContent, /No pudimos confirmar/);
 add.click(); assert.equal(requests.length, 4, 'uncertainty cannot replay the mutation');
 // Independent second card: transport error locks only the affected card.
-other.querySelector('[data-fpw-variant]').click();
+choose(other, '101');
 other.querySelector('.add_to_cart_button').click();
 $(w.document).trigger('ajaxError', [{}, requests[4]]); requests[4].complete();
 assert.equal(other.hasAttribute('data-fpw-uncertain'), true);
@@ -90,7 +108,7 @@ assert.equal(requests.length, 5, 'no automatic retry');
 assert.equal(other.querySelector('input').disabled, true, 'uncertain controls are visibly inert, not apparently enabled');
 assert.match(other.querySelector('[data-fpw-featured-status] a').href, /cotizacion/, 'uncertainty provides a saved-selection recovery link');
 const emptyResponse = pickers[2];
-emptyResponse.querySelector('[data-fpw-variant]').click();
+choose(emptyResponse, '101');
 emptyResponse.querySelector('.add_to_cart_button').click();
 finish(requests[5], null);
 assert.equal(emptyResponse.hasAttribute('data-fpw-uncertain'), true, 'empty native success response is caught at AJAX completion');
