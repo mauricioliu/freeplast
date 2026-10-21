@@ -46,7 +46,8 @@
     { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/cart-accessible-names.js", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/cart-accessible-names.js" },
     { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/style.css", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/style.css" },
     { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/css/woo.css", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/css/woo.css" },
-    { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/featured-variants.js", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/featured-variants.js" }
+    { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/featured-variants.js", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/featured-variants.js" },
+    { "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js", "status": 200, "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js" }
   ],
   "record": { "dir": "wordpress/docs/releases" }
 }

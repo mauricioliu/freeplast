@@ -98,11 +98,19 @@ export async function runCardControlsTests() {
   stepper.mirrorQuantity(first);
   ok(input.value === '1' && first.querySelector('.add_to_cart_button').getAttribute('data-quantity') === '1', 'a clamped value keeps the mirrored quantity coherent');
 
-  for (const [start, delta, expected] of [[65,5,70], [128,1,129], [2000,200,2200], [73,10,83]]) {
+  for (const [start, delta, expected] of [[65,5,75], [128,1,138], [2000,200,2010], [73,10,83]]) {
     input.className = `qty fpw-delta-${delta}`;
     input.value = String(start);
     stepper.stepValue(input, 1);
-    ok(input.value === String(expected) && input.step === '1', `button ${start} + ${delta}, HTML step stays one`);
+    ok(input.value === String(expected) && input.step === '1', `card always adds ten despite legacy delta ${delta}, HTML step stays one`);
+    stepper.stepValue(input, -1);
+    ok(input.value === String(start), 'card subtracts ten back to the manually entered starting quantity');
+    sheetInput.className = `qty fpw-delta-${delta}`;
+    sheetInput.value = String(start);
+    sheetApi.stepValue(sheetInput, 1);
+    ok(sheetInput.value === String(expected), `sheet always adds ten despite legacy delta ${delta}`);
+    sheetApi.stepValue(sheetInput, -1);
+    ok(sheetInput.value === String(start), 'sheet subtracts ten back to the starting quantity');
     input.value = '2'; stepper.stepValue(input, -1);
     ok(input.value === '1', 'all decrements floor at one');
     input.value = '3'; stepper.mirrorQuantity(first);
