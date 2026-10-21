@@ -4,12 +4,12 @@
   'use strict';
   var config = window.FPW_PLACES || {};
   var TEXTS = {
-    confirmed: 'Dirección seleccionada con el asistente. Revisa la comuna de despacho.',
+    confirmed: 'Dirección seleccionada con el asistente. Revisa la dirección de despacho.',
     broad: 'Seleccionaste una calle o sector. Puedes agregar referencias para llegar debajo de la dirección.',
-    manual: 'Dirección manual. Puedes escribir el predio y la comuna sin seleccionar una sugerencia.',
-    unconfirmed: 'No se obtuvo la sugerencia. Puedes escribir la dirección y comuna manualmente.',
-    empty: 'Escribe la dirección o predio y la comuna. El número es opcional.',
-    failed: 'Google no está disponible. Escribe la dirección o predio y la comuna manualmente.'
+    manual: 'Dirección manual. Incluye el predio o calle y la comuna en la dirección.',
+    unconfirmed: 'No se obtuvo la sugerencia. Puedes escribir la dirección completa manualmente.',
+    empty: 'Escribe la dirección completa, incluida la comuna. El número es opcional.',
+    failed: 'Google no está disponible. Escribe la dirección completa manualmente, incluida la comuna.'
   };
   /* A route, commune or region is a REFERENCE, not a certified delivery point:
      the recorded scope lets the private review judge it (no access claim). */

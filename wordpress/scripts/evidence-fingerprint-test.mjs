@@ -10,7 +10,7 @@ export function runEvidenceFingerprintTests() {
   const run = (args = [], options = {}) => spawnSync('bash', [script, ...args], { encoding: 'utf8', ...options });
   const a = run(), b = run();
   assert.equal(a.status, 0, a.stderr); assert.equal(a.stdout, b.stdout); let checks = 1;
-  assert.match(a.stdout, /fields\.js: 1\.0\.5/); checks++;
+  assert.match(a.stdout, /fields\.js: 1\.0\.6/); checks++;
   for (const path of ['woocommerce/loop/loop-start.php', 'inc/catalog.php', 'wordpress/data/products.json', 'scripts/native-chrome-test.php', 'woocommerce/global/breadcrumb.php']) assert.ok(a.stdout.includes(path), path);
   checks++;
   assert.match(a.stdout, /\[native-probes\]/); checks++;

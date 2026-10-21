@@ -32,8 +32,17 @@ function fpw_confirm_place( $id ): array {
 		if ( is_array( $component ) && is_array( $component['types'] ?? null ) && in_array( 'country', $component['types'], true ) ) { $chile = 'CL' === ( $component['shortText'] ?? '' ); break; }
 	}
 	if ( ! $chile || ! $place['types'] || count( array_filter( $place['types'], 'is_string' ) ) !== count( $place['types'] ) ) { return array(); }
+	// Chilean comuna comes only from Google's administrative component, never
+	// from a posted hidden field or a guess based on the formatted address.
+	$commune = '';
+	foreach ( $place['addressComponents'] as $component ) {
+		if ( ! is_array( $component ) || ! is_array( $component['types'] ?? null ) || ! in_array( 'administrative_area_level_3', $component['types'], true ) ) { continue; }
+		$text = $component['longText'] ?? '';
+		if ( is_string( $text ) && '' !== trim( $text ) && strlen( $text ) <= 240 && ! preg_match( '/[<>\x00-\x1F\x7F]/', $text ) && sanitize_textarea_field( $text ) === $text ) { $commune = $text; }
+		break;
+	}
 	$scope = array_intersect( $place['types'], array( 'street_address', 'premise', 'subpremise', 'establishment', 'point_of_interest' ) ) ? 'exacta' : 'amplia';
-	return $confirmed[$id] = array( 'address' => $address, 'place_id' => $id, 'scope' => $scope );
+	return $confirmed[$id] = array( 'address' => $address, 'place_id' => $id, 'scope' => $scope, 'commune' => $commune );
 }
 
 /** Canonicalize before Woo validation and creation; hidden address/scope are never authority. */
@@ -42,7 +51,10 @@ function fpw_canonical_checkout_address( array $data ): array {
 		foreach ( array( 'billing_fp_address', 'billing_fp_commune', 'billing_fp_location_url', 'billing_fp_references', 'fpw_place_id', 'fpw_place_scope' ) as $key ) { $data[$key] = ''; }
 		return $data;
 	}
-	foreach ( array( 'billing_fp_address' => 800, 'billing_fp_commune' => 240 ) as $key => $limit ) {
+	// Removed public fields cannot re-enter new records through stale forms,
+	// saved drafts or forged POSTs. Historical records are not rewritten.
+	$data['billing_fp_commune'] = $data['billing_fp_location_url'] = '';
+	foreach ( array( 'billing_fp_address' => 800 ) as $key => $limit ) {
 		$value = $data[$key] ?? '';
 		$value = is_string( $value ) ? trim( $value ) : '';
 		$data[$key] = strlen( $value ) <= $limit && ! preg_match( '/[<>\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value ) && sanitize_textarea_field( $value ) === $value ? $value : '';
@@ -53,15 +65,11 @@ function fpw_canonical_checkout_address( array $data ): array {
 		$data['fpw_place_id'] = $data['fpw_place_scope'] = '';
 	} else {
 		$data['fpw_place_scope'] = $place['scope'];
+		$data['billing_fp_commune'] = $place['commune'];
 	}
 	return $data;
 }
 add_filter( 'woocommerce_checkout_posted_data', 'fpw_canonical_checkout_address', 20 );
-
-// Woo's text sanitizer deletes percent escapes; validate the original URL at checkout instead.
-add_filter( 'woocommerce_process_checkout_field_billing_fp_location_url', static function ( $value ) {
-	return isset( $_POST['billing_fp_location_url'] ) ? wp_unslash( $_POST['billing_fp_location_url'] ) : $value;
-} );
 
 /** Store text only: never fetch, resolve or calculate distance from this URL. */
 function fpw_valid_location_url( $value ): bool {

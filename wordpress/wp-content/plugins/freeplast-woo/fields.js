@@ -26,7 +26,7 @@
   function dispatchState() {
     enhanceDispatch();
     var needed = dispatchValue() === 'si';
-    ['billing_fp_address', 'billing_fp_commune'].forEach(function (name) {
+    ['billing_fp_address'].forEach(function (name) {
     var field = document.getElementById(name);
     var wrapper = document.getElementById(name + '_field');
     if (!field || !wrapper) return;

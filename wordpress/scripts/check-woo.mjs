@@ -29,6 +29,7 @@ console.log(run(php,[path.join(root,'scripts/public-quantities-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-sequence-test.php')]));
 console.log(run(php,[path.join(root,'scripts/storeapi-minimums-test.php')]));
 console.log(run(php,[path.join(root,'scripts/local-upgrade-test.php')]));
+console.log(run(php,[path.join(root,'scripts/traversa-minimums-test.php')]));
 run(php,['-l',path.join(root,'local/upgrade.php')]);checks++;
 console.log(run(php,[path.join(root,'scripts/contacto-address-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-issuer-test.php')]));

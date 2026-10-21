@@ -1,6 +1,6 @@
-/* Card and sheet buttons always move by ten, independently of legacy product
-   deltas, HTML step=1 and informative minimums. Cards mirror valid quantities
-   into Woo's native AJAX anchor; native validation and Cart block stay intact. */
+/* Card/sheet button deltas come from the server's catalog policy, independently
+   of HTML step=1 and informative minimums. Cards mirror valid quantities into
+   Woo's native AJAX anchor; native validation and persistence stay intact. */
 (function () {
   'use strict';
   var WRAP_SELECTOR = '[data-fpw-loop-add]';
@@ -11,9 +11,10 @@
     var current = parseInt(input.value, 10);
     var min = input.min !== '' ? parseInt(input.min, 10) : 1;
     var max = input.max !== '' ? parseInt(input.max, 10) : Infinity;
-    // Owner policy: every catalog card and product sheet uses +/-10.
-    // Legacy per-product metadata must not override this UI behavior.
-    var step = 10;
+    // Frutera/Merlucera: five; traversas: one; every other product: ten.
+    // The server emits this policy; the retired 200-unit class is ignored.
+    var deltaClass = (input.className || '').match(/\bfpw-delta-(1|5|10)\b/);
+    var step = deltaClass ? Number(deltaClass[1]) : 10;
     if (isNaN(current)) {
       current = isNaN(min) ? 1 : min;
     } else {

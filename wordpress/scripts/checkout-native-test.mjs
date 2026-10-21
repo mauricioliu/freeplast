@@ -58,12 +58,11 @@ export async function runNativeCheckoutTests(enhancement = source) {
       ok(!address.required && e.form.querySelector('.fp-address-slot').hidden, 'no-dispatch removes manual client requirement');
       e.form.querySelector('#billing_fp_dispatch_si').click();
       ok(address.value === '' && !address.readOnly && address.required, 'no-dispatch discards address instead of resurrecting it');
-      const commune = e.form.querySelector('#billing_fp_commune');
-      ok(commune.required && !commune.readOnly && !commune.checkValidity(), 'separate editable commune required for dispatch');
-      commune.value = 'Mostazal';
-      ok(commune.checkValidity(), 'manual commune satisfies native constraint');
+      ok(!e.form.querySelector('#billing_fp_commune') && !e.form.querySelector('#billing_fp_location_url'), 'removed commune and location inputs cannot introduce invisible constraints');
+      address.value = 'Predio Santa Ana, Mostazal';
+      ok(address.checkValidity(), 'complete manual address needs no separate commune');
       e.form.querySelector('#billing_fp_dispatch_no').click();
-      ok(!commune.required && commune.value === '', 'no-dispatch clears commune and its requirement');
+      ok(!address.required && address.value === '', 'no-dispatch clears destination and its requirement');
       ok(!e.w.google && !e.form.querySelector('gmp-place-autocomplete'), 'manual DEV client needs no Google widget');
     }
     {

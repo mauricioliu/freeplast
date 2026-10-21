@@ -31,20 +31,20 @@ export async function runQuantityHoldTests() {
   try {
     const input = doc.querySelector('input.qty'), plus = doc.querySelector('.fp-qty-step--plus');
     pointer(plus, 'pointerdown');
-    ok(input.value === '75', 'pointer applies ten immediately despite legacy delta five');
-    advance(399); ok(input.value === '75', 'initial pause');
-    advance(201); ok(input.value === '105', 'constant ten-unit 100ms repeats after 400ms pause');
+    ok(input.value === '70', 'pointer applies the five-unit exception immediately');
+    advance(399); ok(input.value === '70', 'initial pause');
+    advance(201); ok(input.value === '85', 'constant five-unit 100ms repeats after 400ms pause');
     pointer(doc, 'pointerup'); plus.click(); advance(1000);
-    ok(input.value === '105', 'release and following click produce no extra change');
-    ok(doc.querySelector('.add_to_cart_button').dataset.quantity === '105', 'card native add quantity mirrors draft');
+    ok(input.value === '85', 'release and following click produce no extra change');
+    ok(doc.querySelector('.add_to_cart_button').dataset.quantity === '85', 'card native add quantity mirrors draft');
     pointer(plus, 'pointerdown', 'touch'); pointer(doc, 'pointercancel', 'touch'); advance(1000);
-    ok(input.value === '115', 'touch cancellation stops immediately');
+    ok(input.value === '90', 'touch cancellation stops immediately');
     pointer(plus, 'pointerdown'); doc.getElementById('other').focus(); advance(1000);
-    ok(input.value === '125', 'focus loss stops');
+    ok(input.value === '95', 'focus loss stops');
     pointer(plus, 'pointerdown'); w.dispatchEvent(new w.Event('blur')); advance(1000);
-    ok(input.value === '135', 'window blur stops');
+    ok(input.value === '100', 'window blur stops');
     key(plus, 'keydown', ' '); key(plus, 'keydown', ' ', true); advance(400); key(plus, 'keyup', ' '); plus.click(); advance(1000);
-    ok(input.value === '155', 'keyboard repeats use same clock, not OS repeats or follow-up click');
+    ok(input.value === '110', 'keyboard repeats use same clock, not OS repeats or follow-up click');
     const sheet = doc.querySelector('form input'), sheetPlus = doc.querySelector('form .fp-qty-step--plus');
     pointer(sheetPlus, 'pointerdown', 'touch'); advance(400); pointer(doc, 'pointerup', 'touch');
     ok(sheet.value === '2020', 'sheet uses ten on touch despite legacy delta two hundred');
@@ -86,7 +86,7 @@ export async function runQuantityHoldTests() {
     input.value = '128'; input.dispatchEvent(new w.Event('input', { bubbles: true }));
     ok(doc.querySelector('.add_to_cart_button').dataset.quantity === '128', 'manual entry preserved');
     pointer(plus, 'pointerdown'); plus.remove(); await Promise.resolve(); advance(1000);
-    ok(input.value === '138' && timers.size === 0, 'removed card button clears timers');
+    ok(input.value === '133' && timers.size === 0, 'removed card button clears timers');
   } finally { dom.window.close(); }
   console.log(`quantity hold: ${checks} timer/DOM checks passed`);
   return checks;

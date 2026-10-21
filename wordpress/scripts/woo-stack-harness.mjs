@@ -295,7 +295,7 @@ add_filter('pre_http_request', static function ($preempt, $args, $url) {
   if ($url !== 'https://places.googleapis.com/v1/places/' . $id || !isset($places[$id])) { return new WP_Error('fixture_unknown_place', 'Unknown fixture'); }
   return array('response'=>array('code'=>200), 'body'=>wp_json_encode(array(
     'id'=>$id, 'formattedAddress'=>$places[$id][0], 'types'=>array($places[$id][1]),
-    'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country'))),
+    'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country')), array('longText'=>'Mostazal', 'types'=>array('administrative_area_level_3'))),
   )));
 }, 10, 3);
 `);
@@ -580,7 +580,8 @@ register_shutdown_function( static function () {
       check(!/places\.js\?ver=/.test(detailsHtml) && !/maps\.googleapis\.com/.test(detailsHtml), 'without an authorized Places configuration the assistant never loads and no Google contact ships (issue #59)');
       check(/name="woocommerce_checkout_place_order"/.test(detailsHtml), 'the native place-order trigger is preserved');
       check(/checkout-form\.js\?ver=/.test(detailsHtml), 'the A checkout enhancement ships');
-      check(/fields\.js\?ver=1\.0\.5/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
+      check(/fields\.js\?ver=1\.0\.6/.test(detailsHtml), 'the adapter field enhancement ships at its current pinned version');
+      check(!/name="billing_fp_(commune|location_url)"/.test(detailsHtml), 'removed destination fields do not appear in the native request form');
       check(!serverRenderedText(detailsHtml).includes('$'), 'no currency amount in server-rendered details text');
       /* Issue #48: corporate pages keep the shared chrome without inheriting
          the product grid; Home carries the A cards through the native loop. */
@@ -608,7 +609,7 @@ register_shutdown_function( static function () {
       const zeroPage = await (await jarFetch('/')).text();
       check(headerCount(zeroPage) === 0, `the empty selection server-renders the zero state (got ${headerCount(zeroPage)})`);
 
-      /* Native POST with mocked Places transport: reject missing commune,
+      /* Native POST with mocked Places transport: reject missing address,
          persist unchanged exact/broad CL matches and separate references,
          exclude all destination data without dispatch. No real Google calls. */
       const placesAddress = 'Camino El Arrayán 52, San Francisco de Mostazal';
@@ -640,11 +641,11 @@ register_shutdown_function( static function () {
         check(payload && payload.result === 'success' && /\/order-received\/(\d+)/.test(String(payload.redirect || '')), `places journey ${label}: a valid request lands natively (got ${JSON.stringify(payload).slice(0, 140)})`);
         return Number((String(payload.redirect).match(/\/order-received\/(\d+)/) || [])[1]);
       };
-      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, fpw_place_id: 'no space allowed' }, 'forged', true);
-      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress }, 'missing', true);
+      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: '', fpw_place_id: 'no space allowed' }, 'forged', true);
+      await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: '' }, 'missing', true);
       placesJourneyIds = {
-        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, billing_fp_commune: 'Mostazal', billing_fp_references: 'Portón azul', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
-        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Camino rural, Mostazal', billing_fp_commune: 'Mostazal', fpw_place_id: 'ChIJbroad-stack-fixture', fpw_place_scope: 'exacta' }, 'amplia'),
+        asistida: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: placesAddress, billing_fp_references: 'Portón azul', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'exacta' }, 'asistida'),
+        degradada: await placesJourney({ billing_fp_dispatch: 'si', billing_fp_address: 'Camino rural, Mostazal', billing_fp_location_url: 'javascript:alert(1)', fpw_place_id: 'ChIJbroad-stack-fixture', fpw_place_scope: 'exacta' }, 'amplia'),
         sindespacho: await placesJourney({ billing_fp_dispatch: 'no', billing_fp_address: '', fpw_place_id: 'ChIJfreesideQ9fXhZplaces-fixture', fpw_place_scope: 'amplia' }, 'sin-despacho'),
       };
 
@@ -888,6 +889,8 @@ register_shutdown_function( static function () {
           'id' => $id,
           'dispatch' => (string) $order->get_meta('_billing_fp_dispatch'),
           'address' => (string) $order->get_meta('_billing_fp_address'),
+          'commune' => (string) $order->get_meta('_billing_fp_commune'),
+          'location_url' => (string) $order->get_meta('_billing_fp_location_url'),
           'references' => (string) $order->get_meta('_billing_fp_references'),
           'source' => (string) $order->get_meta('_billing_fp_address_source'),
           'place_id' => (string) $order->get_meta('_billing_fp_place_id'),
@@ -910,6 +913,8 @@ register_shutdown_function( static function () {
       check(!degraded.all_meta.includes('no space allowed'), 'the malformed value never reaches the record');
       check(degraded.draft_destination && degraded.draft_destination.scope === 'amplia', 'broad scope survives draft snapshot');
       check(assisted.references === 'Portón azul' && assisted.draft_destination.references === 'Portón azul', 'references survive native order and draft separately');
+      check(assisted.commune === 'Mostazal' && assisted.draft_destination.commune === 'Mostazal', 'server-derived Google commune survives native submission without a public input');
+      check(degraded.location_url === '' && !degraded.all_meta.includes('javascript:'), 'stale removed location field cannot persist through the real POST');
       const none = placesState.sindespacho;
       check(none.dispatch === 'no' && none.address === '', '«Sin despacho» keeps no destination (existing rule intact over the real POST)');
       check(none.source === '' && none.place_id === '' && none.scope === '', '«Sin despacho» keeps no place association, even with stale place fields posted');

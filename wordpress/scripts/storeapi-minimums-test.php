@@ -93,5 +93,13 @@ $request->method='DELETE';
 check(null===$guard(null,null,$request),'native DELETE remains separate from invalid quantity update');
 $item_data=apply_filters('woocommerce_get_item_data',array(),array('product_id'=>22));
 check(in_array(array('key'=>'Mínimo','display'=>'2.000 unidades'),$item_data,true),'cart displays informative minimum');
-check(fpw_quote_delta(fpw_quote_minimum_parent_id(new FPW_StoreAPI_Product(310,22)))===200,'variation inherits parent button delta');
+function get_post_field($field, $id) { return $GLOBALS['fpwd_post_slugs'][$id] ?? ''; }
+check(fpw_quote_delta(fpw_quote_minimum_parent_id(new FPW_StoreAPI_Product(310,22)))===10,'retired metadata cannot reintroduce a 200-unit delta');
+foreach (array('caja-frutera'=>5, 'caja-merlucera'=>5, 'traversa-para-bins-tipo-g1'=>1, 'traversa-para-bins-tipo-upc'=>1, 'traversa-para-bins-tipo-romano'=>1, 'caja-frutillera'=>10, 'caja-cosechera-3-4'=>10) as $slug=>$delta) {
+    $GLOBALS['fpwd_post_slugs'][22]=$slug;
+    check(fpw_quote_delta(22)===$delta, 'approved catalog delta: '.$slug);
+    check(fpw_quote_delta(fpw_quote_minimum_parent_id(new FPW_StoreAPI_Product(310,22)))===$delta, 'variation inherits approved delta: '.$slug);
+    $classes=apply_filters('woocommerce_quantity_input_classes', array('qty'), new FPW_StoreAPI_Product(22));
+    check(in_array('fpw-delta-'.$delta, $classes, true), 'rendered card/sheet class follows server policy: '.$slug);
+}
 echo "storeapi minimums: $assertions cumulative offline checks passed; pinned native code, no server\n";

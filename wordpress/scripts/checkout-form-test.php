@@ -104,10 +104,10 @@ function verify($condition, $message) {
 
 preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $html, $manual_input);
 verify(!str_contains($manual_input[0], 'readonly="readonly"'), 'native address editable in production and without JavaScript');
-verify(str_contains($html, 'Google es solo una ayuda.'), 'helper states optional Google policy');
-verify(str_contains($html, 'La dirección o predio y la comuna solo son obligatorios con despacho. El número es opcional.'), 'rendered required-fields hint matches rural dispatch rules');
+verify(str_contains($html, 'Busca tu dirección con Google o escribe la dirección completa, incluida la comuna.'), 'helper offers Google search without requiring separate commune or location fields');
+verify(str_contains($html, 'La dirección completa solo es obligatoria con despacho. El número es opcional.'), 'rendered required-fields hint matches rural dispatch rules');
 verify(!str_contains($html, 'comuna y región'), 'rendered checkout never claims a mandatory region');
-verify(str_contains($html, 'name="billing_fp_commune"') && str_contains($html, 'name="billing_fp_location_url"'), 'native commune and optional location link render');
+verify(!str_contains($html, 'name="billing_fp_commune"') && !str_contains($html, 'name="billing_fp_location_url"'), 'commune and location link inputs are removed from the rendered form');
 
 verify(str_contains($html, 'REVIEW-EXTENSION') && str_contains($html, 'BILLING-EXTENSION'), 'native extension hooks still execute');
 verify(!str_contains($html, 'COUPON-FORM-MARKER') && stripos($html, 'coupon') === false, 'H2: no coupon invitation, field or action renders anywhere in the quote-only form');
@@ -157,7 +157,7 @@ verify(!str_contains($html, 'El precio se confirma con ventas.'), 'summary does 
 verify(str_contains(file_get_contents(__DIR__ . '/../.build/wp/wp-content/plugins/woocommerce/templates/checkout/payment.php'), "wc_get_template( 'checkout/terms.php' )"), 'pinned native payment calls the exercised terms template');
 verify(!str_contains($html, 'checkbox') || !str_contains($html, 'consentimiento'), 'no consent checkbox invented');
 verify(!str_contains($html, 'registro') || !str_contains($html, 'Regístrate'), 'no registration requirement invented');
-verify(str_contains($html, 'Los datos de contacto, empresa y la opción de despacho son obligatorios.') && str_contains($html, 'La dirección o predio y la comuna solo son obligatorios con despacho. El número es opcional. Mensaje es opcional.'), 'the required-fields hint matches the conditional and optional rules');
+verify(str_contains($html, 'Los datos de contacto, empresa y la opción de despacho son obligatorios.') && str_contains($html, 'La dirección completa solo es obligatoria con despacho. El número es opcional. Mensaje es opcional.'), 'the required-fields hint matches the conditional and optional rules');
 
 /* Steps: step 2 active. */
 verify(str_contains($html, 'aria-current="step"') && str_contains($html, 'step-number">2<'), 'the details step is current');
@@ -167,7 +167,7 @@ verify(!str_contains($html, 'fpw_attempt" value=""') , 'no literal attempt marku
 $functions = file_get_contents(__DIR__ . '/../wp-content/themes/freeplast/functions.php');
 verify(str_contains($functions, 'checkout-form.js'), 'the checkout enhancement script is enqueued');
 $adapter = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
-verify(str_contains($adapter, "'1.0.5'"), 'fields.js enqueue version follows destination contract change');
+verify(str_contains($adapter, "'1.0.6'"), 'fields.js enqueue version follows simplified destination contract');
 
 /* Native server validation + both native notice shapes, without WP storage/HTTP. */
 require_once __DIR__ . '/../.build/wp/wp-includes/class-wp-error.php';
@@ -229,8 +229,6 @@ $validation_fixtures = array();
 $invalid_cases = array();
 foreach ($required as $key) { $invalid_cases[$key] = array($key=>''); }
 $invalid_cases['address'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'   ');
-$invalid_cases['commune'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'');
-$invalid_cases['location'] = array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'javascript:alert(1)');
 $invalid_cases['dispatch-invalid'] = array('billing_fp_dispatch'=>'otra');
 $invalid_cases['email-format'] = array('billing_email'=>'correo-invalido');
 $invalid_cases['rut-format'] = array('billing_fp_rut'=>'14.442.480-3');
@@ -280,7 +278,7 @@ foreach (array('billing_first_name','billing_company','billing_fp_giro','billing
 	verify(str_contains($errors->get_error_message($key), $billing[$key]['label'] . ': el texto es demasiado largo. Acórtalo'), 'overlength names field and correction: ' . $key);
 }
 verify(!$validator->validate(array_replace($valid, array('billing_fp_address'=>str_repeat('a', 801))))->has_errors(), 'no-dispatch ignores an unused overlong address draft rather than blocking on a hidden field');
-verify(!$validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n', 'billing_fp_commune'=>'Mostazal')))->has_errors(), 'manual rural destination accepted without number, region, Google or JavaScript');
+verify(!$validator->validate(array_replace($valid, array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>'Predio Santa Ana, camino rural s/n, Mostazal')))->has_errors(), 'manual rural destination accepted without separate commune, number, region, Google or JavaScript');
 verify(!$validator->validate($valid)->has_errors() && !$GLOBALS['fpw_checkout_field_errors'], 'correction/retry clears request-local errors');
 
 if ('1' === getenv('FREEPLAST_TEST_VALIDATION_JSON')) { echo json_encode($validation_fixtures, JSON_UNESCAPED_UNICODE); }

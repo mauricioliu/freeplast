@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.12
+ * Version: 1.12.13
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -274,8 +274,6 @@ function fpw_checkout_fields( $fields ) {
 		'billing_fp_giro' => array( 'label'=>'Giro', 'required'=>true, 'type'=>'text', 'placeholder'=>'Ej.: producción agrícola', 'class'=>array('form-row-last'), 'priority'=>60 ),
 		'billing_fp_dispatch' => array( 'label'=>'¿Necesitas despacho?', 'required'=>true, 'type'=>'radio', 'options'=>array('si'=>'Con despacho','no'=>'Sin despacho'), 'class'=>array('form-row-wide'), 'priority'=>70 ),
 		'billing_fp_address' => array( 'label'=>'Dirección de despacho', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Predio Santa Ana, camino rural s/n', 'custom_attributes'=>array('rows'=>'2', 'maxlength'=>'800'), 'class'=>array('form-row-wide'), 'priority'=>80 ),
-		'billing_fp_commune' => array( 'label'=>'Comuna de despacho', 'required'=>false, 'type'=>'text', 'custom_attributes'=>array('maxlength'=>'240'), 'class'=>array('form-row-wide'), 'priority'=>82 ),
-		'billing_fp_location_url' => array( 'label'=>'Enlace de ubicación', 'required'=>false, 'type'=>'text', 'placeholder'=>'https://…', 'custom_attributes'=>array('maxlength'=>'2048', 'inputmode'=>'url'), 'class'=>array('form-row-wide'), 'priority'=>84 ),
 		'billing_fp_references' => array( 'label'=>'Referencias para llegar', 'required'=>false, 'type'=>'textarea', 'placeholder'=>'Portón azul, entrada por el camino lateral', 'custom_attributes'=>array('maxlength'=>'800', 'rows'=>'2'), 'class'=>array('form-row-wide'), 'priority'=>90 ),
 	);
 	$fields['shipping'] = array();
@@ -332,10 +330,9 @@ function fpw_validate_checkout( $data, $errors ) {
 	}
 	$destination = fpw_canonical_checkout_address( $data );
 	if ( 'si' === $dispatch ) {
-		foreach ( array( 'billing_fp_address'=>'Dirección de despacho: escribe la dirección o predio (máximo 800 bytes). El número es opcional.', 'billing_fp_commune'=>'Comuna de despacho: escribe la comuna (máximo 240 bytes).' ) as $key => $message ) {
+		foreach ( array( 'billing_fp_address'=>'Dirección de despacho: escribe la dirección o predio (máximo 800 bytes). El número es opcional.' ) as $key => $message ) {
 			if ( '' === $destination[$key] ) { $errors->add( $key, $message, array('id'=>$key) ); }
 		}
-		if ( ! fpw_valid_location_url( $data['billing_fp_location_url'] ?? '' ) ) { $errors->add( 'billing_fp_location_url', 'Enlace de ubicación: usa una URL http o https válida, sin usuario ni contraseña (máximo 2048 bytes).', array('id'=>'billing_fp_location_url') ); }
 	}
 	if ( 'si' === $dispatch && strlen( $data['billing_fp_references'] ?? '' ) > 800 ) { $errors->add('billing_fp_references', 'Referencias para llegar: el texto es demasiado largo (máximo 800).', array('id'=>'billing_fp_references')); }
 	$fields = fpw_checkout_fields( array() );
@@ -362,7 +359,7 @@ add_action( 'woocommerce_after_checkout_validation', 'fpw_validate_checkout', 10
 
 add_action( 'woocommerce_checkout_create_order', static function ( $order, $data ) {
 	$data = fpw_canonical_checkout_address( $data );
-	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && ( '' === $data['billing_fp_address'] || '' === $data['billing_fp_commune'] || ! fpw_valid_location_url( $data['billing_fp_location_url'] ?? '' ) ) ) { throw new Exception( 'Revisa la dirección, comuna y enlace de ubicación para despacho.' ); }
+	if ( 'si' === ( $data['billing_fp_dispatch'] ?? '' ) && '' === $data['billing_fp_address'] ) { throw new Exception( 'Revisa la dirección de despacho.' ); }
 	$order->update_meta_data( '_qwc_quote', '1' );
 	$order->update_meta_data( '_quote_status', 'quote-pending' );
 	$order->update_meta_data( '_fp_request', 'yes' );
@@ -447,12 +444,13 @@ add_action( 'woocommerce_checkout_update_order_review', static function ( $seria
 	}
 	foreach ( fpw_draft_keys() as $key ) {
 		if ( isset($data[$key]) && is_string($data[$key]) ) {
-			$value = 'billing_fp_location_url' === $key ? ( fpw_valid_location_url( $data[$key] ) ? $data[$key] : '' ) : mb_substr(sanitize_textarea_field($data[$key]),0,4000);
+			$value = mb_substr(sanitize_textarea_field($data[$key]),0,4000);
 			WC()->session->set( 'fpw_'.$key, $value );
 		}
 	}
 } );
 add_filter( 'woocommerce_checkout_get_value', static function ( $value, $key ) {
+	if ( in_array( $key, array( 'billing_fp_commune', 'billing_fp_location_url' ), true ) ) { return ''; }
 	return null === $value && WC()->session ? WC()->session->get('fpw_'.$key, $value) : $value;
 }, 10, 2 );
 add_action( 'woocommerce_cart_emptied', static function () {
@@ -461,11 +459,11 @@ add_action( 'woocommerce_cart_emptied', static function () {
 
 add_action( 'wp_enqueue_scripts', static function () {
 	if ( function_exists('is_checkout') && is_checkout() && ! is_order_received_page() ) {
-		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.5', true);
+		wp_enqueue_script('fpw-fields', plugins_url('fields.js', __FILE__), array('jquery','wc-checkout'), '1.0.6', true);
 		// Without browser configuration, no Google script ships; manual dispatch still works.
 		$places = fpw_places_config();
 		if ( $places ) {
-			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.2.0', true);
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.2.1', true);
 			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}
@@ -1659,8 +1657,11 @@ function fpw_public_quantity_validation( $passed, $quantity ) {
 	return false;
 }
 function fpw_quote_delta( int $product_id ): int {
-	$raw = get_post_meta( $product_id, '_fp_quote_step', true );
-	return in_array( (string) $raw, array( '1', '5', '10', '200' ), true ) ? (int) $raw : 10;
+	// Stable catalog identities, shared by cards, sheets, variations and basket.
+	$slug = (string) get_post_field( 'post_name', $product_id );
+	if ( in_array( $slug, array( 'caja-frutera', 'caja-merlucera' ), true ) ) { return 5; }
+	if ( in_array( $slug, array( 'traversa-para-bins-tipo-g1', 'traversa-para-bins-tipo-upc', 'traversa-para-bins-tipo-romano' ), true ) ) { return 1; }
+	return 10;
 }
 add_filter( 'rest_pre_dispatch', static function ( $result, $server, $request ) {
 	if ( in_array( $request->get_method(), array( 'POST', 'PUT', 'PATCH' ), true ) && preg_match( '#^/wc/store/v[0-9]+/cart/(add-item|update-item|items(?:/[\w-]{32})?)/?$#', $request->get_route() ) && $request->has_param( 'quantity' ) && ! fpw_valid_public_quantity( $request->get_param( 'quantity' ) ) ) {

@@ -89,6 +89,7 @@ $GLOBALS['registered_filters']['fpw_places_config'] = array();
 /* The registered carriers: normalized by Woo like the attempt token, rendered
  * empty by the adapter hook, never a rendered form row, never session-drafted. */
 $fields = fpw_checkout_fields( array() );
+check(!isset($fields['billing']['billing_fp_commune']) && !isset($fields['billing']['billing_fp_location_url']), 'removed fields are not registered public inputs');
 foreach ( array( 'fpw_place_id', 'fpw_place_scope' ) as $carrier ) {
 	check( isset( $fields['fpw'][ $carrier ] ), $carrier . ' is registered for Woo\'s own checkout normalization (issue #59)' );
 	check( ( $fields['fpw'][ $carrier ]['required'] ?? true ) === false, $carrier . ' carries no requirement at Woo\'s own validation layer' );
@@ -148,17 +149,19 @@ function fpwp_create( array $data ): FPWP_Fake_Order {
 check( fpw_confirm_place( 'ChIJfixture-place-id_0000' ) === array(), 'missing server credential fails closed' );
 define( 'FREEPLAST_GOOGLE_PLACES_SERVER_KEY', 'server-fixture' );
 $GLOBALS['transport_status'] = 200;
-$GLOBALS['transport_place'] = array( 'id'=>'ChIJfixture-place-id_0000', 'formattedAddress'=>'Canonical Google address, Chile', 'types'=>array('street_address'), 'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country'))) );
+$GLOBALS['transport_place'] = array( 'id'=>'ChIJfixture-place-id_0000', 'formattedAddress'=>'Canonical Google address, Chile', 'types'=>array('street_address'), 'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country')), array('longText'=>'Mostazal', 'types'=>array('administrative_area_level_3'))) );
 $GLOBALS['transport_calls'] = array();
 function wp_remote_get( $url, $args ) { $GLOBALS['transport_calls'][] = array($url, $args); if ( $GLOBALS['transport_status'] === 'network' ) { return new WP_Error(); } return array('response'=>array('code'=>$GLOBALS['transport_status']), 'body'=>json_encode($GLOBALS['transport_place'])); }
 function is_wp_error( $response ) { return $response instanceof WP_Error; }
 function wp_remote_retrieve_response_code( $response ) { return $response['response']['code']; }
 function wp_remote_retrieve_body( $response ) { return $response['body']; }
 $order = fpwp_create( array(
-	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Canonical Google address, Chile', 'billing_fp_commune'=>'Mostazal', 'billing_fp_location_url'=>'https://maps.example.test/predio?x=1&y=2',
+	'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Canonical Google address, Chile', 'billing_fp_commune'=>'Forged commune', 'billing_fp_location_url'=>'https://maps.example.test/predio?x=1&y=2',
 	'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro', 'fpw_place_id' => 'ChIJfixture-place-id_0000', 'fpw_place_scope' => 'amplia', 'billing_fp_references' => 'Portón azul',
 ) );
 check( $order->meta['_billing_fp_address'] === 'Canonical Google address, Chile', 'unchanged Google address retained with confirmed provenance' );
+check($order->meta['_billing_fp_commune'] === 'Mostazal' && $order->meta['_fp_submitted_details']['billing_fp_commune'] === 'Mostazal', 'commune comes from confirmed Google components, never the posted value');
+check($order->meta['_billing_fp_location_url'] === '' && $order->meta['_fp_submitted_details']['billing_fp_location_url'] === '', 'removed location URL is discarded even from a stale form');
 check( $order->meta['_billing_fp_references'] === 'Portón azul' && $order->meta['_fp_submitted_details']['billing_fp_references'] === 'Portón azul', 'references saved separately in native and submitted details' );
 check( ! str_contains(json_encode($GLOBALS['transport_calls']), 'Portón azul'), 'references never reach provider' );
 foreach (array(800, 801) as $length) {
@@ -167,7 +170,11 @@ foreach (array(800, 801) as $length) {
 	check(in_array('billing_fp_references', $errors->codes, true) === ($length > 800), 'reference length boundary validated: ' . $length);
 }
 $posted = apply_filters('woocommerce_checkout_posted_data', array('billing_fp_dispatch'=>'si', 'fpw_place_id'=>'ChIJfixture-place-id_0000', 'billing_fp_address'=>'Forged', 'fpw_place_scope'=>'amplia'));
-check($posted['billing_fp_address'] === 'Forged' && $posted['fpw_place_scope'] === '' && $posted['fpw_place_id'] === '', 'editing text invalidates Google association instead of overwriting manual text');
+check($posted['billing_fp_address'] === 'Forged' && $posted['fpw_place_scope'] === '' && $posted['fpw_place_id'] === '' && $posted['billing_fp_commune'] === '', 'editing text invalidates Google association and derived commune instead of overwriting manual text');
+$without_removed_fields = apply_filters('woocommerce_checkout_posted_data', array('billing_fp_dispatch'=>'si', 'fpw_place_id'=>'ChIJfixture-place-id_0000', 'billing_fp_address'=>'Canonical Google address, Chile'));
+check($without_removed_fields['billing_fp_commune'] === 'Mostazal', 'Google selection derives commune without any public commune input');
+$errors = new WP_Error(); fpw_validate_checkout($without_removed_fields + array('payment_method'=>'quotes-gateway'), $errors);
+check($errors->codes === array(), 'selected Google address submits without removed inputs');
 check( ( $order->meta['_billing_fp_address_source'] ?? '' ) === 'asistida', 'an assisted confirmation records its provenance' );
 check( ( $order->meta['_billing_fp_place_id'] ?? '' ) === 'ChIJfixture-place-id_0000', 'the allowed place identification persists' );
 check( ( $order->meta['_billing_fp_place_scope'] ?? '' ) === 'exacta', 'the reported match scope persists' );
@@ -176,9 +183,9 @@ check( ! str_contains( wp_json_encode( $order->meta ), 'forged' ), 'raw provider
 
 $rejected = false;
 try {
-	fpwp_create( array( 'billing_fp_dispatch' => 'si', 'billing_fp_address' => 'Forged address', 'fpw_place_id' => 'no space allowed' ) );
+	fpwp_create( array( 'billing_fp_dispatch' => 'si', 'billing_fp_address' => '', 'fpw_place_id' => 'no space allowed' ) );
 } catch ( Exception $e ) { $rejected = true; }
-check( $rejected, 'missing commune is rejected even at creation' );
+check( $rejected, 'missing address is rejected even at creation' );
 
 $order_none = fpwp_create( array(
 	'billing_fp_dispatch' => 'no', 'billing_fp_address' => 'Stale address', 'billing_fp_references' => 'Stale notes', 'billing_fp_rut' => '76.123.456-7', 'billing_fp_giro' => 'Giro',
@@ -272,6 +279,13 @@ $GLOBALS['transport_place'] = array_replace($canonical, array('id'=>'ChIJboundar
 check(strlen(fpw_confirm_place('ChIJboundary-offline')['address']) === 800, 'canonical address accepts 800-byte boundary');
 $GLOBALS['transport_place'] = array_replace($canonical, array('id'=>'ChIJbroad-offline', 'types'=>array('route')));
 check( fpw_confirm_place('ChIJbroad-offline')['scope'] === 'amplia', 'CL street without number accepted' );
+foreach (array('missing', 'unsafe', 'oversize') as $case) {
+    $id = 'ChIJcommune-'.$case.'-offline';
+    $GLOBALS['transport_place'] = array_replace($canonical, array('id'=>$id, 'addressComponents'=>array(array('shortText'=>'CL', 'types'=>array('country')))));
+    if ($case !== 'missing') { $GLOBALS['transport_place']['addressComponents'][] = array('longText'=>$case === 'unsafe' ? '<script>bad</script>' : str_repeat('a',241), 'types'=>array('administrative_area_level_3')); }
+    $normalized = fpw_canonical_checkout_address(array('billing_fp_dispatch'=>'si', 'billing_fp_address'=>$canonical['formattedAddress'], 'fpw_place_id'=>$id, 'billing_fp_commune'=>'Forged'));
+    check($normalized['billing_fp_address'] === $canonical['formattedAddress'] && $normalized['billing_fp_commune'] === '', 'missing or unsafe Google commune stays empty without blocking address: '.$case);
+}
 $call = $GLOBALS['transport_calls'][0];
 check( $call[0] === 'https://places.googleapis.com/v1/places/ChIJfixture-place-id_0000' && $call[1]['redirection'] === 0 && $call[1]['timeout'] === 8, 'fixed endpoint, no redirects, bounded timeout' );
 $count = count($GLOBALS['transport_calls']);
@@ -329,18 +343,18 @@ $rural_order = fpwp_create($rural);
 check(count($GLOBALS['transport_calls']) === $before, 'manual submission makes no Google call');
 check($rural_order->meta['_billing_fp_address_source'] === 'manual', 'production rural address is manual, never verified');
 foreach (array('commune', 'location_url') as $key) {
-	check($rural_order->meta['_billing_fp_'.$key] === $rural['billing_fp_'.$key] && $rural_order->meta['_fp_submitted_details']['billing_fp_'.$key] === $rural['billing_fp_'.$key], 'new destination field persists in receipt: '.$key);
+	check($rural_order->meta['_billing_fp_'.$key] === '' && $rural_order->meta['_fp_submitted_details']['billing_fp_'.$key] === '', 'removed public field is discarded for manual destinations: '.$key);
 }
 $rural_draft = fpw_build_request_draft_payload(new FPWP_Order($rural_order->meta));
 $rural_projection = fpw_quotation_projection($rural_draft, null);
-foreach (array('commune', 'location_url', 'references') as $key) { check($rural_projection[$key] === $rural['billing_fp_'.$key], 'destination survives projection: '.$key); }
-check(str_contains(fpw_draft_facts_html(array(), $rural_draft['destination'], true), 'x=1&amp;y=2'), 'location is escaped inert text in review');
+foreach (array('commune', 'location_url') as $key) { check(!isset($rural_projection[$key]), 'removed field stays absent from new quotation projection: '.$key); }
+check($rural_projection['references'] === 'Portón azul', 'references survive projection');
+check(!str_contains(fpw_draft_facts_html(array(), $rural_draft['destination'], true), 'maps.example.test'), 'discarded location never reaches the new review');
 foreach (array('javascript:alert(1)', 'data:text/html,bad', '//evil.test/path', 'https://user:pass@example.test/', 'https://example.test/ bad', str_repeat('a', 2049), array('bad')) as $bad) {
 	$input = array_replace($rural, array('billing_fp_location_url'=>$bad));
 	$errors = new WP_Error(); fpw_validate_checkout($input, $errors);
-	check(in_array('billing_fp_location_url', $errors->codes, true), 'unsafe location rejected beside field');
-	try { fpwp_create($input); throw new LogicException('invalid location accepted'); }
-	catch (Exception $error) { check(!($error instanceof LogicException), $error->getMessage()); }
+	check(!in_array('billing_fp_location_url', $errors->codes, true), 'removed location field cannot block a valid address');
+	check(fpwp_create($input)->meta['_billing_fp_location_url'] === '', 'unsafe stale location is discarded rather than persisted');
 }
 $none = fpwp_create(array_replace($rural, array('billing_fp_dispatch'=>'no')));
 foreach (array('address', 'commune', 'location_url', 'references') as $key) { check($none->meta['_billing_fp_'.$key] === '' && $none->meta['_fp_submitted_details']['billing_fp_'.$key] === '', 'no dispatch clears '.$key); }

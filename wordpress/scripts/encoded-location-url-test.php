@@ -29,20 +29,22 @@ $url = 'https://maps.example.test/Predio%20Ana%2Fsur?q=a%26b&z=1';
 check(wc_clean($url) !== $url && sanitize_textarea_field($url) !== $url, 'native sanitizers demonstrate original percent-escape loss');
 $_POST = array_replace($rural, array('billing_fp_location_url'=>$url));
 $data = $checkout->get_posted_data();
-check($data['billing_fp_location_url'] === $url, 'real Woo posted-data method preserves encoded URL via field filter');
+check($data['billing_fp_location_url'] === '', 'real Woo posted-data method discards removed URL input');
 $order = fpwp_create($data);
-check($order->meta['_billing_fp_location_url'] === $url && $order->meta['_fp_submitted_details']['billing_fp_location_url'] === $url, 'native normalization through order and submitted details preserves exact bytes');
-$draft = fpw_build_request_draft_payload(new FPWP_Order($order->meta));
-check(fpw_quotation_projection($draft, null)['location_url'] === $url, 'encoded URL survives draft projection');
+check($order->meta['_billing_fp_location_url'] === '' && $order->meta['_fp_submitted_details']['billing_fp_location_url'] === '', 'removed URL stays absent through native normalization and new order');
+$legacy = new FPWP_Order(array('_billing_fp_dispatch'=>'si', '_billing_fp_address'=>'Predio Ana, Mostazal', '_billing_fp_location_url'=>$url, '_billing_fp_commune'=>'Mostazal'));
+$draft = fpw_build_request_draft_payload($legacy);
+check(fpw_quotation_projection($draft, null)['location_url'] === $url, 'historical encoded URL still survives draft projection byte-exact');
 foreach ($registered_actions['woocommerce_checkout_update_order_review'] as $callback) { $callback(http_build_query($_POST)); }
-check(apply_filters('woocommerce_checkout_get_value', null, 'billing_fp_location_url') === $url, 'back-navigation restores exact encoded URL');
+check(apply_filters('woocommerce_checkout_get_value', null, 'billing_fp_location_url') === '', 'back-navigation cannot restore removed URL');
+WC()->session->set('fpw_billing_fp_location_url', $url);
+check(apply_filters('woocommerce_checkout_get_value', null, 'billing_fp_location_url') === '', 'even a pre-existing session value cannot resurrect the removed field');
 foreach (array('javascript:alert(1)', 'https://user:pass@example.test/', 'https://example.test/ bad', str_repeat('a',2049), array('bad')) as $bad) {
     $_POST['billing_fp_location_url'] = $bad;
     $data = $checkout->get_posted_data();
     $errors = new WP_Error(); fpw_validate_checkout($data, $errors);
-    check(in_array('billing_fp_location_url', $errors->codes, true), 'native URL path retains invalid input for explicit validation');
-    try { fpwp_create($data); throw new LogicException('unsafe URL persisted'); }
-    catch (Exception $error) { check(!($error instanceof LogicException), $error->getMessage()); }
+    check(!in_array('billing_fp_location_url', $errors->codes, true), 'removed URL cannot block the native request');
+    check(fpwp_create($data)->meta['_billing_fp_location_url'] === '', 'unsafe stale URL never persists');
 }
 $_POST = array_replace($rural, array('billing_fp_dispatch'=>'no', 'billing_fp_location_url'=>$url));
 $order = fpwp_create($checkout->get_posted_data());

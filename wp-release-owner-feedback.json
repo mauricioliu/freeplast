@@ -1,0 +1,149 @@
+{
+  "project": "freeplast-hetzner-staging-owner-feedback",
+  "target": {
+    "ssh": "hetzner-vps",
+    "stackDir": "/var/lib/freeplast-release",
+    "wp": "sudo -u freeplast /usr/local/bin/wp --path=/var/www/freeplast",
+    "exec": "",
+    "wpRoot": "/var/www/freeplast",
+    "filesTar": "tar -czf - -C /var/www/freeplast .",
+    "bundleDir": "bundles",
+    "backupDir": "/root/freeplast-backups/releases",
+    "homeUrl": "https://freeplast.mliu.site"
+  },
+  "rehearsal": {
+    "env": "local"
+  },
+  "gate": "wordpress/.tools/php/php wordpress/scripts/owner-feedback-release-test.php && node wordpress/scripts/staging-release-gate.mjs",
+  "packaging": {
+    "sources": [
+      {
+        "from": "wordpress/wp-content/plugins/freeplast-woo",
+        "zip": "freeplast-woo.zip"
+      },
+      {
+        "from": "wordpress/wp-content/themes/freeplast",
+        "zip": "freeplast-woo-theme.zip"
+      }
+    ]
+  },
+  "artifacts": [
+    "freeplast-woo.zip",
+    "freeplast-woo-theme.zip"
+  ],
+  "install": {
+    "themes": [
+      {
+        "slug": "freeplast",
+        "artifact": "freeplast-woo-theme.zip"
+      }
+    ],
+    "plugins": [
+      {
+        "slug": "freeplast-woo",
+        "artifact": "freeplast-woo.zip"
+      }
+    ]
+  },
+  "tiers": {
+    "surface": [
+      "wordpress/wp-content/themes/**"
+    ],
+    "logic": [
+      "wordpress/wp-content/plugins/**",
+      "wordpress/scripts/**",
+      "wp-release.json"
+    ],
+    "data": [
+      "wordpress/scripts/staging-role-migration/**",
+      "wordpress/data/**",
+      "wordpress/scripts/owner-feedback-release/**",
+      "wordpress/scripts/owner-feedback-fingerprint.php",
+      "wp-release-owner-feedback.json"
+    ]
+  },
+  "hooks": {
+    "verifyState": "wordpress/scripts/verify-staging-release.php",
+    "recordFingerprint": "wordpress/scripts/owner-feedback-fingerprint.php"
+  },
+  "rehearsalCheck": "echo count(get_posts(array('post_type'=>array('fp_product','product'),'post_status'=>'any','numberposts'=>-1,'fields'=>'ids'))) + (function_exists('wc_get_orders')?count(wc_get_orders(array('limit'=>-1,'return'=>'ids'))):0) + count(get_posts(array('post_type'=>'fp_quote','post_status'=>'any','numberposts'=>-1,'fields'=>'ids')));",
+  "smoke": [
+    {
+      "url": "https://freeplast.mliu.site/",
+      "status": 200
+    },
+    {
+      "url": "https://freeplast.mliu.site/tienda/",
+      "status": 200
+    },
+    {
+      "url": "https://freeplast.mliu.site/cotizacion/",
+      "status": 200
+    },
+    {
+      "url": "https://freeplast.mliu.site/nosotros/",
+      "status": 200
+    },
+    {
+      "url": "https://freeplast.mliu.site/contacto/",
+      "status": 200
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/plugins/freeplast-woo/assets/owner-workspace.css",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/plugins/freeplast-woo/assets/owner-workspace.css"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/plugins/freeplast-woo/assets/owner-workspace.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/plugins/freeplast-woo/assets/owner-workspace.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/checkout-form.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/checkout-form.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/cart-accessible-names.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/cart-accessible-names.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/style.css",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/style.css"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/css/woo.css",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/assets/css/woo.css"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/featured-variants.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/featured-variants.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/themes/freeplast/assets/js/loop-add-to-cart-quantity.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/plugins/freeplast-woo/fields.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/plugins/freeplast-woo/fields.js"
+    },
+    {
+      "url": "https://freeplast.mliu.site/wp-content/plugins/freeplast-woo/places.js",
+      "status": 200,
+      "matchFile": "wordpress/wp-content/plugins/freeplast-woo/places.js"
+    }
+  ],
+  "record": {
+    "dir": "wordpress/docs/releases"
+  },
+  "migration": {
+    "source": "wordpress/scripts/owner-feedback-release",
+    "hook": "run.php"
+  }
+}
