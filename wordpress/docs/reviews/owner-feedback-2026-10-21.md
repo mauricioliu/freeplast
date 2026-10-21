@@ -1,6 +1,6 @@
 # Owner feedback — quantities and dispatch fields (DEV)
 
-Scope authorized in session: «ok, has esos cambios», following Ignacio's messages and the screenshot confirming removal of **Comuna de despacho** and **Enlace de ubicación**, retaining the Google search and delivery address. Implementation/DEV only; no new staging or production release authorized or performed.
+Scope authorized in session: «ok, has esos cambios», following Ignacio's messages and the screenshot confirming removal of **Comuna de despacho** and **Enlace de ubicación**, retaining the Google search and delivery address. Initial scope was implementation/DEV only. A subsequent separately authorized staging DATA release is recorded in [2026-10-21-data-863dc6](../releases/2026-10-21-data-863dc6.md); production remains excluded.
 
 ## Changes
 
@@ -19,7 +19,7 @@ The first plan refused because it required imported `_fp_source_id` values, whic
 
 Private backup: `~/.local/state/freeplast-owner-feedback-20261021/dev-before.sql`, SHA-256 `561a28192ab0df957e41d11b72ba3307c67064f78050340c06cc660d211f5d06`. Completed operation receipt: `/var/freeplast/receipts/traversa-minimums-20261021-140024-3a92b17c.json` in the capture volume. Only the three existing `_fp_quote_min_qty` rows changed. No seed/reset, customer request, real email or external integration was executed by this operation.
 
-For a later staging release, these three minimum changes need a separately approved sealed DATA migration; the DEV-only helper must never run against staging. Deploying code alone will change button policy and fields, **not** staging's stored minimums.
+These three minimum changes require a separately approved sealed DATA migration for staging; the DEV-only helper must never run there. Deploying code alone changes button policy and fields, **not** staging's stored minimums. This requirement was subsequently fulfilled by the separately authorized release linked above, using `wordpress/scripts/owner-feedback-release/` and `wp-release-owner-feedback.json`.
 
 ## Verification
 
