@@ -40,7 +40,14 @@ if ( ! $checkout->is_registration_enabled() && $checkout->is_registration_requir
 }
 
 $fp_billing = $checkout->get_checkout_fields( 'billing' );
-foreach ( array( 'billing_fp_address' ) as $key ) { if ( isset( $fp_billing[$key] ) ) { $fp_billing[$key]['required'] = 'si' === $checkout->get_value( 'billing_fp_dispatch' ); } }
+$fp_manual_address = fpw_manual_address_allowed();
+foreach ( array( 'billing_fp_address' ) as $key ) {
+	if ( isset( $fp_billing[$key] ) ) {
+		$fp_billing[$key]['required'] = 'si' === $checkout->get_value( 'billing_fp_dispatch' );
+		// Read-only, not disabled: Google's result still travels in the native POST.
+		if ( ! $fp_manual_address ) { $fp_billing[$key]['custom_attributes']['readonly'] = 'readonly'; }
+	}
+}
 $fp_errors = $GLOBALS['fpw_checkout_field_errors'] ?? array();
 $fp_field = static function ( $key, $args, $value ) use ( $fp_errors ) {
 	if ( empty( $fp_errors[$key] ) ) { woocommerce_form_field( $key, $args, $value ); return; }
@@ -151,7 +158,9 @@ $fp_count_line = $fp_lines . ( 1 === $fp_lines ? ' producto' : ' productos' ) . 
 				if ( isset( $fp_billing['billing_fp_address'] ) ) {
 					$fp_field( 'billing_fp_address', $fp_billing['billing_fp_address'], $checkout->get_value( 'billing_fp_address' ) );
 					$fp_field( 'billing_fp_references', $fp_billing['billing_fp_references'], $checkout->get_value( 'billing_fp_references' ) );
-					echo '<p>Busca tu dirección con Google o escribe la dirección completa, incluida la comuna. El número es opcional.</p>';
+					echo $fp_manual_address
+						? '<p>Escribe la dirección completa, incluida la comuna. El número es opcional.</p>'
+						: '<p>Para cambiar la dirección, usa el buscador de Google. Agrega indicaciones adicionales en Referencias para llegar.</p>';
 				}
 				?>
 			</div>

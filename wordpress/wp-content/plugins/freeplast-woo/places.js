@@ -1,4 +1,4 @@
-/* Google is optional assistance; manual rural destinations remain valid.
+/* The Google search fills a read-only delivery-address result.
    Only the search query reaches the widget, never the separate delivery notes. */
 (function () {
   'use strict';
@@ -6,10 +6,10 @@
   var TEXTS = {
     confirmed: 'Dirección seleccionada con el asistente. Revisa la dirección de despacho.',
     broad: 'Seleccionaste una calle o sector. Puedes agregar referencias para llegar debajo de la dirección.',
-    manual: 'Dirección manual. Incluye el predio o calle y la comuna en la dirección.',
-    unconfirmed: 'No se obtuvo la sugerencia. Puedes escribir la dirección completa manualmente.',
-    empty: 'Escribe la dirección completa, incluida la comuna. El número es opcional.',
-    failed: 'Google no está disponible. Escribe la dirección completa manualmente, incluida la comuna.'
+    editing: 'Selecciona la dirección en el buscador de Google.',
+    unconfirmed: 'No se obtuvo la sugerencia. Vuelve a seleccionar la dirección en el buscador de Google.',
+    empty: 'Selecciona la dirección en el buscador de Google.',
+    failed: 'Google no está disponible. Recarga la página para volver a buscar tu dirección.'
   };
   /* A route, commune or region is a REFERENCE, not a certified delivery point:
      the recorded scope lets the private review judge it (no access claim). */
@@ -97,14 +97,17 @@
     widget.setAttribute('aria-label', 'Buscar una dirección');
     widget.addEventListener('input', function () {
       clearProvenance(context.form);
-      announce(context.status, TEXTS.manual);
+      context.field.value = ''; // A new query must not submit the previous read-only result.
+      announce(context.status, TEXTS.editing);
     });
     widget.addEventListener('gmp-error', function () {
       clearProvenance(context.form);
+      context.field.value = '';
       announce(context.status, TEXTS.failed);
     });
     widget.addEventListener('gmp-select', function (event) {
       clearProvenance(context.form);
+      context.field.value = '';
       var revision = state.revision;
       var prediction = event && event.placePrediction;
       if (!prediction || typeof prediction.toPlace !== 'function') { return; }
@@ -150,13 +153,13 @@
     if (row && row.parentNode === slot) { slot.insertBefore(host, row); } else { slot.insertBefore(host, slot.firstChild); }
     if (row && row.nextSibling) { slot.insertBefore(status, row.nextSibling); } else { slot.appendChild(status); }
     var context = { form: form, field: field, status: status, region: (config.region || 'CL').toUpperCase() };
-    field.readOnly = false;
+    field.readOnly = true;
     field.rows = 2;
     clearProvenance(form);
 
     field.addEventListener('input', function () {
       clearProvenance(form);
-      announce(status, field.value.trim() ? TEXTS.manual : TEXTS.empty);
+      announce(status, field.value.trim() ? TEXTS.editing : TEXTS.empty);
     });
 
     function syncDispatch() {

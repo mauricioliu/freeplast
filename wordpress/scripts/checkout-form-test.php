@@ -103,8 +103,9 @@ function verify($condition, $message) {
 }
 
 preg_match('/<textarea[^>]*id="billing_fp_address"[^>]*>/', $html, $manual_input);
-verify(!str_contains($manual_input[0], 'readonly="readonly"'), 'native address editable in production and without JavaScript');
-verify(str_contains($html, 'Busca tu dirección con Google o escribe la dirección completa, incluida la comuna.'), 'helper offers Google search without requiring separate commune or location fields');
+verify(str_contains($manual_input[0], 'readonly="readonly"') === !fpw_manual_address_allowed(), 'native public address is read-only before JavaScript; only captured local DEV retains its manual exception');
+verify(str_contains($html, fpw_manual_address_allowed() ? 'Escribe la dirección completa, incluida la comuna.' : 'Para cambiar la dirección, usa el buscador de Google.'), 'helper follows Google result versus guarded local DEV mode');
+verify(!str_contains($html, 'Dirección manual. Incluye el predio o calle y la comuna en la dirección.'), 'removed manual-address instruction never renders');
 verify(str_contains($html, 'La dirección completa solo es obligatoria con despacho. El número es opcional.'), 'rendered required-fields hint matches rural dispatch rules');
 verify(!str_contains($html, 'comuna y región'), 'rendered checkout never claims a mandatory region');
 verify(!str_contains($html, 'name="billing_fp_commune"') && !str_contains($html, 'name="billing_fp_location_url"'), 'commune and location link inputs are removed from the rendered form');

@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'FREEPLAST_THEME_VERSION', '1.0.29' );
+define( 'FREEPLAST_THEME_VERSION', '1.0.30' );
 require_once __DIR__ . '/inc/sitemap.php';
 require_once __DIR__ . '/inc/discovery.php';
 add_action('after_setup_theme', static function () {

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Freeplast WooCommerce Integration
  * Description: Local quote-only rules and Chilean fields. WooCommerce owns cart, checkout, orders and administration.
- * Version: 1.12.13
+ * Version: 1.12.14
  * Requires Plugins: woocommerce, quotes-for-woocommerce
  * Requires PHP: 8.1
  */
@@ -463,7 +463,7 @@ add_action( 'wp_enqueue_scripts', static function () {
 		// Without browser configuration, no Google script ships; manual dispatch still works.
 		$places = fpw_places_config();
 		if ( $places ) {
-			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.2.1', true);
+			wp_enqueue_script('fpw-places', plugins_url('places.js', __FILE__), array('fpw-fields'), '1.2.2', true);
 			wp_localize_script('fpw-places', 'FPW_PLACES', $places);
 		}
 	}

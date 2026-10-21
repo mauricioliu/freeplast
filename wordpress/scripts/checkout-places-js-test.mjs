@@ -98,11 +98,6 @@ export async function runCheckoutPlacesTests() {
     input.checked = true;
     input.dispatchEvent(new e.w.Event('change', { bubbles: true }));
   };
-  const type = (e, text) => {
-    const field = e.form.querySelector('#billing_fp_address');
-    field.value = text;
-    field.dispatchEvent(new e.w.Event('input', { bubbles: true }));
-  };
   const flush = () => new Promise((resolve) => setTimeout(resolve, 20));
   const serializeForm = (e) => {
     /* the native plain-POST shape: one value per name, hidden carriers included */
@@ -142,7 +137,8 @@ export async function runCheckoutPlacesTests() {
     ok(e.w.getComputedStyle(widget).getPropertyValue('color-scheme') === 'light', 'Google address assistant stays light instead of adopting device dark mode');
     const address = e.form.querySelector('#billing_fp_address');
     const references = e.form.querySelector('#billing_fp_references');
-    ok(!address.readOnly && !address.disabled, 'address remains editable with optional Google');
+    ok(address.readOnly && !address.disabled, 'Google result is read-only, not disabled, so native submission keeps it');
+    ok(e.w.getComputedStyle(address).background === 'var(--fp-tint)', 'read-only Google result has the existing grey background');
     ok(!references.readOnly && !references.disabled, 'references remain editable');
     ok(e.w.getComputedStyle(references).background === 'var(--fp-paper)', 'editable references retain their white background');
     ok(e.w.getComputedStyle(references.closest('.form-row')).marginTop === '24px', 'references have their own separation from the address');
@@ -167,18 +163,19 @@ export async function runCheckoutPlacesTests() {
     const widget = e.w.document.querySelector('gmp-place-autocomplete');
     widget.select(PLACE_EXACT); await flush();
     const field = e.form.querySelector('#billing_fp_address');
-    ok(field.value === PLACE_EXACT.formattedAddress && !field.readOnly && field.rows === 2, 'selection fills editable two-line textarea');
+    ok(field.value === PLACE_EXACT.formattedAddress && field.readOnly && field.rows === 2, 'selection fills read-only two-line textarea');
     const values = Object.fromEntries(serializeForm(e));
+    ok(new e.w.FormData(e.form).get('billing_fp_address') === PLACE_EXACT.formattedAddress, 'read-only address remains in the native FormData POST');
     ok(values.fpw_place_id === PLACE_EXACT.id && values.fpw_place_scope === 'exacta', 'an exact selection records its place id and exact scope');
     const status = e.w.document.querySelector('.fpw-places-status');
     ok(status.textContent.includes('seleccionada'), 'the status names selected rather than verified provenance');
     ok(!status.textContent.includes('acceso certificado'), 'no deliverability certification is ever claimed');
 
-    /* Editing the text invalidates the previous Place ID. */
-    type(e, 'Camino El Arrayán 52 depto 3'); await flush();
+    /* Editing the search invalidates and clears the old read-only result. */
+    widget.dispatchEvent(new e.w.Event('input')); await flush();
     const edited = Object.fromEntries(serializeForm(e));
-    ok(edited.fpw_place_id === '' && edited.fpw_place_scope === '', 'editing the address invalidates the previous Place ID: only manual remains');
-    ok(status.textContent.includes('manual') && field.value === 'Camino El Arrayán 52 depto 3', 'editing keeps manual text and announces manual provenance');
+    ok(edited.fpw_place_id === '' && edited.fpw_place_scope === '' && field.value === '', 'a new search drops both stale result and Place ID');
+    ok(field.readOnly && status.textContent.includes('buscador de Google') && !status.textContent.includes('Dirección manual'), 'new query keeps result read-only and never invites manual editing');
 
     /* A broad match after an edit records amplia, honestly. */
     widget.select(PLACE_BROAD); await flush();
@@ -187,7 +184,7 @@ export async function runCheckoutPlacesTests() {
     ok(status.textContent.includes('calle o sector'), 'the status distinguishes the broad match from a certified point');
 
     /* Clearing the field invalidates too. */
-    type(e, ''); await flush();
+    widget.dispatchEvent(new e.w.Event('input')); await flush();
     const cleared = Object.fromEntries(serializeForm(e));
     ok(cleared.fpw_place_id === '' && cleared.fpw_place_scope === '', 'clearing the address invalidates the association as well');
   }
@@ -198,12 +195,10 @@ export async function runCheckoutPlacesTests() {
     chooseDispatch(e, 'si'); await flush();
     const status = e.w.document.querySelector('.fpw-places-status');
     ok(status.hidden === false && status.textContent.includes('Google no está disponible'), 'a quota/key failure announces the blocked path');
-    ok(status.textContent.includes('manualmente'), 'failure offers manual entry');
+    ok(status.textContent.includes('Recarga') && !status.textContent.includes('manualmente'), 'failure offers reload, not editing the read-only result');
     ok(!e.w.document.querySelector('.fpw-places-host gmp-place-autocomplete'), 'no half-built widget remains after the failure');
-    type(e, 'Camino rural sin asistente, Mostazal'); await flush();
     const values = Object.fromEntries(serializeForm(e));
-    ok(values.billing_fp_address === 'Camino rural sin asistente, Mostazal' && values.fpw_place_id === '' && values.fpw_place_scope === '', 'failure preserves manual text without association');
-    ok(e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'manual dispatch can submit without Google');
+    ok(e.form.querySelector('#billing_fp_address').readOnly && values.billing_fp_address === '' && values.fpw_place_id === '' && values.fpw_place_scope === '', 'failure never unlocks the result or invents an address');
     chooseDispatch(e, 'no');
     ok(e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'no-dispatch can submit during failure');
   }
@@ -226,7 +221,7 @@ export async function runCheckoutPlacesTests() {
     const e = env({ google: 'timeout' });
     chooseDispatch(e, 'si'); await flush();
     ok(e.form.querySelector('.fpw-places-status').textContent.includes('Google no está disponible'), 'loader timeout gives actionable failure');
-    ok(e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })), 'loader timeout does not block manual dispatch');
+    ok(e.form.querySelector('#billing_fp_address').readOnly, 'loader timeout never unlocks the derived result');
   }
 
   /* «Sin despacho»: the claim is dropped, not merely hidden. */
@@ -254,17 +249,17 @@ export async function runCheckoutPlacesTests() {
       let release;
       widget.select({ ...PLACE_EXACT, wait: new Promise(resolve => { release = resolve; }) });
       await flush();
-      if (invalidate === 'edit') { type(e, 'other'); }
+      if (invalidate === 'edit') { widget.dispatchEvent(new e.w.Event('input')); }
       if (invalidate === 'toggle') { chooseDispatch(e, 'no'); chooseDispatch(e, 'si'); }
       if (invalidate === 'replacement') { widget.select(PLACE_BROAD); await flush(); }
       release(); await flush();
-      ok(field.value === (invalidate === 'replacement' ? PLACE_BROAD.formattedAddress : invalidate === 'edit' ? 'other' : ''), `stale detail ignored after ${invalidate}`);
+      ok(field.value === (invalidate === 'replacement' ? PLACE_BROAD.formattedAddress : ''), `stale detail ignored after ${invalidate}`);
     }
     widget.select({ ...PLACE_EXACT, fail: true }); await flush();
-    ok(field.value === PLACE_BROAD.formattedAddress && !e.form.querySelector('[name="fpw_place_id"]').value, 'failed replacement drops association without destroying text');
+    ok(field.value === '' && field.readOnly && !e.form.querySelector('[name="fpw_place_id"]').value, 'failed replacement clears old result without unlocking it');
     widget.select(PLACE_EXACT); await flush();
     widget.dispatchEvent(new e.w.Event('gmp-error'));
-    ok(field.value === PLACE_EXACT.formattedAddress && e.form.dispatchEvent(new e.w.Event('submit', { cancelable: true })) && !e.form.querySelector('[name="fpw_place_id"]').value, 'provider error invalidates association but preserves manual dispatch');
+    ok(field.value === '' && field.readOnly && !e.form.querySelector('[name="fpw_place_id"]').value, 'provider error clears the old result without unlocking it');
   }
 
   /* Re-init is inert: a second run never duplicates hosts or listeners. */
@@ -277,6 +272,6 @@ export async function runCheckoutPlacesTests() {
   }
 
   for (const e of instances) { e.dom.window.close(); }
-  console.log(`checkout places: ${checks} A · Directa dispatch-assistance checks passed (simulated Places transport; manual rural dispatch supported)`);
+  console.log(`checkout places: ${checks} A · Directa dispatch-assistance checks passed (simulated Places transport; read-only Google result and native serialization)`);
   return checks;
 }
