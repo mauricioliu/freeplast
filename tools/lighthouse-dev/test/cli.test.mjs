@@ -13,7 +13,7 @@ const pkg = fileURLToPath(new URL('../package.json', import.meta.url));
 test('CLI probes reject effects and unsupported input before loading dependencies', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'freeplast-lh-cli-'));
   try {
-    for (const args of [[], ['--help'], ['-h'], ['--json'], ['--version'], ['-v'], ['-V'], ['measure'], ['--url', 'http://invalid'], ['--help', '--bad'], ['--version', '--bad'], ['doctor', '--help'], ['measure', '--help'], ['doctor', '--url', 'http://invalid'], ['measure', '--label', '../escape']]) {
+    for (const args of [['--help'], ['-h'], ['--help', '--json'], ['--version'], ['-v'], ['-V'], ['measure'], ['--url', 'http://invalid'], ['--help', '--bad'], ['--version', '--bad'], ['doctor', '--help'], ['measure', '--help'], ['doctor', '--url', 'http://invalid'], ['measure', '--label', '../escape'], ...['list', 'show', 'calibrate', 'baseline-set', 'compare'].map(c => [c, '--help'])]) {
       const result = spawnSync(process.execPath, ['--permission', `--allow-fs-read=${cli}`, `--allow-fs-read=${pkg}`, cli, ...args], {
         cwd, env: { ...process.env, HOME: cwd }, encoding: 'utf8', timeout: 5000,
       });
@@ -21,11 +21,22 @@ test('CLI probes reject effects and unsupported input before loading dependencie
       assert.equal(result.status, invalid ? 2 : 0, result.stderr);
       assert.equal(result.stderr, '');
       if (args.length === 1 && ['--version', '-v', '-V'].includes(args[0])) assert.equal(result.stdout, '0.1.0\n');
-      if (args.includes('--json')) assert.equal(JSON.parse(result.stdout).status, 'not ready for DEV measurement');
+      if (args.includes('--json')) assert.match(JSON.parse(result.stdout).description, /deterministic/);
       assert.deepEqual(await readdir(cwd), []);
     }
   } finally {
     await rm(cwd, { recursive: true });
+  }
+});
+
+test('new CLI validates flags and required arguments before imports or effects', () => {
+  for (const args of [['compare'], ['show'], ['calibrate', '--a', 'a'], ['baseline', 'set', '--run', 'a'], ['list', '--run', 'a'], ['compare', '--baseline', 'a', '--candidate', 'b', '--bad'], ['show', '--run', '../escape'], ['calibrate', '--a', 'a', '--b', 'b', '--focal', 'mobile:/unknown/'], ['show', '--run', 'a', '--run', 'b']]) {
+    const result = spawnSync(process.execPath, ['--permission', `--allow-fs-read=${cli}`, `--allow-fs-read=${pkg}`, cli, ...args, '--json'], { encoding: 'utf8' });
+    assert.equal(result.status, 2, result.stdout); assert.equal(JSON.parse(result.stdout).error, 'usage');
+  }
+  for (const args of [[], ['list'], ['--json']]) {
+    const result = spawnSync(process.execPath, ['--permission', `--allow-fs-read=${cli}`, `--allow-fs-read=${pkg}`, cli, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 1); assert.match(result.stdout, /ERR_ACCESS_DENIED/);
   }
 });
 

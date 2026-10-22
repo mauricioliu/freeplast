@@ -1,6 +1,6 @@
 # Lighthouse DEV — isolated collection
 
-**Synthetic ticket-2 gates passed; not authorized for DEV.** Owner-authorized sanitizer continuation passed 28 offline tests and one complete isolated 21-case matrix, including persisted mobile/desktop report validation. Await lead verification/integration; no active gate receipt exists. Earlier invalid reports/candidates remain invalid and preserved (history below). Comparison/cycles and DEV remain later tickets. No application files, root dependencies or shared browser are used.
+**Synthetic ticket-2 gates passed; not authorized for DEV.** Owner-authorized sanitizer continuation passed 28 offline tests and one complete isolated 21-case matrix, including persisted mobile/desktop report validation. Await lead verification/integration; no active gate receipt exists. Earlier invalid reports/candidates remain invalid and preserved (history below). Ticket 3 adds offline calibration/comparison below; cycles and DEV remain later tickets. CLI/src changes invalidate the historical instrument gate: ticket 5 must refresh it, never bypass receipts. No application files, root dependencies or shared browser are used.
 
 ## Pins
 
@@ -27,9 +27,9 @@ npm test --prefix tools/lighthouse-dev
 # npm run test:security --prefix tools/lighthouse-dev
 ```
 
-CLI default/help/version never import browser dependencies, start processes, contact services or write files. `-v`/`-V` alias `--version`; `-h` aliases `--help`. Default output uses flat TOON strings; `--json` selects JSON for status/help/errors. Version is a bare string. Unknown commands/arguments return 2, successful probes return 0. Smoke errors return 1. No interactive prompts.
+CLI default (`list`), help and version never import browser dependencies, start processes, contact services or write files. Default/list/show/compare read private evidence; missing state lists zero runs without creating it. `-v`/`-V` alias `--version`; `-h` aliases `--help`. Default output uses flat TOON strings; `--json` selects JSON for status/help/errors. Version is a bare string. Unknown commands/arguments return 2, successful probes return 0. Smoke errors return 1. No interactive prompts.
 
-Tests execute probes with Node filesystem permissions limited to the CLI and package manifest, in an empty temporary HOME/cwd. Process creation and writes are disallowed. Both profile configurations are checked without launching a browser.
+Help/version/usage tests restrict Node filesystem permissions to CLI/package manifest; no subprocess or write permissions. Default/list need read access to source/private state and fail closed when that is denied. Both profile configurations are checked without launching a browser.
 
 ## Fixture smoke
 
@@ -69,7 +69,7 @@ node tools/lighthouse-dev/bin/freeplast-lh.mjs measure --help
 # node tools/lighthouse-dev/bin/freeplast-lh.mjs measure --label aa-1 --json
 ```
 
-`doctor` acquires the same kernel lock as measurement; validates pins, instrument gate, operator runtime receipt, local DNS, three public LOCAL/noindex/nofollow documents, no-store headers, and served theme CSS against checkout bytes. It does not inspect credentials, Docker, databases or start DEV. It records private evidence, not a database-isolation certification. `measure` requires a label (1–40 ASCII letters/digits/underscore/hyphen, starting alphanumeric). Unknown input fails before imports/effects. No public URL, browser, state-directory, fixture, output-directory or configuration override exists. Exit 0 means complete collection/doctor, not improvement; 1 means technical/security/incomplete; 2 usage; 6 busy. Future comparison exit codes are not implemented here.
+`doctor` acquires the same kernel lock as measurement; validates pins, instrument gate, operator runtime receipt, local DNS, three public LOCAL/noindex/nofollow documents, no-store headers, and served theme CSS against checkout bytes. It does not inspect credentials, Docker, databases or start DEV. It records private evidence, not a database-isolation certification. `measure` requires a label (1–40 ASCII letters/digits/underscore/hyphen, starting alphanumeric). Unknown input fails before imports/effects. No public URL, browser, state-directory, fixture, output-directory or configuration override exists. Exit 0 means complete collection/doctor, not improvement; 1 means technical/security/incomplete; 2 usage; 6 busy. Comparison codes are documented in Ticket 3 below.
 
 ### Two independent network controls
 
@@ -139,3 +139,43 @@ One new bounded pass was explicitly authorized after the two historical correcti
 Exactly one new complete matrix: `ticket-2-evidence/security-9o8DSp/`, 11:11:31–11:12:27 UTC. **21/21 passed**, zero forbidden HTTP/WS/TCP/TLS contacts; UID/GID1000, private loopback only, all five capability masks zero and no-new-privs=1 asserted before Node, sandbox retained. Independent HTTPS images/accounts images and WS/WSS cases unchanged. Both clean profiles retain `third-party-cookies`, every category reference resolves, intentional noindex score0 remains, and persisted JSON passes `validateLhr`; generated HTML matches persisted HTML byte-for-byte. Independent read-only artifact verification repeated those checks and verified 0600 files/0700 directory.
 
 Instrument: `6cb4c7c14bf61567051de89daae33803ee18f057b8473169057b3e35dd872747`. Evidence: `sanitizer-continuation-offline-before.log`, `sanitizer-continuation-matrix-once.log`, `sanitizer-continuation-artifact-verification.json`. Source freeze and checksum verification of all historical evidence passed; no old report was backfilled or relabelled. No owned processes/profiles remained. Await lead verification/integration; no active gate, DEV request, later-ticket work, commit or review. Prior shared-host anomaly attribution remains unknown.
+
+## Ticket 3: offline queries, frozen calibration and deterministic comparison
+
+Implemented against **synthetic reports only**; no DEV/browser/network fixture run in this ticket. New source/CLI changes invalidate the historical security candidate. Final ticket-5 security gate refresh and identity receipts remain mandatory; no receipt is activated here.
+
+```sh
+node tools/lighthouse-dev/bin/freeplast-lh.mjs list --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs show --run <a1-id> --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs calibrate --a <a1-id> --b <a2-id> --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs baseline-set --run <a1-id> --confirm --json
+# Equivalent spelling: baseline set --run <a1-id> --confirm
+node tools/lighthouse-dev/bin/freeplast-lh.mjs compare --baseline <a1-id> --candidate <a2-id> --calibration <cal-id> --json
+# Later authorized intervention: choose focal BEFORE candidate collection, not after seeing results:
+node tools/lighthouse-dev/bin/freeplast-lh.mjs calibrate --a <a1-id> --b <a2-id> --focal mobile:/ --json
+# Synthetic-only regression suite, no browser or network listeners:
+node --test tools/lighthouse-dev/test/compare.test.mjs tools/lighthouse-dev/test/cli.test.mjs tools/lighthouse-dev/test/report.test.mjs
+```
+
+`list` (also no arguments) and `show` are read-only; neither creates state nor takes a writing lock. List reports complete versus invalid/incomplete, count and manifest hash. Show validates all reports then returns six case distributions. Missing root lists zero runs; corrupt/private-path failures fail closed. `compare` is also read-only. `calibrate` and explicit `baseline-set --confirm` use the existing permanent kernel lock, private storage, capacity checks and exclusive writes. Baseline pointer replacement is atomic/fsynced; comparison, failed calibration and regression never promote or alter it. No automatic calibration discovery or baseline selection: comparison takes explicit IDs, including optional `--calibration`.
+
+Validation requires schema-1 complete manifests, exact 18-row schedule/identity, four scores/five finite mandatory metrics, every category audit reference, matching derived summary, source hash and pre/post identity, sandbox/renderer/proxy/shutdown evidence, no-store and intentional `is-crawlable` score 0. Every JSON/HTML/summary/event artifact must be present, correctly referenced, private, non-symlink, with matching size and SHA-256. Unsupported versions/settings/source/cache/origin/hardware are incompatible; malformed/missing records are technical errors, never gains. Known schema fields are enforced for manifests/rows/environment/source/identity/calibration; Lighthouse's own extensible report is validated at consumed fields, not treated as a closed arbitrary JSON schema. Hashes detect corruption, not malicious forgery by the state-owning OS user. Queries do not lock out an uncooperative external writer; immutable reports and hash checks remain required.
+
+Calibration requires two distinct complete compatible series. Each metric noise floor is `abs(median_A1 - median_A2) + 2 * max(MAD_A1, MAD_A2)`. A/A is rejected as inconclusive if LCP/FCP/SI range exceeds `max(2 * absolute_floor, .25 * median)` in either series, or median drift exceeds `max(absolute_floor, relative_floor * A1_median)`. Audit-state instability or A11y/BP/SEO score instability also blocks calibration. Stable records are immutable content-addressed `cal-<sha256>.json` files, binding both manifest hashes, the current instrument/evaluator, optional focal case, creation time and noise. Loading revalidates source runs and recomputes all frozen floors. Non-A/A candidates must start after calibration creation; no recalibration using B. Default calibration has no focal: ordinary A/A remains **inconclusive/no-gain**, not an improvement.
+
+Comparison operates independently on all six fixed route/profile cases, retaining the three raw values, n, median, min/max, range and MAD for each metric/score. Full precision decides; threshold equality is inconclusive, never gain/regression. Threshold is `max(absolute, relative * baseline_median, frozen_AA_noise)`:
+
+| Signal | Absolute | Relative | Rule |
+| --- | ---: | ---: | --- |
+| LCP | 200 ms | 10% | Focal reduction strictly over threshold enables numerical gain |
+| FCP / Speed Index | 150 ms | 10% | Increase strictly over threshold regresses |
+| TBT | 50 ms | 15% | Increase strictly over threshold regresses; **not INP** |
+| CLS | .01 | 0 | Increase over threshold or new median > .1 regresses |
+
+Any metric regression in any case wins over another case's improvement. Baseline zero returns `relativeDelta: null`, never divides by zero. Candidate LCP/FCP/SI excessive range prevents improvement. Four scores remain visible: Performance informational; A11y/BP/SEO median drops regress, intermittent drops require review. Audit IDs/modes/scores are compared independently of rounded category scores: stable new/worsened failures regress, intermittent failures or changed coverage/modes are inconclusive. Intentional noindex debt is never removed for SEO gain.
+
+Optional TTFB is raw per sample with its audit ID; when present in every sample, it also gets distributions and a warning above `max(100 ms, 15%, frozen TTFB noise)`. Missing/unusable optional diagnostics never become zero. LCP DOM/selector/resource/breakdown details are explicitly unavailable in evaluator v1: sanitizer removes DOM and no stable detailed diagnostic schema is claimed. A hypothesis relying on unavailable diagnostics cannot be confirmed.
+
+Exit codes: **0** successful query/calibration/baseline-set or numerical improvement; **1** technical/security/invalid record; **2** usage; **3** regression; **4** inconclusive; **5** incompatible; **6** busy. Collection exit 0 still means only complete collection. Without valid calibration or a preselected focal case, comparison cannot improve. Source differences are conservatively incompatible: declared intervention support belongs to the later custodied-cycle ticket, not an implicit source-drift exemption here.
+
+An `improvement` is **numerical laboratory evidence only**, not KEEP, functional correctness, visual acceptance, real-user performance, full accessibility or privacy certification. Offline functionality tests and human content/design approval remain independent mandatory cycle guardrails. No commercial flows, source mutation, baseline auto-promotion, receipts bypass, real A/A certification or review performed here.
