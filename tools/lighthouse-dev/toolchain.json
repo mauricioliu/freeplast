@@ -1,0 +1,11 @@
+{
+  "node": "26.8.2",
+  "npm": "11.19.1",
+  "lighthouse": "13.5.0",
+  "puppeteer-core": "25.9.0",
+  "browser": {
+    "path": "/usr/lib/chromium/chromium",
+    "version": "152.0.7977.82",
+    "sha256": "27c398e1738a5bf578e4414654b959b8fdb63446dfb309c114a95e97c5d243ff"
+  }
+}
