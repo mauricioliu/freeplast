@@ -1,5 +1,7 @@
 # Lighthouse DEV — isolated collection
 
+Final ticket-5 collection protocol and provenance: [HANDOFF.md](HANDOFF.md). Historical ticket statuses below are retained; current real outcome lives in the private report linked there.
+
 **Synthetic ticket-2 gates passed; not authorized for DEV.** Owner-authorized sanitizer continuation passed 28 offline tests and one complete isolated 21-case matrix, including persisted mobile/desktop report validation. Await lead verification/integration; no active gate receipt exists. Earlier invalid reports/candidates remain invalid and preserved (history below). Ticket 3 adds offline calibration/comparison; ticket 4 adds fixture-only manual cycles below. DEV remains a later ticket. CLI/src changes invalidate the historical instrument gate: ticket 5 must refresh it, never bypass receipts. No application files, root dependencies or shared browser are used.
 
 ## Pins
