@@ -83,8 +83,12 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const quotePage = await quoteActor(inbox);
     check(quotePage.status === 200, 'workspace: quotation-only inbox remains reachable');
     const quoteDoc = document(await quotePage.text());
-    check(!quoteDoc.querySelector('.fpw-workspace-maintenance') && quoteDoc.querySelectorAll('.fpw-workspace-navigation a').length === 1, 'workspace: quotation-only inbox offers no forbidden maintenance links');
-    check(!doc.querySelector('.fpw-workspace-maintenance') && doc.querySelectorAll('.fpw-workspace-navigation > a').length === 1 && doc.querySelectorAll('.fpw-maintenance-menu').length === 1, 'workspace: inbox has one maintenance dropdown, no duplicate sidebar or top-level price links');
+    check(!quoteDoc.querySelector('.fpw-workspace-maintenance') && !quoteDoc.querySelector('.fpw-maintenance-menu') && quoteDoc.querySelectorAll('.fpw-workspace-navigation a:not(.fpw-workspace-exit)').length === 1, 'workspace: quotation-only inbox offers no forbidden maintenance links');
+    check(!doc.querySelector('.fpw-workspace-maintenance') && doc.querySelectorAll('.fpw-workspace-navigation > a:not(.fpw-workspace-exit)').length === 1 && doc.querySelectorAll('.fpw-maintenance-menu').length === 1, 'workspace: inbox has one maintenance dropdown, no duplicate sidebar or top-level price links');
+    for (const screen of [quoteDoc, doc]) {
+      const exits = screen.querySelectorAll('.fpw-workspace-navigation .fpw-workspace-exit');
+      check(exits.length === 1 && exits[0].textContent === 'Salir' && asSitePath(exits[0].href) === '/', 'workspace: Salir returns both roles to storefront home without logging out');
+    }
     const maintenance = [...doc.querySelectorAll('.fpw-maintenance-options a')];
     check(maintenance.length === 3 && !doc.querySelector('.fpw-maintenance-menu').hasAttribute('open'), 'workspace: exactly three maintenance options start collapsed');
     check(JSON.stringify(maintenance.map(a => [a.textContent, asSitePath(a.href)])) === JSON.stringify([
