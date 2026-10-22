@@ -93,7 +93,7 @@ else if (!a.includes('config')) { console.error('test refuses mutations'); proce
   check(config.includes('127.0.0.1:${FREEPLAST_LOCAL_PORT:-8131}:80'), 'loopback-only publication');
   check(config.includes('create_host_path: false'), 'missing safety/source binds fail closed');
   check(!config.includes('.build') && !config.includes('external: true'), 'persistent volumes independent from disposable/other stacks');
-  for (const file of ['config.php', 'verify-files.php', 'safety.php', 'seed.php', 'runtime-check.php', 'safety-test.php', 'renderer-test.php']) {
+  for (const file of ['config.php', 'verify-files.php', 'safety.php', 'seed.php', 'runtime-check.php', 'safety-test.php', 'renderer-test.php', 'measure-mode-test.php']) {
     const result = spawnSync(php, ['-l', join(here, file)], { encoding: 'utf8' });
     check(result.status === 0, file + ': ' + result.stdout + result.stderr);
   }
@@ -108,6 +108,8 @@ else if (!a.includes('config')) { console.error('test refuses mutations'); proce
     const result = spawnSync(php, [join(here, 'safety-test.php'), mode], { encoding: 'utf8' });
     check(result.status === 0, result.stdout + result.stderr);
   }
+  const measureMode = spawnSync(php, [join(here, 'measure-mode-test.php')], { encoding: 'utf8' });
+  check(measureMode.status === 0, measureMode.stdout + measureMode.stderr);
   const renderer = spawnSync(php, [join(here, 'renderer-test.php')], { encoding: 'utf8' });
   check(renderer.status === 0, renderer.stdout + renderer.stderr);
   for (const name of ['start.sh', 'bootstrap.sh']) check(spawnSync('sh', ['-n', join(here, name)]).status === 0, name + ' syntax');

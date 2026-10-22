@@ -151,6 +151,7 @@ add_filter(
 
 require_once __DIR__ . '/inc/catalog.php';
 require_once __DIR__ . '/inc/quote-presentation.php';
+require_once __DIR__ . '/inc/measure-mode.php';
 
 /** Recognize the migrated pending-photo attachment, not a product-id list.
  * Replacing that attachment in Woo immediately restores the real photograph. */
