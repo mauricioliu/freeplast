@@ -141,11 +141,24 @@ export async function loadRun(runId, root = stateRoot) {
   }
   return { id: runId, hash: sha256(raw), run, cases: distributions(run.audits) };
 }
-function compatibility(a, b) {
+function declaredSource(a, b, intervention) {
+  if (!intervention || intervention.kind !== 'DECLARED' || !Array.isArray(intervention.paths) || !intervention.paths.length) return false;
+  const { paths, before, after } = intervention;
+  if (!paths.every(p => typeof p === 'string' && p.startsWith('wordpress/wp-content/themes/freeplast/') && !p.split('/').some(s => !s || s === '.' || s === '..'))) return false;
+  const x = a.run.environment.source, y = b.run.environment.source;
+  if (!equal(x, before) || !equal(y, after) || x.head !== y.head || x.branch !== y.branch || x.indexHash !== y.indexHash) return false;
+  const outside = source => source.files.filter(f => !paths.includes(f.path));
+  const status = source => source.status.filter(s => !/^.{2} /.test(s) || !paths.includes(s.slice(3)));
+  return equal(outside(x), outside(y)) && equal(status(x), status(y));
+}
+function compatibility(a, b, intervention = null) {
   const reasons = [], x = a.run, y = b.run;
   for (const field of ['cache']) if (!equal(x[field], y[field])) reasons.push(field);
-  for (const field of ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'origin', 'routes', 'addresses', 'source', 'pages', 'styleHash', 'hardware']) if (!equal(x.environment[field], y.environment[field])) reasons.push(field);
-  for (const field of ['schema', 'origin', 'checkout', 'sourceHash', 'runtimeId', 'wordpress', 'plugins']) if (!equal(x.environment.identity[field], y.environment.identity[field])) reasons.push(`identity.${field}`);
+  const declared = declaredSource(a, b, intervention);
+  const style = 'wordpress/wp-content/themes/freeplast/style.css';
+  const declaredStyle = declared && intervention.paths.includes(style) && [x, y].every(run => run.environment.styleHash === run.environment.source.files.find(f => f.path === style)?.sha256);
+  for (const field of ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'origin', 'routes', 'addresses', 'source', 'pages', 'styleHash', 'hardware']) if (!(declared && field === 'source') && !(declaredStyle && field === 'styleHash') && !equal(x.environment[field], y.environment[field])) reasons.push(field);
+  for (const field of ['schema', 'origin', 'checkout', 'sourceHash', 'runtimeId', 'wordpress', 'plugins']) if (!(declared && field === 'sourceHash') && !equal(x.environment.identity[field], y.environment.identity[field])) reasons.push(`identity.${field}`);
   for (let i = 0; i < 18; i++) if (!equal(x.audits[i].settings, y.audits[i].settings) || !equal(x.audits[i].launch, y.audits[i].launch)) reasons.push(`audit-settings:${i + 1}`);
   return reasons;
 }
@@ -180,8 +193,8 @@ export function calibrationData(a, b, focal = null) {
   }
   return { status: unstable.length ? 'inconclusive' : 'calibrated', reasons: unstable, focal, noise };
 }
-export function evaluate(a, b, calibration = null) {
-  const incompatible = compatibility(a, b);
+export function evaluate(a, b, calibration = null, intervention = null) {
+  const incompatible = compatibility(a, b, intervention);
   if (incompatible.length) return { status: 'incompatible', reasons: incompatible };
   const result = { status: 'inconclusive', reasons: [], cases: {}, acceptance: 'numerical evidence only; functional tests and human content/design approval required; TBT is not INP' };
   let regression = false, uncertain = false, gain = false;
@@ -261,13 +274,13 @@ async function loadCalibration(calId, baseline, root) {
   requireThat(equal(expected, { status: cal.status, reasons: cal.reasons, focal: cal.focal, noise: cal.noise }), 'calibration-integrity');
   return cal;
 }
-export async function compare(baselineId, candidateId, calId = null, root = stateRoot) {
+export async function compare(baselineId, candidateId, calId = null, root = stateRoot, intervention = null) {
   const a = await loadRun(baselineId, root), b = await loadRun(candidateId, root);
-  const reasons = [...await current(a), ...await current(b), ...compatibility(a, b)];
+  const reasons = [...await current(a), ...await current(b), ...compatibility(a, b, intervention)];
   if (reasons.length) return { status: 'incompatible', reasons: [...new Set(reasons)] };
   const cal = calId ? await loadCalibration(calId, a, root) : null;
   if (cal && ![cal.a.id, cal.b.id].includes(b.id) && Date.parse(b.run.startedAt) <= Date.parse(cal.createdAt)) return { status: 'incompatible', reasons: ['candidate-predates-frozen-calibration'] };
-  return evaluate(a, b, cal);
+  return evaluate(a, b, cal, intervention);
 }
 export async function baselineSet(runId, root = stateRoot) {
   const fd = await lock(root);

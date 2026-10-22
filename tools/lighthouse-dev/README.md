@@ -1,6 +1,6 @@
 # Lighthouse DEV — isolated collection
 
-**Synthetic ticket-2 gates passed; not authorized for DEV.** Owner-authorized sanitizer continuation passed 28 offline tests and one complete isolated 21-case matrix, including persisted mobile/desktop report validation. Await lead verification/integration; no active gate receipt exists. Earlier invalid reports/candidates remain invalid and preserved (history below). Ticket 3 adds offline calibration/comparison below; cycles and DEV remain later tickets. CLI/src changes invalidate the historical instrument gate: ticket 5 must refresh it, never bypass receipts. No application files, root dependencies or shared browser are used.
+**Synthetic ticket-2 gates passed; not authorized for DEV.** Owner-authorized sanitizer continuation passed 28 offline tests and one complete isolated 21-case matrix, including persisted mobile/desktop report validation. Await lead verification/integration; no active gate receipt exists. Earlier invalid reports/candidates remain invalid and preserved (history below). Ticket 3 adds offline calibration/comparison; ticket 4 adds fixture-only manual cycles below. DEV remains a later ticket. CLI/src changes invalidate the historical instrument gate: ticket 5 must refresh it, never bypass receipts. No application files, root dependencies or shared browser are used.
 
 ## Pins
 
@@ -88,7 +88,7 @@ Each series is new and non-resumable. Its first durable manifest is `incomplete`
 
 Manifest contains Git HEAD/branch/status, index fingerprint, source bytes/modes/hashes, pins/config/instrument hashes, runtime receipt, public-content hashes, resource/document inventory, hardware/load, timings and artifact SHA-256. Public HTML uses conservative byte hashing: nonces/timestamps can invalidate a series; there is **no permissive normalizer**. Sources covered: tool, theme, plugins, LOCAL config and root package locks; no global diff or secret-file bodies. CSP is hashed, not dumped.
 
-JSON, HTML and summary derive from the same sanitized LHR, validated both before and after sanitization, before report generation/persistence. Sanitizer v2 preserves the static `third-party-cookies` audit and its score/category reference, but removes its entire details table: Lighthouse can place raw cookie lines in the generic `name` column. This narrow audit-record exception does not exempt its metadata from sensitive-string checks. Typed DOM nodes are replaced with an omission marker; headers/cookies, DOM snippets, form values and screenshot pixels are omitted; recognized secret-bearing strings/URLs abort persistence. Exceptions produce fixed reason codes rather than raw dependency logs. Synthetic diagnostic logs remain private. Secret-pattern checks are conservative, not a proof that arbitrary unexpected text contains no sensitive information; never audit private/account pages. Two-GiB artifact cap checked before writes, 32-MiB audit headroom, no automatic deletion/GC. Tool package size checked against 2 GiB; cumulative multi-worktree installation budget remains operator-accounted. Persistent overall A/A/cycle budget is a later-ticket responsibility.
+JSON, HTML and summary derive from the same sanitized LHR, validated both before and after sanitization, before report generation/persistence. Sanitizer v2 preserves the static `third-party-cookies` audit and its score/category reference, but removes its entire details table: Lighthouse can place raw cookie lines in the generic `name` column. This narrow audit-record exception does not exempt its metadata from sensitive-string checks. Typed DOM nodes are replaced with an omission marker; headers/cookies, DOM snippets, form values and screenshot pixels are omitted; recognized secret-bearing strings/URLs abort persistence. Exceptions produce fixed reason codes rather than raw dependency logs. Synthetic diagnostic logs remain private. Secret-pattern checks are conservative, not a proof that arbitrary unexpected text contains no sensitive information; never audit private/account pages. Two-GiB artifact cap checked before writes, 32-MiB audit headroom, no automatic deletion/GC. Tool package size checked against 2 GiB; cumulative multi-worktree installation budget remains operator-accounted. Persistent overall A/A budget remains a later-ticket responsibility; the manual-cycle budget is documented below.
 
 ### Required receipts (not available yet)
 
@@ -176,6 +176,71 @@ Any metric regression in any case wins over another case's improvement. Baseline
 
 Optional TTFB is raw per sample with its audit ID; when present in every sample, it also gets distributions and a warning above `max(100 ms, 15%, frozen TTFB noise)`. Missing/unusable optional diagnostics never become zero. LCP DOM/selector/resource/breakdown details are explicitly unavailable in evaluator v1: sanitizer removes DOM and no stable detailed diagnostic schema is claimed. A hypothesis relying on unavailable diagnostics cannot be confirmed.
 
-Exit codes: **0** successful query/calibration/baseline-set or numerical improvement; **1** technical/security/invalid record; **2** usage; **3** regression; **4** inconclusive; **5** incompatible; **6** busy. Collection exit 0 still means only complete collection. Without valid calibration or a preselected focal case, comparison cannot improve. Source differences are conservatively incompatible: declared intervention support belongs to the later custodied-cycle ticket, not an implicit source-drift exemption here.
+Exit codes: **0** successful query/calibration/baseline-set or numerical improvement; **1** technical/security/invalid record; **2** usage; **3** regression; **4** inconclusive; **5** incompatible; **6** busy. Collection exit 0 still means only complete collection. Without valid calibration or a preselected focal case, comparison cannot improve. Standalone comparisons keep source differences incompatible. The manual-cycle API below supplies a narrowly bound DECLARED intervention; no CLI source/config bypass exists.
 
 An `improvement` is **numerical laboratory evidence only**, not KEEP, functional correctness, visual acceptance, real-user performance, full accessibility or privacy certification. Offline functionality tests and human content/design approval remain independent mandatory cycle guardrails. No commercial flows, source mutation, baseline auto-promotion, receipts bypass, real A/A certification or review performed here.
+
+## Ticket 4: fixture-only manual cycle and guarded recovery
+
+No agent, proposal generator, arbitrary hook, test-command executor, automatic patch or baseline promotion. Commands **record** one manually supplied hypothesis, owned paths, acceptance criterion, pre/post states, test evidence, numerical verdict, explicit KEEP/DISCARD decision and learning. They do not claim to run functional tests or obtain human approval. Only synthetic temporary Git trees were exercised; real application restoration is neither authorized nor enabled in this version.
+
+```sh
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --help
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --action begin --input /absolute/private/begin.json --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --action post --input /absolute/private/post.json --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --action decide --input /absolute/private/decision.json --json
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --action show --json
+# Only after explicit DISCARD, in the same untouched synthetic fixture:
+node tools/lighthouse-dev/bin/freeplast-lh.mjs cycle --action restore --json
+```
+
+Input files must be private, regular, singly linked JSON files. No state-root CLI override. API root parameters exist solely for isolated tests. Begin accepts exactly:
+
+```json
+{
+  "repo": "/tmp/lh-cycle-UNIQUE",
+  "hypothesis": "One concrete, falsifiable intervention",
+  "paths": ["wordpress/wp-content/themes/freeplast/style.css"],
+  "baseline": "complete-baseline-id",
+  "calibration": "cal-content-hash",
+  "acceptance": "Predeclared functional and visual/content criteria plus focal LCP gain"
+}
+```
+
+Repository must be an existing **direct child of the platform temporary directory**, named `lh-cycle-*`, with its own real `.git` directory, existing HEAD/index, no symlinks/hardlinked files/conflicts/merge/rebase in progress. Entire fixture inventory (including ignored, dirty and untracked files) is capped at 2 MiB; declared paths have existing parent directories. The validated baseline source must exactly match the pre-state, with a valid existing frozen calibration. There is no application checkout default. Supplying a path is not permission to use real data: these are synthetic fixtures only.
+
+`post.json`: `{"tests":"evidence/tests.txt"}`. Evidence paths are relative to the fixed private state root, non-symlink private regular files, at most 2 MiB. Post records evidence byte length/SHA-256 and source/worktree snapshots; unrelated changes or index drift cannot be adopted. Operator runs tests separately, saves their output, and explicitly records the result. No shell command from JSON is executed.
+
+`decision.json` example (replace every placeholder with actual evidence; never reuse this as approval):
+
+```json
+{
+  "candidate": "complete-candidate-id",
+  "acceptance": {
+    "decision": "KEEP",
+    "learning": "What the evidence established, including limits",
+    "functional": {"passed": true, "evidence": "evidence/tests.txt"},
+    "visual": {
+      "status": "approved",
+      "reviewer": "Actual human reviewer attribution",
+      "evidence": "evidence/human-content-design-review.txt"
+    }
+  }
+}
+```
+
+KEEP requires all three independently: comparator `improvement`, explicit functional pass with linked evidence, and attributed human `approved` or honest `no-visual-change` declaration with linked evidence. `not-reviewed`/`rejected`, absent reviewer, missing evidence, regression/incompatibility/inconclusive cannot KEEP. No numerical score implies visual approval. The software validates attribution/evidence presence and hashes, **not human identity or truthfulness**. Candidate must start after post-state capture and finish before decision. Baseline/candidate manifest hashes and full numerical verdict persist; test evidence must still match post capture. `DISCARD` requires explicit learning/evidence too. `candidate: null` permits honest inconclusive `candidate-not-collected` DISCARD after failed/manual tests; it never permits KEEP.
+
+DECLARED comparison is restricted to predeclared theme files, binding exact pre/post source fingerprints. HEAD, branch, index, unrelated files/status, evaluator/toolchain/config, runtime identity, public content, hardware, cache and audit settings remain strict. Only source/source-identity hashes attributable to those files may differ. The served `styleHash` may differ **only** for declared `wordpress/wp-content/themes/freeplast/style.css` when each served hash equals its respective captured file SHA-256. Public HTML drift, arbitrary config changes and other served-asset changes remain incompatible; there is no generic content/source exemption. This conservative version cannot confirm interventions that change public HTML hashes.
+
+### Persistent budget and recovery custody
+
+`manual-cycle/budget.json` reserves **one iteration / 90 minutes wall clock** before capture. Every new process reads that same durable record; no reset/resume/new-cycle command. Failed initialization consumes the attempt. Completed or uncertain operations cannot reopen it. Expired cycles cannot post or KEEP; an already captured post-state may still receive explicit DISCARD and guarded recovery for safety. Restoring does not replenish budget. External deletion/forgery by the OS state owner is outside the integrity model.
+
+Begin captures exact bytes/modes, HEAD/branch, raw index hash/index entries and full file inventory. Post is immutable. Recovery never checks out HEAD, resets, stashes, cleans, edits the index or touches undeclared files. It requires DISCARD and exact post-state equality, then restores owned pre-images (including dirty/untracked content), recreates owned deletions and removes owned additions. All pre-image hashes are checked before writes. Symlinks, conflicts, changed index, later edits or untracked drift block. Index and unrelated dirty/untracked files remain untouched.
+
+`recovery-start.json` is durable before the first mutation; each file has immutable pending/done receipts. Verification runs before each file and after each mutation; completion requires exact pre-state equality. Any failure records `uncertain` where possible. A crash can leave only a pending receipt: **that is uncertainty, never success**. A partial recovery or restart cannot replay automatically. Preserve evidence and obtain separate manual intervention authorization; there is no force flag. Exit 0 means recorded operation/restoration only, not global acceptance; technical/uncertain failures exit 1, usage 2, busy 6.
+
+`ponytail:` filesystem snapshots and checks are not atomic transactions against an uncooperative external writer. Pause all other writers; upgrade to OS-level exclusive custody before allowing real application restoration. An identical-content rewrite is not distinguishable from the captured bytes. File contents/modes and index are preserved, not original timestamps, empty directories, ACLs or xattrs. Process-kill tests demonstrate retained pending receipts, not power-loss durability across every filesystem. Full pre-images remain private evidence; no automatic cleanup.
+
+Validation: `npm test --prefix tools/lighthouse-dev` includes pure/HTTP synthetic fixtures only, no browser/native matrix. Cycle coverage includes preexisting dirty/index/untracked preservation, additions/deletions/modes, later/index/untracked/symlink drift, real unmerged index conflicts, partial recovery, abrupt child-process exit, restart budget, damaged pre-image/evidence, and DECLARED unrelated-source/config/content rejection. Synthetic reviewer assertions in tests are not human review of any application. Security receipt remains stale after instrument changes; no smoke/security matrix/DEV run or receipt activation occurred for ticket 4.
