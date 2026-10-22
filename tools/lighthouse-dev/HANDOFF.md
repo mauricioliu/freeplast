@@ -1,5 +1,7 @@
 # Ticket 5: final DEV validation protocol
 
+**Historical collection protocol, not renewed authorization.** Actual A1 stopped before any audit with `public-content-drift`; A2 never started and no baseline/calibration exists. The corrective tool revision changes the instrument, invalidating the old receipt. Do not execute the historical sequence below. The new `budget-init --confirm` is explicit authorization-sensitive initialization and deliberately rejects existing historical run state, including this failed A1; there is no reset/renewal path. Corrections were validated synthetically only. No real retries, receipt activation, theme edits or baseline promotion are authorized. See README's current allowance/read-only-cycle section and the separate private global-review correction evidence.
+
 This document freezes **before** real collection. Actual outcome, run IDs, distributions and blockers are recorded only in the private report:
 
 `/home/mauricio-liu/.herd/plan-mode/plan-mviv2aqv-osyi.impl-5.report.md`

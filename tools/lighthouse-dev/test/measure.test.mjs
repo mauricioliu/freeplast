@@ -4,6 +4,7 @@ import { mkdtemp, rm, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { collect, schedule, instrumentHash } from '../src/measure.mjs';
+import { initializeBudget } from '../src/budget.mjs';
 import { readPrivate } from '../src/store.mjs';
 import { SafetyError, origin, routes } from '../src/policy.mjs';
 
@@ -18,6 +19,7 @@ async function fixture(overrides = {}) {
     pause: async ms => { assert.equal(ms, 5000); pauses++; }, ...overrides,
   };
   try {
+    await initializeBudget(root, overrides.now ? 0 : Date.now());
     const result = await collect(config);
     const run = await readPrivate(join(result.evidence, 'manifest.json'));
     return { result, run, maximum, audits, pauses, permissions: await Promise.all((await readdir(result.evidence)).map(async name => (await stat(join(result.evidence, name))).mode & 0o777)) };
@@ -49,6 +51,16 @@ test('source/DNS/content drift, abort and deadline invalidate without audit', as
   ]) {
     const { result, audits } = await fixture(change);
     assert.equal(result.status, 'incomplete'); assert.equal(audits, 0);
+  }
+});
+test('failed preflight preserves safe hashes and mismatch fields without body or headers', async () => {
+  for (const kind of ['body', 'headers']) {
+    const { run, audits } = await fixture({ preflightRun: async () => ({ contentHash: kind === 'body' ? 'changed' : 'same', headers: kind === 'headers' ? { 'cache-control': 'SECRET_HEADER' } : {}, html: 'SECRET_BODY' }) });
+    assert.equal(audits, 0); assert.equal(run.failure, 'public-content-drift');
+    assert.equal(run.failedPreflight.path, '/'); assert.equal(run.failedPreflight.profile, 'mobile');
+    assert.ok(run.failedPreflight.mismatchKeys.includes(kind === 'body' ? 'contentHash' : 'headers.cache-control'));
+    assert.match(run.failedPreflight.observed.headersHash, /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(JSON.stringify(run), /SECRET_/);
   }
 });
 test('successful subprocess without report cannot yield successful collection', async () => {

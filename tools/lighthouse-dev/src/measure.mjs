@@ -9,6 +9,7 @@ import { stateRoot, privateDirectory, capacity, save, manifest, readPrivate, too
 import { fingerprint, hardware, load, checkout } from './fingerprint.mjs';
 import { profiles } from './config.mjs';
 import { runWorker } from './lifecycle.mjs';
+import { reserveMeasurement, finishMeasurement } from './budget.mjs';
 
 export const schedule = () => [1, 2, 3].flatMap(round => ['mobile', 'desktop'].flatMap(profile => routes.map(path => ({ round, profile, path }))));
 export async function instrumentHash() {
@@ -65,7 +66,8 @@ export async function doctor() {
 
 // Injectable operations are internal test seams; no CLI URL/config/worker override exists.
 export async function collect({ root, fd, label, inspectRun, auditRun, currentSource, currentAddresses, preflightRun, pause = sleep, signal, now = Date.now }) {
-  const started = now(), deadline = started + 45 * 60 * 1000;
+  const started = now(), reservation = await reserveMeasurement(root, started);
+  const deadline = Math.min(started + 45 * 60 * 1000, reservation.deadline);
   const id = new Date(started).toISOString().replaceAll(/[:.]/g, '-') + '-' + randomUUID();
   const dir = join(root, id);
   await mkdir(dir, { mode: 0o700 });
@@ -84,7 +86,17 @@ export async function collect({ root, fd, label, inspectRun, auditRun, currentSo
       const auditSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(117000)]) : AbortSignal.timeout(117000);
       const before = await preflightRun(item, run.environment, auditSignal);
       const original = run.environment.pages.find(x => x.path === item.path);
-      if (before.contentHash !== original.contentHash || JSON.stringify(before.headers) !== JSON.stringify(original.headers)) deny('public-content-drift');
+      if (before.contentHash !== original.contentHash || JSON.stringify(before.headers) !== JSON.stringify(original.headers)) {
+        const headerHash = page => sha256(JSON.stringify(page.headers));
+        run.failedPreflight = { ...item, at: new Date(now()).toISOString(),
+          expected: { contentHash: original.contentHash, headersHash: headerHash(original) },
+          observed: { contentHash: before.contentHash, headersHash: headerHash(before) },
+          mismatchKeys: [...(before.contentHash !== original.contentHash ? ['contentHash'] : []),
+            ...['cache-control', 'content-type', 'content-security-policy', 'x-robots-tag'].filter(k => before.headers[k] !== original.headers[k]).map(k => `headers.${k}`)],
+        };
+        await manifest(root, dir, run);
+        deny('public-content-drift');
+      }
       const row = { ...item, status: 'incomplete', startedAt: new Date(now()).toISOString(), requestedUrl: origin + item.path, preflight: { ...before, html: undefined }, loadBefore: load() };
       run.audits.push(row);
       await manifest(root, dir, run);
@@ -119,6 +131,7 @@ export async function collect({ root, fd, label, inspectRun, auditRun, currentSo
     run.artifacts.push(await save(root, join(dir, 'summary.md'), `# ${id}\n\nStatus: ${run.status}\nCompleted: ${run.audits.filter(x => x.status === 'complete').length}/18\nFailure: ${run.failure || 'none'}\n\nLaboratory only. TBT is not INP. noindex preserved. No improvement claim.\n`));
     run.artifacts.push(await save(root, join(dir, 'events.json'), { startedAt: run.startedAt, finishedAt: run.finishedAt, status: run.status, reason: run.failure || null }));
     await manifest(root, dir, run);
+    await finishMeasurement(root, reservation, run.status);
   }
   return { status: run.status, id, evidence: dir, ...(run.failure ? { error: run.failure } : {}) };
 }

@@ -8,9 +8,10 @@ import { sha256 } from './preflight.mjs';
 import { deny } from './policy.mjs';
 const exec = promisify(execFile);
 export const checkout = fileURLToPath(new URL('../../../', import.meta.url));
-export async function fingerprint(root = checkout) {
+export async function fingerprint(root = checkout, limits = {}) {
   const git = async args => (await exec('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 ** 2, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } })).stdout;
   const files = [];
+  let bytes = 0;
   async function walk(path) {
     const full = join(root, path);
     let st;
@@ -18,10 +19,12 @@ export async function fingerprint(root = checkout) {
     if (st.isSymbolicLink()) deny('source-symlink');
     if (st.isDirectory()) {
       for (const name of (await readdir(full)).sort()) {
-        if (['node_modules', '.git', 'vendor', 'uploads'].includes(name)) continue;
+        if (['node_modules', '.git', 'vendor', 'uploads'].includes(name.toLowerCase())) continue;
         await walk(join(path, name));
       }
-    } else if (/\.(?:mjs|js|json|php|css|html|svg|png|jpe?g|webp|woff2?|yaml|ini|sh|md)$/.test(path) && !/(?:^|\/)(?:\.env|credentials|secrets)(?:\.|\/|$)/i.test(path)) {
+    } else if (/\.(?:mjs|js|json|php|css|html|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|mp4|webm|yaml|ini|sh|md)$/i.test(path) && !/(?:^|\/)(?:\.env|credentials|secrets)(?:\.|\/|$)/i.test(path)) {
+      bytes += st.size;
+      if (!st.isFile() || bytes > (limits.maxBytes ?? Infinity) || files.length >= (limits.maxFiles ?? Infinity)) deny('source-size-or-type');
       files.push({ path, mode: st.mode & 0o777, bytes: st.size, sha256: sha256(await readFile(full)) });
     }
   }
