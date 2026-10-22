@@ -12,7 +12,6 @@ checks = 0
 for storage, cases in queries.items():
     db = sqlite3.connect(':memory:')
     db.create_function('CONCAT', -1, lambda *args: ''.join(map(str, args)))
-    db.create_function('JSON_LENGTH', 1, lambda value: None if value is None else len(json.loads(value)))
     db.executescript('''
       CREATE TABLE wp_posts (ID INTEGER, post_type TEXT, post_status TEXT, post_date_gmt TEXT);
       CREATE TABLE wp_postmeta (post_id INTEGER, meta_key TEXT, meta_value TEXT);

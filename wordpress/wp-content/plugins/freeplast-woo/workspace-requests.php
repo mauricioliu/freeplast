@@ -30,7 +30,7 @@ function fpw_workspace_request_query_parts( string $search, string $stage, bool 
 	// Readable issued row (any delivery state): neither pending nor lost — only Todas shows it.
 	$readable = "JSON_VALID($version) AND JSON_EXTRACT($version, '$.schema') = 1 AND JSON_EXTRACT($version, '$.order_id') = $id AND JSON_EXTRACT($version, '$.version') >= 1";
 	// A later accepted send always wins over an earlier archive marker.
-	$archived = "EXISTS (SELECT 1 FROM $meta archived WHERE archived.$meta_id = $id AND archived.meta_key = '_fp_workspace_archived' AND archived.meta_value = 'yes') AND NOT COALESCE(($sent), 0) AND COALESCE(JSON_LENGTH(JSON_EXTRACT($version, '$.history')), 0) = 0";
+	$archived = "EXISTS (SELECT 1 FROM $meta archived WHERE archived.$meta_id = $id AND archived.meta_key = '_fp_workspace_archived' AND archived.meta_value = 'yes') AND NOT COALESCE(($sent), 0) AND JSON_EXTRACT($version, '$.history[0]') IS NULL";
 	if ( 'archived' === $stage ) { $where .= " AND ($archived)"; }
 	if ( 'pendientes' === $stage ) { $where .= " AND NOT ($archived)"; }
 	if ( 'sent-quotes' === $stage ) {
