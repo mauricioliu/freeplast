@@ -15,6 +15,7 @@ function fpw_sales_history_url() { return 'admin.php?page=fpw-sales-history'; }
 function esc_url($s) { return htmlspecialchars($s, ENT_QUOTES); }
 function esc_html($s) { return htmlspecialchars($s, ENT_QUOTES); }
 function admin_url() { return '/wp-admin/'; }
+function home_url($path = '') { return 'https://freeplast.test' . $path; }
 function wp_login_url() { return '/wp-login.php'; }
 function wp_logout_url($s) { return '/logout'; }
 function plugins_url($s,$file) { return '/plugin/'.$s; }
@@ -31,6 +32,8 @@ foreach ([['manage_woocommerce'=>true],['fpw_manage_quotations'=>true],['fpw_man
  }
  $_GET=['page'=>'fpw-price-list'];
  $nav=fpw_workspace_navigation();
+ check(str_contains($nav,'class="fpw-workspace-exit" href="https://freeplast.test/">Salir</a>'),'Salir returns to store home, not logout or administration');
+ check(!str_contains($nav,'/logout') && substr_count($nav,'>Salir</a>')===1,'navigation exit never logs out and appears only once');
  check(str_contains($nav,'href="admin.php?page=fpw-quotations"')===fpw_can_manage_quotations(),'quotation link respects permission');
  check(str_contains($nav,'href="admin.php?page=fpw-price-list"')===fpw_can_manage_data(),'data links respect permission');
  check(str_contains($nav,'aria-current="page"')===fpw_can_manage_data(),'active price destination marked');

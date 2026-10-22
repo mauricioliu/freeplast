@@ -62,6 +62,7 @@ function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $ech
 }
 function wp_verify_nonce( $nonce, $action = -1 ) { return $GLOBALS['fpwd_nonce_ok'] && 'offline-nonce' === (string) $nonce ? 1 : false; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
+function home_url( $path = '' ) { return 'https://freeplast.test' . $path; }
 /* Issue #56: the buyer mail rides wp_mail; the stub names its transport outcome, records each call and reads the staged attachments exactly as a transport would. */
 $GLOBALS['fpwd_mail_mode'] = 'ok';
 $GLOBALS['fpwd_mail_calls'] = array();
@@ -77,7 +78,7 @@ function wp_mail( $to, $subject, $message, $headers = array(), $attachments = ar
 	return true;
 }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
-function wp_date( $format, $timestamp ) { return gmdate( $format, (int) $timestamp ); }
+function wp_date( $format, $timestamp, $timezone = null ) { return null === $timezone ? gmdate( $format, (int) $timestamp ) : ( new DateTimeImmutable( '@' . (int) $timestamp ) )->setTimezone( $timezone )->format( $format ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}

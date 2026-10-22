@@ -1,6 +1,6 @@
 <?php
 /**
- * Aprobar y enviar la primera versión de una cotización — issue #56, corte 7 de #49.
+ * Approve/send reviewed quotations: first issuance (#56) and explicit revised offers.
  *
  * Approval is the owner's explicit commercial act over the review cut 6 left
  * in place: «Aprobar y enviar» consumes the stored Quotation Preview and can
@@ -17,8 +17,12 @@
  * durable operation level: a double click, two concurrent approvals and known
  * retries of the same approval converge — exactly one version is created and
  * only the winner proceeds to document and mail; every loser answers with the
- * standing version and mails nothing. This cut issues only the FIRST version;
- * issuing a changed offer as a new version is a separate, later decision.
+ * standing version and mails nothing. Explicit revisions use a request/version-
+ * scoped work and preview, preserving previous frozen versions in `history`.
+ * The next pending version and exact previous snapshot publish in ONE CAS;
+ * only its winner proceeds to document/mail. GET never writes or sends.
+ * The commercial number stays the same; the version increments. Historical
+ * PDF links select their own immutable snapshot, not the latest document.
  *
  * The frozen version carries the request reference and attempt identity, the
  * reviewed revision, the buyer identity, and the projection VERBATIM — never
@@ -50,28 +54,38 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 require_once __DIR__ . '/quotation-sequence.php';
+require_once __DIR__ . '/quotation-revisions.php';
 
 define( 'FPW_QUOTATION_ROW_PREFIX', 'fpw_quotation_' );
 
-/** The approved-version row name of one request: unique option_name → one first version, ever. */
+/** Latest approved version plus immutable history; first INSERT, later revisions atomic CAS. */
 function fpw_quotation_row_name( int $order_id ): string {
 	return FPW_QUOTATION_ROW_PREFIX . $order_id;
 }
 
 /** The nonce action of one draft's approval: scoped to the request it approves. */
 function fpw_quotation_approve_action( int $order_id ): string {
-	return 'fpw-draft-approve-' . $order_id;
+	return 'fpw-draft-approve-' . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** The stored approved version of one request, decoded — like the preview reader it guards on $wpdb so offline render contexts stay callable. */
-function fpw_read_quotation_version( int $order_id ): ?array {
+function fpw_read_quotation_version_raw( int $order_id ): ?string {
 	if ( $order_id <= 0 ) { return null; }
 	global $wpdb;
 	if ( ! isset( $wpdb ) || ! is_object( $wpdb ) || ! method_exists( $wpdb, 'get_var' ) ) { return null; }
 	$raw = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", fpw_quotation_row_name( $order_id ) ) );
-	if ( ! is_string( $raw ) || '' === $raw ) { return null; }
-	$version = json_decode( $raw, true );
-	return is_array( $version ) && isset( $version['version'] ) ? $version : null;
+	return is_string( $raw ) && '' !== $raw ? $raw : null;
+}
+
+/** Optional version selects an immutable historical snapshot; absent means latest. */
+function fpw_read_quotation_version( int $order_id, ?int $number = null ): ?array {
+	$version = json_decode( fpw_read_quotation_version_raw( $order_id ) ?? '', true );
+	if ( ! is_array( $version ) || ! isset( $version['version'] ) ) { return null; }
+	if ( null === $number || $number === $version['version'] ) { return $version; }
+	foreach ( $version['history'] ?? array() as $previous ) {
+		if ( $order_id === ( $previous['order_id'] ?? null ) && $number === ( $previous['version'] ?? null ) ) { return $previous; }
+	}
+	return null;
 }
 
 /**
@@ -109,21 +123,28 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	if ( 'ok' !== $guard['state'] ) {
 		return array( 'state' => 'refused', 'version' => null, 'reason' => $guard['state'], 'missing' => $guard['missing'] ?? array() );
 	}
+	$previous_raw = fpw_read_quotation_version_raw( $order_id );
 	$existing = fpw_read_quotation_version( $order_id );
-	if ( is_array( $existing ) ) { return array( 'state' => 'already', 'version' => $existing ); }
+	$base = fpw_quotation_revision_base( $order_id );
+	if ( is_array( $existing ) && ( ! $base || ! fpw_quotation_can_revise( $order_id, $existing ) || $base !== $existing['version'] ) ) {
+		return array( 'state' => 'already', 'version' => $existing );
+	}
+	if ( $base && ( ! $existing || null === $previous_raw ) ) { return array( 'state' => 'refused', 'version' => null, 'reason' => 'version-obsoleta' ); }
+	// Revisions keep the commercial quotation number; the explicit version distinguishes each PDF.
+	if ( $base && $existing['projection'] === $preview['projection'] ) { return array( 'state' => 'refused', 'version' => $existing, 'reason' => 'sin-cambios' ); }
 	require_once __DIR__ . '/quotation-document.php';
 	try { $issuer = fpw_quotation_issuer_snapshot( ! empty( $preview['projection']['dispatch_requested'] ) ); }
 	catch ( Throwable ) { return array( 'state' => 'storage-failed', 'version' => null ); }
 	/* Step 7: the commercial number is allocated BEFORE the durable version write and frozen into it. A version-write failure burns the number (documented gap, never reused); an allocation failure leaves nothing written. */
-	$commercial_number = fpw_quotation_allocate_number();
+	$commercial_number = $base && isset( $existing['commercial']['number'] ) ? $existing['commercial']['number'] : fpw_quotation_allocate_number();
 	if ( null === $commercial_number ) { return array( 'state' => 'storage-failed', 'version' => null ); }
 	$identity = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
 	$version  = array(
 		'schema'        => 1,
 		'order_id'      => $order_id,
-		'version'       => 1,
+		'version'       => $base ? $base + 1 : 1,
 		'reference'     => (string) ( $draft['reference'] ?? '' ),
-		'commercial'    => array( 'number' => $commercial_number, 'allocated_at' => time() ),
+		'commercial'    => $base && isset( $existing['commercial']['number'] ) ? $existing['commercial'] : array( 'number' => $commercial_number, 'allocated_at' => time() ),
 		'attempt'       => (string) ( $draft['attempt'] ?? '' ),
 		'work_revision' => max( 0, (int) ( $preview['revision'] ?? 0 ) ),
 		'approved_at'   => time(),
@@ -142,9 +163,18 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	);
 	// THE durable approval: a plain INSERT against the unique row name decides.
 	// The loser's payload is dropped whole — no version, no document, no mail.
-	if ( ! fpw_insert_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) ) ) {
+	if ( $base ) {
+		$history = $existing['history'] ?? array();
+		unset( $existing['history'] );
+		$version['history'] = array_merge( $history, array( $existing ) );
+	}
+	$written = $base
+		? fpw_quotation_publish_revision( $order_id, $previous_raw, $version )
+		: fpw_insert_options_row( fpw_quotation_row_name( $order_id ), wp_json_encode( $version ) );
+	if ( ! $written ) {
 		$existing = fpw_read_quotation_version( $order_id );
-		return array( 'state' => is_array( $existing ) ? 'already' : 'storage-failed', 'version' => $existing );
+		$already = is_array( $existing ) && ( ! $base || $existing['version'] > $base );
+		return array( 'state' => $already ? 'already' : 'storage-failed', 'version' => $existing );
 	}
 	$document = fpw_quotation_render_document( $version );
 	if ( ! fpw_quotation_pdf_is_valid( $document ) ) {
@@ -281,7 +311,7 @@ function fpw_draft_approve_html( int $order_id, array $preview, bool $concise = 
 		. '<input type="hidden" name="fpw_approve_preview" value="' . esc_attr( fpw_quotation_preview_token( $preview ) ) . '" />'
 		. wp_nonce_field( fpw_quotation_approve_action( $order_id ), 'fpw_approve_nonce', true, false )
 		. '<button type="submit">Aprobar y enviar</button>'
-		. '<span class="fpw-draft__origin">' . ( $concise ? 'La oferta aprobada queda fija. No se confirma recepción del cliente.' : 'Aprueba los valores revisados, genera la cotización en PDF e intenta enviarla por correo al comprador. La oferta aprobada queda fija; el envío no confirma recepción.' ) . '</span>'
+		. ( $concise ? '' : '<span class="fpw-draft__origin">Aprueba los valores revisados, genera la cotización en PDF e intenta enviarla por correo al comprador. La oferta aprobada queda fija; el envío no confirma recepción.</span>' )
 		. '</form>';
 }
 
@@ -331,6 +361,12 @@ function fpw_approval_outcome_notice( array $result ): array {
 	$vlabel  = 'Versión ' . max( 1, (int) ( $version['version'] ?? 1 ) );
 	if ( 'approval-refused' === $state ) {
 		$reason = (string) ( $result['reason'] ?? '' );
+		if ( 'sin-cambios' === $reason ) {
+			return array( 'class' => 'warn', 'title' => 'No hay cambios respecto de la versión enviada.', 'lines' => array( 'Ajusta la cotización y vuelve a revisarla antes de aprobar una nueva versión.' ) );
+		}
+		if ( 'version-obsoleta' === $reason ) {
+			return array( 'class' => 'warn', 'title' => 'La versión base ya no está disponible para editar.', 'lines' => array( 'Vuelve al listado y abre la versión actual. No se guardó ni envió nada.' ) );
+		}
 		if ( 'vista-previa-no-revisada' === $reason ) {
 			return array( 'class' => 'warn', 'title' => 'Nada se aprobó: el formulario no corresponde a la vista previa actual.', 'lines' => array( 'Recarga el borrador y revisa la vista previa actual antes de aprobarla.' ) );
 		}
@@ -352,7 +388,7 @@ function fpw_approval_outcome_notice( array $result ): array {
 		return array( 'class' => 'error', 'title' => 'No se pudo confirmar la aprobación.', 'lines' => array( 'No se intentó enviar desde esta solicitud. Recarga el borrador para comprobar su estado antes de volver a aprobar.' ) );
 	}
 	if ( 'approval-already' === $state ) {
-		return array( 'class' => 'ok', 'title' => 'Este borrador ya tiene su primera versión aprobada (' . $vlabel . ').', 'lines' => array( 'No se creó otra versión ni se reenvió nada: repetir la aprobación responde siempre con la versión existente. La recuperación del envío es una acción explícita aparte.' ) );
+		return array( 'class' => 'ok', 'title' => ( ( $version['version'] ?? 1 ) > 1 ? 'Esta cotización ya tiene una versión aprobada (' : 'Este borrador ya tiene su primera versión aprobada (' ) . $vlabel . ').', 'lines' => array( 'No se creó otra versión ni se reenvió nada: repetir la aprobación responde siempre con la versión existente. La recuperación del envío es una acción explícita aparte.' ) );
 	}
 	if ( 'approval-sent' === $state ) {
 		return array( 'class' => 'ok', 'title' => 'Cotización aprobada y enviada (' . $vlabel . ').', 'lines' => array(
@@ -378,7 +414,7 @@ function fpw_handle_draft_approve_request( int $order_id, array $draft ): void {
 		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el borrador e inténtalo de nuevo. Nada se aprobó ni se envió.', '', array( 'response' => 403 ) );
 	}
 	$existing = fpw_read_quotation_version( $order_id );
-	if ( is_array( $existing ) ) {
+	if ( is_array( $existing ) && ( ! fpw_quotation_revision_base( $order_id ) || ! fpw_quotation_revision_is_current( $order_id ) ) ) {
 		fpw_pending_draft_outcome( array( 'order_id' => $order_id, 'result' => array( 'state' => 'approval-already', 'version' => $existing ) ) );
 		return;
 	}

@@ -15,7 +15,7 @@ function fpw_workspace_pdf_response( int $id, int $number, string $nonce ): arra
 	if ( ! fpw_can_manage_quotations() || $id <= 0 || $number <= 0 || ! wp_verify_nonce( $nonce, 'fpw-pdf-' . $id . '-' . $number ) ) {
 		wp_die( 'No tienes permiso para descargar esta cotización.', '', array( 'response' => 403 ) );
 	}
-	$version = fpw_read_quotation_version( $id );
+	$version = fpw_read_quotation_version( $id, $number );
 	$bytes = fpw_workspace_pdf_bytes( $version );
 	if ( $id !== ( $version['order_id'] ?? null ) || $number !== ( $version['version'] ?? null ) || ! wc_get_order( $id ) || null === $bytes ) {
 		wp_die( 'El PDF guardado no está disponible. Vuelve a la cotización; no se generó ni envió otro documento.', '', array( 'response' => 404 ) );
@@ -32,18 +32,24 @@ function fpw_workspace_download_pdf(): void {
 	header( 'Cache-Control: private, no-store, no-cache, must-revalidate' );
 	header( 'Content-Type: application/pdf' );
 	header( 'X-Content-Type-Options: nosniff' );
-	header( 'Content-Disposition: attachment; filename="' . $response['filename'] . '"' );
+	$disposition = '1' === ( $_GET['view'] ?? null ) ? 'inline' : 'attachment';
+	header( 'Content-Disposition: ' . $disposition . '; filename="' . $response['filename'] . '"' );
 	header( 'Content-Length: ' . strlen( $response['bytes'] ) );
 	echo $response['bytes'];
 	exit;
 }
 
-function fpw_workspace_pdf_link( array $version ): string {
-	if ( null === fpw_workspace_pdf_bytes( $version ) ) { return '<p>PDF pendiente o no disponible. No se ha generado otro documento.</p>'; }
+function fpw_workspace_pdf_url( array $version, bool $inline = false ): string {
 	$id = (int) $version['order_id'];
 	$number = (int) $version['version'];
-	$url = add_query_arg( array( 'action' => 'fpw_quotation_pdf', 'request' => $id, 'version' => $number, '_wpnonce' => wp_create_nonce( 'fpw-pdf-' . $id . '-' . $number ) ), admin_url( 'admin-post.php' ) );
-	return '<a class="fpw-button fpw-primary" href="' . esc_url( $url ) . '">Descargar PDF aprobado</a>';
+	$args = array( 'action' => 'fpw_quotation_pdf', 'request' => $id, 'version' => $number, '_wpnonce' => wp_create_nonce( 'fpw-pdf-' . $id . '-' . $number ) );
+	if ( $inline ) { $args['view'] = '1'; }
+	return add_query_arg( $args, admin_url( 'admin-post.php' ) );
+}
+
+function fpw_workspace_pdf_link( array $version ): string {
+	if ( null === fpw_workspace_pdf_bytes( $version ) ) { return '<p>PDF pendiente o no disponible. No se ha generado otro documento.</p>'; }
+	return '<a class="fpw-button fpw-primary" href="' . esc_url( fpw_workspace_pdf_url( $version ) ) . '">Descargar PDF aprobado</a>';
 }
 
 /** Amounts always belong to the supplied saved projection. No browser or presentation arithmetic. */
@@ -75,10 +81,35 @@ function fpw_workspace_offer_html( array $projection ): string {
 	return $html;
 }
 
+/** The issued screen reads the frozen recipient, delivery result and exact stored PDF only. */
 function fpw_workspace_issued_html( array $version ): string {
-	return '<section class="fpw-issued"><h2>Cotización aprobada</h2><p class="fpw-muted">Versión ' . (int) $version['version'] . ' · ' . esc_html( wp_date( 'd/m/Y', (int) $version['approved_at'] ) ) . ' · importes fijos</p>'
-		. fpw_workspace_pdf_link( $version ) . '<p><strong>Correo al comprador:</strong> ' . fpw_quotation_delivery_state_html( $version['delivery'] ?? array() ) . '</p>'
-		. fpw_workspace_offer_html( $version['projection'] ) . '<p class="fpw-muted">Esta oferta no se puede editar. El estado de envío se registra automáticamente.</p></section>';
+	$ready = null !== fpw_workspace_pdf_bytes( $version );
+	$state = $version['delivery']['state'] ?? null;
+	$recipient = (string) ( $version['buyer']['email'] ?? '' );
+	$simulated = function_exists( 'fpw_local_capture_active' ) && fpw_local_capture_active();
+	$title = 'Cotización aprobada; envío pendiente';
+	$note = 'No hay un envío confirmado para esta cotización.';
+	if ( ! $ready ) {
+		$title = 'Cotización aprobada; PDF no disponible';
+		$note = 'No se puede mostrar el documento guardado. Solicita revisión técnica; no se generó ni envió otro PDF.';
+	} elseif ( 'accepted' === $state ) {
+		$title = ( $simulated ? 'Envío simulado de cotización' : 'Cotización enviada' ) . ( '' !== $recipient ? ' a ' . $recipient : '' );
+		$note = $simulated ? 'El correo quedó capturado en DEV. No se envió al cliente.' : '';
+	} elseif ( 'rejected' === $state ) {
+		$title = 'No se pudo enviar la cotización';
+		$note = 'El correo fue rechazado. El PDF aprobado está disponible; no se reintenta automáticamente.';
+	} elseif ( 'unknown' === $state ) {
+		$title = 'Envío de cotización sin confirmar';
+		$note = 'El resultado del envío es desconocido. No se reintenta automáticamente.';
+	}
+	$html = '<section class="fpw-sent-view"><a class="fpw-button fpw-sent-back" href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a><div class="fpw-sent-confirmation"><h1>' . esc_html( $title ) . '</h1>' . ( '' !== $note ? '<p class="fpw-muted">' . esc_html( $note ) . '</p>' : '' ) . '</div>';
+	$html .= fpw_quotation_history_html( (int) $version['order_id'], (int) $version['version'] );
+	if ( $ready ) {
+		$view_url = fpw_workspace_pdf_url( $version, true );
+		$label = ( isset( $version['commercial']['number'] ) ? 'Cotización N.º ' . (int) $version['commercial']['number'] : 'Cotización ' . (string) $version['reference'] ) . ' · Versión ' . (int) $version['version'];
+		$html .= '<section class="fpw-pdf-viewer" aria-label="Visor de cotización PDF"><div class="fpw-pdf-toolbar"><h2>' . esc_html( $label ) . '</h2><div><a href="' . esc_url( $view_url ) . '" target="_blank" rel="noopener">Abrir PDF</a><a href="' . esc_url( fpw_workspace_pdf_url( $version ) ) . '">Descargar PDF</a></div></div><iframe src="' . esc_url( $view_url . '#view=FitH' ) . '" title="PDF de la cotización aprobada"></iframe><p class="fpw-pdf-help">Si el visor no carga, <a href="' . esc_url( $view_url ) . '" target="_blank" rel="noopener">abre el PDF en otra pestaña</a>.</p></section>';
+	}
+	return $html . '</section>';
 }
 
 /** Review reads only the stored preview and preserves the existing revision/token-bound approval. */
@@ -90,15 +121,14 @@ function fpw_workspace_preview_html( array $draft, ?array $work, ?array $preview
 	}
 	$projection = $preview['projection'];
 	$obsolete = fpw_draft_preview_is_obsolete( $preview, $work );
-	$html .= '<p class="fpw-muted">Guardada el ' . esc_html( wp_date( 'd/m/Y', (int) $preview['created_at'] ) ) . '</p>';
+	$html .= '<p class="fpw-muted">Guardada el ' . esc_html( fpw_workspace_date( 'd/m/Y', (int) $preview['created_at'] ) ) . '</p>';
 	if ( $obsolete ) { $html .= '<p class="fpw-workspace-notice">Vista previa obsoleta. El borrador cambió: genera una nueva y revísala antes de aprobar.</p>'; }
 	if ( ! empty( $projection['missing'] ) ) {
 		$html .= '<p>Por completar antes de aprobar:</p><ul>' . implode( '', array_map( static fn( $item ) => '<li>' . esc_html( $item ) . '</li>', $projection['missing'] ) ) . '</ul>';
 	}
 	$html .= fpw_workspace_offer_html( $projection );
 	if ( $obsolete ) { $html .= fpw_draft_preview_generate_html( $id ); }
-	elseif ( ! empty( $projection['complete'] ) && ! is_array( fpw_read_quotation_version( $id ) ) ) {
-		$html .= '<p>Al aprobar, se guarda esta versión, se genera su PDF y se intenta enviar al correo del comprador. Aún no se ha enviado.</p>';
+	elseif ( ! empty( $projection['complete'] ) && ( ! is_array( fpw_read_quotation_version( $id ) ) || fpw_quotation_revision_is_current( $id ) ) ) {
 		/* H4 (2026-10-03 review): the exact recipient the approval will freeze — read from
 		 * the SAME request-draft identity fpw_quotation_approve_and_send() freezes — so the
 		 * owner can verify it before committing, with no edit affordance on this screen. */
@@ -108,5 +138,5 @@ function fpw_workspace_preview_html( array $draft, ?array $work, ?array $preview
 			: '<p class="fpw-recipient-line">El correo del comprador no está disponible. Revisa los datos de la solicitud antes de aprobar.</p>';
 		$html .= fpw_draft_approve_html( $id, $preview, true );
 	}
-	return $html . '<details><summary>Qué incluye la cotización</summary><p>Solo los productos, cantidades, precios y condiciones revisados. No incluye historial de compras, notas internas ni costos del transportista. La aceptación del correo por el transporte no confirma su recepción.</p></details></section>';
+	return $html . '</section>';
 }

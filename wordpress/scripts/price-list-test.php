@@ -52,6 +52,7 @@ function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $ech
 }
 function wp_verify_nonce( $nonce, $action = -1 ) { return $GLOBALS['fppw_nonce_ok'] && 'offline-nonce' === (string) $nonce ? 1 : false; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
+function home_url( $path = '' ) { return 'https://freeplast.test' . $path; }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }

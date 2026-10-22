@@ -40,7 +40,7 @@ function fpw_workspace_navigation(): string {
 		}
 		$links .= '</div></details>';
 	}
-	return '<nav class="fpw-workspace-navigation" aria-label="Cotizaciones y mantenedores">' . $links . '</nav>';
+	return '<nav class="fpw-workspace-navigation" aria-label="Cotizaciones y mantenedores">' . $links . '<a class="fpw-workspace-exit" href="' . esc_url( home_url( '/' ) ) . '">Salir</a></nav>';
 }
 
 function fpw_workspace_header(): string {

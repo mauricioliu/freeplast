@@ -46,7 +46,6 @@ $rural_preview = fpw_read_draft_preview(91);
 $rural_preview['projection'] = $rural_projection;
 foreach (array(
 	fpw_workspace_preview_html($rural_draft, fpw_read_draft_work(91), $rural_preview),
-	fpw_workspace_issued_html($rural_version),
 	fpw_quotation_email_html($rural_version),
 ) as $surface) {
 	check(str_contains($surface, 'Comuna de despacho: Mostazal &lt;rural&gt;'), 'active review/issued/email escapes structured commune');
@@ -87,18 +86,50 @@ $GLOBALS['fpwd_table'] = $before_rows;
 $_GET = array( 'workspace' => '1', 'review' => '1' ); $_POST = array();
 $draft = fpw_read_request_draft( 91 );
 $work = fpw_read_draft_work( 91 );
+$header_draft = $draft;
+$header_draft['identity'] = array( 'company' => 'Empresa <agrícola>', 'name' => 'Ana <Liu>', 'rut' => '14.442.480-8', 'giro' => 'Agrícola', 'phone' => '+56994313727', 'email' => 'ana@example.test' );
+$header_draft['destination']['dispatch'] = 'no';
+$header_work = array( 'updated_at' => 1760542200 );
+$header = fpw_workspace_request_header( $header_draft, $header_work, null );
+foreach ( array( 'Empresa &lt;agrícola&gt;', 'Ana &lt;Liu&gt;', '14.442.480-8', 'Agrícola', '+56994313727', 'ana@example.test', 'Sin despacho', 'Borrador guardado: ' . fpw_workspace_date( 'd/m/Y · H:i', 1760542200 ) ) as $fact ) {
+	check( str_contains( $header, $fact ), 'receipt header exposes escaped persisted fact: ' . $fact );
+}
+check( !str_contains( $header, '<details' ) && !str_contains( $header, 'Ver solicitud' ), 'header has neither original disclosure nor redundant link' );
+check( str_contains( fpw_workspace_request_header( $header_draft, null, null ), 'Cotización aún sin guardar' ), 'unsaved quotation invents no timestamp' );
+$header_version = array( 'approved_at' => 1760550000 );
+check( str_contains( fpw_workspace_request_header( $header_draft, $header_work, $header_version ), 'Cotización aprobada: ' . fpw_workspace_date( 'd/m/Y · H:i', 1760550000 ) ), 'approved header uses frozen approval time, not later work' );
+$header_draft['destination'] = array( 'dispatch' => 'si', 'address' => 'Camino <52>', 'commune' => 'Mostazal', 'references' => 'Portón <azul>', 'location_url' => 'https://maps.example.test/location', 'source' => 'asistida', 'scope' => 'amplia' );
+$header = fpw_workspace_request_header( $header_draft, null, null );
+foreach ( array( 'Camino &lt;52&gt;', 'Mostazal', 'Portón &lt;azul&gt;', 'https://maps.example.test/location', 'Revisa el número y la comuna de entrega.' ) as $fact ) {
+	check( str_contains( $header, $fact ), 'dispatch header preserves historical destination and warning: ' . $fact );
+}
 $issued = fpw_workspace_detail_markup( wc_get_order( 91 ), $draft, $work, null );
-check( str_contains( $issued, 'Descargar PDF aprobado' ) && str_contains( $issued, 'Cotización aprobada' ), 'issued review offers its saved document' );
+check( str_contains( $issued, 'Descargar PDF' ) && str_contains( $issued, '<iframe' ) && str_contains( $issued, 'view=1' ), 'issued review embeds its private saved PDF and offers a download' );
 foreach ( array( 'Volver a ajustar', 'Generar vista previa', 'nada fue aprobado', 'fpw_work_approve', 'data-fpw-work', 'class="fpw-workspace-dock"' ) as $absent ) {
 	check( ! str_contains( $issued, $absent ), 'issued review excludes misleading draft action/copy: ' . $absent );
 }
-check( str_contains( $issued, 'Volver a la cotización' ) && ! str_contains( $issued, 'September' ), 'issued return label and numeric date fit its state and language' );
+check( str_contains( $issued, 'Volver a solicitudes' ) && ! str_contains( $issued, 'fpw-request-header' ) && ! str_contains( $issued, 'fpw-offer-lines' ) && ! str_contains( $issued, 'Historial de compras' ), 'issued screen contains no duplicate header, lines or purchase history' );
+$sent_version = $version;
+$sent_version['delivery']['state'] = 'accepted';
+$sent_version['buyer']['email'] = 'cliente+<prueba>@example.test';
+$sent_html = fpw_workspace_issued_html( $sent_version );
+check( 1 === substr_count( $sent_html, 'Volver a solicitudes' ) && str_contains( $sent_html, 'class="fpw-button fpw-sent-back"' ) && strpos( $sent_html, 'Volver a solicitudes' ) < strpos( $sent_html, '<h1>' ) && strpos( $sent_html, 'Volver a solicitudes' ) < strpos( $sent_html, '<iframe' ), 'return action keeps its text and is a single button above confirmation and PDF' );
+check( str_contains( $sent_html, 'Cotización enviada a cliente+&lt;prueba&gt;@example.test' ), 'confirmation uses escaped frozen buyer email' );
+foreach ( array( 'rejected' => 'No se pudo enviar', 'unknown' => 'sin confirmar', '' => 'envío pendiente' ) as $state => $expected ) {
+	$sent_version['delivery']['state'] = $state;
+	$state_html = fpw_workspace_issued_html( $sent_version );
+	check( str_contains( $state_html, $expected ) && ! str_contains( $state_html, 'Cotización enviada a' ) && str_contains( $state_html, '<iframe' ), 'unsuccessful delivery preserves PDF without false success: ' . $state );
+}
+$sent_version['document'] = 'pending';
+check( ! str_contains( fpw_workspace_issued_html( $sent_version ), '<iframe' ) && str_contains( fpw_workspace_issued_html( $sent_version ), 'PDF no disponible' ), 'missing stored PDF never renders a broken iframe or regenerates' );
+check( str_contains( fpw_workspace_pdf_url( $version, true ), 'view=1' ) && !str_contains( fpw_workspace_pdf_url( $version ), 'view=' ), 'inline and attachment URLs share protected endpoint but retain separate presentation' );
+check( $GLOBALS['fpwd_table'] === $before_rows && count( $GLOBALS['fpwd_mail_calls'] ) === $before_mail, 'issued presentation neither saves nor sends or regenerates' );
 $changed_work = $work; $changed_work['lines'][0]['price'] = 999999;
 check( $issued === fpw_workspace_detail_markup( wc_get_order( 91 ), $draft, $changed_work, null ), 'issued review ignores later draft price changes completely' );
 unset( $_GET['review'] );
 $detail = fpw_workspace_detail_markup( wc_get_order( 91 ), $draft, $work, null );
 check( ! str_contains( $detail, 'data-fpw-work' ) && ! str_contains( $detail, 'data-fpw-tracking' ), 'approved detail is static offer without a manual tracking form' );
-check( ! str_contains( $detail, 'Seguimiento comercial' ) && str_contains( $detail, 'Cotización aprobada' ), 'approved detail goes directly to the offer' );
+check( ! str_contains( $detail, 'Seguimiento comercial' ) && str_contains( $detail, '<iframe' ), 'approved detail goes directly to the saved PDF' );
 
 // A separate saved, unapproved request; no production/runtime data is used.
 $id = 195; $draft = fpw_read_request_draft( $id ); $work = fpw_read_draft_work( $id ); $preview = fpw_read_draft_preview( $id );
@@ -114,7 +145,7 @@ check( str_contains( $dispatch_detail, 'Mínimo por solicitud:' ) || str_contain
 $no_dispatch_draft = $draft; $no_dispatch_draft['destination']['dispatch'] = 'no';
 foreach ( array( $dispatch_detail, fpw_workspace_detail_markup( wc_get_order( $id ), $no_dispatch_draft, $work, null ) ) as $simplified ) {
 	check( ! str_contains( $simplified, '<summary>Mantenimiento de precios</summary>' ) && ! str_contains( $simplified, 'class="fpw-distance"' ) && ! str_contains( $simplified, 'Consultar distancia de despacho' ), 'quotation omits only the two requested secondary accordions, with or without dispatch' );
-	check( str_contains( $simplified, 'Datos de contacto y solicitud original' ) && str_contains( $simplified, 'Historial de compras' ) && ! str_contains( $simplified, 'Opciones de precios' ), 'contact and history remain; technical refresh disclosure removed' );
+	check( str_contains( $simplified, 'class="fpw-request-header"' ) && str_contains( $simplified, 'Historial de compras' ) && ! str_contains( $simplified, 'Opciones de precios' ) && ! str_contains( $simplified, 'fpw-original' ) && ! str_contains( $simplified, 'Ver solicitud' ), 'visible contact header and history remain without original disclosure or redundant links' );
 	check( str_contains( $simplified, 'page=fpw-price-list' ) && str_contains( $simplified, 'page=fpw-sales-import' ), 'independent maintenance screens stay reachable through navigation' );
 }
 check( str_contains( $dispatch_detail, 'name="fpw_work[destination]"' ) && str_contains( $dispatch_detail, 'name="fpw_work[dispatch_amount]"' ), 'removing distance disclosure preserves the editable destination and freight amount' );
@@ -124,7 +155,16 @@ check( ! str_contains( $detail, 'Importes guardados · revisión' ) && ! str_con
 foreach ( array( 'fpw_work_revision', 'fpw_draft_nonce', 'fpw_preview_nonce', 'fpw_refresh_nonce', 'data-fpw-calculation', 'data-fpw-minimum', 'data-fpw-amount="total"' ) as $required ) {
 	check( str_contains( $detail, $required ), 'editor preserves controls and calculation hooks: ' . $required );
 }
+check( !str_contains( $detail, 'class="fpw-back"' ), 'editable quotation removes redundant Solicitudes back link' );
+$_GET['review'] = '1';
+$review_page = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, array( 'class' => 'ok', 'title' => 'Vista previa generada.', 'lines' => array( 'Redundant preview explanation' ) ) );
+check( strpos( $review_page, 'Volver a ajustar' ) < strpos( $review_page, 'class="fpw-preview-title"' ) && strpos( $review_page, 'class="fpw-preview-title"' ) < strpos( $review_page, 'class="fpw-request-header"' ), 'review orders adjust link, simple title, then client header' );
+check( str_contains( $review_page, '>Vista previa</h1>' ) && !str_contains( $review_page, 'Vista previa generada.' ) && !str_contains( $review_page, 'Redundant preview explanation' ) && !str_contains( $review_page, 'class="fpw-back"' ), 'review replaces success notice and Solicitudes link with plain heading' );
+$warning_page = fpw_workspace_detail_markup( wc_get_order( $id ), $draft, $work, array( 'class' => 'warn', 'title' => 'Advertencia importante', 'lines' => array( 'No ocultar recuperación' ) ) );
+check( str_contains( $warning_page, 'Advertencia importante' ) && str_contains( $warning_page, 'No ocultar recuperación' ), 'review retains non-success warning and recovery notices' );
+unset( $_GET['review'] );
 $review = fpw_workspace_preview_html( $draft, $work, $preview );
+check( !str_contains( $review, 'Qué incluye la cotización' ) && !str_contains( $review, 'Al aprobar, se guarda esta versión' ) && !str_contains( $review, 'Aún no se ha enviado.' ), 'review removes approved explanatory paragraphs and disclosure' );
 check( str_contains( $review, 'fpw_approve_preview' ) && str_contains( $review, fpw_quotation_preview_token( $preview ) ), 'current complete review carries the exact approval token' );
 // H4 (2026-10-03 review): the review names the exact recipient the approval will freeze —
 // sourced from the same request-draft identity fpw_quotation_approve_and_send() freezes.
@@ -179,7 +219,12 @@ $known_packaging = fpw_workspace_product_html( $line, $values, 0, null, false );
 check( str_contains( $known_packaging, '2 pallets completos + 1 un. · 70 un. por pallet' ), 'known packaging remains even without reference prices' );
 $GLOBALS['fpwd_table'] = $price_rows;
 $source = file_get_contents( __DIR__ . '/../wp-content/plugins/freeplast-woo/owner-workspace.php' );
-check( str_contains( $source, "wp_date( 'd/m/Y · H:i', (int) \$received )" ), 'inbox formats existing receipt timestamp through WordPress site timezone' );
+check( str_contains( $source, "fpw_workspace_date( 'd/m/Y · H:i', (int) \$received )" ), 'inbox uses explicit Chilean timezone' );
+check( fpw_workspace_date( 'd/m/Y · H:i', strtotime( '2026-10-22 00:02:00 UTC' ) ) === '21/10/2026 · 21:02', 'Chilean summer time crosses date boundary correctly' );
+check( fpw_workspace_date( 'd/m/Y · H:i', strtotime( '2026-06-22 00:02:00 UTC' ) ) === '21/06/2026 · 20:02', 'Chilean winter time follows DST rules, not a fixed offset' );
+check( !str_contains( fpw_workspace_request_header( $header_draft, $header_work, null ), 'GMT' ), 'header omits timezone suffix' );
+check( !str_contains( $detail, 'Al revisar se guardan' ) && !str_contains( $detail, 'Importes guardados.' ) && !str_contains( $detail, 'Cambios sin guardar.' ), 'summary omits removed explanatory copy' );
+check( !str_contains( fpw_draft_approve_html( 91, $preview ?? array(), true ), 'La oferta aprobada' ), 'workspace approval omits removed disclaimer' );
 $timestamp = ( new DateTimeImmutable( '2026-10-13 14:28:00', new DateTimeZone( 'UTC' ) ) )->getTimestamp();
 check( ( new DateTimeImmutable( '@' . $timestamp ) )->setTimezone( new DateTimeZone( 'America/Santiago' ) )->format( 'd/m/Y · H:i' ) === '13/10/2026 · 11:28', 'documented Chile timezone produces requested local date/time' );
 // Clean HTML remains server-authoritative; the browser receives confirmed policy even when totals are incomplete.

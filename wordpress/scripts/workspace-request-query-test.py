@@ -12,6 +12,7 @@ checks = 0
 for storage, cases in queries.items():
     db = sqlite3.connect(':memory:')
     db.create_function('CONCAT', -1, lambda *args: ''.join(map(str, args)))
+    db.create_function('JSON_LENGTH', 1, lambda value: None if value is None else len(json.loads(value)))
     db.executescript('''
       CREATE TABLE wp_posts (ID INTEGER, post_type TEXT, post_status TEXT, post_date_gmt TEXT);
       CREATE TABLE wp_postmeta (post_id INTEGER, meta_key TEXT, meta_value TEXT);
@@ -42,6 +43,13 @@ for storage, cases in queries.items():
     # Pendientes: without any version row (1, 2, 7), or readable but not confirmed-sent (4, 5, 6).
     # Corrupt (10) and misbound/schema-broken rows (11, 12) belong to neither view: only Todas.
     expected = {'pending': [1, 2, 4, 5, 6, 7], 'all': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13], 'sent': [3, 13], 'old-filter': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13], 'company': [1], 'rut': [1], 'reference': [1], 'legacy-reference': [1], 'injection': []}
+    # Archive markers use native metadata in either storage. Accepted sends win even
+    # when they happen after an archive; an archived request with no version also works.
+    for table in ['wp_postmeta', 'wp_wc_orders_meta']:
+        for id in [2, 5, 13]:
+            db.execute(f'INSERT INTO {table} VALUES (?, ?, ?)', (id, '_fp_workspace_archived', 'yes'))
+    expected['pending'] = [1, 4, 6, 7]
+    expected['archived'] = [2, 5]
     before = db.total_changes
     for name, sql in cases.items():
         found = [row[0] for row in db.execute(sql)]

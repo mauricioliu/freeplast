@@ -1,10 +1,15 @@
 <?php
-/** Read-only inbox over native received requests, including those predating quotation drafts. */
+/** Inbox over native received requests, including reversible archiving. */
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+
+/** Chilean civil time, independent of the WordPress/server default; DST is automatic. */
+function fpw_workspace_date( string $format, int $timestamp ): string {
+	return wp_date( $format, $timestamp, new DateTimeZone( 'America/Santiago' ) );
+}
 
 function fpw_workspace_stages(): array {
 	// Do not reuse the old `sent` key, which meant NOT sent in the first-pending filter.
-	return array( 'pendientes' => 'Pendientes', 'sent-quotes' => 'Enviadas', 'all' => 'Todas' );
+	return array( 'pendientes' => 'Pendientes', 'sent-quotes' => 'Enviadas', 'archived' => 'Archivadas', 'all' => 'Todas' );
 }
 
 /** Matching CPT/HPOS read models. Native request marker is authority; no receipt/draft is created on GET. */
@@ -24,6 +29,10 @@ function fpw_workspace_request_query_parts( string $search, string $stage, bool 
 	$sent = "JSON_EXTRACT($version, '$.schema') = 1 AND JSON_EXTRACT($version, '$.order_id') = $id AND JSON_EXTRACT($version, '$.version') >= 1 AND JSON_EXTRACT($version, '$.document') IN ('ready', '\"ready\"') AND JSON_EXTRACT($version, '$.delivery.state') IN ('accepted', '\"accepted\"')";
 	// Readable issued row (any delivery state): neither pending nor lost — only Todas shows it.
 	$readable = "JSON_VALID($version) AND JSON_EXTRACT($version, '$.schema') = 1 AND JSON_EXTRACT($version, '$.order_id') = $id AND JSON_EXTRACT($version, '$.version') >= 1";
+	// A later accepted send always wins over an earlier archive marker.
+	$archived = "EXISTS (SELECT 1 FROM $meta archived WHERE archived.$meta_id = $id AND archived.meta_key = '_fp_workspace_archived' AND archived.meta_value = 'yes') AND NOT COALESCE(($sent), 0) AND COALESCE(JSON_LENGTH(JSON_EXTRACT($version, '$.history')), 0) = 0";
+	if ( 'archived' === $stage ) { $where .= " AND ($archived)"; }
+	if ( 'pendientes' === $stage ) { $where .= " AND NOT ($archived)"; }
 	if ( 'sent-quotes' === $stage ) {
 		$where .= " AND $sent";
 	}
@@ -57,12 +66,50 @@ function fpw_workspace_query( string $search, string $stage, string $direction, 
 	return array( 'error' => '' !== $wpdb->last_error, 'total' => (int) $count, 'rows' => array_map( 'intval', $rows ?? array() ), 'page' => $page, 'pages' => $pages );
 }
 
+/** Unknown/corrupt delivery records cannot establish that a quotation was NOT sent. */
+function fpw_workspace_can_archive( int $id, ?array $version, bool $unavailable = false ): bool {
+	if ( $unavailable || ! empty( $version['history'] ) ) { return false; }
+	if ( null === $version ) { return true; }
+	return 1 === ( $version['schema'] ?? null ) && $id === ( $version['order_id'] ?? null )
+		&& is_int( $version['version'] ?? null ) && $version['version'] > 0
+		&& in_array( $version['delivery']['state'] ?? null, array( null, 'rejected' ), true );
+}
+
+/** Only archive metadata changes: no request, draft, PDF or delivery is rewritten. */
+function fpw_workspace_set_archived( int $id, bool $archived ): string {
+	if ( ! fpw_can_manage_quotations() ) { return 'No tienes permiso para modificar solicitudes.'; }
+	$order = wc_get_order( $id );
+	if ( ! $order || 'yes' !== $order->get_meta( '_fp_request' ) ) { return 'Solicitud no disponible.'; }
+	if ( $archived ) {
+		$draft = fpw_read_request_draft( $id );
+		if ( ! $draft ) { return 'Abre la solicitud antes de archivarla para comprobar su estado.'; }
+		$offer = fpw_workspace_read_offer( $draft, fpw_read_draft_work( $id ) );
+		if ( ! fpw_workspace_can_archive( $id, $offer['version'], $offer['unavailable'] ) ) {
+			return 'Solo se pueden archivar cotizaciones no enviadas y con estado comprobable.';
+		}
+	}
+	$order->update_meta_data( '_fp_workspace_archived', $archived ? 'yes' : 'no' );
+	$order->save_meta_data();
+	return $archived ? 'Solicitud archivada.' : 'Solicitud desarchivada.';
+}
+
+function fpw_workspace_archive_html( int $id, bool $archived, bool $allowed ): string {
+	if ( ! $archived && ! $allowed ) { return ''; }
+	return '<form method="post" class="fpw-archive-form">'
+		. wp_nonce_field( 'fpw_archive_' . $id, 'fpw_archive_nonce', true, false )
+		. '<input type="hidden" name="fpw_archive_request" value="' . $id . '">'
+		. '<button class="fpw-secondary" type="submit" name="fpw_archive_action" value="' . ( $archived ? 'restore' : 'archive' ) . '">'
+		. ( $archived ? 'Desarchivar' : 'Archivar' ) . '</button></form>';
+}
+
 /** Sending is automatic. Manual payment/acceptance/dispatch records do not participate. */
-function fpw_workspace_request_state_html( int $id, ?array $version, bool $unavailable = false ): string {
+function fpw_workspace_request_state_html( int $id, ?array $version, bool $unavailable = false, bool $archived = false ): string {
 	$unavailable = $unavailable || ( null !== $version && ( 1 !== ( $version['schema'] ?? null ) || $id !== ( $version['order_id'] ?? null ) || ! is_int( $version['version'] ?? null ) || $version['version'] < 1 ) );
 	$sent = ! $unavailable && 'ready' === ( $version['document'] ?? null ) && 'accepted' === ( $version['delivery']['state'] ?? null );
-	$label = $unavailable ? 'Estado no disponible' : ( $sent ? 'Cotización enviada' : ( null === $version ? 'Solicitud recibida' : 'Cotización sin envío confirmado' ) );
+	// Match inbox membership: a confirmed send (including history) wins over an old archive marker.
+	$archived = $archived && ! $sent && empty( $version['history'] );
+	$label = $archived ? 'Solicitud archivada' : ( $unavailable ? 'Estado no disponible' : ( $sent ? 'Cotización enviada' : ( null === $version ? 'Solicitud recibida' : 'Cotización sin envío confirmado' ) ) );
 	$at = $sent && is_int( $version['delivery']['at'] ?? null ) ? $version['delivery']['at'] : null;
-	return '<div class="fpw-request-state' . ( $sent ? ' is-sent' : '' ) . '" data-fpw-request-state="' . ( $sent ? 'sent' : 'received' ) . '"><span>' . $label . '</span>'
-		. ( null !== $at ? '<time datetime="' . esc_attr( wp_date( 'c', $at ) ) . '">' . esc_html( wp_date( 'd/m/Y', $at ) ) . '</time>' : '' ) . '</div>';
+	return '<div class="fpw-request-state' . ( $sent ? ' is-sent' : '' ) . '" data-fpw-request-state="' . ( $archived ? 'archived' : ( $sent ? 'sent' : 'received' ) ) . '"><span>' . $label . '</span>'
+		. ( null !== $at ? '<time datetime="' . esc_attr( fpw_workspace_date( 'c', $at ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y', $at ) ) . '</time>' : '' ) . '</div>';
 }

@@ -155,8 +155,7 @@
     freightFacts.forEach(([node]) => { node.hidden = true; });
     const freightWarning = root.querySelector('[data-fpw-dispatch-warning]');
     if (freightWarning) { freightWarning.textContent = warning; freightWarning.hidden = !warning; }
-    if (status) status.textContent = 'Cambios sin guardar. Importes estimados; al revisar se guardan y validan los cambios.' +
-      (subtotal === null ? ' Revisa cantidades (1 a 1.000.000) y precios (1 a 99.999.999 CLP).' : '') +
+    if (status) status.textContent = (subtotal === null ? ' Revisa cantidades (1 a 1.000.000) y precios (1 a 99.999.999 CLP).' : '') +
       (!validPolicy ? ' IVA y total pendientes: falta la política fiscal confirmada.' : '') +
       (!validDays ? ' Ingresa una vigencia entre 1 y 365 días.' : '') + (warning ? ` ${warning}` : '');
   };

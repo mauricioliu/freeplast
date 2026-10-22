@@ -84,7 +84,7 @@ export function runOwnerWorkspaceJsTests() {
       check(legend.hidden === !unsaved, 'pending origin hidden unless server reports unsaved work');
       document.querySelector('[data-fpw-apply-price]').click();
       check(price.value === '1300' && !legend.hidden && legend.textContent === 'Cambio sin guardar.', 'reference selection reveals unsaved feedback without packaging node');
-      check(document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar') && !document.querySelector('[data-fpw-preview]').disabled, 'unsaved feedback does not block review');
+      check(!document.querySelector('[data-fpw-save-state]').textContent.includes('Cambios sin guardar. Importes estimados;') && !document.querySelector('[data-fpw-preview]').disabled, 'removed explanation stays absent after edits without suppressing validation or blocking review');
       price.value = ''; price.dispatchEvent(new Event('input', {bubbles:true}));
       check(unsaved ? !legend.hidden && legend.textContent === 'Cambio sin guardar.' : legend.hidden && legend.textContent === '', 'returning to rejected fields never claims saved origin');
       price.value = '1400'; price.dispatchEvent(new Event('input', {bubbles:true}));
@@ -115,7 +115,7 @@ export function runOwnerWorkspaceJsTests() {
       t.set('[lines][0][price]',price);
       check(t.amount('tax') === tax, 'multi-line tax uses half-up rounding at confirmed rate');
       check(t.amount('total') === t.text('[data-fpw-dock-total]'), 'dock equals summary estimate');
-      check(t.text('[data-fpw-save-state]').includes('estimados'), 'dirty money explicitly estimated');
+      check(t.text('[data-fpw-save-state]').trim() === '' && t.text('[data-fpw-line-label]') === 'Neto estimado', 'summary omits explanation while amounts keep their estimated labels');
       t.form.reset();
       check(t.amount('total') === 'Guardado' && t.text('[data-fpw-line-label]') === 'Neto guardado', 'reset restores actual server text, not calculated suggestion');
       check(t.dom.window.document.querySelector('[data-fpw-preview]').disabled, 'reset preserves previously disabled action');

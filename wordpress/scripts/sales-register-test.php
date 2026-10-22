@@ -34,6 +34,7 @@ function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOT
 function esc_attr( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function esc_url( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
+function home_url( $path = '' ) { return 'https://freeplast.test' . $path; }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
 function wp_get_current_user() { return (object) array( 'user_login' => $GLOBALS['fpws_actor'], 'roles' => current_user_can('manage_woocommerce') ? array('administrator') : array('fpw_data_manager') ); }
@@ -354,15 +355,30 @@ check( 2 === $detail_result['receipt']['aplicadas'], 'detailed rows import on ex
 $sale = array_column( fpw_sales_register()['sales'], null, 'id' )['D-1'];
 check( 'CO' === $sale['producto'] && 140 === $sale['total_cajas'] && 1400 === $sale['precio'] && 196000 === $sale['neto'], 'product, boxes, price and net persist verbatim without calculations' );
 $history_html = fpw_workspace_history( array( 'identity' => array( 'rut' => '76123456-7' ) ) );
-check( ! str_contains( $history_html, 'detalle.csv' ) && str_contains( $history_html, 'Última carga:' ), 'workspace keeps freshness date without internal filename' );
+check( ! str_contains( $history_html, 'detalle.csv' ) && str_contains( $history_html, 'Última actualización:' ), 'workspace keeps freshness date without internal filename' );
 check( ! str_contains( $history_html, '>Registro<' ) && ! str_contains( $history_html, 'Total registrado' ) && ! str_contains( $history_html, '>D-1<' ), 'history removes source IDs and the old total heading' );
-foreach ( array( 'Fecha', 'Producto', 'Total Cajas', 'Precio', 'Neto', 'Total' ) as $label ) {
-	check( str_contains( $history_html, '>' . $label . '</th>' ), 'history shows column ' . $label );
+foreach ( array( 'Fecha', 'Factura', 'Total' ) as $label ) {
+	check( str_contains( $history_html, '>' . $label . '</span>' ), 'compact history shows heading ' . $label );
 }
-check( str_contains( $history_html, '>CO</th>' ) && str_contains( $history_html, '>140</td>' ) && str_contains( $history_html, '1.400 CLP' ) && str_contains( $history_html, '196.000 CLP' ) && str_contains( $history_html, '233.240 CLP' ), 'history renders source detail in Chilean numeric format' );
-check( str_contains( $history_html, '>—</th>' ) && str_contains( $history_html, '>—</td>' ) && str_contains( $history_html, '>0</td>' ) && str_contains( $history_html, '>0 CLP</td>' ), 'legacy missing fields stay absent while explicit zero stays zero' );
+check( str_contains( $history_html, '>CO</dd>' ) && str_contains( $history_html, '>140</dd>' ) && str_contains( $history_html, '$1.400' ) && str_contains( $history_html, '$196.000' ) && str_contains( $history_html, '$233.240' ), 'disclosed history renders source detail in Chilean numeric format' );
+check( str_contains( $history_html, 'Sin número' ) && str_contains( $history_html, '>0</dd>' ) && str_contains( $history_html, '>$0</dd>' ), 'unknown invoices stay honest while explicit zero stays zero' );
 check( ! str_contains( $history_html, '<script>' ) && str_contains( $history_html, '&lt;script&gt;' ), 'source product labels are escaped, never executed' );
-check( str_contains( $history_html, 'aria-label="Compras registradas" tabindex="0"' ), 'the wide history has a named keyboard-scrollable region' );
+check( str_contains( $history_html, '<ul aria-label="Compras registradas">' ) && str_contains( $history_html, '<details class="fpw-history-purchase"><summary>' ), 'purchases are a named list with native keyboard-accessible disclosures' );
+check( str_contains( $history_html, '03/09/2026' ) && str_contains( $history_html, 'Historial de compras (' . count( fpw_sales_history_for_rut( '761234567' )['sales'] ) . ')' ), 'dates and purchase counter use the proposed presentation' );
+check( ! str_contains( $history_html, 'Mostrando' ) && ! str_contains( $history_html, 'fpw-history-scroll' ) && ! str_contains( $history_html, 'detalle y procedencia' ), 'redundant captions and wide empty-column table are absent' );
+$commercial_saved = $GLOBALS['fpws_table'];
+$commercial_sale = array( 'id'=>'PRIVATE-ID', 'invoice'=>'1558', 'date'=>'2026-08-07', 'rut'=>'761234567', 'total'=>904400, 'movements'=>array( 'sale', 'return' ), 'lines'=>array(
+	array( 'producto'=>'UN', 'total_cajas'=>200, 'precio'=>3800, 'neto'=>760000, 'total'=>904400 ),
+	array( 'producto'=>'Otra línea', 'total_cajas'=>0, 'precio'=>'1.2345', 'neto'=>0, 'total'=>0 ),
+), 'workbook_source'=>array( 'filename'=>'PRIVATE.xlsx', 'sheet'=>'PRIVATE-SHEET', 'sha256'=>'PRIVATE-HASH', 'batch'=>'PRIVATE-BATCH', 'rows'=>array( array( 'source_row'=>1617, 'raw'=>array( 'A'=>'PRIVATE-RAW' ) ) ) ) );
+fpw_sales_write_row( FPW_SALES_REGISTER_ROW, array( 'schema'=>1, 'sales'=>array( $commercial_sale ) ) );
+$commercial_html = fpw_workspace_history( array( 'identity'=>array( 'rut'=>'76123456-7' ) ) );
+check( str_contains( $commercial_html, 'Historial de compras (1)' ) && str_contains( $commercial_html, 'N.º 1558' ) && substr_count( $commercial_html, '<li>' ) === 1 && substr_count( $commercial_html, '<dl>' ) === 2, 'multi-line invoice counts once and retains every commercial line' );
+check( str_contains( $commercial_html, '$904.400' ) && str_contains( $commercial_html, '$3.800' ) && str_contains( $commercial_html, 'Venta, Devolución' ), 'invoice total stays distinct from commercial line amounts and movement type' );
+check( ! str_contains( $commercial_html, 'PRIVATE-' ) && ! str_contains( $commercial_html, 'PRIVATE.xlsx' ) && ! str_contains( $commercial_html, 'Fila original' ) && ! str_contains( $commercial_html, 'SHA256' ), 'workspace never renders import provenance, raw rows or private IDs' );
+check( str_contains( $commercial_html, '$1,2345' ), 'workspace preserves exact CLP decimals' );
+check( $commercial_sale === fpw_sales_register()['sales'][0], 'presentation never deletes stored provenance' );
+$GLOBALS['fpws_table'] = $commercial_saved;
 fpw_sales_process_upload_string( $detail_csv, 'detalle-repetido.csv' );
 check( 2 === fpw_sales_confirm( fpw_sales_pending_batch()['token'] )['receipt']['ya_importadas'], 'identical detailed re-import is still a no-op' );
 foreach ( array( 'CO;141;1.400;196.000', 'ME;140;1.400;196.000', 'CO;140;1.500;196.000', 'CO;140;1.400;197.000' ) as $changed ) {

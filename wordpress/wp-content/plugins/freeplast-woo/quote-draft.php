@@ -89,7 +89,8 @@ define( 'FPW_QUOTATION_MAX_RATE_PERMILLE', 5000 );
 
 /** The private screen's address for one request's draft. */
 function fpw_draft_screen_url( int $order_id ): string {
-	return admin_url( 'admin.php?page=' . FPW_DRAFT_SCREEN . '&request=' . $order_id . '&workspace=1' );
+	$base = fpw_quotation_revision_base( $order_id );
+	return admin_url( 'admin.php?page=' . FPW_DRAFT_SCREEN . '&request=' . $order_id . '&workspace=1' . ( $base ? '&revise=' . $base : '' ) );
 }
 
 /** The draft row name of one request: unique option_name → one draft, ever. */
@@ -238,17 +239,17 @@ add_action( 'woocommerce_checkout_order_created', 'fpw_create_request_draft', 5,
 
 /** The saved-work row name of one request. */
 function fpw_draft_work_row_name( int $order_id ): string {
-	return FPW_DRAFT_WORK_PREFIX . $order_id;
+	return FPW_DRAFT_WORK_PREFIX . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** The nonce action of one draft's save: scoped to the request it edits. */
 function fpw_draft_save_action( int $order_id ): string {
-	return 'fpw-draft-save-' . $order_id;
+	return 'fpw-draft-save-' . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** The nonce action of one draft's price refresh: scoped to the request it refreshes. */
 function fpw_draft_refresh_action( int $order_id ): string {
-	return 'fpw-draft-refresh-' . $order_id;
+	return 'fpw-draft-refresh-' . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** Whether the receipt snapshot's request asked for dispatch ('si'). */
@@ -279,7 +280,7 @@ function fpw_read_draft_work_raw( int $order_id ): ?string {
 /** The stored saved work of one request, decoded. */
 function fpw_read_draft_work( int $order_id ): ?array {
 	$raw = fpw_read_draft_work_raw( $order_id );
-	if ( null === $raw ) { return null; }
+	if ( null === $raw ) { return fpw_quotation_revision_seed( $order_id ); }
 	$work = json_decode( $raw, true );
 	return is_array( $work ) ? $work : null;
 }
@@ -434,7 +435,7 @@ function fpw_parse_draft_work_input( array $draft, array $posted ): array {
 function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $user_id ): array {
 	$parsed = fpw_parse_draft_work_input( $draft, $posted );
 	$raw    = fpw_read_draft_work_raw( $order_id );
-	$stored = null;
+	$stored = null === $raw ? fpw_quotation_revision_seed( $order_id ) : null;
 	if ( null !== $raw ) {
 		$decoded = json_decode( $raw, true );
 		if ( is_array( $decoded ) ) { $stored = $decoded; } else { $raw = null; }
@@ -582,12 +583,12 @@ function fpw_pending_draft_outcome( ?array $set = null ): ?array {
 
 /** The nonce action of one draft's preview generation: scoped to the request it previews. */
 function fpw_draft_preview_action( int $order_id ): string {
-	return 'fpw-draft-preview-' . $order_id;
+	return 'fpw-draft-preview-' . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** The stored-preview row name of one request. */
 function fpw_draft_preview_row_name( int $order_id ): string {
-	return FPW_DRAFT_PREVIEW_PREFIX . $order_id;
+	return FPW_DRAFT_PREVIEW_PREFIX . $order_id . fpw_quotation_revision_suffix( $order_id );
 }
 
 /** The stored preview of one request, decoded — the reviewed projection and the work revision it was rendered from. Unlike the draft/work readers this one guards on $wpdb: the markup builder reads the preview row itself and must stay callable in wpdb-less offline render contexts. */
@@ -657,6 +658,11 @@ function fpw_draft_posted_action(): ?string {
 
 /** One screen action's server-side half: CSRF (its own nonce), then the guarded save, the preview generation or the explicit price refresh; the outcome is stashed for the screen. */
 function fpw_handle_draft_action_request( $order, array $draft, string $action ): void {
+	$id = (int) $order->get_id();
+	if ( fpw_quotation_revision_base( $id ) && ! fpw_quotation_revision_is_current( $id ) ) {
+		fpw_pending_draft_outcome( array( 'order_id' => $id, 'result' => array( 'state' => 'approval-refused', 'reason' => 'version-obsoleta' ) ) );
+		return;
+	}
 	if ( '1' === ( $_GET['workspace'] ?? '' ) && function_exists( 'fpw_workspace_guard_clean_action' ) && ! fpw_workspace_guard_clean_action( (int) $order->get_id(), $draft, $action ) ) { return; }
 	if ( 'preview' === $action ) { fpw_handle_draft_preview_request( $order, $draft ); return; }
 	if ( 'refresh' === $action ) { fpw_handle_draft_refresh_request( (int) $order->get_id(), $draft ); return; }
@@ -1032,7 +1038,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 	}
 	$pickup_address = $with_dispatch ? '' : ( fpw_pickup_locations()[ $values['pickup_location'] ] ?? '' );
 	if ( ! $with_dispatch && '' === $pickup_address ) { $missing[] = 'Selecciona el punto de retiro antes de revisar la cotización.'; }
-	$tax_config = fpw_quotation_tax_config();
+	$tax_config = fpw_quotation_offer_tax_config( (int) $draft['order_id'] );
 	$tax_rate   = null;
 	$tax_base   = null;
 	$tax        = null;
