@@ -13,11 +13,11 @@ const pkg = fileURLToPath(new URL('../package.json', import.meta.url));
 test('CLI probes reject effects and unsupported input before loading dependencies', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'freeplast-lh-cli-'));
   try {
-    for (const args of [[], ['--help'], ['-h'], ['--json'], ['--version'], ['-v'], ['-V'], ['measure'], ['--url', 'http://invalid'], ['--help', '--bad'], ['--version', '--bad']]) {
+    for (const args of [[], ['--help'], ['-h'], ['--json'], ['--version'], ['-v'], ['-V'], ['measure'], ['--url', 'http://invalid'], ['--help', '--bad'], ['--version', '--bad'], ['doctor', '--help'], ['measure', '--help'], ['doctor', '--url', 'http://invalid'], ['measure', '--label', '../escape']]) {
       const result = spawnSync(process.execPath, ['--permission', `--allow-fs-read=${cli}`, `--allow-fs-read=${pkg}`, cli, ...args], {
         cwd, env: { ...process.env, HOME: cwd }, encoding: 'utf8', timeout: 5000,
       });
-      const invalid = args.some(arg => ['measure', '--url', '--bad'].includes(arg));
+      const invalid = args.includes('--url') || args.includes('--bad') || args.includes('../escape') || args.length === 1 && args[0] === 'measure';
       assert.equal(result.status, invalid ? 2 : 0, result.stderr);
       assert.equal(result.stderr, '');
       if (args.length === 1 && ['--version', '-v', '-V'].includes(args[0])) assert.equal(result.stdout, '0.1.0\n');
