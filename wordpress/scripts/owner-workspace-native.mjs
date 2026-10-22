@@ -109,14 +109,14 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
     const detailUrl = link.getAttribute('href').replace(/^https?:\/\/[^/]+/, '');
     const detail = document(await (await owner(detailUrl)).text());
     check(!detail.querySelector('form[data-fpw-tracking]') && !detail.body.textContent.includes('Seguimiento comercial'), 'workspace: no manual status selectors remain');
-    // Three-view contract (docs/reviews/owner-inbox-three-views-2026-10-02.md):
-    // exactly Pendientes / Enviadas / Todas, each linked to its own stage filter.
+    // Owner inbox now includes reversible archiving as a fourth distinct view.
     const views = [...doc.querySelectorAll('.fpw-request-views a')];
-    check(views.length === 3, 'workspace: exactly the three owner views are offered (Pendientes/Enviadas/Todas)');
+    check(views.length === 4, 'workspace: exactly four owner views are offered (Pendientes/Enviadas/Archivadas/Todas)');
     check(views.some(a => a.textContent.trim() === 'Pendientes' && a.search.includes('stage=pendientes'))
       && views.some(a => a.textContent.trim() === 'Enviadas' && a.search.includes('stage=sent-quotes'))
+      && views.some(a => a.textContent.trim() === 'Archivadas' && a.search.includes('stage=archived'))
       && views.some(a => a.textContent.trim() === 'Todas' && a.search.includes('stage=all'))
-      && new Set(views.map(a => a.search)).size === 3, 'workspace: each view is labeled in Spanish and targets a distinct stage filter');
+      && new Set(views.map(a => a.search)).size === 4, 'workspace: each view is labeled in Spanish and targets a distinct stage filter');
     check(views.find(a => a.getAttribute('aria-current') === 'page')?.textContent.trim() === 'Pendientes', 'workspace: the unfiltered inbox defaults to pending work');
     const pendingDefault = document(await (await owner(inbox + '&q=' + encodeURIComponent(`workspace ${suffix}`))).text());
     check(pendingDefault.querySelectorAll('[data-fpw-request]').length === 1, 'workspace: the pending default view lists the new unsent request');
@@ -210,7 +210,7 @@ export async function runOwnerWorkspaceTests({ wpEval, makeCookieFetch, wpLogin,
       dom.window.eval(readFileSync(new URL('../wp-content/plugins/freeplast-woo/assets/owner-workspace.js', import.meta.url), 'utf8'));
       const input = dom.window.document.querySelector('[name="fpw_work[lines][0][quantity]"]');
       input.value = '350'; input.dispatchEvent(new dom.window.Event('input', {bubbles:true}));
-      check(dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('sin guardar'), 'workspace: editing labels transient totals as unsaved');
+      check(dom.window.document.querySelector('[data-fpw-total-label]').textContent.includes('sin guardar') && !dom.window.document.querySelector('[data-fpw-save-state]').textContent.includes('Importes estimados; al revisar'), 'workspace: transient total remains labeled without removed explanatory copy');
       check(!dom.window.document.querySelector('[data-fpw-preview]').disabled, 'workspace: unsaved edits remain reviewable through guarded save-and-review');
       check(dom.window.document.querySelector('[name="fpw_work[lines][0][price]"]').value === '1500', 'workspace: quantity does not change offered price');
     } finally { dom.window.close(); }
