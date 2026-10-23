@@ -30,7 +30,9 @@ def row(rut, serial, prod, boxes, price, net, total, inv, formula=False):
 
 class Converter(unittest.TestCase):
     def setUp(self):
-        self.d = Path(tempfile.mkdtemp()); self.out = self.d / 'out' / 'run'
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.d = Path(temp.name); self.out = self.d / 'out' / 'run'
         # 45699 = 2025-02-11 ; 45671 = 2025-01-14
         make_xlsx(self.d / 'w.xlsx', {
             2: row('96.930.440-6', 45699, 0, 70, 2100, 147000, 174930, 11, formula=True),
@@ -90,6 +92,31 @@ class Converter(unittest.TestCase):
         mp = json.loads(self.map.read_text()); self.map.write_text(json.dumps(mp + [mp[0]]))
         with self.assertRaises(SystemExit): self.run_build()
         self.assertFalse(self.out.exists())
+
+    def test_namesakes_do_not_establish_identity_or_invent_missing_detail(self):
+        name = '<c r="D" t="inlineStr"><is><t>Empresa Gemela</t></is></c>'
+        make_xlsx(self.d / 'w.xlsx', {
+            2: row('96.930.440-6', 45699, 0, 70, 2100, 147000, 174930, 11) + [name],
+            3: row('76.123.456-7', 45671, 0, '', '', '', 4474400, 12) + [name],
+        })
+        self.sha = hashlib.sha256((self.d / 'w.xlsx').read_bytes()).hexdigest()
+        self.applied.write_text('id_venta,fecha,rut,total\n11,2025-02-11,969304406,174930\n12,2025-01-14,761234567,4474400\n')
+        mapping = [
+            dict(id_venta='11', fecha='2025-02-11', rut='969304406', total='174930', source_rows=[2]),
+            dict(id_venta='12', fecha='2025-01-14', rut='761234567', total='4474400', source_rows=[3]),
+        ]
+        self.map.write_text(json.dumps(mapping))
+        audit, rows = self.run_build()
+        self.assertEqual(2, audit['status']['proposed'])
+        self.assertEqual(['969304406', '761234567'], [r['rut'] for r in rows])
+        self.assertEqual((None, None, None), tuple(rows[1][k] for k in ('total_cajas', 'precio', 'neto')))
+        self.assertNotIn('cliente', rows[1], 'legacy enrichment CSV never retained CLIENTE; viewer cannot reconstruct that source field')
+        # An identical name cannot repair a different RUT in the immutable import identity.
+        mapping[1]['rut'] = '969304406'
+        self.map.write_text(json.dumps(mapping)); self.out = self.d / 'out' / 'mismatch'
+        audit, rows = self.run_build()
+        self.assertEqual(['11'], [r['id_venta'] for r in rows])
+        self.assertEqual(1, audit['status']['identity_unproven'])
 
     def test_helpers(self):
         self.assertEqual('2025-02-11', swb.serial_to_iso('45699')); self.assertEqual('', swb.serial_to_iso('45699.5')); self.assertEqual('', swb.serial_to_iso('x'))

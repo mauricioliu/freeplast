@@ -109,5 +109,33 @@ check( array( 'page' => 'fpw-sales-history' ) === $clear_query, 'clear removes f
 $filtered = fpw_sales_history_filter( $sales, array( 'history_from' => '2026-01-28', 'history_to' => '2026-01-28' ) );
 check( 47 === count( $filtered ) && 22 === count( fpw_sales_history_page( $filtered, 2 )['sales'] ), 'date subset paginated only after filtering' );
 check( str_contains( $html, 'method="get"' ) && ! str_contains( $html, '<script' ), 'filter form and links work without JavaScript' );
+// A name exists only on the newer workbook row; older stored purchases still belong to its RUT.
+$associated = array();
+for ( $i = 1; $i <= 31; $i++ ) {
+ $associated[] = array( 'id' => 'older-' . $i, 'date' => '2020-01-01', 'rut' => '12345678-5', 'producto' => 'Caja antigua', 'total_cajas' => 0, 'precio' => 0 );
+}
+$associated[] = array( 'id' => 'named-newer', 'date' => '2026-01-01', 'rut' => '12.345.678-5', 'workbook_source' => array( 'rows' => array( array( 'raw' => array( 'D' => 'Empresa Gemela' ) ) ) ) );
+$associated[] = array( 'id' => 'same-name-other-rut', 'date' => '2020-01-01', 'rut' => '76543210K', 'workbook_source' => array( 'rows' => array( array( 'raw' => array( 'D' => 'Empresa Gemela' ) ) ) ) );
+$associated[] = array( 'id' => 'unrelated', 'date' => '2020-01-01', 'rut' => '761234567', 'invoice' => '987654321', 'customer_name' => 'Empresa Gemela' );
+$associated[] = array( 'id' => 'nameless-no-rut', 'date' => '2020-01-01' );
+$name_filters = array( 'history_search' => 'empresa gemela', 'history_to' => '2020-12-31' );
+$matches = fpw_sales_history_filter( $associated, $name_filters );
+check( 32 === count( $matches ), 'name search recovers older purchases by normalized RUT even when naming evidence is outside date range' );
+$seen = array();
+for ( $page = 1; $page <= 2; $page++ ) {
+ foreach ( fpw_sales_history_page( $matches, $page )['sales'] as $sale ) { $seen[] = $sale['id']; }
+}
+check( 32 === count( $seen ) && 32 === count( array_unique( $seen ) ), 'associated results survive pagination without omissions or duplicates' );
+foreach ( array( '123456785', '12.345.678-5', '12345678-5' ) as $rut ) {
+ $matched = fpw_sales_history_filter( $associated, array( 'history_search' => $rut ) );
+ check( 32 === count( $matched ) && ! array_diff( array_column( $matched, 'rut' ), array( '12345678-5', '12.345.678-5' ) ), 'full RUT search never associates a namesake with another RUT' );
+}
+check( array( 'unrelated' ) === array_column( fpw_sales_history_filter( $associated, array( 'history_search' => '761234567' ) ), 'id' ), 'unproven customer_name never establishes identity' );
+check( array( 'unrelated' ) === array_column( fpw_sales_history_filter( $associated, array( 'history_search' => '987654321' ) ), 'id' ), 'numeric invoice search remains available even when digits have RUT shape' );
+$no_rut_named = array( 'id' => 'named-no-rut', 'workbook_source' => array( 'rows' => array( array( 'raw' => array( 'D' => 'Sin identidad' ) ) ) ) );
+check( array( 'named-no-rut' ) === array_column( fpw_sales_history_filter( array_merge( $associated, array( $no_rut_named ) ), array( 'history_search' => 'Sin identidad' ) ), 'id' ), 'name evidence without a usable RUT never associates other unidentified rows' );
+$legacy_html = fpw_sales_history_markup( $associated, $name_filters + array( 'sale_id' => 'older-1', 'history_page' => '2' ) );
+check( str_contains( $legacy_html, 'Caja antigua' ) && str_contains( $legacy_html, '0 CLP' ) && str_contains( $legacy_html, 'No disponible en origen' ) && str_contains( $legacy_html, 'Desglose por líneas no disponible' ), 'recovered detail shows stored legacy values and honest source omissions, never an inferred name' );
+check( str_contains( $legacy_html, 'history_search=empresa+gemela' ) && str_contains( $legacy_html, 'history_page=2' ), 'recovered detail keeps filtered return context' );
 check( $before === $GLOBALS['fpws_table'], 'no persisted rows changed by browsing' );
 echo "sales history: {$assertions} checks passed (including register regression)\n";
