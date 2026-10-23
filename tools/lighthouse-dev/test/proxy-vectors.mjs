@@ -1,3 +1,4 @@
+export const directProxyVectors = [{ path: '/' }, { path: '/synthetic-unowned?value=PRIVATE_TEST', host: 'unowned.invalid' }];
 export const proxyUrlVectors = [
   { name: 'origin-form', raw: '/', form: 'origin-form', scheme: 'none', branch: 'parse' },
   { name: 'asterisk', raw: '*', form: 'asterisk', scheme: 'none', branch: 'parse' },

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 import { policy, checkRequest } from '../src/policy.mjs';
 import { publicTarget, urlShape, failureEvidence } from '../src/failure.mjs';
-import { proxyUrlVectors } from './proxy-vectors.mjs';
+import { proxyUrlVectors, directProxyVectors } from './proxy-vectors.mjs';
 import { filteringProxy, proxyOwnerHeader } from '../src/proxy.mjs';
 import { fixtureAdapter, fixtureHtml } from './fixture-adapter.mjs';
 const grant = (proxy,url,method='GET') => { proxy.authorize(url,method); const c=proxy.authenticate(url,method); return 'Basic '+Buffer.from(c.username+':'+c.password).toString('base64'); };
@@ -12,6 +13,48 @@ const send = (proxy, fixture, { path=fixture.origin+'/', method='GET', host=new 
   const request=http.request(proxy.url,{path,method,headers:{host,...(token?{[proxyOwnerHeader]:token}:{})}},response=>{response.resume();response.on('end',()=>resolve(response.statusCode));});
   request.on('error',reject);request.end();
 });
+test('unowned origin-form non-root HostOTHER is 403 without poisoning complete owned traffic',async()=>{
+ const f=await fixtureAdapter(()=>({body:fixtureHtml('owned page')})),p=await filteringProxy(f.policy,'127.0.0.1');let failure;p.failed.catch(e=>{failure=e;});p.arm();
+ try{
+  assert.equal(await send(p,f,directProxyVectors[1]),403);
+  assert.equal(f.hits.length,0);assert.equal(p.snapshot().upstreamRequests,0);assert.equal(failure,undefined);
+  const token=grant(p,f.origin+'/');assert.equal(await send(p,f,{token}),200);
+  const result=p.verify(proof(1));assert.equal(result.unownedDenials,1);assert.equal(result.upstreamRequests,1);assert.equal(result.pendingAuthorizations,0);assert.equal(result.unownedSamples[0].urlShape.host,'other');assert.equal(result.unownedSamples[0].urlShape.form,'origin-form');assert.equal(result.unownedSamples[0].ownedRequest,false);assert.equal(result.unownedSamples[0].proxySocket,true);assert.equal(result.unownedSamples[0].loopbackPeer,true);assert.doesNotMatch(JSON.stringify(result),/PRIVATE_TEST|unowned\.invalid/);assert.ok(f.hits.every(h=>!h.controlHeaderSeen));
+ }finally{await p.close();await f.close();}
+});
+
+const rawRequest = (proxy, request) => new Promise((resolve,reject)=>{
+ const socket=net.connect({host:'127.0.0.1',port:new URL(proxy.url).port});let response='';
+ socket.on('data',data=>{response+=data;});socket.once('error',reject);socket.once('close',()=>resolve(Number(/^HTTP\/1\.[01] (\d+)/.exec(response)?.[1])||null));socket.once('connect',()=>socket.end(request));
+});
+test('direct-server HEAD, missing Host and encoded path/query deny without reconstruction',async()=>{
+ const f=await fixtureAdapter(()=>({body:fixtureHtml('owned page')})),p=await filteringProxy(f.policy,'127.0.0.1');p.arm();
+ try{
+  for(const request of ['GET / HTTP/1.1\r\nHost: other.invalid\r\n','HEAD /non-root HTTP/1.1\r\nHost: other.invalid\r\n','GET /%2f%2fPRIVATE_TEST/%40user?next=http%3A%2F%2Fother.invalid HTTP/1.1\r\nHost: other.invalid\r\n','GET /no-host HTTP/1.0\r\n'])assert.equal(await rawRequest(p,request+'Connection: close\r\n\r\n'),403);
+  assert.equal(f.hits.length,0);assert.equal(p.snapshot().upstreamRequests,0);const token=grant(p,f.origin+'/');assert.equal(await send(p,f,{token}),200);
+  const result=p.verify(proof(1));assert.equal(result.unownedDenials,4);assert.equal(result.unownedSamples.at(-1).urlShape.host,'missing');assert.equal(result.upstreamRequests,1);assert.doesNotMatch(JSON.stringify(result),/PRIVATE_TEST|other\.invalid/);
+ }finally{await p.close();await f.close();}
+});
+test('direct-server exception excludes auth presence, methods, bodies, upgrade and ambiguous targets',async()=>{
+ for(const mode of ['post','options','body','transfer','upgrade','connection-upgrade','duplicate-host','proxy-auth-empty','proxy-auth-forged','proxy-auth-valid','server-auth-empty','absolute','authority','hash','backslash','empty']){
+  const f=await fixtureAdapter(()=>({body:fixtureHtml('owned')})),p=await filteringProxy(f.policy,'127.0.0.1');let failure;p.failed.catch(e=>{failure=e;});p.arm();
+  try{
+   const token=grant(p,f.origin+'/');let path='/non-root',method='GET',headers='Host: other.invalid\r\nConnection: close\r\n',body='';
+   if(mode==='post')method='POST';if(mode==='options')method='OPTIONS';
+   if(mode==='body'){headers+='Content-Length: 1\r\n';body='x';}
+   if(mode==='transfer'){headers+='Transfer-Encoding: chunked\r\n';body='0\r\n\r\n';}
+   if(mode==='upgrade')headers='Host: other.invalid\r\nConnection: upgrade\r\nUpgrade: websocket\r\n';
+   if(mode==='connection-upgrade')headers='Host: other.invalid\r\nConnection: upgrade\r\n';
+   if(mode==='duplicate-host')headers+='Host: duplicate.invalid\r\n';
+   if(mode.startsWith('proxy-auth'))headers+='Proxy-Authorization: '+(mode==='proxy-auth-valid'?token:mode==='proxy-auth-forged'?'Basic forged':'')+'\r\n';
+   if(mode==='server-auth-empty')headers+='Authorization:\r\n';
+   if(mode==='absolute')path='http://other.invalid/non-root';if(mode==='authority')path='//user@other.invalid/non-root';if(mode==='hash')path='/non-root#fragment';if(mode==='backslash')path='/\\other.invalid';if(mode==='empty')path='';
+   const status=await rawRequest(p,`${method} ${path} HTTP/1.1\r\n${headers}\r\n${body}`).catch(()=>null);
+   assert.ok([null,400,403].includes(status),mode);assert.equal(p.snapshot().unownedDenials,0,mode);assert.ok(failure,mode+' must remain fatal');assert.equal(p.snapshot().upstreamRequests,0);assert.equal(f.hits.length,0);
+  }finally{await p.close();await f.close();}
+ }
+});
+
 test('URL shape identifies precise branch without secret or relative-origin invention',()=>{
   for(const vector of proxyUrlVectors){
     const shape=urlShape(vector.raw,'http://mliu:8131','127.0.0.1:1234','127.0.0.1:1234');
@@ -66,6 +109,14 @@ test('pending/aborted renderer claim cannot be hidden by nonfatal proxy-root den
  const f=await fixtureAdapter(()=>({body:fixtureHtml('ok')})),p=await filteringProxy(f.policy,'127.0.0.1');p.arm();
  try{p.authorize(f.origin+'/','GET');assert.equal(await get(p.url+'/'),403);assert.throws(()=>p.verify(proof(1)),/proxy-owner-unproven/);assert.equal(p.snapshot().pendingAuthorizations,1);assert.equal(f.hits.length,0);}
  finally{await p.close();await f.close();}
+});
+test('unbound origin-form denial cannot satisfy a required non-root renderer claim',async()=>{
+ const f=await fixtureAdapter(()=>({body:fixtureHtml('owned')})),p=await filteringProxy(f.policy,'127.0.0.1');p.arm();
+ try{
+  p.authorize(f.origin+'/asset.png','GET','required','Image');
+  assert.equal(await send(p,f,{path:'/asset.png'}),403);assert.equal(f.hits.length,0);assert.equal(p.snapshot().pendingAuthorizations,1);
+  assert.throws(()=>p.verify(proof(1)),/proxy-owner-unproven/);await p.close();assert.throws(()=>p.revokeAfterExit({exitCode:0,signalCode:null},[]),/proxy-required-resource-unproven/);
+ }finally{await p.close();await f.close();}
 });
 test('redirect hops require fresh capabilities; capabilities are stripped and never serialized',async()=>{
  const f=await fixtureAdapter(({req})=>req.url==='/'?{status:302,headers:{location:'/tienda/'}}:{body:fixtureHtml('ok')}),p=await filteringProxy(f.policy,'127.0.0.1');p.arm();

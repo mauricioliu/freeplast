@@ -17,7 +17,7 @@ import { assertHttpsDenial } from './security-oracle.mjs';
 import { assetVectors, expectedStops, staticRequests } from './security-vectors.mjs';
 import { profiles } from '../src/config.mjs';
 import { recordFailure } from '../src/failure.mjs';
-import { proxyUrlVectors } from './proxy-vectors.mjs';
+import { directProxyVectors } from './proxy-vectors.mjs';
 import { wooBootstrapFixture, busyWooFixture } from './woo-bootstrap-fixture.mjs';
 
 process.umask(0o077);
@@ -75,7 +75,7 @@ try {
   assert.ok(selected.length, 'Unknown synthetic fixture case');
   for (const [name, render] of selected) {
     const fixture = await fixtureAdapter(render);
-    if (name.includes('proxy-probe')) fixture.policy.fixtureProxyProbe = proxyUrlVectors.filter(v => v.name === 'origin-form').map(v => v.raw);
+    if (name.includes('proxy-probe')) fixture.policy.fixtureProxyProbe = directProxyVectors;
     const row = { name, status: 'incomplete' };
     results.push(row);
     try {
@@ -145,10 +145,12 @@ try {
         assert.equal(result.security.proxy.authorizationClaims, result.security.proxy.consumedAuthorizations + result.security.proxy.cancelledAuthorizations);
         assert.ok(fixture.hits.every(hit => hit.controlHeaderSeen === false));
         if (name.includes('proxy-probe')) {
-          assert.equal(result.security.proxy.unownedDenials, 1);
-          const sample = result.security.proxy.unownedSamples[0];
-          assert.equal(sample.urlShape.form, 'origin-form'); assert.equal(sample.urlShape.host, 'proxy');
-          assert.equal(sample.target.origin, 'invalid'); assert.equal(sample.ownedRequest, false);
+          assert.equal(result.security.proxy.unownedDenials, 2);
+          for (const [index, sample] of result.security.proxy.unownedSamples.entries()) {
+            assert.equal(sample.urlShape.form, 'origin-form'); assert.equal(sample.urlShape.host, index === 0 ? 'proxy' : 'other');
+            assert.equal(sample.target.origin, 'invalid'); assert.equal(sample.ownedRequest, false); assert.equal(sample.loopbackPeer, true); assert.equal(sample.proxySocket, true);
+          }
+          assert.doesNotMatch(JSON.stringify(result.security.proxy.unownedSamples), /PRIVATE_TEST|unowned\.invalid/);
           row.ownership = result.security.proxy;
         }
         await save(root, join(evidence, `${name}.json`), result.lhr);

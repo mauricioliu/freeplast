@@ -18,7 +18,7 @@ test('owned audit BFCache flag merges with Puppeteer defaults; all default audit
     assert.equal(config.settings.onlyAudits, undefined);
     assert.equal(config.settings.disableStorageReset, false);
   }
-  assert.equal(auditConfig.generation, 5);
+  assert.equal(auditConfig.generation, 6);
 });
 
 test('smoke launch arguments enable ephemeral loopback CDP without disabling sandbox', async () => {

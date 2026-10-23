@@ -186,6 +186,14 @@ test('owned transport close drains pending validated response; unproven owner ex
  }
 });
 
+test('renderer direct-proxy endpoint attempt stays fatal before continuation',async()=>{
+ const f=await fixture();
+ try{
+  f.event('Fetch.requestPaused',{requestId:'direct-proxy',request:{url:'http://127.0.0.1:43210/synthetic-unowned.png',method:'GET'},resourceType:'Image'});
+  const error=await f.guard.failed.catch(e=>e);assert.equal(error.code,'external-resource');assert.equal(error.diagnostic.source,'renderer-fetch');assert.equal(error.diagnostic.continuationAttempted,false);assert.equal(error.diagnostic.failRequestAcknowledged,true);assert.equal(f.guard.snapshot().httpRequestsAuthorized,0);assert.ok(!f.commands.some(command=>command.method==='Fetch.continueRequest'));
+ }finally{await f.close();}
+});
+
 test('duplicate request pauses share one authorization; redirect/new network request gets its own',async()=>{
  const claims=[];const f=await fixture(false,{authorize(url,method){claims.push({url,method});}});
  try{

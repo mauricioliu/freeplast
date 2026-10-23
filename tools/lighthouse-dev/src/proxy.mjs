@@ -27,11 +27,14 @@ export async function filteringProxy(policy, address) {
   };
   const server = http.createServer((req, res) => {
     const owned = req.headers[proxyOwnerHeader] === authorization;
-    // Only this exact direct-proxy signature can be nonfatal; pending claims still fail verification.
-    const probe = ['GET', 'HEAD'].includes(req.method) && req.url === '/' && req.headers.host === `127.0.0.1:${server.address()?.port}` && req.socket.remoteAddress === '127.0.0.1'
-      && req.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'host').length === 1
-      && !req.headers[proxyOwnerHeader] && !req.headers.authorization && !req.headers.upgrade && !req.headers['transfer-encoding'] && (!req.headers['content-length'] || req.headers['content-length'] === '0');
-    if (probe) {
+    // Direct-server requests are denied, never resolved against Host or forwarded.
+    const directServer = ['GET', 'HEAD'].includes(req.method) && /^\/(?!\/)[^\s#\\]*$/.test(req.url)
+      && req.socket.remoteAddress === '127.0.0.1' && req.socket.localAddress === '127.0.0.1' && req.socket.localPort === server.address()?.port
+      && req.rawHeaders.filter((v, i) => i % 2 === 0 && v.toLowerCase() === 'host').length <= 1
+      && [proxyOwnerHeader, 'authorization', 'upgrade', 'transfer-encoding'].every(name => !Object.hasOwn(req.headers, name))
+      && !/(?:^|,)\s*upgrade\s*(?:,|$)/i.test(req.headers.connection || '')
+      && (!Object.hasOwn(req.headers, 'content-length') || req.headers['content-length'] === '0');
+    if (directServer) {
       unownedDenials++;
       if (unownedSamples.length < 16) unownedSamples.push(diagnostic(req, null, false));
       res.writeHead(403); res.end(); return;
@@ -115,7 +118,7 @@ export async function filteringProxy(policy, address) {
       if (failure) throw failure;
       if (pending() || consumed() + authenticatedAuxiliaryRequests !== upstreamRequests || rendererProof?.httpRequestsAuthorized !== claims.length) throw new SafetyError('proxy-owner-unproven');
       if (!rendererProof?.allTargetsGuarded || rendererProof.httpsContinued !== 0 || rendererProof.websocketCreations !== 0 || !rendererProof.networkEnabled || !rendererProof.fetchEnabled) throw new SafetyError('proxy-attribution-unproven');
-      return { ...proxyProtocol, startupBlocks, tunnelDenials, unownedSamples, ...this.snapshot(), revoked: claims.flatMap((c, id) => c.cancelled ? [{ requestIndex: id, target: publicTarget(c.url, policy.origin), method: c.method, type: c.type, reason: 'owner-exited-proxy-closed-resource-observed' }] : []), attribution: 'forwarded HTTP reconciled to guard claims plus at most one authenticated pinned-Lighthouse robots.txt auxiliary GET; exact unauthenticated direct-proxy probes denied, never attributed to a historical actor' };
+      return { ...proxyProtocol, startupBlocks, tunnelDenials, unownedSamples, ...this.snapshot(), revoked: claims.flatMap((c, id) => c.cancelled ? [{ requestIndex: id, target: publicTarget(c.url, policy.origin), method: c.method, type: c.type, reason: 'owner-exited-proxy-closed-resource-observed' }] : []), attribution: 'forwarded HTTP reconciled to guard claims plus at most one authenticated pinned-Lighthouse robots.txt auxiliary GET; unauthenticated origin-form direct-server requests denied without forwarding, never attributed to a historical actor' };
     },
     close() {
       if (!closePromise) {

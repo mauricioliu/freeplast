@@ -64,7 +64,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     guard = await installGuard(browser, page, policy, () => {
       proxy.arm();
       if (policy.fixture && policy.fixtureProxyProbe && !probe) {
-        probe = (async () => { for (const path of policy.fixtureProxyProbe) await new Promise((resolve, reject) => http.get(proxy.url, { path }, response => { response.resume(); response.once('end', () => response.statusCode === 403 ? resolve() : reject(new SafetyError('fixture-probe-status'))); }).on('error', () => reject(new SafetyError('fixture-probe-failed')))); })();
+        probe = (async () => { for (const { path, host } of policy.fixtureProxyProbe) await new Promise((resolve, reject) => http.get(proxy.url, { path, ...(host ? { headers: { host } } : {}) }, response => { response.resume(); response.once('end', () => response.statusCode === 403 ? resolve() : reject(new SafetyError('fixture-probe-status'))); }).on('error', () => reject(new SafetyError('fixture-probe-failed')))); })();
         probe.catch(() => {});
       }
     }, proxy);
