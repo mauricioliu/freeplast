@@ -55,8 +55,11 @@ export function checkRequest(p, raw, method = 'GET', type = 'Document', popup = 
   if (!['GET', 'HEAD'].includes(method)) deny('method');
   if (typeof raw !== 'string' || /[\\\s\x00-\x1f]/.test(raw) || /%(?:2e|2f|5c|25|00)/i.test(raw)) deny('ambiguous-url');
   let u;
-  try { u = new URL(raw); } catch { deny('url'); }
-  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.hash) deny('url');
+  const invalid = branch => { const error = new SafetyError('url'); error.urlBranch = branch; throw error; };
+  try { u = new URL(raw); } catch { invalid('parse'); }
+  if (!['http:', 'https:'].includes(u.protocol)) invalid('scheme');
+  if (u.username || u.password) invalid('userinfo');
+  if (u.hash) invalid('hash');
   if (forbiddenHost.test(u.hostname) || p.fixtureDenied.includes(u.origin)) deny('forbidden-host');
   if (u.protocol === 'https:') deny('https-resource-unsupported');
   const staticSourceAsset = u.origin === p.origin && staticSourceAssets.has(u.pathname);

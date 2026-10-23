@@ -8,7 +8,7 @@ export async function fixtureAdapter(render) {
   const hits = [], denied = [], tlsContacts = [], deniedContacts = [];
   const runMarker = randomUUID();
   const contact = socket => ({ at: new Date().toISOString(), remoteAddress: socket.remoteAddress, remotePort: socket.remotePort, localPort: socket.localPort });
-  const trace = req => ({ ...contact(req.socket), method: req.method, path: req.url, markerMatches: req.headers['x-freeplast-fixture-run'] === runMarker, userAgentProfile: Object.keys(profiles).find(name => req.headers['user-agent'] === profiles[name].emulatedUserAgent) || 'other', userAgentClass: (req.headers['user-agent'] || '').includes('Chrome/') ? 'chromium' : (req.headers['user-agent'] || '').includes('Freeplast-DEV-preflight') ? 'preflight' : 'other' });
+  const trace = req => ({ ...contact(req.socket), method: req.method, path: req.url, controlHeaderSeen: req.headers['x-freeplast-proxy-owner'] !== undefined || req.headers['proxy-authorization'] !== undefined, markerMatches: req.headers['x-freeplast-fixture-run'] === runMarker, userAgentProfile: Object.keys(profiles).find(name => req.headers['user-agent'] === profiles[name].emulatedUserAgent) || 'other', userAgentClass: (req.headers['user-agent'] || '').includes('Chrome/') ? 'chromium' : (req.headers['user-agent'] || '').includes('Freeplast-DEV-preflight') ? 'preflight' : 'other' });
   let deniedConnections = 0, deniedTLSConnections = 0;
   const tlsSockets = new Set();
   // No certificate needed: the safety assertion forbids even the first TCP connection.

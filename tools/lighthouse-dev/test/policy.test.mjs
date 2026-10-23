@@ -85,11 +85,13 @@ test('proxy rejects HTTP mutators, WS Upgrade, WSS CONNECT before first TCP cont
     proxy.arm();
     try {
       const target = new URL(fixture.deniedOrigin);
-      const request = mode === 'wss' ? `CONNECT ${target.host} HTTP/1.1\r\nHost: ${target.host}\r\n\r\n` : mode === 'ws' ? `GET ${fixture.deniedOrigin}/ HTTP/1.1\r\nHost: ${target.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n` : `${mode === 'post' ? 'POST' : 'GET'} ${fixture.deniedOrigin}/ HTTP/1.1\r\nHost: ${target.host}\r\nConnection: close\r\n\r\n`;
+      let token = '';
+      if (['post', 'cross-port'].includes(mode)) { proxy.authorize(fixture.origin + '/', 'GET'); const c = proxy.authenticate(fixture.origin + '/', 'GET'); token = 'Basic ' + Buffer.from(c.username + ':' + c.password).toString('base64'); }
+      const request = mode === 'wss' ? `CONNECT ${target.host} HTTP/1.1\r\nHost: ${target.host}\r\n\r\n` : mode === 'ws' ? `GET ${fixture.deniedOrigin}/ HTTP/1.1\r\nHost: ${target.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n` : `${mode === 'post' ? 'POST' : 'GET'} ${fixture.deniedOrigin}/ HTTP/1.1\r\nHost: ${target.host}\r\nProxy-Authorization: ${token}\r\nConnection: close\r\n\r\n`;
       assert.match(await raw(Number(new URL(proxy.url).port), request), /403/);
       if (mode === 'wss') {
-        assert.throws(() => proxy.verify(), /proxy-attribution-unproven/);
-        const proof = { allTargetsGuarded: true, httpsContinued: 0, websocketCreations: 0, networkEnabled: true, fetchEnabled: true };
+        assert.throws(() => proxy.verify({ httpRequestsAuthorized: 0 }), /proxy-attribution-unproven/);
+        const proof = { httpRequestsAuthorized: 0, allTargetsGuarded: true, httpsContinued: 0, websocketCreations: 0, networkEnabled: true, fetchEnabled: true };
         assert.equal(proxy.verify(proof).tunnelDenials.length, 1);
         assert.throws(() => proxy.verify({ ...proof, websocketCreations: 1 }), /proxy-attribution-unproven/);
         assert.throws(() => proxy.verify({ ...proof, httpsContinued: 1 }), /proxy-attribution-unproven/);
@@ -109,9 +111,11 @@ test('proxy forwards authorized HTTP and blocks all startup traffic', async () =
     assert.match(await raw(port, request), /403/);
     assert.equal(fixture.hits.length, 0);
     proxy.arm();
-    const body = await new Promise((resolve, reject) => { http.get(proxy.url, { path: fixture.origin + '/' }, response => { let body = ''; response.on('data', x => { body += x; }); response.on('end', () => resolve(body)); }).on('error', reject); });
+    proxy.authorize(fixture.origin + '/', 'GET');
+    const credentials = proxy.authenticate(fixture.origin + '/', 'GET');
+    const body = await new Promise((resolve, reject) => { http.get(proxy.url, { path: fixture.origin + '/', headers: { host: new URL(fixture.origin).host, 'Proxy-Authorization': 'Basic ' + Buffer.from(credentials.username + ':' + credentials.password).toString('base64') } }, response => { let body = ''; response.on('data', x => { body += x; }); response.on('end', () => resolve(body)); }).on('error', reject); });
     assert.match(body, /LOCAL/);
     assert.equal(fixture.hits.length, 1);
-    assert.equal(proxy.verify().startupBlocks.length, 1);
+    assert.equal(proxy.verify({ httpRequestsAuthorized: 1, allTargetsGuarded: true, httpsContinued: 0, websocketCreations: 0, networkEnabled: true, fetchEnabled: true }).startupBlocks.length, 1);
   } finally { await proxy.close(); await fixture.close(); }
 });

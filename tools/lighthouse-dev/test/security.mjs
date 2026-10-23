@@ -17,6 +17,7 @@ import { assertHttpsDenial } from './security-oracle.mjs';
 import { assetVectors, expectedStops, staticRequests } from './security-vectors.mjs';
 import { profiles } from '../src/config.mjs';
 import { recordFailure } from '../src/failure.mjs';
+import { proxyUrlVectors } from './proxy-vectors.mjs';
 import { wooBootstrapFixture } from './woo-bootstrap-fixture.mjs';
 
 process.umask(0o077);
@@ -44,6 +45,8 @@ const cases = [
   ['woo-bootstrap-cold', wooBootstrapFixture()],
   ['woo-prepared', wooBootstrapFixture(true)],
   ['woo-prepared-desktop', wooBootstrapFixture(true)],
+  ['woo-prepared-proxy-probe', wooBootstrapFixture(true)],
+  ['woo-prepared-proxy-probe-desktop', wooBootstrapFixture(true)],
   ['POST', () => ({ body: fixtureHtml('<script>fetch("/",{method:"POST",body:"synthetic"})</script>') })],
   ['commercial-GET', () => ({ body: fixtureHtml('<script>fetch("/?add-to-cart=1")</script>') })],
   ['websocket', ({ deniedOrigin }) => ({ body: fixtureHtml(`<script>new WebSocket(${JSON.stringify(deniedOrigin.replace('http:', 'ws:') + '/')})</script>`) })],
@@ -62,7 +65,7 @@ const cases = [
   ['clean', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
   ['clean-desktop', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
 ];
-const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets', 'woo-prepared', 'woo-prepared-desktop']);
+const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets', 'woo-prepared', 'woo-prepared-desktop', 'woo-prepared-proxy-probe', 'woo-prepared-proxy-probe-desktop']);
 const positive = name => name.startsWith('clean') || name.startsWith('woo-prepared');
 const results = [];
 try {
@@ -70,6 +73,7 @@ try {
   assert.ok(selected.length, 'Unknown synthetic fixture case');
   for (const [name, render] of selected) {
     const fixture = await fixtureAdapter(render);
+    if (name.includes('proxy-probe')) fixture.policy.fixtureProxyProbe = proxyUrlVectors.filter(v => v.name === 'origin-form').map(v => v.raw);
     const row = { name, status: 'incomplete' };
     results.push(row);
     try {
@@ -131,6 +135,18 @@ try {
         assert.ok(result.security.proxy.tunnelDenials.every(x => x.upstreamConnections === 0));
         validateLhr(result.lhr, fixture.policy);
         assert.equal(result.html, generateReport(result.lhr, 'html'));
+        assert.equal(result.security.proxy.upstreamRequests, result.security.proxy.consumedAuthorizations + result.security.proxy.authenticatedAuxiliaryRequests);
+        assert.equal(result.security.proxy.authorizationClaims, result.security.rendererProof.httpRequestsAuthorized);
+        assert.equal(result.security.proxy.pendingAuthorizations, 0);
+        assert.equal(result.security.proxy.authorizationClaims, result.security.proxy.consumedAuthorizations + result.security.proxy.cancelledAuthorizations);
+        assert.ok(fixture.hits.every(hit => hit.controlHeaderSeen === false));
+        if (name.includes('proxy-probe')) {
+          assert.equal(result.security.proxy.unownedDenials, 1);
+          const sample = result.security.proxy.unownedSamples[0];
+          assert.equal(sample.urlShape.form, 'origin-form'); assert.equal(sample.urlShape.host, 'proxy');
+          assert.equal(sample.target.origin, 'invalid'); assert.equal(sample.ownedRequest, false);
+          row.ownership = result.security.proxy;
+        }
         await save(root, join(evidence, `${name}.json`), result.lhr);
         await save(root, join(evidence, `${name}.html`), result.html);
         await save(root, join(evidence, `${name}-security.json`), result.security);
@@ -145,6 +161,9 @@ try {
         if (name.startsWith('woo-prepared')) {
           assert.deepEqual(result.fixtureState, { bootstrapLoaded: true, nativeEmptyState: true, externalScripts: 3, persistedPageShows: 0 });
           row.bootstrap = result.fixtureState;
+          assert.equal(persisted.audits['robots-txt'].score, 1, 'original Lighthouse auxiliary fetch must load valid robots.txt');
+          assert.equal(result.security.proxy.authenticatedAuxiliaryRequests, 1);
+          assert.ok(fixture.hits.some(hit => hit.path === '/robots.txt'));
           assert.equal(persisted.audits['bf-cache'].score, 0, 'real BFCache lab limitation must remain in full report');
           assert.ok(persisted.audits['bf-cache'].details, 'BFCache failure details retained');
           assert.ok(result.launch.observed.disabledFeatures.includes('BackForwardCache'));

@@ -18,6 +18,16 @@ Trusted server LOCAL + exact8131 + explicit measurement mode version2 additional
 
 A new compatible generation2 **36-audit A/A** is required after lead activation/reconciliation. Historical incomplete A1 remains charged, invalid and incomparable; its lost target/initiator/actual counters cannot be recovered from synthetic evidence. Failures now persist bounded source-known diagnostics and explicit guard/proxy/owned-cleanup facts through IPC into failed manifests/events. Unknown facts remain null; secrets/raw query/body/header/cookie/DOM content are excluded. No automatic retry/refund.
 
+### Repair2: generation3 proxy ownership (requires new gate/receipts)
+
+A synthetic direct loopback proxy-root probe reproduced the fatal URL-class mechanism. The historical generation2 A1 raw URL/producer remains unknown: no claim that this reproducer identifies its sender. URL diagnostics now distinguish absolute/origin-form/asterisk/invalid, HTTP/HTTPS/other scheme, userinfo/hash booleans, exact approved/proxy/other Host and parser branch without raw URL/query/header values. Relative targets are no longer mislabeled approved.
+
+Only the owned temporary browser can obtain an ephemeral Basic proxy credential, through an exact owned **Proxy** challenge (origin/scheme/realm/session checked); Server authentication is canceled. The credential never enters launch flags/config hashes, is stripped before the app, and is checked absent from sanitized LHR/HTML. Each ordinary forward consumes one guard-issued method/URL request authorization; duplicate CDP pauses and terminal response errors are not new outbound requests. Pinned Lighthouse `Network.loadNetworkResource` legitimately bypasses Fetch: at most one authenticated exact GET `/robots.txt` is accounted separately, with no query, no alternate method/URL, no external origin, and no audit removal.
+
+Only unauthenticated loopback GET/HEAD `/` with exact proxy Host, no credentials/body/upgrade and no duplicate Host can be denied nonfatally. Other policy/ownership/guard failures remain fatal. Full renderer coverage and separate forwarded/consumed/auxiliary counters must reconcile. Unused request permissions can be revoked **only after verified clean owner exit, closed/drained proxy, and a real successful200 response for the same URL and resource type**; revocations retain request index and safe target. Missing/unloaded resources, a live owner, or an open proxy cannot pass this check. This is explicit close-time revocation, not invented historical cancellation telemetry.
+
+Full original audits/resources, native LOCAL preparation and honest BFCache lab limitation remain. Generation3 requires fresh36-audit A/A after lead custody/activation; six completed generation2 reports are diagnostic only, not a baseline. No actual retry/reconciliation from this document.
+
 ### Lead-only initialization and explicit series requests
 
 ```sh

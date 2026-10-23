@@ -21,6 +21,7 @@ export function wooBootstrapFixture(prepared = false) {
   const sources = pinnedBootstrapSources();
   const bootstrap = prepared ? preparedBootstrap() : null;
   return ({req}) => {
+    if (req.url === '/robots.txt') return {headers:{'Content-Type':'text/plain'},body:'User-agent: *\nDisallow:\n'};
     const source = sources.get(req.url);
     if (source) return {headers:{'Content-Type':'application/javascript'},body:source};
     const params = {cart_hash_key:'wc_cart_hash_synthetic',fragment_name:'wc_fragments_synthetic',wc_ajax_url:'/?wc-ajax=%%endpoint%%',request_timeout:5000};

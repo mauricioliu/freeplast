@@ -1,15 +1,16 @@
 import { checkRequest, checkResponse, SafetyError } from './policy.mjs';
-import { publicTarget, publicInitiator } from './failure.mjs';
+import { publicTarget, publicInitiator, urlShape } from './failure.mjs';
 
 // Independent browser-level CDP connection: Lighthouse cannot detach our sessions.
-export async function installGuard(browser, page, policy, onDocument = () => {}) {
+export async function installGuard(browser, page, policy, onDocument = () => {}, ownership = null) {
   const own = await page.createCDPSession();
   const { targetInfo: main } = await own.send('Target.getTargetInfo');
   await own.detach();
   const socket = new WebSocket(browser.wsEndpoint());
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let id = 0, closed = false, closing = false, failure;
-  const provenance = { httpsDenied: 0, httpsContinued: 0, websocketCreations: 0, httpContinued: 0, allTargetsGuarded: false, networkEnabled: false, fetchEnabled: false };
+  const provenance = { httpsDenied: 0, httpsContinued: 0, websocketCreations: 0, httpContinued: 0, httpRequestsAuthorized: 0, responseErrorEvents: 0, duplicateRequestPauses: 0, allTargetsGuarded: false, networkEnabled: false, fetchEnabled: false };
+  const authorized = new Set(), authAttempted = new Set();
   const pending = new Map(), sessions = new Map(), initiators = new Map(), inventory = [], documents = [];
   let rejectFailure;
   const failed = new Promise((_, reject) => { rejectFailure = reject; });
@@ -39,7 +40,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
       await send('Network.setBypassServiceWorker', { bypass: true }, child);
       await send('Network.setCacheDisabled', { cacheDisabled: true }, child);
       await send('Network.setBlockedURLs', { urls: ['ws://*', 'wss://*'] }, child);
-      await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }, { urlPattern: '*', requestStage: 'Response' }] }, child);
+      await send('Fetch.enable', { handleAuthRequests: true, patterns: [{ urlPattern: '*', requestStage: 'Request' }, { urlPattern: '*', requestStage: 'Response' }] }, child);
       await send('Target.setAutoAttach', auto, child);
       entry.ready = true;
       entry.networkEnabled = true;
@@ -49,15 +50,29 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
       const key = `${sessionId}:${params.requestId}`;
       if (initiators.size >= 256) initiators.delete(initiators.keys().next().value);
       initiators.set(key, publicInitiator(params.initiator, policy.origin));
+    } else if (method === 'Fetch.authRequired') {
+      try {
+        if (failure) throw failure;
+        if (!sessions.get(sessionId)?.ready || !ownership || params.authChallenge?.source !== 'Proxy' || params.authChallenge.origin !== ownership.url || params.authChallenge.scheme !== 'basic' || params.authChallenge.realm !== 'freeplast-owned') throw new SafetyError('proxy-auth-provenance');
+        if (authAttempted.has(params.requestId)) throw new SafetyError('proxy-auth-retry');
+        const credentials = ownership.authenticate(params.request.url, params.request.method);
+        authAttempted.add(params.requestId);
+        await send('Fetch.continueWithAuth', { requestId: params.requestId, authChallengeResponse: { response: 'ProvideCredentials', ...credentials } }, sessionId);
+      } catch (error) {
+        await send('Fetch.continueWithAuth', { requestId: params.requestId, authChallengeResponse: { response: 'CancelAuth' } }, sessionId).catch(() => {});
+        fatal(error instanceof SafetyError ? error.code : 'proxy-auth-failed', { source: 'proxy-auth', sessionKnown: sessions.has(sessionId), authSource: params.authChallenge?.source, authOriginMatches: params.authChallenge?.origin === ownership?.url, authSchemeBasic: params.authChallenge?.scheme === 'basic', authRealmMatches: params.authChallenge?.realm === 'freeplast-owned' });
+      }
     } else if (method === 'Fetch.requestPaused') {
       const { requestId, request, resourceType, responseStatusCode } = params;
+      const responseStage = responseStatusCode !== undefined || params.responseErrorReason !== undefined;
+      if (params.responseErrorReason !== undefined) provenance.responseErrorEvents++;
       let continuationAttempted = false;
       try {
         if (failure) throw failure;
         if (!sessions.get(sessionId)?.ready) throw new SafetyError('renderer-provenance-missing');
         if (request.url.startsWith('https:')) provenance.httpsDenied++;
         checkRequest(policy, request.url, request.method, resourceType);
-        if (resourceType === 'Document' && !responseStatusCode) onDocument();
+        if (resourceType === 'Document' && !responseStage) onDocument();
         checkResponse(resourceType, responseStatusCode, params.responseHeaders);
         if (responseStatusCode) {
           const item = { url: request.url, type: resourceType, status: responseStatusCode };
@@ -65,13 +80,19 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
           if (resourceType === 'Document') documents.push(item);
         }
         if (request.url.startsWith('https:')) throw new SafetyError('https-resource-unsupported');
+        if (!responseStage) {
+          // CDP can pause the same network request again during proxy authentication.
+          const key = `${sessionId}:${params.networkId || requestId}:${request.method}:${request.url}`;
+          if (authorized.has(key)) provenance.duplicateRequestPauses++;
+          else { ownership?.authorize(request.url, request.method, key, resourceType); authorized.add(key); provenance.httpRequestsAuthorized++; }
+        }
         provenance.httpContinued++;
         continuationAttempted = true;
         await send('Fetch.continueRequest', { requestId }, sessionId);
       } catch (e) {
         let failRequestAcknowledged = false;
         await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).then(() => { failRequestAcknowledged = true; }, () => {});
-        fatal(e instanceof SafetyError ? e.code : 'guard-request-failure', { source: 'renderer-fetch', method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(request.method) ? request.method : 'OTHER', target: publicTarget(request.url, policy.origin), initiator: initiators.get(`${sessionId}:${params.networkId}`) ?? null, frameKnown: typeof params.frameId === 'string', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStatusCode ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) });
+        fatal(e instanceof SafetyError ? e.code : 'guard-request-failure', { source: 'renderer-fetch', method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(request.method) ? request.method : 'OTHER', target: publicTarget(request.url, policy.origin), urlBranch: e.urlBranch, urlShape: urlShape(request.url, policy.origin), initiator: initiators.get(`${sessionId}:${params.networkId}`) ?? null, frameKnown: typeof params.frameId === 'string', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStage ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) });
       }
     } else if (method === 'Network.webSocketCreated') {
       provenance.websocketCreations++;

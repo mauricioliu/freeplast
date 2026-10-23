@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -58,7 +59,14 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     const launchProof = { generation: auditConfig.generation, disabledFeatures: featureArgs[0].slice('--disable-features='.length).split(','), ownedProfile: true };
     [page] = await browser.pages();
     if (!page || page.url() !== 'about:blank') throw new SafetyError('browser-not-empty');
-    guard = await installGuard(browser, page, policy, () => proxy.arm());
+    let probe;
+    guard = await installGuard(browser, page, policy, () => {
+      proxy.arm();
+      if (policy.fixture && policy.fixtureProxyProbe && !probe) {
+        probe = (async () => { for (const path of policy.fixtureProxyProbe) await new Promise((resolve, reject) => http.get(proxy.url, { path }, response => { response.resume(); response.once('end', () => response.statusCode === 403 ? resolve() : reject(new SafetyError('fixture-probe-status'))); }).on('error', () => reject(new SafetyError('fixture-probe-failed')))); })();
+        probe.catch(() => {});
+      }
+    }, proxy);
     await page.emulateTimezone(timezone);
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'es', ...(policy.fixture && policy.fixtureToken ? { 'x-freeplast-fixture-run': policy.fixtureToken } : {}) });
     // Proxy remains offline until the guard authorizes the first document request.
@@ -67,6 +75,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
       else signal?.addEventListener('abort', () => reject(new SafetyError('interrupted')), { once: true });
     });
     const result = await Promise.race([lighthouse(url, { logLevel: 'silent' }, lighthouseConfig(name), page), guard.failed, proxy.failed, aborted]);
+    if (probe) await probe;
     const security = await guard.verify();
     publicIdentity(await page.content(), { 'cache-control': 'no-store' });
     validateLhr(result?.lhr, policy);
@@ -119,8 +128,11 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     await exit;
     browser = undefined;
     if (processHandle.exitCode !== 0 || signal?.aborted) throw new SafetyError('browser-shutdown');
+    await proxy.close();
     security.rendererProof = guard.assertHealthy();
+    proxy.revokeAfterExit(processHandle, security.resources);
     security.proxy = proxy.verify(security.rendererProof);
+    proxy.assertPrivate(JSON.stringify(lhr), html);
     security.guardedThroughShutdown = true;
     return { lhr, html, ...(fixtureState ? { fixtureState } : {}), ...(capture ? { capture } : {}), summary: summarize(lhr), security, settings: lhr.configSettings, launch: { observed: launchProof, args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
   } catch (error) {

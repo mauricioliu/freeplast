@@ -7,7 +7,7 @@ import { installGuard } from '../src/guard.mjs';
 import { policy } from '../src/policy.mjs';
 import { assertHttpsDenial } from './security-oracle.mjs';
 
-async function fixture(synthetic = false) {
+async function fixture(synthetic = false, ownership = null) {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   let client, extraTarget = false;
@@ -24,7 +24,7 @@ async function fixture(synthetic = false) {
   });
   const browser = { wsEndpoint: () => `ws://127.0.0.1:${server.address().port}` };
   const page = { createCDPSession: async () => ({ send: async () => ({ targetInfo: target }), detach: async () => {} }) };
-  const guard = await installGuard(browser, page, synthetic ? policy({ fixtureOrigin: `http://127.0.0.1:${server.address().port}` }) : policy());
+  const guard = await installGuard(browser, page, synthetic ? policy({ fixtureOrigin: `http://127.0.0.1:${server.address().port}` }) : policy(), undefined, ownership);
   const event = (method, params, sessionId = 'main-session') => client.send(JSON.stringify({ method, params, sessionId }));
   return {
     guard, commands, event,
@@ -37,6 +37,39 @@ async function fixture(synthetic = false) {
     async close() { guard.close(); for (const socket of server.clients) socket.terminate(); await new Promise(resolve => server.close(resolve)); },
   };
 }
+
+test('duplicate request pauses share one authorization; redirect/new network request gets its own',async()=>{
+ const claims=[];const f=await fixture(false,{authorize(url,method){claims.push({url,method});}});
+ try{
+  for(const [id,networkId,path] of [['a','one','/'],['b','one','/'],['c','one','/tienda/'],['d','two','/']])f.event('Fetch.requestPaused',{requestId:id,networkId,request:{url:'http://mliu:8131'+path+'?fp-measure=1',method:'GET'},resourceType:'Document'});
+  const until=Date.now()+1000;while(f.commands.filter(c=>c.method==='Fetch.continueRequest').length<4&&Date.now()<until)await new Promise(r=>setTimeout(r,1));
+  assert.equal(f.commands.filter(c=>c.method==='Fetch.continueRequest').length,4);assert.equal(claims.length,3);assert.equal(f.guard.snapshot().httpRequestsAuthorized,3);assert.equal(f.guard.snapshot().duplicateRequestPauses,1);
+ }finally{await f.close();}
+});
+
+test('Fetch responseErrorReason is terminal response, never a second outbound authorization',async()=>{
+ let authorizations=0;const f=await fixture(false,{authorize(){authorizations++;}});
+ try{f.event('Fetch.requestPaused',{requestId:'terminal',request:{url:'http://mliu:8131/?fp-measure=1',method:'GET'},resourceType:'Document',responseErrorReason:'Aborted'});
+  const until=Date.now()+1000;while(!f.commands.some(c=>c.method==='Fetch.continueRequest'&&c.params.requestId==='terminal')&&Date.now()<until)await new Promise(r=>setTimeout(r,1));
+  assert.ok(f.commands.some(c=>c.method==='Fetch.continueRequest'&&c.params.requestId==='terminal'));assert.equal(authorizations,0);assert.equal(f.guard.snapshot().httpRequestsAuthorized,0);assert.equal(f.guard.snapshot().responseErrorEvents,1);
+ }finally{await f.close();}
+});
+
+test('proxy credentials only answer exact owned Proxy challenge; Server/wrong-origin/scheme/realm/unknown-session cancel', async()=>{
+  for(const mode of ['owned','server','origin','scheme','realm','session']){
+    let calls=0;
+    const ownership={url:'http://127.0.0.1:12345',authenticate(url,method){assert.equal(url,'http://mliu:8131/robots.txt');assert.equal(method,'GET');calls++;return {username:'synthetic',password:'synthetic-control'};}};
+    const f=await fixture(false,ownership);
+    try{
+      f.event('Fetch.authRequired',{requestId:'auth',request:{url:'http://mliu:8131/robots.txt',method:'GET'},authChallenge:{source:mode==='server'?'Server':'Proxy',origin:mode==='origin'?'http://other.invalid':ownership.url,scheme:mode==='scheme'?'digest':'basic',realm:mode==='realm'?'other':'freeplast-owned'}},mode==='session'?'unknown':'main-session');
+      if(mode!=='owned')await assert.rejects(f.guard.failed,/proxy-auth-provenance/);
+      const until=Date.now()+1000;while(!f.commands.some(c=>c.method==='Fetch.continueWithAuth')&&Date.now()<until)await new Promise(r=>setTimeout(r,1));
+      const response=f.commands.find(c=>c.method==='Fetch.continueWithAuth')?.params.authChallengeResponse;
+      assert.equal(response?.response,mode==='owned'?'ProvideCredentials':'CancelAuth');assert.equal(calls,mode==='owned'?1:0);
+      if(mode!=='owned')assert.equal(response.password,undefined);
+    }finally{await f.close();}
+  }
+});
 
 test('guard enables Fetch and Network before resume; verifies every renderer target', async () => {
   const f = await fixture();
