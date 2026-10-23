@@ -147,6 +147,7 @@ console.log(run(php,[path.join(root,'scripts/quote-presentation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/workspace-offer-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-revisions-test.php')]));
 console.log(run(php,[path.join(root,'scripts/workspace-archive-test.php')]));
+console.log(run(php,[path.join(root,'scripts/workspace-back-navigation-test.php')]));
 console.log(run(php,[path.join(root,'scripts/pickup-location-test.php')]));
 console.log(run(php,[path.join(root,'scripts/quotation-access-test.php')]));
 console.log(run(php,[path.join(root,'scripts/workspace-chrome-test.php')]));

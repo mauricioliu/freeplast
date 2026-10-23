@@ -102,7 +102,7 @@ function fpw_workspace_issued_html( array $version ): string {
 		$title = 'Envío de cotización sin confirmar';
 		$note = 'El resultado del envío es desconocido. No se reintenta automáticamente.';
 	}
-	$html = '<section class="fpw-sent-view"><a class="fpw-button fpw-sent-back" href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a><div class="fpw-sent-confirmation"><h1>' . esc_html( $title ) . '</h1>' . ( '' !== $note ? '<p class="fpw-muted">' . esc_html( $note ) . '</p>' : '' ) . '</div>';
+	$html = '<section class="fpw-sent-view"><a class="fpw-button fpw-sent-back" href="' . esc_url( fpw_workspace_back_url() ) . '">Volver a solicitudes</a><div class="fpw-sent-confirmation"><h1>' . esc_html( $title ) . '</h1>' . ( '' !== $note ? '<p class="fpw-muted">' . esc_html( $note ) . '</p>' : '' ) . '</div>';
 	$html .= fpw_quotation_history_html( (int) $version['order_id'], (int) $version['version'] );
 	if ( $ready ) {
 		$view_url = fpw_workspace_pdf_url( $version, true );
