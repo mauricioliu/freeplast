@@ -95,7 +95,7 @@ $item_data=apply_filters('woocommerce_get_item_data',array(),array('product_id'=
 check(in_array(array('key'=>'Mínimo','display'=>'2.000 unidades'),$item_data,true),'cart displays informative minimum');
 function get_post_field($field, $id) { return $GLOBALS['fpwd_post_slugs'][$id] ?? ''; }
 check(fpw_quote_delta(fpw_quote_minimum_parent_id(new FPW_StoreAPI_Product(310,22)))===10,'retired metadata cannot reintroduce a 200-unit delta');
-foreach (array('caja-frutera'=>5, 'caja-merlucera'=>5, 'traversa-para-bins-tipo-g1'=>1, 'traversa-para-bins-tipo-upc'=>1, 'traversa-para-bins-tipo-romano'=>1, 'caja-frutillera'=>10, 'caja-cosechera-3-4'=>10) as $slug=>$delta) {
+foreach (array('caja-frutera'=>5, 'caja-merlucera'=>5, 'caja-tomatera'=>1, 'traversa-para-bins-tipo-g1'=>1, 'traversa-para-bins-tipo-upc'=>1, 'traversa-para-bins-tipo-romano'=>1, 'caja-frutillera'=>10, 'caja-cosechera-3-4'=>10) as $slug=>$delta) {
     $GLOBALS['fpwd_post_slugs'][22]=$slug;
     check(fpw_quote_delta(22)===$delta, 'approved catalog delta: '.$slug);
     check(fpw_quote_delta(fpw_quote_minimum_parent_id(new FPW_StoreAPI_Product(310,22)))===$delta, 'variation inherits approved delta: '.$slug);

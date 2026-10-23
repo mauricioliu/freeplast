@@ -28,6 +28,7 @@ try {
         $products[$i+1]->data['meta_data']['_fp_quote_min_qty']='73';
     }
     $products[1]->data['children']=array(99); $products[99]=new QuantityProduct(99,'child','variation');
+    $products[4]->data['meta_data']['_fp_quote_min_qty']='128';
     $before=array_map(static fn($p)=>$p->get_data(),$products);
     $environment='staging';
     check(str_contains(run_quantities(array('plan',$root.'/q.json')),'disposable'),'staging blocked');
@@ -45,7 +46,7 @@ try {
     foreach (array(200,5,5,1,1,1,1,10) as $i=>$delta) {
         $p=$products[$i+1];
         check($p->get_meta('_fp_quote_step')===(string)$delta,'button delta');
-        check($p->get_meta('_fp_quote_min_qty')===($i===0 ? '2000' : '73'),'only frutillera minimum changes');
+        check($p->get_meta('_fp_quote_min_qty')===($i===0 ? '2000' : ($i===3 ? '128' : '73')),'only frutillera minimum changes; tomatera 128 preserved');
         check(fp_minimum_protected($p->get_data())===fp_minimum_protected($before[$i+1]),'all other live fields preserved');
     }
     check($products[99]->get_data()===$before[99],'variation unchanged');

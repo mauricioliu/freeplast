@@ -42,6 +42,7 @@ try {
     check(count(fp_minimum_plan($catalog)) === 17, '17 reviewed identities');
     check(fp_minimum_values($catalog['products'][0])['_fp_quote_min_qty'] === '70', 'cosechera minimum one pallet');
     check(fp_minimum_values($catalog['products'][12])['_fp_quote_min_qty'] === '50', 'traversa exception');
+    check(fp_minimum_values($catalog['products'][5])['_fp_quote_min_qty'] === '128', 'tomatera minimum one pallet of 128');
     check(fp_minimum_values($catalog['products'][15]) === array('_fp_quote_min_qty'=>'','_fp_quote_step'=>'1'), 'unknown stays unknown, no multiples');
     $invalid=$catalog['products'][0]; $invalid['specs']['quantity_step']=70;
     try { fp_minimum_values($invalid); check(false,'multiples refused'); } catch (RuntimeException $e) { check(true,'multiples refused'); }

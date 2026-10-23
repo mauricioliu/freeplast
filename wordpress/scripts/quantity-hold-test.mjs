@@ -87,6 +87,21 @@ export async function runQuantityHoldTests() {
     ok(doc.querySelector('.add_to_cart_button').dataset.quantity === '128', 'manual entry preserved');
     pointer(plus, 'pointerdown'); plus.remove(); await Promise.resolve(); advance(1000);
     ok(input.value === '133' && timers.size === 0, 'removed card button clears timers');
+    input.className = 'qty fpw-delta-1';
+    input.value = '128';
+    const tomateraPlus = doc.createElement('button');
+    tomateraPlus.type = 'button';
+    tomateraPlus.className = 'fp-qty-step fp-qty-step--plus';
+    input.parentNode.appendChild(tomateraPlus);
+    pointer(tomateraPlus, 'pointerdown');
+    ok(input.value === '129', 'tomatera steps one immediately from 128');
+    advance(399); ok(input.value === '129', 'tomatera initial pause');
+    advance(1); ok(input.value === '130', 'tomatera hold reaches 130');
+    advance(200); ok(input.value === '132', 'tomatera repeats one-unit ticks');
+    pointer(doc, 'pointerup'); tomateraPlus.click(); advance(1000);
+    ok(input.value === '132' && doc.querySelector('.add_to_cart_button').dataset.quantity === '132', 'release mirrors the tomatera draft without extra steps');
+    pointer(doc.querySelector('.fp-qty-step--minus'), 'pointerdown'); pointer(doc, 'pointerup');
+    ok(input.value === '131', 'tomatera minus steps one down');
   } finally { dom.window.close(); }
   console.log(`quantity hold: ${checks} timer/DOM checks passed`);
   return checks;

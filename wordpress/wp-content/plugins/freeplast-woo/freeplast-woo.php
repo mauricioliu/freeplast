@@ -1660,7 +1660,7 @@ function fpw_quote_delta( int $product_id ): int {
 	// Stable catalog identities, shared by cards, sheets, variations and basket.
 	$slug = (string) get_post_field( 'post_name', $product_id );
 	if ( in_array( $slug, array( 'caja-frutera', 'caja-merlucera' ), true ) ) { return 5; }
-	if ( in_array( $slug, array( 'traversa-para-bins-tipo-g1', 'traversa-para-bins-tipo-upc', 'traversa-para-bins-tipo-romano' ), true ) ) { return 1; }
+	if ( in_array( $slug, array( 'caja-tomatera', 'traversa-para-bins-tipo-g1', 'traversa-para-bins-tipo-upc', 'traversa-para-bins-tipo-romano' ), true ) ) { return 1; }
 	return 10;
 }
 add_filter( 'rest_pre_dispatch', static function ( $result, $server, $request ) {
