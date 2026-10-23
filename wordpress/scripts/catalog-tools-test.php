@@ -13,10 +13,42 @@ function is_admin() { return false; }
 function get_search_query($escape=true) { return $GLOBALS['search'] ?? ''; }
 function get_query_var($key, $default='') { return $GLOBALS['vars'][$key] ?? $default; }
 function get_terms($args) { return array((object)array('slug'=>'agricola','name'=>'Agrícola','description'=>'Cajas para agricultura.','count'=>12), (object)array('slug'=>'carnes','name'=>'Carnes','description'=>'Cajas universales y polleras.','count'=>5), (object)array('slug'=>'productos-del-mar','name'=>'Productos del mar','description'=>'Merluceras y universales.','count'=>5), (object)array('slug'=>'otros','name'=>'Otros','description'=>'Bases y ladrillos.','count'=>2)); }
+// Lead's local inventory snapshot (2026-10-24): 17 products. Universals sit in
+// three categories at once, two products are color-variable with 5 variations
+// each, pediluvios is archived (draft + hidden). Counts are derived per query,
+// never from the stale term counts above (12/5/5/2 drift from the listing).
+$GLOBALS['inventory']=array(
+    array('slug'=>'caja-cosechera-3-4','cats'=>array('agricola')),
+    array('slug'=>'caja-universal-cerrada-negra','cats'=>array('agricola','carnes','productos-del-mar')),
+    array('slug'=>'caja-universal-ventilada-negra','cats'=>array('agricola','carnes','productos-del-mar')),
+    array('slug'=>'caja-universal-cerrada-color','cats'=>array('agricola','carnes','productos-del-mar')),
+    array('slug'=>'caja-universal-ventilada-color','cats'=>array('agricola','carnes','productos-del-mar')),
+    array('slug'=>'caja-tomatera','cats'=>array('agricola')),
+    array('slug'=>'caja-frutillera','cats'=>array('agricola')),
+    array('slug'=>'caja-frutera','cats'=>array('agricola')),
+    array('slug'=>'caja-paltera','cats'=>array('agricola')),
+    array('slug'=>'caja-merlucera','cats'=>array('productos-del-mar')),
+    array('slug'=>'caja-pollera','cats'=>array('carnes')),
+    array('slug'=>'tote','cats'=>array('agricola')),
+    array('slug'=>'traversa-para-bins-tipo-upc','cats'=>array('agricola')),
+    array('slug'=>'traversa-para-bins-tipo-g1','cats'=>array('agricola')),
+    array('slug'=>'traversa-para-bins-tipo-romano','cats'=>array('agricola')),
+    array('slug'=>'ladrillo-plastico','cats'=>array('otros')),
+    array('slug'=>'bases-plasticas-para-pediluvios','cats'=>array('otros'),'status'=>'draft','visibility'=>'hidden'),
+);
+function wc_get_products($args) {
+    $n=0;
+    foreach ($GLOBALS['inventory'] as $p) {
+        if (($args['status']??'') && ($p['status']??'publish')!==$args['status']) continue;
+        if (($args['visibility']??'')==='catalog' && ($p['visibility']??'catalog')==='hidden') continue;
+        if (!empty($args['category']) && array_diff((array)$args['category'],$p['cats'])) continue;
+        $n++; // one row per product: color variations never add rows
+    }
+    return (object)array('total'=>$n);
+}
 function wp_strip_all_tags($text) { return strip_tags($text); }
 function get_term_link($term) { return 'https://example.test/subdir/native-category/'.$term->slug.'/'; }
 function wc_get_page_permalink($page) { return 'https://example.test/subdir/shop-real/'; }
-function wc_get_products($args) { return (object)array('total'=>16); } // One product belongs to both terms.
 function add_query_arg($args,$url) { return $url.'?'.http_build_query($args); }
 function selected($a,$b) { if($a===$b) echo 'selected="selected"'; }
 function wc_query_string_form_fields($unused,$excluded) {
@@ -37,6 +69,16 @@ $menu=$filters['render_block'][count($filters['render_block'])-1]('<div>{{FREEPL
 verify(substr_count($menu,'<a ')===5 && str_contains($menu,'/subdir/native-category/productos-del-mar/'),'submenu resolves all five native destinations, including a nonstandard rewrite base');
 unset($GLOBALS['vars']['product_cat']);
 verify(str_contains($root,'Todos <span>16</span>'),'Todos uses native distinct total, not overlapping term sum');
+verify(str_contains($root,'Agrícola <span>13</span>'),'Agrícola live count matches its listing (stale term count 12 ignored)');
+verify(str_contains($root,'Carnes <span>5</span>') && str_contains($root,'Productos del mar <span>5</span>'),'multi-category universals count once per category tab');
+verify(str_contains($root,'Otros <span>1</span>'),'archived draft+hidden pediluvios never counts, not even via stale term count 2');
+verify(substr_count($root,'<span>')===5 && substr_count($root,'</span>')===5,'every tab carries exactly one derived counter');
+$stash=$GLOBALS['inventory'];
+$GLOBALS['inventory']=array_map(static fn($p)=>array('slug'=>$p['slug'],'cats'=>array_values(array_diff($p['cats'],array('productos-del-mar'))),'status'=>$p['status']??'publish','visibility'=>$p['visibility']??'catalog'),$stash);
+$emptied=render_filters();
+verify(str_contains($emptied,'Productos del mar <span>0</span>'),'empty category stays navigable with an honest zero');
+verify(str_contains($emptied,'Todos <span>16</span>'),'same inventory still backs Todos after emptying one membership');
+$GLOBALS['inventory']=$stash;
 verify(str_contains($root,'/subdir/shop-real/?orderby=menu_order'),'shop URL is native and subdirectory correct');
 verify(str_contains($root,'/subdir/native-category/agricola/'),'category URLs come from native terms, not guessed rewrite bases');
 $GLOBALS['vars']['product_cat']='agricola'; $GLOBALS['search']='caja <azul>'; $_GET=array('orderby'=>'title','s'=>'caja <azul>','post_type'=>'product','product_cat'=>'agricola','paged'=>'3');

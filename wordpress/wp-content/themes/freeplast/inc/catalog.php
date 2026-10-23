@@ -67,19 +67,30 @@ function fp_catalog_filters(): void {
 	$common = array( 'orderby' => fp_catalog_orderby() );
 	$search = get_search_query( false );
 	if ( '' !== $search ) { $common['s'] = $search; $common['post_type'] = 'product'; }
-	// Native distinct-product total, not the sum of overlapping term counts.
-	$result = wc_get_products( array( 'status' => 'publish', 'visibility' => 'catalog', 'limit' => 1, 'paginate' => true, 'return' => 'ids' ) );
+	// Counting source for every tab is the same native query the archive lists:
+	// published, catalog-visible, distinct products. Cached term counts
+	// (wc_term_counts transient / product_count_* meta) go stale after
+	// programmatic category edits and then disagree with the listing below them.
 	$filters = array( '' => 'Todos' ) + fp_catalog_sections();
 	echo '<div class="filter-tabs" aria-label="Categorías">';
 	foreach ( $filters as $slug => $label ) {
 		$term = $by_slug[$slug] ?? null;
 		$url = '' === $slug ? wc_get_page_permalink( 'shop' ) : ( $term ? get_term_link( $term ) : '' );
-		$count = '' === $slug ? (int) $result->total : (int) ( $term->count ?? 0 );
 		if ( ! $url || is_wp_error( $url ) ) { continue; }
+		$count = fp_catalog_product_count( '' === $slug ? array() : array( $slug ) );
 		echo '<a class="filter" href="' . esc_url( add_query_arg( $common, $url ) ) . '"' . ( $category === $slug ? ' aria-current="page"' : '' ) . '>'
 			. esc_html( $label ) . ' <span>' . esc_html( (string) $count ) . '</span></a>';
 	}
 	echo '</div>';
+}
+
+/** Live distinct-product count with the archive's own visibility contract;
+ * a product in several categories counts once per tab, never twice in Todos. */
+function fp_catalog_product_count( array $category = array() ): int {
+	$args = array( 'status' => 'publish', 'visibility' => 'catalog', 'limit' => 1, 'paginate' => true, 'return' => 'ids' );
+	if ( $category ) { $args['category'] = $category; }
+	$result = wc_get_products( $args );
+	return (int) $result->total;
 }
 
 function fp_catalog_result_count( int $total, string $query ): string {

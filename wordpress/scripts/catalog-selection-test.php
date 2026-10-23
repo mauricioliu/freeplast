@@ -26,7 +26,7 @@ $options = array('home'=>'http://synthetic.test', 'siteurl'=>'http://synthetic.t
 $environment = 'local'; $products = array();
 function get_option($key) { return $GLOBALS['options'][$key] ?? false; }
 function add_option($key, $value, ...$args) { if (get_option($key)) { return false; } $GLOBALS['options'][$key]=$value; return true; }
-function get_term_by(...$args) { return (object)array('term_id'=>12); }
+function get_term_by(...$args) { return !empty($GLOBALS['hide_agricola']) ? null : (object)array('term_id'=>12); }
 function is_wp_error($value) { return false; }
 function get_posts($args) { return array_keys(array_filter($GLOBALS['products'], static fn($p)=>!$p->is_type('variation'))); }
 function wc_get_product($id) { return $GLOBALS['products'][$id] ?? false; }
@@ -55,6 +55,10 @@ try {
     foreach ($slugs as $i=>$slug) { $products[$i+1] = new SelectionProduct($i+1, $slug); }
     $products[1]->data['children'] = array(99);
     $products[99] = new SelectionProduct(99, 'color-child', 'variation');
+    $products[7]->data['category_ids'] = array(77, 55); // pollera: owner multi-category membership plan must preserve
+    $products[4]->data['category_ids'] = array(77, 88); // traversa G1: selection owns the assignment
+    $products[100] = new SelectionProduct(100, 'archived-merchant-product');
+    $products[100]->data['status'] = 'private'; $products[100]->data['catalog_visibility'] = 'hidden';
     $original = array_map(static fn($p)=>$p->get_data(), $products);
     check(str_contains(run_selection(array()), 'default: no writes'), 'help is safe');
     check(trim(run_selection(array('--version'))) === '1.0.0', 'version fast path');
@@ -62,8 +66,12 @@ try {
     $environment='production';
     check(str_contains(run_selection(array('plan', $root . '/blocked.json')), 'disposable'), 'production rejected');
     $environment='local'; putenv('FREEPLAST_DISPOSABLE_CATALOG=1');
+    $GLOBALS['hide_agricola'] = true;
+    try { fp_selection_plan(); throw new RuntimeException('missing category accepted'); } catch (RuntimeException $e) { check(str_contains($e->getMessage(), 'Existing Agrícola category required'), 'plan refuses when the section category is missing'); }
+    unset($GLOBALS['hide_agricola']);
+    check(array_sum(array_column($products, 'saves'))===0, 'refused plan performs no writes');
     $rows=fp_selection_plan();
-    check(count($rows)===12, 'full product inventory including merchant additions');
+    check(count($rows)===13, 'full product inventory including merchant and archived additions');
     $products[1]->data['sku']='wrong';
     try { fp_selection_plan(); throw new RuntimeException('identity accepted'); } catch (RuntimeException $e) { check(str_contains($e->getMessage(), 'identity:'), 'identity drift rejected'); }
     $products[1]->data['sku']=$original[1]['sku'];
@@ -82,9 +90,12 @@ try {
     uasort($selected, static fn($a,$b)=>$a->get_menu_order()<=>$b->get_menu_order());
     check(array_values(array_map(static fn($p)=>$p->get_slug(), $selected))===fp_selection_featured(), 'exact nine in approved order; traversas consecutive');
     foreach (array(4,5,6,10) as $id) { check($products[$id]->get_category_ids()===array(12), 'traversas and tote Agricola'); }
+    check($products[7]->get_category_ids()===array(77,55), 'multi-category membership survives the selection untouched');
+    check($products[4]->get_category_ids()===array(12) && !in_array(88,$products[4]->get_category_ids(),true), 'selection-owned assignment replaces cleanly');
+    check($products[100]->get_status()==='private' && $products[100]->get_catalog_visibility()==='hidden', 'archived product stays archived');
     check($products[6]->get_name()==='Traversa para Bins Tipo G2' && $products[6]->get_slug()===$original[6]['slug'] && $products[6]->get_id()===6, 'G2 preserves link and ID');
     check($products[11]->get_status()==='draft' && $products[11]->get_catalog_visibility()==='hidden', 'pediluvios natively unpublished and hidden from catalog/search');
-    check(count($products)===13 && $products[99]->get_data()===$original[99], 'archive deletes nothing and preserves variations');
+    check(count($products)===14 && $products[99]->get_data()===$original[99] && $products[100]->get_id()===100, 'archive deletes nothing and preserves variations');
     $saves=array_sum(array_column($products, 'saves'));
     $products[6]->data['name']='later merchant name'; $products[1]->data['featured']=false;
     check(str_contains(run_selection(array('apply', $root . '/receipt.json', $receipt['token'])), 'already applied'), 'repeat is no-op');
