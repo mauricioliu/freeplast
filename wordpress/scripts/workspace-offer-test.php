@@ -223,6 +223,31 @@ check( str_contains( $source, "fpw_workspace_date( 'd/m/Y · H:i', (int) \$recei
 check( fpw_workspace_date( 'd/m/Y · H:i', strtotime( '2026-10-22 00:02:00 UTC' ) ) === '21/10/2026 · 21:02', 'Chilean summer time crosses date boundary correctly' );
 check( fpw_workspace_date( 'd/m/Y · H:i', strtotime( '2026-06-22 00:02:00 UTC' ) ) === '21/06/2026 · 20:02', 'Chilean winter time follows DST rules, not a fixed offset' );
 check( !str_contains( fpw_workspace_request_header( $header_draft, $header_work, null ), 'GMT' ), 'header omits timezone suffix' );
+// T7 (plan-mvlk7z1x-y6s8): the inbox row keeps reference and received time as distinct, machine-readable data.
+class FPWD_Inbox_wpdb extends FPWD_Fake_wpdb {
+	public string $last_error = '';
+	public string $posts = 'wp_posts';
+	public string $postmeta = 'wp_postmeta';
+	public function get_var( $sql ) { return str_starts_with( $sql, 'SELECT COUNT(*)' ) ? 1 : parent::get_var( $sql ); }
+	public function get_col( $sql ) { return str_contains( $sql, 'ORDER BY' ) ? array( 91 ) : parent::get_col( $sql ); }
+}
+$wpdb_save = $GLOBALS['wpdb'];
+$GLOBALS['wpdb'] = new FPWD_Inbox_wpdb();
+$_GET = array();
+ob_start();
+fpw_render_workspace();
+$inbox_html = (string) ob_get_clean();
+$GLOBALS['wpdb'] = $wpdb_save;
+$received_at = (int) ( fpw_read_request_draft( 91 )['received_at'] ?? 0 );
+$meta_start = strpos( $inbox_html, 'fpw-request-meta' );
+$meta_line = substr( $inbox_html, (int) $meta_start, 800 );
+check( false !== $meta_start && str_contains( $meta_line, '<span class="fpw-request-ref">FP-2026-000091</span>' ), 'inbox row names the reference in its own element' );
+check( str_contains( $meta_line, '<span class="screen-reader-text">Recibida: </span>' ) && str_contains( $meta_line, '<span aria-hidden="true">· </span>' ), 'received time carries a spoken label, separator is decorative only' );
+check( str_contains( $meta_line, '<time datetime="' . esc_attr( fpw_workspace_date( 'c', $received_at ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', $received_at ) ) . '</time>' ), 'received time is machine-readable in site time' );
+check( str_contains( $inbox_html, 'data-fpw-request="91"' ) && str_contains( $inbox_html, 'Ver<span class="screen-reader-text"> FP-2026-000091</span>' ) && str_contains( $inbox_html, 'class="fpw-workspace-row-total"' ), 'readability markup keeps rows, totals and actions intact' );
+$css = file_get_contents( __DIR__ . '/../wp-content/plugins/freeplast-woo/assets/owner-workspace.css' );
+check( str_contains( $css, '.fpw-request-meta .fpw-request-ref{color:var(--ink);font-weight:650}' ) && str_contains( $css, '.fpw-request-received{white-space:nowrap}' ), 'reference gains ink weight and the received time never splits across lines' );
+check( str_contains( $source, "'1.12.17'" ), 'inbox stylesheet version bumped for the new rules' );
 check( !str_contains( $detail, 'Al revisar se guardan' ) && !str_contains( $detail, 'Importes guardados.' ) && !str_contains( $detail, 'Cambios sin guardar.' ), 'summary omits removed explanatory copy' );
 check( !str_contains( fpw_draft_approve_html( 91, $preview ?? array(), true ), 'La oferta aprobada' ), 'workspace approval omits removed disclaimer' );
 $timestamp = ( new DateTimeImmutable( '2026-10-13 14:28:00', new DateTimeZone( 'UTC' ) ) )->getTimestamp();
