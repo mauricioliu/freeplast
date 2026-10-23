@@ -129,10 +129,8 @@ function fpw_workspace_preview_html( array $draft, ?array $work, ?array $preview
 	$html .= fpw_workspace_offer_html( $projection );
 	if ( $obsolete ) { $html .= fpw_draft_preview_generate_html( $id ); }
 	elseif ( ! empty( $projection['complete'] ) && ( ! is_array( fpw_read_quotation_version( $id ) ) || fpw_quotation_revision_is_current( $id ) ) ) {
-		/* H4 (2026-10-03 review): the exact recipient the approval will freeze — read from
-		 * the SAME request-draft identity fpw_quotation_approve_and_send() freezes — so the
-		 * owner can verify it before committing, with no edit affordance on this screen. */
-		$recipient = (string) ( $draft['identity']['email'] ?? '' );
+		// Approval freezes this reviewed identity; legacy previews use the immutable receipt.
+		$recipient = (string) ( ( $projection['identity'] ?? $draft['identity'] )['email'] ?? '' );
 		$html .= '' !== $recipient
 			? '<p class="fpw-recipient-line"><strong>Se enviará a:</strong> ' . esc_html( $recipient ) . '</p>'
 			: '<p class="fpw-recipient-line">El correo del comprador no está disponible. Revisa los datos de la solicitud antes de aprobar.</p>';

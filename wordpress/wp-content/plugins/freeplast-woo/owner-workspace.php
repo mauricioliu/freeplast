@@ -18,8 +18,8 @@ function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quo
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.16' );
-	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.15', true );
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.17' );
+	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.17', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
 add_filter( 'admin_title', static function ( $title ) {
@@ -266,9 +266,9 @@ function fpw_workspace_review_fields( string $html, bool $validate, bool $posted
 	}, $html );
 }
 
-/** Read-only receipt header; timestamps come from persisted work or the frozen approval. */
+/** Contact values come from working state; receipt and delivery facts remain immutable. */
 function fpw_workspace_request_header( array $draft, ?array $work, ?array $version ): string {
-	$identity = $draft['identity'];
+	$identity = $version ? array_replace( $draft['identity'], $version['buyer'] ?? array() ) : fpw_draft_identity( $draft, $work );
 	$with_dispatch = fpw_draft_requests_dispatch( $draft );
 	$quoted_at = (int) ( $version ? ( $version['approved_at'] ?? 0 ) : ( $work['updated_at'] ?? 0 ) );
 	$html = '<section class="fpw-request-header" aria-labelledby="fpw-request-company"><div class="fpw-request-heading"><h1 id="fpw-request-company">' . esc_html( $identity['company'] ?: $draft['reference'] ) . '</h1><p class="fpw-muted">Solicitud ' . esc_html( $draft['reference'] ) . ' · ' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', (int) $draft['received_at'] ) ) . '</p><p class="fpw-muted fpw-quotation-time">' . ( $quoted_at > 0 ? ( $version ? 'Cotización aprobada: ' : 'Borrador guardado: ' ) . esc_html( fpw_workspace_date( 'd/m/Y · H:i', $quoted_at ) ) : 'Cotización aún sin guardar' ) . '</p></div><div class="fpw-request-facts">';
@@ -344,7 +344,13 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 		foreach ( $errors as $error ) { $body .= '<li>' . esc_html( $error ) . '</li>'; }
 		$body .= '</ul></div>';
 	}
-	$header = fpw_workspace_request_header( $draft, $work, $version );
+	$header_draft = $draft;
+	$header_work = $work;
+	if ( $review ) {
+		$header_draft['identity'] = fpw_read_draft_preview( $id )['projection']['identity'] ?? $draft['identity'];
+		if ( is_array( $header_work ) ) { unset( $header_work['identity'] ); }
+	}
+	$header = fpw_workspace_request_header( $header_draft, $header_work, $version );
 	// Only the redundant success notice disappears; failures and recovery messages remain.
 	$notice_html = $review && 'Vista previa generada.' === ( $notice['title'] ?? '' ) ? '' : fpw_draft_notice_html( $notice );
 	if ( $review ) {
@@ -352,7 +358,7 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 		$body = '<a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Volver a ajustar</a><h1 class="fpw-preview-title">Vista previa</h1>' . $header . $notice_html . $body . '<div id="fpw-summary" tabindex="-1" class="fpw-workspace-preview">' . fpw_workspace_preview_html( $draft, $work, fpw_read_draft_preview( $id ) ) . '</div>';
 		return fpw_workspace_shell( $body, $id, $projection['total'] ?? null );
 	}
-	$body = ( $editing ? '<a class="fpw-button" href="' . esc_url( fpw_quotation_view_url( $id, $base ) ) . '">Ver versión enviada</a><h2>Editar cotización · Versión ' . ( $base + 1 ) . '</h2>' : '' ) . $header . $notice_html . $body;
+	$body = ( $editing ? '<a class="fpw-button" href="' . esc_url( fpw_quotation_view_url( $id, $base ) ) . '">Ver versión enviada</a><h2>Editar cotización · Versión ' . ( $base + 1 ) . '</h2>' : '' ) . $header . $notice_html . fpw_draft_identity_form( $draft, $work ) . $body;
 	$preserve_post = $review_invalid && is_array( $_POST['fpw_work'] ?? null );
 	$unsaved = $unsaved || $preserve_post;
 	$calculation = array( 'tax' => fpw_quotation_offer_tax_config( $id ), 'dispatch' => fpw_draft_requests_dispatch( $draft ), 'savedAmount' => $work['dispatch_amount'] ?? null, 'conditions' => $work['dispatch_conditions'] ?? null );

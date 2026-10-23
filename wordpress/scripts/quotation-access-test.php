@@ -155,3 +155,15 @@ check(fpw_restricted_rest_route_denied(['fpw_quotation_manager', 'fpw_data_manag
 check(fpw_quotation_own_basket_rest_route('/wc/store/v1/cart/update-item/../users', 'POST') === false, 'path segments never smuggle another route into the exception');
 check(fpw_quotation_own_basket_rest_route('/wc/store/v1/cart', 'get') === true && fpw_quotation_own_basket_rest_route('/wc/store/v1/cart/add-item', 'post') === true, 'method casing normalizes without opening extra verbs');
 echo "quotation own-basket REST boundary: " . ($count - $own_basket_start) . " denial checks in this block\n";
+// Contact editing enters the same capability gate, before any draft or nonce reads.
+require __DIR__.'/../wp-content/plugins/freeplast-woo/quote-draft.php';
+$contact_start = $count;
+$_GET = array('page' => FPW_DRAFT_SCREEN, 'workspace' => '1', 'request' => '10');
+$_POST = array('fpw_identity_save' => '1', 'fpw_draft_nonce' => 'valid-looking', 'fpw_identity' => array('company' => 'Forbidden'));
+foreach (array(array(), array('read'=>true), array('edit_shop_orders'=>true), array('fpw_manage_data'=>true)) as $caps) {
+ $GLOBALS['caps'] = $caps;
+ try { fpw_handle_draft_posted_action(); check(false, 'unauthorized contact save must fail'); }
+ catch (FPW_Entry_Result $e) { check(403 === $e->getCode(), 'contact editing denies guest, ordinary staff and data-only manager'); }
+}
+check('identity' === fpw_draft_posted_action(), 'contact action is routed through the guarded draft front door');
+echo 'quotation contact access: ' . ($count - $contact_start) . " checks passed\n";

@@ -34,6 +34,17 @@
   }
   const work = root.querySelector('[data-fpw-work]');
   let workDirty = false, submitted = false;
+  const identity = root.querySelector('[data-fpw-identity]');
+  const identityFields = [...(identity?.querySelectorAll('[data-fpw-saved-value]') || [])];
+  const identityDirty = () => identityFields.some(field => field.value !== field.dataset.fpwSavedValue);
+  root.querySelector('[data-fpw-identity-cancel]')?.addEventListener('click', event => {
+    event.preventDefault();
+    identityFields.forEach(field => { field.value = field.dataset.fpwSavedValue; field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); });
+    identity.querySelectorAll('.fpw-field-error,[data-fpw-unsaved-warning]').forEach(note => note.remove());
+    const details = identity.closest('details');
+    details.open = false;
+    details.querySelector('summary').focus();
+  });
   const status = root.querySelector('[data-fpw-save-state]');
   const savedStatus = status?.textContent;
   const dockTotal = root.querySelector('[data-fpw-dock-total]');
@@ -259,7 +270,7 @@
         reviewAttempted = true;
         if (!validateReview(true)) { event.preventDefault(); return; }
       }
-      if (workDirty && (form !== work || event.submitter?.name === 'fpw_price_refresh')) {
+      if ((identityDirty() && form !== identity) || (workDirty && (form !== work || event.submitter?.name === 'fpw_price_refresh'))) {
         event.preventDefault();
         let notice = form.querySelector('[data-fpw-unsaved-warning]');
         if (!notice) {
@@ -270,7 +281,9 @@
           notice.tabIndex = -1;
           form.prepend(notice);
         }
-        notice.textContent = 'Guarda los cambios del borrador antes de realizar otra acción.';
+        notice.textContent = identityDirty() && form !== identity
+          ? 'Guarda o cancela la edición de empresa y contacto antes de realizar otra acción.'
+          : 'Guarda los cambios del borrador antes de realizar otra acción.';
         notice.focus();
         return;
       }
@@ -280,7 +293,7 @@
     });
   });
   window.addEventListener('beforeunload', event => {
-    if (!submitted && workDirty) {
+    if (!submitted && (workDirty || identityDirty())) {
       event.preventDefault();
       event.returnValue = '';
     }

@@ -68,7 +68,7 @@ function fpw_quotation_revision_seed( int $id ): ?array {
 		'lines' => $lines, 'destination' => $p['destination'], 'pickup_location' => $pickup,
 		'dispatch_amount' => ! empty( $p['dispatch_requested'] ) ? $p['dispatch'] : null,
 		'dispatch_conditions' => ! empty( $p['dispatch_requested'] ) ? array( 'destination' => $p['destination'], 'quantities' => array_column( $lines, 'quantity' ) ) : null,
-		'validity_days' => $p['validity_days'] );
+		'validity_days' => $p['validity_days'] ) + ( isset( $p['identity'] ) ? array( 'identity' => array_intersect_key( $p['identity'], fpw_draft_identity_fields() ) ) : array() );
 }
 
 /** CAS publishes the new pending version AND the exact previous snapshot together.

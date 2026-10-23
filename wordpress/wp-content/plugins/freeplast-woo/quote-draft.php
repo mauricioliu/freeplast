@@ -433,7 +433,7 @@ function fpw_parse_draft_work_input( array $draft, array $posted ): array {
  * @return array{state:'saved'|'conflict'|'invalid',work?:?array,errors?:string[],stored_revision?:int}
  */
 function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $user_id ): array {
-	$parsed = fpw_parse_draft_work_input( $draft, $posted );
+	$identity_only = ! empty( $posted['fpw_identity_save'] );
 	$raw    = fpw_read_draft_work_raw( $order_id );
 	$stored = null === $raw ? fpw_quotation_revision_seed( $order_id ) : null;
 	if ( null !== $raw ) {
@@ -441,10 +441,16 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
 		if ( is_array( $decoded ) ) { $stored = $decoded; } else { $raw = null; }
 	}
 	$stored_revision = is_array( $stored ) ? (int) ( $stored['revision'] ?? 0 ) : 0;
-	$base = isset( $posted['fpw_work_revision'] ) ? (int) $posted['fpw_work_revision'] : -1;
+	$base_raw = $posted['fpw_work_revision'] ?? null;
+	$base = ( is_string( $base_raw ) || is_int( $base_raw ) ) && ctype_digit( (string) $base_raw ) ? (int) $base_raw : -1;
 	if ( $base !== $stored_revision ) {
 		return array( 'state' => 'conflict', 'work' => $stored, 'stored_revision' => $stored_revision );
 	}
+	$identity = $identity_only ? fpw_parse_draft_identity( $posted['fpw_identity'] ?? null ) : null;
+	if ( $identity_only && ! empty( $identity['errors'] ) ) {
+		return array( 'state' => 'invalid', 'errors' => array_values( $identity['errors'] ) );
+	}
+	$parsed = fpw_parse_draft_work_input( $draft, $identity_only ? array( 'fpw_work' => fpw_draft_work_values( $draft, $stored ) ) : $posted );
 	if ( ! empty( $parsed['errors'] ) ) {
 		return array( 'state' => 'invalid', 'errors' => $parsed['errors'] );
 	}
@@ -473,6 +479,10 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
 		'dispatch_conditions' => $conditions,
 		'validity_days'       => $parsed['validity_days'],
 	);
+	// Contact-only saves preserve every existing commercial value and share its CAS revision.
+	if ( $identity_only && is_array( $stored ) ) { $next = array_replace( $stored, array_intersect_key( $next, array_flip( array( 'revision', 'updated_at', 'updated_by' ) ) ) ); }
+	if ( $identity_only ) { $next['identity'] = $identity['values']; }
+	elseif ( isset( $stored['identity'] ) ) { $next['identity'] = $stored['identity']; }
 	return fpw_write_draft_work_revision( $order_id, $raw, $next, $stored_revision );
 }
 
@@ -491,8 +501,9 @@ function fpw_save_draft_work( int $order_id, array $draft, array $posted, int $u
  * @return array{state:'saved'|'conflict',work?:?array,refresh?:bool,stored_revision?:int}
  */
 function fpw_refresh_draft_prices( int $order_id, array $draft, int $user_id ): array {
-	$stored      = fpw_read_draft_work( $order_id );
 	$raw         = fpw_read_draft_work_raw( $order_id );
+	$stored      = null === $raw ? fpw_quotation_revision_seed( $order_id ) : json_decode( $raw, true );
+	if ( ! is_array( $stored ) ) { $stored = null; }
 	$revision    = is_array( $stored ) ? (int) ( $stored['revision'] ?? 0 ) : 0;
 	$items       = is_array( $draft['items'] ?? null ) ? $draft['items'] : array();
 	$saved_lines = is_array( $stored['lines'] ?? null ) ? $stored['lines'] : array();
@@ -530,6 +541,7 @@ function fpw_refresh_draft_prices( int $order_id, array $draft, int $user_id ): 
 		'dispatch_conditions' => is_array( $stored['dispatch_conditions'] ?? null ) ? $stored['dispatch_conditions'] : null,
 		'validity_days'       => is_array( $stored ) && is_int( $stored['validity_days'] ?? null ) ? (int) $stored['validity_days'] : null,
 	);
+	if ( isset( $stored['identity'] ) ) { $next['identity'] = $stored['identity']; }
 	$outcome = fpw_write_draft_work_revision( $order_id, $raw, $next, $revision );
 	if ( 'saved' === $outcome['state'] ) { $outcome['refresh'] = true; }
 	return $outcome;
@@ -649,6 +661,7 @@ function fpw_handle_draft_preview_request( $order, array $draft ): void {
 
 /** The posted screen action, when any: a draft save, a preview generation, the explicit price refresh or the approval. */
 function fpw_draft_posted_action(): ?string {
+	if ( ! empty( $_POST['fpw_identity_save'] ) ) { return 'identity'; }
 	if ( ! empty( $_POST['fpw_work_save'] ) ) { return 'save'; }
 	if ( ! empty( $_POST['fpw_work_preview'] ) ) { return 'preview'; }
 	if ( ! empty( $_POST['fpw_price_refresh'] ) ) { return 'refresh'; }
@@ -662,6 +675,9 @@ function fpw_handle_draft_action_request( $order, array $draft, string $action )
 	if ( fpw_quotation_revision_base( $id ) && ! fpw_quotation_revision_is_current( $id ) ) {
 		fpw_pending_draft_outcome( array( 'order_id' => $id, 'result' => array( 'state' => 'approval-refused', 'reason' => 'version-obsoleta' ) ) );
 		return;
+	}
+	if ( 'identity' === $action && fpw_read_quotation_version( $id ) && ! fpw_quotation_revision_is_current( $id ) ) {
+		wp_die( 'La cotización ya fue emitida. Abre una nueva revisión para corregir sus datos.', '', array( 'response' => 403 ) );
 	}
 	if ( '1' === ( $_GET['workspace'] ?? '' ) && function_exists( 'fpw_workspace_guard_clean_action' ) && ! fpw_workspace_guard_clean_action( (int) $order->get_id(), $draft, $action ) ) { return; }
 	if ( 'preview' === $action ) { fpw_handle_draft_preview_request( $order, $draft ); return; }
@@ -929,6 +945,49 @@ function fpw_draft_work_values( array $draft, ?array $work ): array {
 	return $values;
 }
 
+/** Only these contact fields may override the immutable request identity. */
+function fpw_draft_identity_fields(): array {
+	return array( 'company' => 'Empresa', 'name' => 'Contacto', 'email' => 'Email', 'phone' => 'Teléfono', 'giro' => 'Giro' );
+}
+
+function fpw_draft_identity( array $draft, ?array $work ): array {
+	return array_replace( $draft['identity'] ?? array(), array_intersect_key( $work['identity'] ?? array(), fpw_draft_identity_fields() ) );
+}
+
+function fpw_parse_draft_identity( $input ): array {
+	$values = $errors = array();
+	foreach ( fpw_draft_identity_fields() as $key => $label ) {
+		$raw = is_array( $input ) ? ( $input[ $key ] ?? null ) : null;
+		$value = is_string( $raw ) ? sanitize_text_field( $raw ) : '';
+		$values[ $key ] = $value;
+		if ( ! is_string( $raw ) || ! preg_match( '/^.{1,300}$/usD', $value ) ) {
+			$errors[ $key ] = $label . ': completa un valor válido, de hasta 300 caracteres.';
+		} elseif ( 'email' === $key && ! is_email( $value ) ) {
+			$errors[ $key ] = 'Email: ingresa un correo válido.';
+		} elseif ( 'phone' === $key && ( ! preg_match( '/^\+?[0-9 ()\.\-]{6,40}$/D', $value ) || strlen( preg_replace( '/\D/', '', $value ) ) < 6 ) ) {
+			$errors[ $key ] = 'Teléfono: usa entre 6 y 40 dígitos, espacios o signos + ( ) . -.';
+		}
+	}
+	return array( 'values' => $values, 'errors' => $errors );
+}
+
+/** Separate form: never posts RUT, delivery or original receipt fields. */
+function fpw_draft_identity_form( array $draft, ?array $work ): string {
+	$id = (int) $draft['order_id'];
+	$identity = fpw_draft_identity( $draft, $work );
+	$pending = fpw_pending_draft_outcome();
+	$invalid = ! empty( $_POST['fpw_identity_save'] ) && $id === ( $pending['order_id'] ?? null ) && 'invalid' === ( $pending['result']['state'] ?? '' );
+	$parsed = $invalid ? fpw_parse_draft_identity( wp_unslash( $_POST['fpw_identity'] ?? null ) ) : array( 'values' => $identity, 'errors' => array() );
+	$html = '<details class="fpw-identity-editor"' . ( $invalid ? ' open' : '' ) . '><summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5"/></svg> Editar empresa y contacto</summary><form data-fpw-identity method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><p>Solo cambia este borrador. RUT, despacho, solicitud original y versiones emitidas permanecen iguales.</p><input type="hidden" name="fpw_identity_save" value="1"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
+		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false );
+	foreach ( fpw_draft_identity_fields() as $key => $label ) {
+		$error = $parsed['errors'][ $key ] ?? '';
+		$html .= '<label class="fpw-draft__field">' . esc_html( $label ) . '<input type="' . ( 'email' === $key ? 'email' : ( 'phone' === $key ? 'tel' : 'text' ) ) . '" name="fpw_identity[' . $key . ']" value="' . esc_attr( $parsed['values'][ $key ] ?? '' ) . '" data-fpw-saved-value="' . esc_attr( $identity[ $key ] ?? '' ) . '" required maxlength="300"' . ( $error ? ' aria-invalid="true" aria-describedby="fpw-identity-error-' . $key . '"' : '' ) . '></label>';
+		if ( $error ) { $html .= '<p class="fpw-field-error" id="fpw-identity-error-' . $key . '">' . esc_html( $error ) . '</p>'; }
+	}
+	return $html . '<button type="submit">Guardar empresa y contacto</button> <a class="fpw-button fpw-secondary" data-fpw-identity-cancel href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Cancelar edición de contacto</a></form></details>';
+}
+
 /** The offer validity in force for one draft: the owner's saved choice, else the default (issue #55). */
 function fpw_draft_validity_days( ?array $work ): int {
 	$saved = is_array( $work ) ? ( $work['validity_days'] ?? null ) : null;
@@ -1070,7 +1129,7 @@ function fpw_quotation_projection( array $draft, ?array $work ): array {
 		'total'                   => $total,
 		'missing'                 => $missing,
 		'complete'                => empty( $missing ),
-	) + ( $with_dispatch ? array_filter( array_intersect_key( $draft['destination'] ?? array(), array_flip( array( 'commune', 'location_url', 'references' ) ) ), static fn( $value ) => '' !== (string) $value ) : array() );
+	) + ( isset( $work['identity'] ) ? array( 'identity' => fpw_draft_identity( $draft, $work ) ) : array() ) + ( $with_dispatch ? array_filter( array_intersect_key( $draft['destination'] ?? array(), array_flip( array( 'commune', 'location_url', 'references' ) ) ), static fn( $value ) => '' !== (string) $value ) : array() );
 }
 
 /** One amount as the owner entered it: plain integer input, pending placeholder when absent. */
@@ -1389,6 +1448,10 @@ function fpw_draft_preview_html( array $draft, ?array $work, ?array $preview ): 
 	if ( empty( $projection['dispatch_requested'] ) && ! empty( $projection['pickup_address'] ) ) {
 		$html .= '<p>Retiro - Sin Despacho: ' . esc_html( $projection['pickup_address'] ) . '. No incluye flete.</p>';
 	}
+	$identity = $projection['identity'] ?? ( $draft['identity'] ?? array() );
+	$html .= '<dl>';
+	foreach ( fpw_draft_identity_fields() + array( 'rut' => 'RUT empresa' ) as $key => $label ) { $html .= fpw_draft_fact_html( $label, (string) ( $identity[ $key ] ?? '' ) ); }
+	$html .= '</dl>';
 	$html .= '<p class="fpw-draft__preview-validity"><strong>Vigencia de la oferta: ' . (int) ( $projection['validity_days'] ?? 0 ) . ' días</strong> a contar de su aprobación, para los productos, cantidades y destino revisados.</p>';
 	$html .= '<p class="fpw-draft__aside-note">Esta vista previa no incluye historial de compras, notas internas, costos de transportista ni el desglose interno de la estimación de despacho. No es un documento emitido: nada fue aprobado ni enviado al comprador.</p>'
 		. fpw_draft_preview_generate_html( $order_id )
@@ -1456,6 +1519,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 	$sections = fpw_draft_notice_html( $notice )
 		. '<div style="display:grid;gap:16px;min-width:0">'
 		. '<section><h2>Solicitud original</h2><dl>' . fpw_draft_facts_html( $identity, $destination, $with_dispatch ) . ( $with_dispatch ? fpw_draft_provenance_facts_html( $destination ) : '' ) . '</dl>' . fpw_draft_submitted_details_html( $draft['submitted_details'] ?? '' ) . '</section>'
+		. ( ! $version_row || fpw_quotation_revision_is_current( $order_id ) ? fpw_draft_identity_form( $draft, $work ) : '' )
 		. $form_open
 		. '<section><h2>Productos solicitados</h2><ul class="fpw-draft__items">' . fpw_draft_items_html( $items, $values ) . '</ul></section>'
 		. '<section><h2>' . ( $with_dispatch ? 'Despacho' : 'Retiro - Sin Despacho' ) . '</h2>' . ( $with_dispatch ? fpw_draft_dispatch_html( true, $values['destination'], $dispatch_amount, $dispatch_stale, (string) ( $destination['references'] ?? '' ) ) : fpw_draft_pickup_html( $values['pickup_location'] ) ) . '</section>'
