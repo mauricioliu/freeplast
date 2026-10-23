@@ -663,6 +663,7 @@ function is_product() { return $GLOBALS['fpw_test_is_product'] ?? false; }
 function is_cart() { return $GLOBALS['fpw_test_is_cart'] ?? false; }
 $quantity_product = new class {
     public bool $individual = false;
+    public function get_image_id($context = 'view') { return 0; }
     public function is_sold_individually() { return $this->individual; }
     public function get_id(): int { return 22; }
 };
@@ -683,8 +684,8 @@ check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>1,'mi
 $GLOBALS['fpw_test_is_cart']=true;
 check(apply_filters('woocommerce_quantity_input_args',array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),$quantity_product)===array('input_value'=>30,'min_value'=>1,'max_value'=>100,'step'=>1),'Persisted classic quantities remain editable down to one');
 $GLOBALS['fpw_test_is_cart']=false;
-$variation_data=array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false);
-check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false),'Color changes retain floor one and native maximum');
+$variation_data=array('min_qty'=>1,'max_qty'=>100,'is_sold_individually'=>false,'fpw_color_image'=>null);
+check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===$variation_data,'Color changes retain floor one and native maximum');
 $quantity_product->individual=true;
 check(apply_filters('woocommerce_quantity_input_args',$quantity_args,$quantity_product)===$quantity_args,'Individually sold products retain native quantity controls');
 check(apply_filters('woocommerce_available_variation',$variation_data,$quantity_product,$quantity_product)===$variation_data,'Individually sold variations retain native limits');

@@ -1991,6 +1991,7 @@ body.woocommerce .fp-product-shell .product-gallery {
   min-width: 0;
 }
 
+body.woocommerce .fp-product-shell .fp-detail-image[hidden] { display: none !important; }
 body.woocommerce .fp-product-shell .fp-detail-image {
   display: grid;
   place-items: center;

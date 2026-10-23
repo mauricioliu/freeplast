@@ -138,6 +138,14 @@ function fpw_in_featured_products(): bool {
 	return ! empty( $GLOBALS['fpw_featured_products_context'] );
 }
 
+/** Woo inherits the parent photo; never present that as a color-specific photo. */
+function fpw_variation_color_image( $data, $product, $variation ): array {
+	$data['fpw_color_image'] = $variation->get_image_id( 'edit' ) && ! empty( $data['image']['src'] )
+		? $data['image'] : null;
+	return $data;
+}
+add_filter( 'woocommerce_available_variation', 'fpw_variation_color_image', 10, 3 );
+
 /** Only unambiguous, single-color variations can use the featured shortcut.
  * Woo supplies purchasability and stock constraints; no prices are exposed.
  * Wildcards, additional attributes or duplicate matches retain the sheet path.
@@ -172,6 +180,7 @@ function fpw_featured_color_options( $product ): array {
 			'id' => $available ? (int) $variation['variation_id'] : 0,
 			'max' => $variation['max_qty'] ?? '',
 			'individual' => ( $variation['is_sold_individually'] ?? 'no' ) === 'yes',
+			'image' => $variation['fpw_color_image'] ?? null,
 		);
 	}
 	return $options;

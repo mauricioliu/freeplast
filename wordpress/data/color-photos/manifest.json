@@ -1,0 +1,115 @@
+{
+  "home": "http://mliu:8131",
+  "images": [
+    {
+      "variation_id": 17,
+      "parent_slug": "caja-universal-cerrada-color",
+      "color": "Blanco",
+      "file": "cerrada-blanco.webp",
+      "sha256": "e6018c60290ee132e5ad2d8dc0b78f8d34ac466f2aa969fe2cb85e1ba84f38f3",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-cerrada-blanco.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 18,
+      "parent_slug": "caja-universal-cerrada-color",
+      "color": "Rojo",
+      "file": "cerrada-rojo.webp",
+      "sha256": "c6798c7ddf970613cc3352716bf02a39ae72938fdd4b77971bdd29f4c4426121",
+      "width": 960,
+      "height": 960,
+      "origin": "catalog-photos/caja-universal-cerrada-color.webp",
+      "attempts": 0
+    },
+    {
+      "variation_id": 19,
+      "parent_slug": "caja-universal-cerrada-color",
+      "color": "Amarillo",
+      "file": "cerrada-amarillo.webp",
+      "sha256": "601e62b9552f3bcc14f58e0946e774be4e9ebd971688d5efec62df4d058b6f3d",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-cerrada-amarillo.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 20,
+      "parent_slug": "caja-universal-cerrada-color",
+      "color": "Azul",
+      "file": "cerrada-azul.webp",
+      "sha256": "bad6f7b1c0768ebc37785b2704d7ccacee6e4862ce3dad1497fc0b1370ab3629",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-cerrada-azul.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 21,
+      "parent_slug": "caja-universal-cerrada-color",
+      "color": "Verde",
+      "file": "cerrada-verde.webp",
+      "sha256": "b2ab051e7012a89a6ed738e6b256ad8ba0d09d2262c5d5bda667fc726b51f1c9",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-cerrada-verde.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 24,
+      "parent_slug": "caja-universal-ventilada-color",
+      "color": "Blanco",
+      "file": "ventilada-blanco.webp",
+      "sha256": "5227a28bce7914cec184acfeca9ddd71c827ac0579d524fc2173c20c34f7c0fb",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-ventilada-blanco.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 25,
+      "parent_slug": "caja-universal-ventilada-color",
+      "color": "Rojo",
+      "file": "ventilada-rojo.webp",
+      "sha256": "c47b288f032075fea643a4a6385fb4dd8f3f850cf8b1b591ca51196b33c4de87",
+      "width": 960,
+      "height": 960,
+      "origin": "catalog-photos/caja-universal-ventilada-color.webp",
+      "attempts": 0
+    },
+    {
+      "variation_id": 26,
+      "parent_slug": "caja-universal-ventilada-color",
+      "color": "Amarillo",
+      "file": "ventilada-amarillo.webp",
+      "sha256": "bf9ac7232f8a7b5d198f6eb783b4df648f0ddcf9df3612f4f8104a937919d5d6",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-ventilada-amarillo.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 27,
+      "parent_slug": "caja-universal-ventilada-color",
+      "color": "Azul",
+      "file": "ventilada-azul.webp",
+      "sha256": "dd87601dec1379e7ff406d536949b6bebf903e497bb1d61c4efa7fdb57ea3887",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-ventilada-azul.png",
+      "attempts": 1
+    },
+    {
+      "variation_id": 28,
+      "parent_slug": "caja-universal-ventilada-color",
+      "color": "Verde",
+      "file": "ventilada-verde.webp",
+      "sha256": "7d939283d2dd9cead87466dc2533ee7bcdb6d46f80d2167ea7e01f7710212e29",
+      "width": 960,
+      "height": 960,
+      "origin": "Codex image_gen: 20261023-freeplast-ventilada-verde.png",
+      "attempts": 1
+    }
+  ]
+}

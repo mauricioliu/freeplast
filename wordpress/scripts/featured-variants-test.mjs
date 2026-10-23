@@ -7,8 +7,8 @@ const jquery = require('jquery');
 const theme = new URL('../wp-content/themes/freeplast/assets/js/', import.meta.url);
 const native = new URL('./vendor/woocommerce-11.1.0-add-to-cart.js', import.meta.url);
 function card(id) {
-  return `<li class="product"><div class="product-info"><h2 class="woocommerce-loop-product__title">Caja ${id}</h2><p class="product-spec">625 × 444 × 226 mm</p></div><div data-fpw-loop-add><div data-fpw-featured-picker hidden>
-  <label class="fp-featured-colors">Color · obligatorio<select data-fpw-color-select required><option value="">Selecciona un color</option><option value="101" data-fpw-variant='{"id":101,"label":"Azul","max":200,"individual":false}'>Azul</option><option value="102" data-fpw-variant='{"id":102,"label":"Verde","max":"","individual":false}'>Verde</option><option value="0" data-fpw-variant='{"id":0,"label":"Rojo","max":"","individual":false}' disabled>Rojo</option></select></label>
+  return `<li class="product"><a class="photo-link" href="/producto/caja/"><span class="product-photo"><img src="/parent.jpg" srcset="/parent-2.jpg 2x" sizes="50vw" alt="Original"></span></a><div class="product-info"><h2 class="woocommerce-loop-product__title">Caja ${id}</h2><p class="product-spec">625 × 444 × 226 mm</p></div><div data-fpw-loop-add><div data-fpw-featured-picker hidden>
+  <label class="fp-featured-colors">Color · obligatorio<select data-fpw-color-select required><option value="">Selecciona un color</option><option value="101" data-fpw-variant='{"id":101,"label":"Azul","max":200,"individual":false,"image":{"src":"/blue.jpg","srcset":"/blue-2.jpg 2x","sizes":"40vw","alt":"Caja azul","width":960,"height":960}}'>Azul</option><option value="102" data-fpw-variant='{"id":102,"label":"Verde","max":"","individual":false}'>Verde</option><option value="0" data-fpw-variant='{"id":0,"label":"Rojo","max":"","individual":false}' disabled>Rojo</option></select></label>
   <p data-fpw-featured-status role="status"></p><div class="quantity"><input class="qty fpw-delta-10" type="number" value="70" min="1" step="1"></div><a class="add_to_cart_button ajax_add_to_cart" href="/producto/caja/" data-product_id="0" data-fpw_featured_variant="1" aria-disabled="true">Agregar</a></div><span class="color-hint">Colores</span><a class="button secondary" href="/producto/caja/">Elegir color</a><div class="fpw-card-selection" data-product-id="${id}" data-quantity="0"></div></div></li>`;
 }
 const dom = new JSDOM(`<ul>${card(21)}${card(22)}${card(23)}</ul><span class="fpw-basket-count">0</span><div class="fpw-card-selections" data-fpw-cart-state="1" hidden></div>`, { url:'http://localhost/', runScripts:'outside-only' });
@@ -55,6 +55,23 @@ assert.equal(menu.querySelector('button').getAttribute('aria-pressed'), 'true');
 assert.equal(add.dataset.product_id, '101');
 assert.equal(other.querySelector('.add_to_cart_button').dataset.product_id, '0', 'card selection isolated');
 assert.equal(input.value, '70', 'initial quantity preserved');
+const photo = picker.closest('li').querySelector('.product-photo');
+assert.equal(photo.querySelector('img').getAttribute('src'), '/blue.jpg');
+assert.equal(photo.querySelector('img').getAttribute('srcset'), '/blue-2.jpg 2x');
+assert.equal(photo.querySelector('img').alt, 'Caja azul');
+assert.equal(other.closest('li').querySelector('img').getAttribute('src'), '/parent.jpg', 'image changes scoped to selected card');
+choose(picker, '102');
+assert.equal(photo.querySelector('img'), null, 'missing color cannot display previous photo');
+assert.match(photo.textContent, /Fotografía no disponible en Verde/);
+choose(picker, '');
+assert.equal(photo.querySelector('img').getAttribute('src'), '/parent.jpg', 'clear restores original photo');
+assert.equal(photo.querySelector('img').getAttribute('srcset'), '/parent-2.jpg 2x');
+assert.match(menu.querySelector('summary').textContent, /Elegir/);
+assert.ok([...menu.querySelectorAll('button')].every(button => button.getAttribute('aria-pressed') === 'false'));
+choose(picker, '101');
+photo.querySelector('img').dispatchEvent(new w.Event('error'));
+assert.match(photo.textContent, /Fotografía no disponible en Azul/, 'broken attachment never leaves misleading photo');
+choose(picker, '101');
 picker.querySelector('.fp-qty-step--plus').click();
 assert.equal(input.value, '80', 'existing increment preserved');
 input.value = '1.5'; input.dispatchEvent(new w.Event('input', { bubbles:true })); add.click();
