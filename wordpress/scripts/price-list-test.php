@@ -52,7 +52,8 @@ function wp_nonce_field( $action = -1, $name = '_wpnonce', $referer = true, $ech
 }
 function wp_verify_nonce( $nonce, $action = -1 ) { return $GLOBALS['fppw_nonce_ok'] && 'offline-nonce' === (string) $nonce ? 1 : false; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
-function home_url( $path = '' ) { return 'https://freeplast.test' . $path; }
+function home_url( $path = '' ) { return ( $GLOBALS['fppw_home'] ?? 'https://freeplast.test' ) . $path; }
+function wp_get_environment_type() { return $GLOBALS['fppw_environment'] ?? 'production'; }
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
 function wp_unslash( $value ) { return $value; }
@@ -85,6 +86,11 @@ class FPPW_Fake_wpdb {
 		return $sql;
 	}
 	public function query( $sql ) {
+		if ( isset( $GLOBALS['fppw_query_fault'] ) ) {
+			$result = ( $GLOBALS['fppw_query_fault'] )( $sql );
+			if ( null !== $result ) { return $result; }
+		}
+		$sql = str_replace( 'AND BINARY option_value = BINARY ', 'AND option_value = ', $sql );
 		if ( preg_match( "/INSERT INTO \{?\w*options\}? \( option_name, option_value, autoload \) VALUES \( '(.+?)', '(.*)', 'off' \)$/s", $sql, $m ) ) {
 			if ( array_key_exists( $m[1], $GLOBALS['fppw_table'] ) ) { return false; }
 			$GLOBALS['fppw_table'][ $m[1] ] = $m[2]; return 1;
@@ -129,6 +135,9 @@ $GLOBALS['wpdb'] = new FPPW_Fake_wpdb();
  * product data. */
 $GLOBALS['fppw_mutations'] = array();
 class FPPW_Product {
+	// Legacy fixtures omit attribute metadata: names alone must never trigger unification.
+	public array $variation_attributes = array();
+	public function get_variation_attributes(): array { return $this->variation_attributes; }
 	public function __construct( public int $id, public string $name, public string $type = 'simple', public array $children = array() ) {}
 	public function get_id(): int { return $this->id; }
 	public function get_name(): string { return $this->name; }
@@ -504,4 +513,94 @@ ob_start(); fpw_render_data_hub(); $hub=ob_get_clean();
 check(str_contains($hub,'Mantenedor de datos') && str_contains($hub,'Privado del dueño'), 'the hub names itself and its privacy');
 check(str_contains($hub,'href="'.fpw_price_screen_url().'"') && str_contains($hub,'href="'.fpw_sales_import_screen_url().'"'), 'the hub links prices and the sales import only');
 check(substr_count($hub,'fpw-data-row')>=4, 'every hub row is a direct link');
-echo "price list: $assertions offline checks passed (issue #52 + manual volume references)\n";
+/* Color-only identity uses native attributes, not a product's name. */
+$GLOBALS['fppw_products'][25]->variation_attributes = array( 'pa_color' => array( 'azul', 'rojo', 'verde' ) );
+$catalog = fpw_price_catalog();
+check( $catalog[1]['color_only'], 'taxonomy color-only product shares one editable identity' );
+$GLOBALS['fppw_products'][25]->variation_attributes = array( 'Color' => array( 'Azul', 'Rojo' ) );
+check( fpw_price_catalog()[1]['color_only'], 'local Color attribute also shares identity' );
+$GLOBALS['fppw_products'][25]->variation_attributes['size'] = array( 'small', 'large' );
+check( ! fpw_price_catalog()[1]['color_only'], 'color plus size cannot unify different products' );
+$GLOBALS['fppw_products'][25]->variation_attributes = array( 'size' => array( 'small', 'large' ) );
+check( ! fpw_price_catalog()[1]['color_only'], 'non-color options remain separate despite a color-like product name' );
+$GLOBALS['fppw_products'][25]->variation_attributes = array( 'color' => array( 'Azul', 'Rojo', 'Verde' ) );
+$catalog = fpw_price_catalog();
+$common_ref = array( 'units' => 100, 'small' => 4200, 'bulk' => null, 'source' => 'Fixture', 'note' => 'Por confirmar' );
+$list = array( 'schema' => 1, 'updated_at' => 123, 'updated_by' => 'fixture', 'prices' => array( 'v:310' => 2190, 'v:311' => 2190, 'p:99' => 1500 ), 'references' => array( 'v:310' => $common_ref, 'v:311' => $common_ref ), 'extra' => 'preserved' );
+$plan = fpw_price_color_conversion_plan( $list, $catalog );
+check( ! $plan['conflicts'] && $plan['pending'] === array( 25 ) && $plan['payload']['prices'] === array( 'p:99' => 1500, 'p:25' => 2190 ), 'equal variant prices become one parent entry, preserving other products' );
+check( $plan['payload']['references'] === array( 'p:25' => $common_ref ) && $plan['payload']['extra'] === 'preserved', 'conversion preserves pending volume tiers, provenance and unknown row metadata' );
+check( ! fpw_price_color_conversion_plan( $plan['payload'], $catalog )['pending'], 'repeated conversion is a no-op' );
+check( fpw_price_color_conversion_plan( fpw_price_empty_list(), $catalog )['payload'] === fpw_price_empty_list(), 'absent values remain absent, never zero' );
+check( fpw_price_color_conversion_plan( $list, array() )['payload'] === $list, 'unlisted identities are retained, not inferred' );
+foreach ( array( 2390, null, '2190', 0, 100000000 ) as $different ) {
+	$conflict = $list; $conflict['prices']['v:311'] = $different;
+	$result = fpw_price_color_conversion_plan( $conflict, $catalog );
+	check( isset( $result['conflicts'][25]['prices'] ) && $result['payload'] === $conflict, 'conflicting or malformed variant prices preserve every product field' );
+}
+$conflict = $list; $conflict['prices']['p:25'] = 2000;
+check( ! empty( fpw_price_color_conversion_plan( $conflict, $catalog )['conflicts'][25]['prices'] ), 'a conflicting parent price cannot silently win' );
+foreach ( array( array( 'small' => 4300 ), array( 'bulk' => 3900 ), array( 'units' => 70 ), array( 'note' => 'Otra fuente' ), array( 'small' => '4200' ), array( 'unknown' => 1 ) ) as $change ) {
+	$conflict = $list; $conflict['references']['v:311'] = array_replace( $common_ref, $change );
+	$result = fpw_price_color_conversion_plan( $conflict, $catalog );
+	check( ! empty( $result['conflicts'][25]['references'] ) && $result['payload'] === $conflict, 'reference disagreement, explicit pending tier, or malformed record blocks the entire product conversion' );
+}
+check( ! empty( fpw_price_color_conversion_plan( array( 'schema' => 2, 'prices' => array() ), $catalog )['conflicts'] ), 'unknown schema is refused' );
+check( ! empty( fpw_price_parse_input( $catalog, array( 'v:310' => '1' ) )['errors'] ), 'forged or stale per-color price inputs are refused' );
+check( ! empty( fpw_price_references_parse( $catalog, array( 'v:310' => array( 'units' => '1' ) ), array() )['errors'] ), 'forged per-color reference inputs are refused' );
+$GLOBALS['fppw_table'][FPW_PRICE_ROW] = wp_json_encode( $list );
+$_POST = array( 'fpw_price_nonce' => 'offline-nonce', 'fpw_prices' => array( 'p:25' => '3000' ) );
+$before = $GLOBALS['fppw_table'];
+check( ! fpw_price_handle_save_request( $catalog )['ok'] && $GLOBALS['fppw_table'] === $before, 'normal save cannot silently discard unconverted entries even when equal' );
+$html = fpw_price_screen_markup();
+check( str_contains( $html, 'Edición bloqueada' ) && str_contains( $html, '<fieldset disabled>' ) && str_contains( $html, 'fpw_prices[v:310]' ), 'legacy values remain visible read-only with actionable conversion notice' );
+
+/* Local operator apply: backup bytes, capability, containment and one CAS. */
+define( 'WP_CLI', true );
+$backup = tempnam( sys_get_temp_dir(), 'fpw-price-backup-' );
+file_put_contents( $backup, $before[FPW_PRICE_ROW] );
+chmod( $backup, 0600 );
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'forbidden', 'production environment cannot apply conversion' );
+$GLOBALS['fppw_environment'] = 'local';
+$GLOBALS['fppw_home'] = 'http://localhost:8080';
+putenv( 'FREEPLAST_LOCAL_URL=http://localhost:8080' );
+$GLOBALS['fppw_caps'] = array();
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'forbidden', 'conversion needs the data-maintenance capability' );
+$GLOBALS['fppw_caps'] = array( 'manage_woocommerce' => true );
+$GLOBALS['fppw_home'] = 'https://production.invalid';
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'wrong_environment', 'local flag alone cannot authorize a remote site' );
+$GLOBALS['fppw_home'] = 'http://localhost:8080';
+check( fpw_price_apply_color_conversion( $backup . '-missing' )['state'] === 'backup_required', 'missing backup blocks writes' );
+file_put_contents( $backup, '{}' );
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'backup_required' && $GLOBALS['fppw_table'] === $before, 'mismatched backup blocks writes' );
+file_put_contents( $backup, $before[FPW_PRICE_ROW] );
+chmod( $backup, 0644 ); clearstatcache();
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'backup_required', 'world-readable commercial backup is refused' );
+chmod( $backup, 0600 ); clearstatcache();
+$GLOBALS['fppw_query_fault'] = static fn( $sql ) => str_contains( $sql, 'AND BINARY option_value' ) ? 0 : null;
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'stale' && $GLOBALS['fppw_table'] === $before, 'lost CAS refuses conversion without overwriting concurrent work' );
+$GLOBALS['fppw_query_fault'] = static fn( $sql ) => str_contains( $sql, 'AND BINARY option_value' ) ? false : null;
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'uncertain' && $GLOBALS['fppw_table'] === $before, 'database failure reports uncertainty, never success or automatic retry' );
+unset( $GLOBALS['fppw_query_fault'] );
+$conflict = $list; $conflict['prices']['v:311'] = 2390;
+$GLOBALS['fppw_table'][FPW_PRICE_ROW] = wp_json_encode( $conflict );
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'conflict' && $GLOBALS['fppw_table'][FPW_PRICE_ROW] === wp_json_encode( $conflict ), 'apply reports conflict and preserves the raw row' );
+$GLOBALS['fppw_table'] = $before;
+$result = fpw_price_apply_color_conversion( $backup );
+check( $result['state'] === 'applied' && $result['backup_sha256'] === hash_file( 'sha256', $backup ), 'guarded apply verifies exact backed-up bytes' );
+check( array_diff_key( $GLOBALS['fppw_table'], array( FPW_PRICE_ROW => true ) ) === array_diff_key( $before, array( FPW_PRICE_ROW => true ) ), 'conversion writes only the price row, never drafts or history' );
+$after = $GLOBALS['fppw_table'];
+check( fpw_price_apply_color_conversion( $backup )['state'] === 'unchanged' && $GLOBALS['fppw_table'] === $after, 'repeat apply with original backup is a byte-preserving no-op' );
+unlink( $backup );
+$_POST = array( 'fpw_price_nonce' => 'offline-nonce', 'fpw_prices' => array( 'p:25' => '3000' ), 'fpw_references' => array( 'p:25' => array( 'units' => '100', 'small' => '4200', 'bulk' => '' ) ) );
+check( fpw_price_handle_save_request( $catalog )['ok'], 'one common price saves through the existing nonce-protected editor' );
+foreach ( array( 310, 311, 312 ) as $id ) {
+	check( fpw_price_for( 25, $id ) === 3000 && fpw_price_reference_for( 25, $id ) === fpw_price_reference_for( 25 ), 'every color, including previously missing ones, shares the common price and volume reference' );
+}
+check( fpw_price_for( 99, 0 ) === 1500 && fpw_price_for( 22, 0 ) === null, 'saving common price preserves unlisted products and never prices another published product' );
+$html = fpw_price_screen_markup();
+check( str_contains( $html, 'Precio y referencias comunes a todos los colores' ) && ! str_contains( $html, 'fpw_prices[v:' ) && ! str_contains( $html, 'fpw_references[v:' ), 'converted colors have one price and one reference editor per product' );
+check( array() === $GLOBALS['fppw_mutations'], 'conversion and shared prices never mutate catalog products' );
+$_POST = array( 'fpw_price_nonce' => 'offline-nonce', 'fpw_prices' => array( 'p:25' => '' ), 'fpw_references' => array( 'p:25' => array( 'units' => '', 'small' => '', 'bulk' => '' ) ) );
+check( fpw_price_handle_save_request( $catalog )['ok'] && fpw_price_for( 25, 310 ) === null && fpw_price_for( 25, 311 ) === null && fpw_price_reference_for( 25, 312 ) === array(), 'clearing common fields leaves every color honestly pending' );
+echo "price list: $assertions offline checks passed (issue #52 + shared color prices and volume references)\n";
