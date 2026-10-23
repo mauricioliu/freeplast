@@ -64,7 +64,7 @@ test('public addresses fail closed for special-use/IPv6', () => {
   assert.equal(publicAddress('8.8.8.8'), true);
 });
 test('preflight follows only authorized relative redirect; loops and forbidden hops never contacted', async () => {
-  const markerHtml = body => fixtureHtml(`${body}<label for="quantity_fpm_11_1">C</label><input id="quantity_fpm_11_1">`);
+  const markerHtml = body => fixtureHtml(`${body}<!-- ${measureMode.bootstrapMarker} --><label for="quantity_fpm_11_1">C</label><input id="quantity_fpm_11_1">`);
   for (const mode of ['allowed', 'denied', 'loop', 'status', 'identity', 'inactive']) {
     const fixture = await fixtureAdapter(({ req, deniedOrigin }) => mode === 'status' ? { status: 429 } : mode === 'identity' ? { body: '<h1>Not LOCAL</h1>' } : mode === 'inactive' ? { body: fixtureHtml('no marker') } : req.url === '/' + measureMode.query ? { status: 302, headers: { Location: mode === 'denied' ? deniedOrigin + '/' : '/' + (mode === 'loop' ? '' : 'tienda/') + measureMode.query } } : { body: markerHtml('ok') });
     try {

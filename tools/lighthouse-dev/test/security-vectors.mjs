@@ -5,7 +5,7 @@ export const assetVectors = [
   { name: 'root-commercial-denied', path: '/cart-helper.js', type: 'Script', stops: ['commercial-endpoint'] },
   { name: 'asset-mutator-denied', path: '/wp-content/themes/freeplast/assets/js/nav.js?add-to-cart=1', type: 'Script', stops: ['commercial-endpoint'] },
 ];
-export const expectedStops = { popup: ['popup'], POST: ['method'], 'commercial-GET': ['commercial-endpoint'], worker: ['worker-target'], ...Object.fromEntries(assetVectors.map(v => [v.name, v.stops])) };
+export const expectedStops = { 'woo-bootstrap-cold': ['method'], popup: ['popup'], POST: ['method'], 'commercial-GET': ['commercial-endpoint'], worker: ['worker-target'], ...Object.fromEntries(assetVectors.map(v => [v.name, v.stops])) };
 export const staticRequests = [
   '/wp-content/themes/freeplast/assets/js/cart-quantity-feedback.js?ver=1.2',
   '/wp-content/plugins/woocommerce/assets/js/frontend/add-to-cart.min.js?ver=11.1',

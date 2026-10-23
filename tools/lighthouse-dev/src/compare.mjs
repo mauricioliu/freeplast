@@ -8,7 +8,7 @@ import { schedule, instrumentHash } from './measure.mjs';
 import { sha256 } from './preflight.mjs';
 import { origin, routes, policy, measureMode, activeMode, deny } from './policy.mjs';
 import { validateLhr, summarize, metricIds, categoryIds } from './report.mjs';
-import { profiles } from './config.mjs';
+import { profiles, auditConfig } from './config.mjs';
 import { allowance, plan, checkSeriesRequest } from './budget.mjs';
 import { pngSize, captureConsistency } from './capture.mjs';
 
@@ -198,7 +198,7 @@ async function current(run) {
   const pins = JSON.parse(await readFile(new URL('../toolchain.json', import.meta.url)));
   if (!equal(e.pins, pins)) reasons.push('current-pins');
   if (e.instrument !== await instrumentHash()) reasons.push('current-instrument');
-  if (e.configHash !== sha256(JSON.stringify(profiles))) reasons.push('current-config');
+  if (e.configHash !== sha256(JSON.stringify(auditConfig))) reasons.push('current-config');
   if (e.origin !== origin || !equal(e.routes, routes) || !equal(e.mode, activeMode())) reasons.push('current-cases');
   if (e.policyVersion !== 2 || e.sanitizerVersion !== 2 || run.run.cache !== 'browser-cold-new-profile; server-unchanged') reasons.push('current-protocol');
   return reasons;

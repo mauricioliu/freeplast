@@ -28,6 +28,12 @@ export const profiles = {
   },
 };
 
+// Lab-only: native Woo refresh on BFCache restore requires a forbidden POST.
+export const auditConfig = {
+  generation: 2, profiles,
+  disabledFeatures: ['NetworkTimeServiceQuerying', 'AutofillServerCommunication', 'kPreconnectToSearch', 'kSearchEnginePreconnect2', 'BackForwardCache'],
+};
+
 export function lighthouseConfig(profile) {
   if (!Object.hasOwn(profiles, profile)) throw new Error('Unknown profile');
   return { extends: 'lighthouse:default', settings: structuredClone(profiles[profile]) };

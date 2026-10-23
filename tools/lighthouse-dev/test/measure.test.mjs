@@ -73,6 +73,20 @@ test('first failure stops; no retries; incomplete audit and existing evidence re
   assert.equal(run.audits.length, 1); assert.equal(run.audits[0].status, 'incomplete');
   assert.equal(run.artifacts.length, 3);
 });
+test('failed audit persists bounded failure evidence, never raw diagnostic secrets', async () => {
+  const { run } = await fixture({ auditRun: async () => {
+    const e = new SafetyError('method');
+    e.evidence = { schema: 1, diagnostic: { source: 'renderer-fetch', method: 'POST', target: { origin: 'approved', path: '/', action: 'get_refreshed_fragments' }, initiator: '/wp-content/plugins/woocommerce/assets/js/frontend/cart-fragments.min.js', sessionKnown: true, frameKnown: true, continuationAttempted: false, failRequestAcknowledged: true }, proxy: { nonReadOnlyUpstreamRequests: 0, upstreamConnections: 1, activeRequests: 0 }, cleanup: { browserExitObserved: true, profileRemoved: true, proxyClosed: true }, worker: { exitObserved: true, processGroupAbsent: true } };
+    e.diagnostic = { postData: 'SECRET_BODY', syntheticTarget: 'http://mliu:8131/?token=SECRET_TOKEN' };
+    throw e;
+  } });
+  assert.equal(run.audits[0].failureEvidence.diagnostic.method, 'POST');
+  assert.equal(run.audits[0].failureEvidence.diagnostic.target.action, 'get_refreshed_fragments');
+  assert.equal(run.audits[0].failureEvidence.proxy.nonReadOnlyUpstreamRequests, 0);
+  assert.equal(run.audits[0].failureEvidence.worker.processGroupAbsent, true);
+  assert.doesNotMatch(JSON.stringify(run), /SECRET_|postData|syntheticTarget/);
+});
+
 test('source/DNS/content drift, abort and deadline invalidate without audit', async () => {
   for (const change of [
     { currentSource: async () => ({ changed: true }) },

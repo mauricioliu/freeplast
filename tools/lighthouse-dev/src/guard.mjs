@@ -1,4 +1,5 @@
 import { checkRequest, checkResponse, SafetyError } from './policy.mjs';
+import { publicTarget, publicInitiator } from './failure.mjs';
 
 // Independent browser-level CDP connection: Lighthouse cannot detach our sessions.
 export async function installGuard(browser, page, policy, onDocument = () => {}) {
@@ -9,7 +10,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let id = 0, closed = false, closing = false, failure;
   const provenance = { httpsDenied: 0, httpsContinued: 0, websocketCreations: 0, httpContinued: 0, allTargetsGuarded: false, networkEnabled: false, fetchEnabled: false };
-  const pending = new Map(), sessions = new Map(), inventory = [], documents = [];
+  const pending = new Map(), sessions = new Map(), initiators = new Map(), inventory = [], documents = [];
   let rejectFailure;
   const failed = new Promise((_, reject) => { rejectFailure = reject; });
   failed.catch(() => {});
@@ -44,6 +45,10 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
       entry.networkEnabled = true;
       entry.fetchEnabled = true;
       await send('Runtime.runIfWaitingForDebugger', {}, child);
+    } else if (method === 'Network.requestWillBeSent') {
+      const key = `${sessionId}:${params.requestId}`;
+      if (initiators.size >= 256) initiators.delete(initiators.keys().next().value);
+      initiators.set(key, publicInitiator(params.initiator, policy.origin));
     } else if (method === 'Fetch.requestPaused') {
       const { requestId, request, resourceType, responseStatusCode } = params;
       let continuationAttempted = false;
@@ -66,7 +71,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
       } catch (e) {
         let failRequestAcknowledged = false;
         await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).then(() => { failRequestAcknowledged = true; }, () => {});
-        fatal(e instanceof SafetyError ? e.code : 'guard-request-failure', { source: 'renderer-fetch', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStatusCode ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) });
+        fatal(e instanceof SafetyError ? e.code : 'guard-request-failure', { source: 'renderer-fetch', method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(request.method) ? request.method : 'OTHER', target: publicTarget(request.url, policy.origin), initiator: initiators.get(`${sessionId}:${params.networkId}`) ?? null, frameKnown: typeof params.frameId === 'string', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStatusCode ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) });
       }
     } else if (method === 'Network.webSocketCreated') {
       provenance.websocketCreations++;
@@ -103,6 +108,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {})
   }
   return {
     failed, inventory, documents,
+    snapshot() { return { ...provenance, guardedTargets: [...sessions.values()].filter(s => s.ready).length }; },
     async verify() {
       if (failure) throw failure;
       if (!documents.length || ![...sessions.values()].some(x => x.targetId === main.targetId && x.ready)) throw new SafetyError('guard-unproven');

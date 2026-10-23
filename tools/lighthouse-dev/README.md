@@ -10,6 +10,14 @@ This section supersedes **all historical budgets, activation instructions and ca
 - New state only: `measurement-budget-v3-plan-mvl2p6uk-wka1/` and `receipts-v3-plan-mvl2p6uk-wka1/`. Old schema1/2 allocations, identity/gate receipts and manifests are not replaced, moved or migrated. `save` uses exclusive0600 writes, file+parent-directory fsync; permanent kernel lock spans collection/reconciliation. No reset/state-root CLI override.
 - Source receipt/gate activation belongs to lead, **after** current full native matrix, objective verification and main integration. Gate binds runtime **and all test/oracle sources**, plan/hash. No partial native selection can produce a candidate, even if every case is explicitly selected. Same-worker main-CLI doctor remains a separately released phase; implementation does not run A1/A2.
 
+### Repair1: generation2 laboratory configuration (requires new gate/receipts)
+
+Only this instrument's temporary owned Chromium processes disable `BackForwardCache`, merged with Puppeteer's other disabled features. Both profiles retain every default Lighthouse audit and every Woo script/event/resource. Browser command-line readback verifies the merged flags and owned profile. Complete sanitized JSON/HTML retain the honest `bf-cache` failure and details: this is a **laboratory limitation**, not evidence about production BFCache or functionality. No dedicated/habitual browser, system settings or service is changed. Config hash now covers generation, both profiles and these feature flags.
+
+Trusted server LOCAL + exact8131 + explicit measurement mode version2 additionally requires the `fp_measure_native_empty_v1` marker. On only the three approved GET routes, a fresh anonymous/cookieless/sessionless empty cart renders the exact native mini-cart plus complete fragment filters and native empty hash into the browser's normal cache keys. No endpoint response is synthesized, no script or event removed, and all noneligible/off-mode requests remain unchanged. This is preparation, not an optimization/KPI gain. Without it, pinned Woo's cold bootstrap still POSTs and is blocked. Without the owned-process BFCache flag, even prepared native state POSTs on persisted pageshow; both mechanisms are independently tested.
+
+A new compatible generation2 **36-audit A/A** is required after lead activation/reconciliation. Historical incomplete A1 remains charged, invalid and incomparable; its lost target/initiator/actual counters cannot be recovered from synthetic evidence. Failures now persist bounded source-known diagnostics and explicit guard/proxy/owned-cleanup facts through IPC into failed manifests/events. Unknown facts remain null; secrets/raw query/body/header/cookie/DOM content are excluded. No automatic retry/refund.
+
 ### Lead-only initialization and explicit series requests
 
 ```sh

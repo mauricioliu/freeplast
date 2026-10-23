@@ -3,17 +3,18 @@ import { rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import lighthouse, { generateReport } from 'lighthouse';
-import { lighthouseConfig, timezone, profiles } from './config.mjs';
+import { lighthouseConfig, timezone, profiles, auditConfig } from './config.mjs';
 import { installGuard } from './guard.mjs';
 import { pngSize, captureConsistency, captureRequest, observeExpression } from './capture.mjs';
 import { validateLhr, sanitize, summarize } from './report.mjs';
 import { publicIdentity, sha256 } from './preflight.mjs';
 import { SafetyError } from './policy.mjs';
 import { filteringProxy } from './proxy.mjs';
+import { failureEvidence } from './failure.mjs';
 
 export async function audit({ policy, address, url, profile: name, pins, profileDir: profile, capture: captureWanted = false }, signal) {
   if (!profile) throw new SafetyError('owned-profile-required');
-  let browser, processHandle, guard, exit, proxy;
+  let browser, processHandle, guard, exit, proxy, auditFailure, page;
   try {
     if (sha256(await readFile(pins.browser.path)) !== pins.browser.sha256) throw new SafetyError('browser-hash');
     proxy = await filteringProxy(policy, address);
@@ -24,7 +25,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
       '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1', `--proxy-server=${proxy.url}`, '--proxy-bypass-list=<-loopback>', '--lang=es',
       `--host-resolver-rules=${mapping.join(', ')}`, '--disable-quic', '--disable-extensions',
       '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
-      '--disable-features=NetworkTimeServiceQuerying,AutofillServerCommunication,kPreconnectToSearch,kSearchEnginePreconnect2', '--disable-component-update', '--disable-domain-reliability',
+      `--disable-features=${auditConfig.disabledFeatures.join(',')}`, '--disable-component-update', '--disable-domain-reliability',
     ] });
     if (args.some(x => /no-sandbox|disable-setuid-sandbox/.test(x))) throw new SafetyError('sandbox-disabled');
     processHandle = spawn(pins.browser.path, args, {
@@ -47,7 +48,15 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     });
     browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
     if (!(await browser.version()).endsWith('/' + pins.browser.version)) throw new SafetyError('browser-version');
-    const [page] = await browser.pages();
+    const launchSession = await browser.target().createCDPSession();
+    const observedArgs = (await launchSession.send('Browser.getBrowserCommandLine')).arguments;
+    await launchSession.detach();
+    const featureArgs = args.filter(arg => arg.startsWith('--disable-features='));
+    if (featureArgs.length !== 1 || !auditConfig.disabledFeatures.every(feature => featureArgs[0].slice('--disable-features='.length).split(',').includes(feature))
+      || JSON.stringify(observedArgs.filter(arg => arg.startsWith('--disable-features='))) !== JSON.stringify(featureArgs)
+      || !observedArgs.includes(`--user-data-dir=${profile}`)) throw new SafetyError('browser-launch-config');
+    const launchProof = { generation: auditConfig.generation, disabledFeatures: featureArgs[0].slice('--disable-features='.length).split(','), ownedProfile: true };
+    [page] = await browser.pages();
     if (!page || page.url() !== 'about:blank') throw new SafetyError('browser-not-empty');
     guard = await installGuard(browser, page, policy, () => proxy.arm());
     await page.emulateTimezone(timezone);
@@ -70,6 +79,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     // they are never embedded in the sanitized LHR/HTML. The capture context is
     // RE-ASSERTED after Lighthouse: native probes observed mismatched default
     // capture surfaces. Their teardown timing was not established as the cause.
+    const fixtureState = policy.fixture ? await page.evaluate(() => ({ bootstrapLoaded: document.body.dataset.fpFixtureLoaded === 'yes', nativeEmptyState: document.body.dataset.fpFixtureNativeState === 'true', externalScripts: document.querySelectorAll('script[src]').length, persistedPageShows: window.fpFixturePersistedShows ?? null })) : undefined;
     let capture;
     if (captureWanted) {
       const { width, height, deviceScaleFactor } = profiles[name].screenEmulation;
@@ -112,13 +122,32 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     security.rendererProof = guard.assertHealthy();
     security.proxy = proxy.verify(security.rendererProof);
     security.guardedThroughShutdown = true;
-    return { lhr, html, ...(capture ? { capture } : {}), summary: summarize(lhr), security, settings: lhr.configSettings, launch: { args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
+    return { lhr, html, ...(fixtureState ? { fixtureState } : {}), ...(capture ? { capture } : {}), summary: summarize(lhr), security, settings: lhr.configSettings, launch: { observed: launchProof, args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
+  } catch (error) {
+    auditFailure = error instanceof SafetyError ? error : new SafetyError('audit-failed');
+    if (policy.fixture && page) {
+      try {
+        const fixtureState = await page.evaluate(() => ({ bootstrapLoaded: document.body.dataset.fpFixtureLoaded === 'yes', cartStorageEvents: window.fpFixtureCartStorageEvents ?? null, seedPresentBeforeNative: window.fpFixtureSeedPresent ?? null, persistedPageShows: window.fpFixturePersistedShows ?? null }));
+        auditFailure.diagnostic = { ...auditFailure.diagnostic, fixtureState };
+      } catch { /* Failed fixture observation remains unavailable, never inferred. */ }
+    }
+    throw auditFailure;
   } finally {
-    guard?.close();
-    if (browser) await Promise.race([browser.close().catch(() => {}), new Promise(resolve => setTimeout(resolve, 2000))]);
-    if (processHandle && processHandle.exitCode === null && processHandle.signalCode === null) processHandle.kill('SIGKILL');
-    if (exit) await exit;
-    await proxy?.close();
-    await rm(profile, { recursive: true, force: true });
+    const cleanup = { browserExitObserved: false, profileRemoved: false, proxyClosed: false, guardClosed: false };
+    guard?.beginShutdown();
+    try {
+      if (browser) await Promise.race([browser.close().catch(() => {}), new Promise(resolve => setTimeout(resolve, 2000))]);
+      if (processHandle && processHandle.exitCode === null && processHandle.signalCode === null) processHandle.kill('SIGKILL');
+      if (exit) await exit;
+      cleanup.browserExitObserved = Boolean(processHandle && (processHandle.exitCode !== null || processHandle.signalCode !== null));
+    } catch { auditFailure ||= new SafetyError('cleanup-failed'); }
+    try { await proxy?.close(); cleanup.proxyClosed = Boolean(proxy); } catch { auditFailure ||= new SafetyError('cleanup-failed'); }
+    const guardState = guard?.snapshot();
+    try { guard?.close(); cleanup.guardClosed = Boolean(guard); } catch { auditFailure ||= new SafetyError('cleanup-failed'); }
+    try { await rm(profile, { recursive: true, force: true }); cleanup.profileRemoved = true; } catch { auditFailure ||= new SafetyError('cleanup-failed'); }
+    if (auditFailure) {
+      auditFailure.evidence = failureEvidence({ diagnostic: auditFailure.diagnostic, proxy: proxy?.snapshot(), guard: guardState, cleanup });
+      throw auditFailure;
+    }
   }
 }

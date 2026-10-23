@@ -92,6 +92,31 @@ function fp_measure_quantity_args( $args, $product = null ) {
 	return $args;
 }
 
+/** Prepare the native empty-cart cache, never call/relax the commerce endpoint. */
+function fp_measure_fragment_bootstrap( $params, $handle ) {
+	if ( ! fp_measure_mode_active() || 'wc-cart-fragments' !== $handle || 'GET' !== ( $_SERVER['REQUEST_METHOD'] ?? '' )
+		|| ! in_array( parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), array( '/', '/tienda/', '/producto/caja-cosechera-3-4/' ), true )
+		|| ! empty( $_COOKIE ) || ! function_exists( 'WC' ) || is_user_logged_in()
+		|| ! WC()->cart || ! WC()->session || WC()->session->has_session() || ! WC()->cart->is_empty()
+		|| ! is_array( $params ) || empty( $params['fragment_name'] ) || empty( $params['cart_hash_key'] ) ) {
+		return $params;
+	}
+	// Same projection as WC_AJAX::get_refreshed_fragments, without endpoint/session mutation.
+	ob_start();
+	woocommerce_mini_cart();
+	$mini_cart = ob_get_clean();
+	$fragments = apply_filters( 'woocommerce_add_to_cart_fragments', array(
+		'div.widget_shopping_cart_content' => '<div class="widget_shopping_cart_content">' . $mini_cart . '</div>',
+	) );
+	$cart_hash = WC()->cart->get_cart_hash();
+	if ( '' !== $cart_hash || ! WC()->cart->is_empty() || WC()->session->has_session() ) { return $params; }
+	$data = wp_json_encode( array( 'fragments' => $fragments, 'cart_hash' => $cart_hash ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT );
+	if ( false === $data ) { return $params; }
+	wp_add_inline_script( 'wc-cart-fragments', '/* fp_measure_native_empty_v1 */ (function(p,d){try{if(document.cookie||d.cart_hash!==""||sessionStorage.getItem(p.fragment_name)!==null)return;sessionStorage.setItem(p.fragment_name,JSON.stringify(d.fragments));sessionStorage.setItem(p.cart_hash_key,d.cart_hash);localStorage.setItem(p.cart_hash_key,d.cart_hash);}catch(e){}})(wc_cart_fragments_params,' . $data . ');', 'before' );
+	return $params;
+}
+add_filter( 'woocommerce_get_script_data', 'fp_measure_fragment_bootstrap', 10, 2 );
+
 add_filter( 'woocommerce_output_related_products_args', 'fp_measure_related_args' );
 add_filter( 'woocommerce_product_related_posts_shuffle', 'fp_measure_keep_related_order' );
 add_filter( 'woocommerce_related_products', 'fp_measure_deterministic_related', 10, 3 );

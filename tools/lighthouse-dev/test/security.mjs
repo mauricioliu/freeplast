@@ -16,6 +16,8 @@ import { fixtureAdapter, fixtureHtml } from './fixture-adapter.mjs';
 import { assertHttpsDenial } from './security-oracle.mjs';
 import { assetVectors, expectedStops, staticRequests } from './security-vectors.mjs';
 import { profiles } from '../src/config.mjs';
+import { recordFailure } from '../src/failure.mjs';
+import { wooBootstrapFixture } from './woo-bootstrap-fixture.mjs';
 
 process.umask(0o077);
 assert.equal(process.argv.length, 2);
@@ -39,6 +41,9 @@ const cases = [
   ['popup', ({ deniedOrigin }) => ({ body: fixtureHtml(`<script>window.open(${JSON.stringify(deniedOrigin + '/')})</script>`) })],
   ['frame', ({ deniedOrigin }) => ({ body: fixtureHtml(`<iframe title="Denied" src="${deniedOrigin}/"></iframe>`) })],
   ['image', ({ deniedOrigin }) => ({ body: fixtureHtml(`<img alt="Denied" src="${deniedOrigin}/asset.png">`) })],
+  ['woo-bootstrap-cold', wooBootstrapFixture()],
+  ['woo-prepared', wooBootstrapFixture(true)],
+  ['woo-prepared-desktop', wooBootstrapFixture(true)],
   ['POST', () => ({ body: fixtureHtml('<script>fetch("/",{method:"POST",body:"synthetic"})</script>') })],
   ['commercial-GET', () => ({ body: fixtureHtml('<script>fetch("/?add-to-cart=1")</script>') })],
   ['websocket', ({ deniedOrigin }) => ({ body: fixtureHtml(`<script>new WebSocket(${JSON.stringify(deniedOrigin.replace('http:', 'ws:') + '/')})</script>`) })],
@@ -57,10 +62,11 @@ const cases = [
   ['clean', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
   ['clean-desktop', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
 ];
-const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets']);
+const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets', 'woo-prepared', 'woo-prepared-desktop']);
+const positive = name => name.startsWith('clean') || name.startsWith('woo-prepared');
 const results = [];
 try {
-  const selected = process.env.LH_FIXTURE_CASE ? cases.filter(([name]) => process.env.LH_FIXTURE_CASE.split(',').includes(name)) : [...cases.filter(([name]) => name.startsWith('clean')), ...cases.filter(([name]) => !name.startsWith('clean'))];
+  const selected = process.env.LH_FIXTURE_CASE ? cases.filter(([name]) => process.env.LH_FIXTURE_CASE.split(',').includes(name)) : [...cases.filter(([name]) => positive(name)), ...cases.filter(([name]) => !positive(name))];
   assert.ok(selected.length, 'Unknown synthetic fixture case');
   for (const [name, render] of selected) {
     const fixture = await fixtureAdapter(render);
@@ -72,8 +78,33 @@ try {
         assert.equal(fixture.denied.length, 0);
       }
       let result, error;
-      try { result = await runWorker({ policy: fixture.policy, address: '127.0.0.1', url: measureUrl(fixture.origin, '/'), profile: name === 'clean-desktop' ? 'desktop' : 'mobile', pins, capture: name.startsWith('clean') }, fd.fd, { timeout: 30000 }); }
-      catch (e) { error = e.code || 'unclassified'; row.diagnostic = e.diagnostic || null; }
+      try { result = await runWorker({ policy: fixture.policy, address: '127.0.0.1', url: measureUrl(fixture.origin, '/'), profile: name.endsWith('-desktop') ? 'desktop' : 'mobile', pins, capture: positive(name) }, fd.fd, { timeout: 30000 }); }
+      catch (e) {
+        error = e.code || 'unclassified'; row.diagnostic = e.diagnostic || null;
+        const failedRun = { status: 'incomplete', failure: error, audits: [{ status: 'incomplete' }] };
+        recordFailure(failedRun, e);
+        await save(root, join(evidence, `${name}-failed-manifest.json`), failedRun);
+        const persisted = JSON.parse(await readFile(join(evidence, `${name}-failed-manifest.json`), 'utf8'));
+        assert.deepEqual(persisted.audits[0].failureEvidence, failedRun.failureEvidence);
+        row.failureEvidence = persisted.failureEvidence;
+        if (name === 'POST' || name === 'woo-bootstrap-cold') {
+          assert.equal(row.failureEvidence.diagnostic.method, 'POST');
+          assert.equal(row.failureEvidence.diagnostic.continuationAttempted, false);
+          assert.equal(row.failureEvidence.diagnostic.failRequestAcknowledged, true);
+          assert.equal(row.failureEvidence.proxy.nonReadOnlyUpstreamRequests, 0);
+          assert.equal(row.failureEvidence.proxy.activeRequests, 0);
+          assert.equal(row.failureEvidence.cleanup.browserExitObserved, true);
+          assert.equal(row.failureEvidence.cleanup.proxyClosed, true);
+          assert.equal(row.failureEvidence.worker.exitObserved, true);
+          assert.equal(row.failureEvidence.worker.processGroupAbsent, true);
+          assert.equal(row.failureEvidence.worker.profileRemoved, true);
+          if (name === 'woo-bootstrap-cold') {
+            assert.equal(row.failureEvidence.diagnostic.target.action, 'get_refreshed_fragments');
+            assert.equal(row.failureEvidence.diagnostic.target.path, '/');
+            assert.ok(fixture.hits.some(h => h.path === '/wp-content/plugins/woocommerce/assets/js/frontend/cart-fragments.min.js'));
+          }
+        }
+      }
       row.error = error || null;
       row.deniedRequests = fixture.denied;
       row.deniedConnections = fixture.deniedConnections;
@@ -111,13 +142,23 @@ try {
         assert.equal(persisted.audits['third-party-cookies'].id, 'third-party-cookies');
         assert.ok(persisted.categories['best-practices'].auditRefs.some(ref => ref.id === 'third-party-cookies'));
         assert.equal(persisted.audits['is-crawlable'].score, 0);
-        if (name.startsWith('clean')) {
+        if (name.startsWith('woo-prepared')) {
+          assert.deepEqual(result.fixtureState, { bootstrapLoaded: true, nativeEmptyState: true, externalScripts: 3, persistedPageShows: 0 });
+          row.bootstrap = result.fixtureState;
+          assert.equal(persisted.audits['bf-cache'].score, 0, 'real BFCache lab limitation must remain in full report');
+          assert.ok(persisted.audits['bf-cache'].details, 'BFCache failure details retained');
+          assert.ok(result.launch.observed.disabledFeatures.includes('BackForwardCache'));
+          assert.equal(result.launch.observed.ownedProfile, true);
+          row.launch = result.launch;
+          row.bfCache = persisted.audits['bf-cache'];
+        }
+        if (positive(name)) {
           // Native capture path: sidecar PNG from the owned visit whose pixel size
           // matches an observed renderer viewport state; raw pixels never in LHR/HTML.
           const shot = Buffer.from(result.capture?.png ?? '', 'base64');
           const pixels = pngSize(shot);
           captureConsistency({ ...result.capture, pixels });
-          const profileName = name === 'clean-desktop' ? 'desktop' : 'mobile';
+          const profileName = name.endsWith('-desktop') ? 'desktop' : 'mobile';
           const profile = profiles[profileName];
           assert.ok(fixture.hits.filter(h => h.path === '/' + measureMode.query && h.markerMatches).every(h => h.userAgentProfile === profileName), 'audited requests must use configured UA');
           assert.equal(result.settings.formFactor, profile.formFactor);

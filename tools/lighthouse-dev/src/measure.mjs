@@ -6,23 +6,24 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual as equal } from 'node:util';
 import { origin, routes, policy, policyVersion, measureMode, activeMode, measureUrl, checkRequest, resolveLocal, resourceHosts, deny, SafetyError } from './policy.mjs';
 import { pngSize, captureConsistency } from './capture.mjs';
+import { recordFailure } from './failure.mjs';
 import { preflight, request, sha256 } from './preflight.mjs';
 import { stateRoot, privateDirectory, capacity, save, manifest, readPrivate, toolchain, lock } from './store.mjs';
 import { fingerprint, hardware, load, checkout } from './fingerprint.mjs';
-import { profiles } from './config.mjs';
+import { profiles, auditConfig } from './config.mjs';
 import { runWorker } from './lifecycle.mjs';
 import { plan, reserveMeasurement, reserveAudit, finishMeasurement, reserveDoctor } from './budget.mjs';
 
 export const schedule = () => [1, 2, 3].flatMap(round => ['mobile', 'desktop'].flatMap(profile => routes.map(path => ({ round, profile, path }))));
 export async function instrumentHash() {
   const base = fileURLToPath(new URL('../', import.meta.url));
-  const paths = ['package.json', 'package-lock.json', 'toolchain.json', 'bin/freeplast-lh.mjs', ...(await readdir(join(base, 'src'))).sort().filter(x => x.endsWith('.mjs')).map(x => 'src/' + x)];
+  const paths = ['package.json', 'package-lock.json', 'toolchain.json', 'bin/freeplast-lh.mjs', '../../wordpress/wp-content/themes/freeplast/inc/measure-mode.php', ...(await readdir(join(base, 'src'))).sort().filter(x => x.endsWith('.mjs')).map(x => 'src/' + x)];
   return sha256(JSON.stringify(await Promise.all(paths.map(async path => [path, sha256(await readFile(join(base, path)))]))));
 }
 
 export async function securityOracleHash() {
   const base = fileURLToPath(new URL('../test/', import.meta.url));
-  const names = (await readdir(base)).filter(n => n.endsWith('.mjs')).sort();
+  const names = (await readdir(base)).filter(n => /\.(mjs|php)$/.test(n)).sort();
   return sha256(JSON.stringify(await Promise.all(names.map(async name => [name, sha256(await readFile(join(base, name)))]))));
 }
 export const receiptDirectory = (root = stateRoot) => join(root, 'receipts-v3-' + plan.id);
@@ -59,7 +60,7 @@ export async function inspect({ root = stateRoot, signal } = {}) {
   if (asset.status !== 200 || sha256(asset.body) !== sha256(await readFile(join(checkout, 'wordpress/wp-content/themes/freeplast/style.css')))) deny('served-source-mismatch');
   const after = await fingerprint();
   if (JSON.stringify(after) !== JSON.stringify(source)) deny('source-drift');
-  return { pins, instrument, configHash: sha256(JSON.stringify(profiles)), policyVersion, sanitizerVersion: 2, mode: activeMode(), origin, routes, addresses, identity: receipt, source, pages, styleHash: sha256(asset.body), hardware: hardware(), storage: await capacity(root, 32 * 1024 ** 2), load: load() };
+  return { pins, instrument, configHash: sha256(JSON.stringify(auditConfig)), policyVersion, sanitizerVersion: 2, mode: activeMode(), origin, routes, addresses, identity: receipt, source, pages, styleHash: sha256(asset.body), hardware: hardware(), storage: await capacity(root, 32 * 1024 ** 2), load: load() };
 }
 
 export async function doctor() {
@@ -154,12 +155,13 @@ export async function collect({ root, fd, label, request: seriesRequest, inspect
     run.status = 'complete';
   } catch (error) {
     run.failure = error instanceof SafetyError ? error.code : signal?.aborted ? 'interrupted' : 'collection-failed';
+    recordFailure(run, error);
   } finally {
     run.finishedAt = new Date(now()).toISOString();
     run.loadAfter = load();
     run.artifacts.push(await save(root, join(dir, 'summary.json'), { id, status: run.status, failure: run.failure, audits: run.audits.map(({ path, profile, round, status, summary }) => ({ path, profile, round, status, summary })) }));
     run.artifacts.push(await save(root, join(dir, 'summary.md'), `# ${id}\n\nStatus: ${run.status}\nCompleted: ${run.audits.filter(x => x.status === 'complete').length}/18\nCaptures: ${run.audits.filter(x => x.capture).length}/${run.captureAllowance}\nFailure: ${run.failure || 'none'}\n\nMeasurement mode: ${measureMode.id}${measureMode.query} (server-side proven). Laboratory only. TBT is not INP. noindex preserved. No improvement claim.\n`));
-    run.artifacts.push(await save(root, join(dir, 'events.json'), { startedAt: run.startedAt, finishedAt: run.finishedAt, status: run.status, reason: run.failure || null }));
+    run.artifacts.push(await save(root, join(dir, 'events.json'), { startedAt: run.startedAt, finishedAt: run.finishedAt, status: run.status, reason: run.failure || null, ...(run.failureEvidence ? { failureEvidence: run.failureEvidence } : {}) }));
     await manifest(root, dir, run);
     await finishMeasurement(root, reservation, run.status, run.failure || null);
   }
@@ -173,7 +175,7 @@ export async function measure(label, request) {
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     return await collect({
-      root: stateRoot, fd, label, request: { ...request, compatibility: { instrument: await instrumentHash(), configHash: sha256(JSON.stringify(profiles)), sourceHash: (await fingerprint()).sourceHash } }, signal: controller.signal,
+      root: stateRoot, fd, label, request: { ...request, compatibility: { instrument: await instrumentHash(), configHash: sha256(JSON.stringify(auditConfig)), sourceHash: (await fingerprint()).sourceHash } }, signal: controller.signal,
       inspectRun: () => inspect({ signal: controller.signal }), currentSource: fingerprint, currentAddresses: resolveLocal,
       preflightRun: (item, env, signal) => preflight(policy(), item.path, env.addresses[0], signal, { mode: true }),
       auditRun: (item, env, _fd, budget) => runWorker({ policy: policy({ hosts: env.pages.find(x => x.path === item.path).hosts }), address: env.addresses[0], pins: env.pins, url: measureUrl(origin, item.path), profile: item.profile, capture: budget.capture === true }, fd.fd, budget),

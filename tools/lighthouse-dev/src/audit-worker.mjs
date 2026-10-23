@@ -1,5 +1,6 @@
 import { audit } from './audit.mjs';
 import { SafetyError } from './policy.mjs';
+import { failureEvidence, safeDiagnostic } from './failure.mjs';
 
 const controller = new AbortController();
 const timer = setTimeout(() => controller.abort(), 115000);
@@ -11,7 +12,7 @@ process.once('message', async config => {
     const result = await audit(config, controller.signal);
     await send({ ok: true, result });
   } catch (error) {
-    await send({ ok: false, error: error instanceof SafetyError ? error.code : 'audit-failed', diagnostic: error.diagnostic || null });
+    await send({ ok: false, error: error instanceof SafetyError ? error.code : 'audit-failed', diagnostic: config.policy?.fixture ? error.diagnostic || null : safeDiagnostic(error.diagnostic), evidence: failureEvidence(error.evidence) });
   } finally {
     clearTimeout(timer);
     process.disconnect?.();

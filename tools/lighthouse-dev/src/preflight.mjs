@@ -52,7 +52,7 @@ export async function preflight(p, path, address, signal, { mode = false } = {})
     const html = response.body.toString('utf8');
     publicIdentity(html, response.headers);
     const markers = mode ? html.split(measureMode.marker).length - 1 : 0;
-    if (mode && !markers) deny('measure-mode-inactive');
+    if (mode && (!markers || !html.includes(measureMode.bootstrapMarker))) deny('measure-mode-inactive');
     return {
       html, url, hops,
       mode: { active: mode, id: measureMode.id, query: measureMode.query, version: measureMode.version, markers },

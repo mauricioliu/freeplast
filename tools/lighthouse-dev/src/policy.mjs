@@ -7,7 +7,7 @@ export const routes = ['/', '/tienda/', '/producto/caja-cosechera-3-4/'];
 // Measurement mode: DEV pages are audited only at original path + this exact query.
 // `marker` is the source-proven deterministic quantity-id prefix emitted by the
 // gated theme mode; its presence in preflight HTML proves the server mode was active.
-export const measureMode = Object.freeze({ id: 'fp-measure', query: '?fp-measure=1', marker: 'quantity_fpm_', version: 1 });
+export const measureMode = Object.freeze({ id: 'fp-measure', query: '?fp-measure=1', marker: 'quantity_fpm_', bootstrapMarker: 'fp_measure_native_empty_v1', version: 2 });
 export const activeMode = () => ({ id: measureMode.id, query: measureMode.query, version: measureMode.version, active: true });
 export const measureUrl = (base, path) => base + path + measureMode.query;
 export const policyVersion = 2;

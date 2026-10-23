@@ -7,7 +7,7 @@ import { distribution, loadRun, calibrationData, evaluate, calibrate, compare, b
 import { schedule, instrumentHash } from '../src/measure.mjs';
 import { sha256 } from '../src/preflight.mjs';
 import { save, manifest } from '../src/store.mjs';
-import { profiles } from '../src/config.mjs';
+import { profiles, auditConfig } from '../src/config.mjs';
 import { origin, routes, measureMode, measureUrl, activeMode } from '../src/policy.mjs';
 import { requestFor, runPlan } from './budget-fixture.mjs';
 import { summarize, metricIds, categoryIds } from '../src/report.mjs';
@@ -21,7 +21,7 @@ async function fixture(root, id, change = () => {}, { slot = 2, captures = false
   const source = { head: 'synthetic', branch: 'synthetic', status: [], indexHash: hash, files, sourceHash: sha256(JSON.stringify(files)) }, headers = { 'cache-control': 'no-store' };
   const pageMode = { ...activeMode(), markers: 2 };
   const run = { schema: 3, plan: runPlan, id, label: 'synthetic', status: 'complete', startedAt: stamp, deadline: '2099-01-01T00:45:00.000Z', finishedAt: '2099-01-01T00:01:00.000Z', slot, captureAllowance: captures ? 6 : 0, schedule: schedule(), audits: [], artifacts: [], cache: 'browser-cold-new-profile; server-unchanged', retries: 0, loadBefore: {}, loadAfter: {}, sourceAfter: source,
-    environment: { pins: JSON.parse(await readFile(new URL('../toolchain.json', import.meta.url))), instrument: await instrumentHash(), configHash: sha256(JSON.stringify(profiles)), policyVersion: 2, sanitizerVersion: 2, mode: activeMode(), origin, routes, addresses: ['127.0.0.1'], identity: { schema: 1, origin, checkout: 'synthetic', sourceHash: source.sourceHash, verifiedAt: stamp, operator: 'synthetic', runtimeId: 'synthetic', wordpress: '1', plugins: {} }, source, pages: routes.map(path => ({ path, contentHash: hash, headers, mode: pageMode })), styleHash: hash, hardware: { hostname: 'synthetic', platform: 'linux', release: 'synthetic', arch: 'x64', cpus: [{ model: 'synthetic' }], memory: 1 }, storage: {}, load: {} } };
+    environment: { pins: JSON.parse(await readFile(new URL('../toolchain.json', import.meta.url))), instrument: await instrumentHash(), configHash: sha256(JSON.stringify(auditConfig)), policyVersion: 2, sanitizerVersion: 2, mode: activeMode(), origin, routes, addresses: ['127.0.0.1'], identity: { schema: 1, origin, checkout: 'synthetic', sourceHash: source.sourceHash, verifiedAt: stamp, operator: 'synthetic', runtimeId: 'synthetic', wordpress: '1', plugins: {} }, source, pages: routes.map(path => ({ path, contentHash: hash, headers, mode: pageMode })), styleHash: hash, hardware: { hostname: 'synthetic', platform: 'linux', release: 'synthetic', arch: 'x64', cpus: [{ model: 'synthetic' }], memory: 1 }, storage: {}, load: {} } };
   for (const [i, item] of schedule().entries()) {
     const lhr = { lighthouseVersion: run.environment.pins.lighthouse, finalDisplayedUrl: measureUrl(origin, item.path), finalUrl: measureUrl(origin, item.path), configSettings: profiles[item.profile], categories: {}, audits: {} };
     for (const m of metricIds) lhr.audits[m] = { id: m, numericValue: m === 'cumulative-layout-shift' ? .01 : 1000, score: 1, scoreDisplayMode: 'numeric' };
