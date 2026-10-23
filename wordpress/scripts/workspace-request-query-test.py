@@ -20,7 +20,7 @@ for storage, cases in queries.items():
       CREATE TABLE wp_wc_order_addresses (order_id INTEGER, address_type TEXT, company TEXT);
       CREATE TABLE wp_options (option_name TEXT UNIQUE, option_value TEXT);
     ''')
-    for id in range(1, 14):
+    for id in range(1, 16):
         for table in ['wp_posts', 'wp_wc_orders']:
             db.execute(f'INSERT INTO {table} VALUES (?, ?, ?, ?)', (id, 'shop_order', 'trash' if id == 9 else 'wc-pending', '2024-01-01 12:00:00'))
         for table in ['wp_postmeta', 'wp_wc_orders_meta']:
@@ -36,12 +36,17 @@ for storage, cases in queries.items():
     for id, state, document in [(3, 'accepted', 'ready'), (4, 'unknown', 'ready'), (5, 'rejected', 'ready'), (6, None, 'pending'), (11, 'accepted', 'ready'), (12, 'accepted', 'ready'), (13, 'accepted', 'ready')]:
         version = {'schema': 2 if id == 11 else 1, 'order_id': 999 if id == 12 else id, 'version': 1, 'document': document, 'delivery': {'state': state, 'at': 1704110400}}
         db.execute('INSERT INTO wp_options VALUES (?, ?)', (f'fpw_quotation_{id}', json.dumps(version)))
+    # Sent rows keep Enviadas membership without a recorded date (14) and across
+    # revisions whose older accepted version (15) is history: membership never
+    # depends on the date; presentation names a missing date as unknown.
+    db.execute('INSERT INTO wp_options VALUES (?, ?)', ('fpw_quotation_14', json.dumps({'schema': 1, 'order_id': 14, 'version': 1, 'document': 'ready', 'delivery': {'state': 'accepted'}})))
+    db.execute('INSERT INTO wp_options VALUES (?, ?)', ('fpw_quotation_15', json.dumps({'schema': 1, 'order_id': 15, 'version': 2, 'document': 'ready', 'delivery': {'state': 'accepted', 'at': 1704110400}, 'history': [{'schema': 1, 'order_id': 15, 'version': 1, 'document': 'ready', 'delivery': {'state': 'accepted', 'at': 1704024000}}]})))
     db.execute('INSERT INTO wp_options VALUES (?, ?)', ('fpw_quotation_10', 'corrupt-json'))
     db.execute('INSERT INTO wp_options VALUES (?, ?)', ('fpw_tracking_7', json.dumps({'events': {'accepted': '2024-01-01', 'paid': '2024-01-01', 'dispatched': '2024-01-01'}})))
     # Quotation/draft order is not the authority for inbox membership, or sending.
     # Pendientes: without any version row (1, 2, 7), or readable but not confirmed-sent (4, 5, 6).
     # Corrupt (10) and misbound/schema-broken rows (11, 12) belong to neither view: only Todas.
-    expected = {'pending': [1, 2, 4, 5, 6, 7], 'all': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13], 'sent': [3, 13], 'old-filter': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13], 'company': [1], 'rut': [1], 'reference': [1], 'legacy-reference': [1], 'injection': []}
+    expected = {'pending': [1, 2, 4, 5, 6, 7], 'all': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15], 'sent': [3, 13, 14, 15], 'old-filter': [1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15], 'company': [1], 'rut': [1], 'reference': [1], 'legacy-reference': [1], 'injection': []}
     # Archive markers use native metadata in either storage. Accepted sends win even
     # when they happen after an archive; an archived request with no version also works.
     for table in ['wp_postmeta', 'wp_wc_orders_meta']:

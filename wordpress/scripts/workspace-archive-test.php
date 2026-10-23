@@ -50,6 +50,31 @@ $restore = fpw_workspace_archive_html( 91, true, false );
 check_archive( str_contains( $restore, '>Desarchivar</button>' ) && str_contains( $restore, 'fpw_archive_91' ) && str_contains( $restore, 'value="restore"' ), 'archived request has nonce-bound restore form' );
 $archived_state = fpw_workspace_request_state_html( 91, null, false, true );
 check_archive( str_contains( $archived_state, 'Solicitud archivada' ) && str_contains( $archived_state, 'data-fpw-request-state="archived"' ) && !str_contains( $archived_state, 'Solicitud recibida' ), 'archived receipt shows its archive state in every inbox view' );
+function wp_date( $format, $timestamp, $timezone = null ) { return ( new DateTimeImmutable( '@' . (int) $timestamp ) )->setTimezone( $timezone ?? new DateTimeZone( 'UTC' ) )->format( $format ); }
+function esc_attr( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
+function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
+$sent_version = array( 'schema' => 1, 'order_id' => 91, 'version' => 1, 'document' => 'ready', 'approved_at' => 1704024000, 'delivery' => array( 'state' => 'accepted', 'at' => 1704110400 ) );
+$sent_html = fpw_workspace_request_state_html( 91, $sent_version, false, false );
+check_archive( str_contains( $sent_html, 'Cotización enviada' ) && str_contains( $sent_html, 'datetime="2024-01-01T09:00:00-03:00"' ) && str_contains( $sent_html, '01/01/2024 · 09:00' ) && !str_contains( $sent_html, '31/12/2023' ), 'sent row shows the recorded mail handoff moment with date and time' );
+$undated = $sent_version;
+unset( $undated['delivery']['at'] );
+$undated_html = fpw_workspace_request_state_html( 91, $undated, false, false );
+check_archive( str_contains( $undated_html, 'Cotización enviada' ) && str_contains( $undated_html, 'Fecha de envío no disponible' ) && !str_contains( $undated_html, '<time' ), 'sent without a recorded date says so explicitly instead of substituting another timestamp' );
+$string_at = $sent_version;
+$string_at['delivery']['at'] = '2024-01-01';
+check_archive( str_contains( fpw_workspace_request_state_html( 91, $string_at, false, false ), 'Fecha de envío no disponible' ), 'non-integer delivery date is treated as unknown' );
+$approved_only = $sent_version;
+$approved_only['delivery'] = array( 'state' => null, 'at' => null );
+check_archive( !str_contains( fpw_workspace_request_state_html( 91, $approved_only, false, false ), 'Cotización enviada' ) && !str_contains( fpw_workspace_request_state_html( 91, $approved_only, false, false ), 'Fecha de envío' ), 'approval without mail acceptance is never presented as sent' );
+$revised_sent = $sent_version;
+$revised_sent['version'] = 2;
+$revised_sent['history'] = array( array_merge( $sent_version, array( 'version' => 1, 'delivery' => array( 'state' => 'accepted', 'at' => 1704024000 ) ) ) );
+$revised_html = fpw_workspace_request_state_html( 91, $revised_sent, false, false );
+check_archive( str_contains( $revised_html, '01/01/2024 · 09:00' ) && !str_contains( $revised_html, '31/12/2023 · 09:00' ), 'a revised quotation shows the standing version send moment, not the superseded one' );
+$unavailable_html = fpw_workspace_request_state_html( 91, $sent_version, true, false );
+check_archive( str_contains( $unavailable_html, 'Estado no disponible' ) && !str_contains( $unavailable_html, '<time' ), 'unreadable version keeps no send moment' );
+$received_html = fpw_workspace_request_state_html( 91, null, false, false );
+check_archive( str_contains( $received_html, 'Solicitud recibida' ) && !str_contains( $received_html, '<time' ) && !str_contains( $received_html, 'envío' ), 'unsent receipt shows no send moment at all' );
 check_archive( str_contains( fpw_workspace_request_state_html( 91, null, false, false ), 'Solicitud recibida' ), 'restoring recovers received state' );
 check_archive( str_contains( fpw_workspace_request_state_html( 91, $version, false, true ), 'Cotización enviada' ), 'accepted send wins over obsolete archive marker' );
 $revised = $version;

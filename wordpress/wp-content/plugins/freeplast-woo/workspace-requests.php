@@ -109,7 +109,11 @@ function fpw_workspace_request_state_html( int $id, ?array $version, bool $unava
 	// Match inbox membership: a confirmed send (including history) wins over an old archive marker.
 	$archived = $archived && ! $sent && empty( $version['history'] );
 	$label = $archived ? 'Solicitud archivada' : ( $unavailable ? 'Estado no disponible' : ( $sent ? 'Cotización enviada' : ( null === $version ? 'Solicitud recibida' : 'Cotización sin envío confirmado' ) ) );
+	// The send moment is the recorded mail handoff (delivery.at) only — never approval,
+	// creation or row update; a missing date is named, never substituted.
 	$at = $sent && is_int( $version['delivery']['at'] ?? null ) ? $version['delivery']['at'] : null;
-	return '<div class="fpw-request-state' . ( $sent ? ' is-sent' : '' ) . '" data-fpw-request-state="' . ( $archived ? 'archived' : ( $sent ? 'sent' : 'received' ) ) . '"><span>' . $label . '</span>'
-		. ( null !== $at ? '<time datetime="' . esc_attr( fpw_workspace_date( 'c', $at ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y', $at ) ) . '</time>' : '' ) . '</div>';
+	$moment = null !== $at
+		? '<time datetime="' . esc_attr( fpw_workspace_date( 'c', $at ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', $at ) ) . '</time>'
+		: ( $sent ? '<span class="fpw-muted">Fecha de envío no disponible</span>' : '' );
+	return '<div class="fpw-request-state' . ( $sent ? ' is-sent' : '' ) . '" data-fpw-request-state="' . ( $archived ? 'archived' : ( $sent ? 'sent' : 'received' ) ) . '"><span>' . $label . '</span>' . $moment . '</div>';
 }
