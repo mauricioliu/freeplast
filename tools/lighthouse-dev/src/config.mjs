@@ -30,7 +30,7 @@ export const profiles = {
 
 // Lab-only: native Woo refresh on BFCache restore requires a forbidden POST.
 export const auditConfig = {
-  generation: 3, profiles,
+  generation: 4, profiles,
   disabledFeatures: ['NetworkTimeServiceQuerying', 'AutofillServerCommunication', 'kPreconnectToSearch', 'kSearchEnginePreconnect2', 'BackForwardCache'],
 };
 

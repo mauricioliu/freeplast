@@ -15,3 +15,12 @@ test('failure vocabulary keeps exact source-known action, never query/body/heade
   assert.equal(failureEvidence().proxy.nonReadOnlyUpstreamRequests,null,'missing evidence never means zero');
   assert.equal(failureEvidence({proxy:{activeRequests:-1}}).proxy.activeRequests,null);
 });
+test('typed CDP lifecycle diagnostics preserve facts, reject raw messages and unknown vocabulary', () => {
+  const diagnostic={cdpCommand:'Fetch.continueRequest',cdpCategory:'stale-interception',cdpCode:-32602,phase:'owned-shutdown',captureWanted:false,duringOwnedShutdown:true,terminalSessionObserved:true,responseValidated:true,responseErrorEvent:true,sessionKnownAtPause:true,message:'SECRET'};
+  const safe=failureEvidence({diagnostic}).diagnostic;
+  for(const [key,value] of Object.entries(diagnostic))if(key!=='message')assert.equal(safe[key],value);
+  assert.doesNotMatch(JSON.stringify(safe),/SECRET|message/);
+  const unknown=failureEvidence({diagnostic:{cdpCommand:'SECRET',cdpCategory:'SECRET',cdpCode:999,phase:'SECRET',captureWanted:'SECRET'}}).diagnostic;
+  for(const key of ['cdpCommand','cdpCategory','cdpCode','phase','captureWanted'])assert.equal(unknown[key],null);
+  assert.equal(failureEvidence().diagnostic.duringOwnedShutdown,null,'historical missing phase stays unknown');
+});

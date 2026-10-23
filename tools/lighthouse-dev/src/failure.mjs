@@ -41,6 +41,10 @@ export function safeDiagnostic(d = {}) {
   if (!d || typeof d !== 'object') d = {};
   const result = {
     source: select(d.source, ['renderer-fetch', 'renderer-websocket', 'paused-target', 'proxy-http', 'proxy-auth', 'proxy-protocol', 'proxy-upgrade', 'guard-socket-error']),
+    cdpCommand: select(d.cdpCommand, ['Fetch.continueRequest', 'Fetch.failRequest', 'Fetch.continueWithAuth', 'Target.getTargets', 'Target.setAutoAttach', 'Target.closeTarget', 'Network.enable', 'Fetch.enable']),
+    cdpCategory: select(d.cdpCategory, ['stale-interception', 'session-gone', 'transport-closed', 'timeout', 'unknown']),
+    cdpCode: select(d.cdpCode, [-32600, -32601, -32602, -32603, -32000]),
+    phase: select(d.phase, ['launch', 'lighthouse', 'capture', 'owned-shutdown']),
     authSource: select(d.authSource, ['Proxy', 'Server']),
     urlBranch: select(d.urlBranch, ['parse', 'scheme', 'userinfo', 'hash']),
     urlShape: { form: select(d.urlShape?.form, ['absolute', 'origin-form', 'asterisk', 'invalid']), scheme: select(d.urlShape?.scheme, ['http', 'https', 'other', 'none']), host: select(d.urlShape?.host, ['approved', 'proxy', 'other', 'missing']), hasUserinfo: typeof d.urlShape?.hasUserinfo === 'boolean' ? d.urlShape.hasUserinfo : null, hasHash: typeof d.urlShape?.hasHash === 'boolean' ? d.urlShape.hasHash : null },
@@ -51,13 +55,13 @@ export function safeDiagnostic(d = {}) {
     resourceType: select(d.resourceType, ['Document', 'Script', 'Stylesheet', 'Image', 'Font', 'XHR', 'Fetch', 'Other', 'Preflight']),
     stage: select(d.stage, ['Request', 'Response']),
   };
-  for (const key of ['sessionKnown', 'frameKnown', 'continuationAttempted', 'failRequestAcknowledged', 'waitingForDebugger', 'ownedRequest', 'loopbackPeer', 'proxySocket', 'authOriginMatches', 'authSchemeBasic', 'authRealmMatches']) result[key] = typeof d[key] === 'boolean' ? d[key] : null;
+  for (const key of ['sessionKnown', 'frameKnown', 'continuationAttempted', 'failRequestAcknowledged', 'waitingForDebugger', 'ownedRequest', 'loopbackPeer', 'proxySocket', 'authOriginMatches', 'authSchemeBasic', 'authRealmMatches', 'duringOwnedShutdown', 'terminalSessionObserved', 'sessionKnownAtPause', 'responseValidated', 'responseErrorEvent', 'captureWanted']) result[key] = typeof d[key] === 'boolean' ? d[key] : null;
   for (const key of ['httpsDenied', 'websocketCreations', 'upstreamConnections', 'upstreamRequests']) result[key] = count(d[key]);
   return result;
 }
 export function failureEvidence(value = {}) {
   const out = { schema: 1, diagnostic: safeDiagnostic(value?.diagnostic) };
-  for (const [group, keys] of Object.entries({ proxy: ['upstreamRequests', 'upstreamConnections', 'nonReadOnlyUpstreamRequests', 'activeRequests', 'tunnelsDenied', 'authorizationClaims', 'consumedAuthorizations', 'cancelledAuthorizations', 'pendingAuthorizations', 'unownedDenials', 'authChallenges', 'authenticatedAuxiliaryRequests'], guard: ['httpsDenied', 'httpsContinued', 'websocketCreations', 'httpContinued', 'httpRequestsAuthorized', 'responseErrorEvents', 'duplicateRequestPauses', 'guardedTargets'] })) {
+  for (const [group, keys] of Object.entries({ proxy: ['upstreamRequests', 'upstreamConnections', 'nonReadOnlyUpstreamRequests', 'activeRequests', 'tunnelsDenied', 'authorizationClaims', 'consumedAuthorizations', 'cancelledAuthorizations', 'pendingAuthorizations', 'unownedDenials', 'authChallenges', 'authenticatedAuxiliaryRequests'], guard: ['httpsDenied', 'httpsContinued', 'websocketCreations', 'httpContinued', 'httpRequestsAuthorized', 'responseErrorEvents', 'duplicateRequestPauses', 'shutdownResponseCancellations', 'guardedTargets'] })) {
     out[group] = Object.fromEntries(keys.map(k => [k, count(value?.[group]?.[k])]));
   }
   for (const [group, keys] of Object.entries({ cleanup: ['browserExitObserved', 'profileRemoved', 'proxyClosed', 'guardClosed'], worker: ['exitObserved', 'processGroupAbsent', 'groupKillSent', 'profileRemoved'] })) {

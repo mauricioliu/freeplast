@@ -7,7 +7,7 @@ import { installGuard } from '../src/guard.mjs';
 import { policy } from '../src/policy.mjs';
 import { assertHttpsDenial } from './security-oracle.mjs';
 
-async function fixture(synthetic = false, ownership = null) {
+async function fixture(synthetic = false, ownership = null, intercept = () => false) {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
   await once(server, 'listening');
   let client, extraTarget = false;
@@ -18,6 +18,7 @@ async function fixture(synthetic = false, ownership = null) {
     socket.on('message', data => {
       const message = JSON.parse(data);
       commands.push(message);
+      if (intercept(message, socket)) return;
       socket.send(JSON.stringify({ id: message.id, result: message.method === 'Target.getTargets' ? { targetInfos: extraTarget ? [target, { targetId: 'unguarded', type: 'page' }] : [target] } : {} }));
       if (message.method === 'Target.setAutoAttach' && !message.sessionId) socket.send(JSON.stringify({ method: 'Target.attachedToTarget', params: { sessionId: 'main-session', targetInfo: target, waitingForDebugger: false } }));
     });
@@ -37,6 +38,86 @@ async function fixture(synthetic = false, ownership = null) {
     async close() { guard.close(); for (const socket of server.clients) socket.terminate(); await new Promise(resolve => server.close(resolve)); },
   };
 }
+
+test('validated response continuation crossing owned shutdown is a typed terminal cancellation',async()=>{
+ for(const terminal of [{code:-32602,message:'Invalid InterceptionId.',category:'stale-interception'},{code:-32000,message:'Session with given id not found.',category:'session-gone'},{code:-32602,message:'Invalid InterceptionId.',category:'stale-interception',responseError:true}]){
+ const held=Promise.withResolvers(), failSent=Promise.withResolvers();
+ const f=await fixture(false,null,(message,socket)=>{
+  if(message.method==='Fetch.continueRequest'){held.resolve({message,socket});return true;}
+  if(message.method==='Fetch.failRequest'){socket.send(JSON.stringify({id:message.id,error:{code:-32000,message:'Session with given id not found.'}}));failSent.resolve();return true;}return false;
+ });
+ try{
+  f.event('Fetch.requestPaused',{requestId:'image',networkId:'image-network',request:{url:'http://mliu:8131/asset.png',method:'GET'},resourceType:'Image',...(terminal.responseError?{responseErrorReason:'Aborted'}:{responseStatusCode:200})});
+  const {message,socket}=await held.promise;
+  f.guard.beginShutdown();
+  f.event('Target.detachedFromTarget',{sessionId:'main-session'});
+  socket.send(JSON.stringify({id:message.id,error:{code:terminal.code,message:terminal.message}}));
+  await failSent.promise; f.disconnect();
+  const settled=await f.guard.settleShutdown({exitCode:0,signalCode:null});
+  assert.equal(settled.shutdownResponseCancellations,1);
+  assert.equal(settled.shutdownResponses[0].cdpCategory,terminal.category);
+  assert.equal(settled.shutdownResponses[0].responseErrorEvent,terminal.responseError===true);
+  assert.equal(settled.httpRequestsAuthorized,0);
+  assert.equal(settled.shutdownResponses[0].failRequestAcknowledged,false);
+  assert.doesNotThrow(()=>f.guard.assertHealthy());
+ }finally{await f.close();}
+ }
+});
+
+test('shutdown never waives live/unknown command errors, Request stage or response policy failures',async()=>{
+ for(const mode of ['live','active-cancel','still-live-shutdown','unknown','request','post-response','bad-response','unknown-session']){
+  const held=Promise.withResolvers();
+  const f=await fixture(false,null,(message,socket)=>{
+   if(message.method==='Fetch.continueRequest'){held.resolve({message,socket});return true;}
+   if(message.method==='Fetch.failRequest'){socket.send(JSON.stringify({id:message.id,error:{code:-32602,message:'Invalid InterceptionId.'}}));return true;}return false;
+  });
+  try{
+   if(['post-response','bad-response','unknown-session'].includes(mode))f.guard.beginShutdown();
+   f.event('Fetch.requestPaused',{requestId:'control',networkId:'control-network',request:{url:'http://mliu:8131/asset.png',method:mode==='post-response'?'POST':'GET'},resourceType:'Image',...(mode==='request'?{}:mode==='active-cancel'?{responseErrorReason:'Aborted'}:{responseStatusCode:mode==='bad-response'?503:200})},mode==='unknown-session'?'unknown':'main-session');
+   if(['live','active-cancel','still-live-shutdown','unknown','request'].includes(mode)){
+    const {message,socket}=await held.promise;
+    if(mode==='active-cancel')f.event('Network.loadingFailed',{requestId:'control-network',canceled:true,errorText:'net::ERR_ABORTED'});
+    if(!['live','active-cancel'].includes(mode))f.guard.beginShutdown();
+    if(['unknown','request'].includes(mode))f.event('Target.detachedFromTarget',{sessionId:'main-session'});
+    socket.send(JSON.stringify({id:message.id,error:{code:-32602,message:mode==='unknown'?'PRIVATE_TEST unexpected raw CDP error':'Invalid InterceptionId.'}}));
+   }
+   const error=await f.guard.failed.catch(e=>e);
+   assert.equal(error.code,mode==='post-response'?'method':mode==='bad-response'?'resource-status':mode==='unknown-session'?'renderer-provenance-missing':'guard-command-failed');
+   assert.equal(f.guard.snapshot().shutdownResponseCancellations,0);
+   assert.ok(!JSON.stringify(error.diagnostic).includes('PRIVATE_TEST'));
+   if(mode==='unknown')assert.equal(error.diagnostic.cdpCategory,'unknown');
+   if(['live','active-cancel'].includes(mode))assert.equal(error.diagnostic.duringOwnedShutdown,false);
+   if(mode==='active-cancel')assert.equal(error.diagnostic.responseErrorEvent,true);
+   if(mode==='still-live-shutdown')assert.equal(error.diagnostic.terminalSessionObserved,false);
+  }finally{await f.close();}
+ }
+});
+test('active command error stays fatal when failed-block acknowledgement crosses owned shutdown',async()=>{
+ const held=Promise.withResolvers(), failSent=Promise.withResolvers();
+ const f=await fixture(false,null,(message,socket)=>{
+  if(message.method==='Fetch.continueRequest'){held.resolve({message,socket});return true;}
+  if(message.method==='Fetch.failRequest'){f.guard.beginShutdown();f.event('Target.detachedFromTarget',{sessionId:'main-session'});failSent.resolve();return true;}
+  return false;
+ });
+ try{
+  f.event('Fetch.requestPaused',{requestId:'late-block',request:{url:'http://mliu:8131/asset.png',method:'GET'},resourceType:'Image',responseStatusCode:200});
+  const {message,socket}=await held.promise;
+  socket.send(JSON.stringify({id:message.id,error:{code:-32602,message:'Invalid InterceptionId.'}}));
+  await failSent.promise;f.disconnect();
+  await assert.rejects(f.guard.settleShutdown({exitCode:0,signalCode:null}),/guard-command-failed/);
+  const error=await f.guard.failed.catch(e=>e);assert.equal(error.diagnostic.duringOwnedShutdown,false);
+ }finally{await f.close();}
+});
+
+test('owned transport close drains pending validated response; unproven owner exit fails',async()=>{
+ const held=Promise.withResolvers();const f=await fixture(false,null,(message)=>{if(message.method==='Fetch.continueRequest'){held.resolve();return true;}return false;});
+ try{
+  f.event('Fetch.requestPaused',{requestId:'transport',request:{url:'http://mliu:8131/asset.png',method:'HEAD'},resourceType:'Image',responseStatusCode:200});await held.promise;
+  f.guard.beginShutdown();f.disconnect();
+  await assert.rejects(f.guard.settleShutdown({exitCode:null,signalCode:null}),/guard-owner-exit-unproven/);
+  const result=await f.guard.settleShutdown({exitCode:0,signalCode:null});assert.equal(result.shutdownResponseCancellations,1);assert.equal(result.shutdownResponses[0].cdpCategory,'transport-closed');assert.equal(result.shutdownResponses[0].failRequestAcknowledged,false);
+ }finally{await f.close();}
+});
 
 test('duplicate request pauses share one authorization; redirect/new network request gets its own',async()=>{
  const claims=[];const f=await fixture(false,{authorize(url,method){claims.push({url,method});}});

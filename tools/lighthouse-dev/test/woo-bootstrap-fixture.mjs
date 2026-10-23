@@ -17,6 +17,16 @@ export function pinnedBootstrapSources() {
 export function preparedBootstrap() {
   return JSON.parse(execFileSync('php', [new URL('./fragment-bootstrap.php', import.meta.url).pathname, 'active'], { encoding: 'utf8', timeout: 10000 }));
 }
+export function busyWooFixture() {
+  const render = wooBootstrapFixture(true);
+  const paths = Array.from({length:32}, (_, i) => `/busy-${i}.svg`);
+  return context => {
+    if (paths.includes(context.req.url)) return {headers:{'Content-Type':'image/svg+xml'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path fill="black" d="M0 0h16v16H0z"/></svg>'};
+    const response = render(context);
+    if (context.req.url === '/?fp-measure=1') response.body = response.body.replace('</main>', paths.map(path => `<img src="${path}" width="16" height="16" alt="">`).join('') + '</main>');
+    return response;
+  };
+}
 export function wooBootstrapFixture(prepared = false) {
   const sources = pinnedBootstrapSources();
   const bootstrap = prepared ? preparedBootstrap() : null;

@@ -16,6 +16,7 @@ import { failureEvidence } from './failure.mjs';
 export async function audit({ policy, address, url, profile: name, pins, profileDir: profile, capture: captureWanted = false }, signal) {
   if (!profile) throw new SafetyError('owned-profile-required');
   let browser, processHandle, guard, exit, proxy, auditFailure, page;
+  let phase = 'launch';
   try {
     if (sha256(await readFile(pins.browser.path)) !== pins.browser.sha256) throw new SafetyError('browser-hash');
     proxy = await filteringProxy(policy, address);
@@ -74,6 +75,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
       if (signal?.aborted) reject(new SafetyError('interrupted'));
       else signal?.addEventListener('abort', () => reject(new SafetyError('interrupted')), { once: true });
     });
+    phase = 'lighthouse';
     const result = await Promise.race([lighthouse(url, { logLevel: 'silent' }, lighthouseConfig(name), page), guard.failed, proxy.failed, aborted]);
     if (probe) await probe;
     const security = await guard.verify();
@@ -91,6 +93,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     const fixtureState = policy.fixture ? await page.evaluate(() => ({ bootstrapLoaded: document.body.dataset.fpFixtureLoaded === 'yes', nativeEmptyState: document.body.dataset.fpFixtureNativeState === 'true', externalScripts: document.querySelectorAll('script[src]').length, persistedPageShows: window.fpFixturePersistedShows ?? null })) : undefined;
     let capture;
     if (captureWanted) {
+      phase = 'capture';
       const { width, height, deviceScaleFactor } = profiles[name].screenEmulation;
       const mobile = profiles[name].formFactor === 'mobile';
       const cdp = await page.createCDPSession();
@@ -121,6 +124,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
         capture = { png: bytes.toString('base64'), format: 'png', source: 'owned-audit-visit', method: 'same-session-clip-page-origin', at: new Date().toISOString(), geometry: { width, height, deviceScaleFactor }, clip: captureRequest({ width, height, deviceScaleFactor }).clip, observed: [before, after], pixels };
       } finally { await cdp.detach().catch(() => {}); }
     }
+    phase = 'owned-shutdown';
     guard.beginShutdown();
     let closeTimer;
     try { await Promise.race([browser.close(), new Promise((_, reject) => { closeTimer = setTimeout(() => reject(new SafetyError('browser-close-timeout')), 2000); })]); }
@@ -129,7 +133,8 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     browser = undefined;
     if (processHandle.exitCode !== 0 || signal?.aborted) throw new SafetyError('browser-shutdown');
     await proxy.close();
-    security.rendererProof = guard.assertHealthy();
+    security.rendererProof = await guard.settleShutdown(processHandle);
+    security.lifecycle = { captureWanted, phase, handlersSettled: true };
     proxy.revokeAfterExit(processHandle, security.resources);
     security.proxy = proxy.verify(security.rendererProof);
     proxy.assertPrivate(JSON.stringify(lhr), html);
@@ -137,6 +142,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     return { lhr, html, ...(fixtureState ? { fixtureState } : {}), ...(capture ? { capture } : {}), summary: summarize(lhr), security, settings: lhr.configSettings, launch: { observed: launchProof, args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
   } catch (error) {
     auditFailure = error instanceof SafetyError ? error : new SafetyError('audit-failed');
+    auditFailure.diagnostic = { ...auditFailure.diagnostic, captureWanted, phase };
     if (policy.fixture && page) {
       try {
         const fixtureState = await page.evaluate(() => ({ bootstrapLoaded: document.body.dataset.fpFixtureLoaded === 'yes', cartStorageEvents: window.fpFixtureCartStorageEvents ?? null, seedPresentBeforeNative: window.fpFixtureSeedPresent ?? null, persistedPageShows: window.fpFixturePersistedShows ?? null }));

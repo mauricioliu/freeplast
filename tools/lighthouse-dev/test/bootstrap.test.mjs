@@ -2,8 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
-import { pinnedBootstrapSources, preparedBootstrap } from './woo-bootstrap-fixture.mjs';
+import { pinnedBootstrapSources, preparedBootstrap, busyWooFixture } from './woo-bootstrap-fixture.mjs';
 const php = new URL('./fragment-bootstrap.php', import.meta.url).pathname;
+test('busy no-capture fixture adds 32 real images without removing native bootstrap resources', () => {
+  const render=busyWooFixture(), html=render({req:{url:'/?fp-measure=1'}}).body;
+  assert.equal([...html.matchAll(/<img src="\/busy-\d+\.svg"/g)].length,32);
+  assert.equal([...html.matchAll(/<script src=/g)].length,3);
+  assert.match(html,/fp_measure_native_empty_v1/);
+  for(let i=0;i<32;i++){
+    const image=render({req:{url:`/busy-${i}.svg`}});
+    assert.equal(image.headers['Content-Type'],'image/svg+xml');assert.match(image.body,/<svg/);
+  }
+});
 test('LOCAL native projection gates keep offmode, other origins/routes/methods/users/sessions/carts unchanged', () => {
   for (const scenario of ['active','off','production','other-port','wrong-server','array-query','post','checkout','cookie','logged-in','session','nonempty','missing-cart','missing-session','missing-param','other-handle','hash']) {
     const result = JSON.parse(execFileSync('php',[php,scenario],{encoding:'utf8'}));

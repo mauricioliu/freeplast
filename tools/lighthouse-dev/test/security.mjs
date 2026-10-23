@@ -18,7 +18,7 @@ import { assetVectors, expectedStops, staticRequests } from './security-vectors.
 import { profiles } from '../src/config.mjs';
 import { recordFailure } from '../src/failure.mjs';
 import { proxyUrlVectors } from './proxy-vectors.mjs';
-import { wooBootstrapFixture } from './woo-bootstrap-fixture.mjs';
+import { wooBootstrapFixture, busyWooFixture } from './woo-bootstrap-fixture.mjs';
 
 process.umask(0o077);
 assert.equal(process.argv.length, 2);
@@ -45,6 +45,8 @@ const cases = [
   ['woo-bootstrap-cold', wooBootstrapFixture()],
   ['woo-prepared', wooBootstrapFixture(true)],
   ['woo-prepared-desktop', wooBootstrapFixture(true)],
+  ['woo-prepared-no-capture', busyWooFixture()],
+  ['woo-prepared-no-capture-desktop', busyWooFixture()],
   ['woo-prepared-proxy-probe', wooBootstrapFixture(true)],
   ['woo-prepared-proxy-probe-desktop', wooBootstrapFixture(true)],
   ['POST', () => ({ body: fixtureHtml('<script>fetch("/",{method:"POST",body:"synthetic"})</script>') })],
@@ -65,7 +67,7 @@ const cases = [
   ['clean', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
   ['clean-desktop', () => ({ body: fixtureHtml('<p>Only public synthetic content.</p>') })],
 ];
-const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets', 'woo-prepared', 'woo-prepared-desktop', 'woo-prepared-proxy-probe', 'woo-prepared-proxy-probe-desktop']);
+const cleanCases = new Set(['clean', 'clean-desktop', 'static-source-assets', 'woo-prepared', 'woo-prepared-desktop', 'woo-prepared-proxy-probe', 'woo-prepared-proxy-probe-desktop', 'woo-prepared-no-capture', 'woo-prepared-no-capture-desktop']);
 const positive = name => name.startsWith('clean') || name.startsWith('woo-prepared');
 const results = [];
 try {
@@ -82,7 +84,7 @@ try {
         assert.equal(fixture.denied.length, 0);
       }
       let result, error;
-      try { result = await runWorker({ policy: fixture.policy, address: '127.0.0.1', url: measureUrl(fixture.origin, '/'), profile: name.endsWith('-desktop') ? 'desktop' : 'mobile', pins, capture: positive(name) }, fd.fd, { timeout: 30000 }); }
+      try { result = await runWorker({ policy: fixture.policy, address: '127.0.0.1', url: measureUrl(fixture.origin, '/'), profile: name.endsWith('-desktop') ? 'desktop' : 'mobile', pins, capture: positive(name) && !name.includes('no-capture') }, fd.fd, { timeout: 30000 }); }
       catch (e) {
         error = e.code || 'unclassified'; row.diagnostic = e.diagnostic || null;
         const failedRun = { status: 'incomplete', failure: error, audits: [{ status: 'incomplete' }] };
@@ -171,7 +173,15 @@ try {
           row.launch = result.launch;
           row.bfCache = persisted.audits['bf-cache'];
         }
-        if (positive(name)) {
+        if (name.includes('no-capture')) {
+          assert.equal(result.capture, undefined);
+          assert.equal(result.security.lifecycle.captureWanted, false);
+          assert.equal(result.security.lifecycle.handlersSettled, true);
+          assert.equal(result.security.lifecycle.phase, 'owned-shutdown');
+          for (let i = 0; i < 32; i++) assert.ok(result.security.resources.some(resource => resource.url === `${fixture.origin}/busy-${i}.svg` && resource.type === 'Image' && resource.status === 200));
+          row.noCapture = { ...result.security.lifecycle, busyImages: 32, rendererProof: result.security.rendererProof };
+        }
+        if (positive(name) && !name.includes('no-capture')) {
           // Native capture path: sidecar PNG from the owned visit whose pixel size
           // matches an observed renderer viewport state; raw pixels never in LHR/HTML.
           const shot = Buffer.from(result.capture?.png ?? '', 'base64');
