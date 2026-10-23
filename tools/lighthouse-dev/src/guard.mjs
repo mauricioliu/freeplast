@@ -1,5 +1,5 @@
 import { checkRequest, checkResponse, SafetyError } from './policy.mjs';
-import { publicTarget, publicInitiator, urlShape } from './failure.mjs';
+import { publicTarget, publicInitiator, urlShape, publicCdpCode } from './failure.mjs';
 
 // Independent browser-level CDP connection: Lighthouse cannot detach our sessions.
 export async function installGuard(browser, page, policy, onDocument = () => {}, ownership = null) {
@@ -10,11 +10,11 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let id = 0, closed = false, closing = false, transportClosed = false, failure;
   const transportEnded = Promise.withResolvers();
-  const provenance = { httpsDenied: 0, httpsContinued: 0, websocketCreations: 0, httpContinued: 0, httpRequestsAuthorized: 0, responseErrorEvents: 0, duplicateRequestPauses: 0, shutdownResponseCancellations: 0, allTargetsGuarded: false, networkEnabled: false, fetchEnabled: false };
+  const provenance = { httpsDenied: 0, httpsContinued: 0, websocketCreations: 0, httpContinued: 0, httpRequestsAuthorized: 0, responseErrorEvents: 0, duplicateRequestPauses: 0, shutdownResponseCancellations: 0, pendingShutdownResponses: 0, allTargetsGuarded: false, networkEnabled: false, fetchEnabled: false };
   const authorized = new Set(), authAttempted = new Set(), detached = new Set(), inFlight = new Set(), shutdownResponses = [];
-  const commandError = (command, category, code = null) => {
+  const commandError = (command, category, code = null, sessionId) => {
     const error = new SafetyError(category === 'timeout' ? 'guard-command-timeout' : 'guard-command-failed');
-    error.diagnostic = { cdpCommand: command, cdpCategory: category, cdpCode: code, duringOwnedShutdown: closing };
+    error.diagnostic = { cdpCommand: command, cdpCategory: category, cdpCode: code, duringOwnedShutdown: closing, terminalSessionObserved: detached.has(sessionId) || transportClosed };
     return error;
   };
   const pending = new Map(), sessions = new Map(), initiators = new Map(), inventory = [], documents = [];
@@ -24,10 +24,10 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
   const fatal = (code, diagnostic) => { if (!failure && !closed) { failure = new SafetyError(code); failure.diagnostic = diagnostic; rejectFailure(failure); } };
   function send(method, params = {}, sessionId) {
     return new Promise((resolve, reject) => {
-      if (socket.readyState !== WebSocket.OPEN) { reject(commandError(method, 'transport-closed')); return; }
+      if (socket.readyState !== WebSocket.OPEN) { reject(commandError(method, 'transport-closed', null, sessionId)); return; }
       const requestId = ++id;
-      const timer = setTimeout(() => { pending.delete(requestId); reject(commandError(method, 'timeout')); }, 5000);
-      pending.set(requestId, { resolve, reject, timer, method });
+      const timer = setTimeout(() => { pending.delete(requestId); reject(commandError(method, 'timeout', null, sessionId)); }, 5000);
+      pending.set(requestId, { resolve, reject, timer, method, sessionId });
       socket.send(JSON.stringify({ id: requestId, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
@@ -100,12 +100,13 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
         await send('Fetch.continueRequest', { requestId }, sessionId);
       } catch (e) {
         const duringOwnedShutdown = e.diagnostic?.duringOwnedShutdown ?? closing;
+        const terminalSessionObserved = e.diagnostic?.terminalSessionObserved ?? (detached.has(sessionId) || transportClosed);
         let failRequestAcknowledged = false;
         await send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId).then(() => { failRequestAcknowledged = true; }, () => {});
-        const diagnostic = { ...e.diagnostic, source: 'renderer-fetch', responseErrorEvent: params.responseErrorReason !== undefined, duringOwnedShutdown, terminalSessionObserved: detached.has(sessionId) || transportClosed, sessionKnownAtPause, responseValidated, method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(request.method) ? request.method : 'OTHER', target: publicTarget(request.url, policy.origin), urlBranch: e.urlBranch, urlShape: urlShape(request.url, policy.origin), initiator: initiators.get(`${sessionId}:${params.networkId}`) ?? null, frameKnown: typeof params.frameId === 'string', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStage ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) };
-        if (duringOwnedShutdown && closing && sessionKnownAtPause && responseValidated && continuationAttempted && diagnostic.terminalSessionObserved && e.diagnostic?.cdpCommand === 'Fetch.continueRequest' && ['stale-interception', 'session-gone', 'transport-closed'].includes(e.diagnostic?.cdpCategory)) {
-          provenance.shutdownResponseCancellations++;
-          if (shutdownResponses.length < 16) shutdownResponses.push({ ...e.diagnostic, duringOwnedShutdown: true, responseValidated: true, terminalSessionObserved: true, responseErrorEvent: params.responseErrorReason !== undefined, stage: 'Response', method: request.method, failRequestAcknowledged });
+        const diagnostic = { ...e.diagnostic, source: 'renderer-fetch', responseErrorEvent: params.responseErrorReason !== undefined, duringOwnedShutdown, terminalSessionObserved, sessionKnownAtPause, responseValidated, method: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'CONNECT', 'TRACE'].includes(request.method) ? request.method : 'OTHER', target: publicTarget(request.url, policy.origin), urlBranch: e.urlBranch, urlShape: urlShape(request.url, policy.origin), initiator: initiators.get(`${sessionId}:${params.networkId}`) ?? null, frameKnown: typeof params.frameId === 'string', targetType: sessions.get(sessionId)?.type || 'unknown', sessionKnown: sessions.has(sessionId), resourceType, stage: responseStage ? 'Response' : 'Request', continuationAttempted, failRequestAcknowledged, httpsDenied: provenance.httpsDenied, publicRoute: policy.routes.find(path => request.url === policy.origin + path) || null, ...(policy.fixture ? { method: request.method, syntheticTarget: request.url } : {}) };
+        if (duringOwnedShutdown && closing && sessionKnownAtPause && responseValidated && continuationAttempted && e.diagnostic?.cdpCommand === 'Fetch.continueRequest' && e.code === 'guard-command-failed') {
+          provenance.pendingShutdownResponses++;
+          if (shutdownResponses.length < 16) shutdownResponses.push({ ...e.diagnostic, source: 'renderer-fetch', phase: 'owned-shutdown', duringOwnedShutdown: true, responseValidated: true, terminalSessionObserved, responseErrorEvent: params.responseErrorReason !== undefined, stage: 'Response', method: request.method, resourceType, sessionKnownAtPause, continuationAttempted, failRequestAcknowledged, finalized: false });
         } else fatal(e instanceof SafetyError ? e.code : 'guard-request-failure', diagnostic);
       }
     } else if (method === 'Network.webSocketCreated') {
@@ -126,10 +127,10 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
       if (!item) return;
       clearTimeout(item.timer); pending.delete(message.id);
       if (message.error) {
-        const code = [-32600, -32601, -32602, -32603, -32000].includes(message.error.code) ? message.error.code : null;
+        const code = publicCdpCode(message.error.code);
         const category = code === -32602 && ['Invalid InterceptionId.', 'Invalid interceptionId.'].includes(message.error.message) ? 'stale-interception'
           : code === -32000 && message.error.message === 'Session with given id not found.' ? 'session-gone' : 'unknown';
-        item.reject(commandError(item.method, category, code));
+        item.reject(commandError(item.method, category, code, item.sessionId));
       }
       else item.resolve(message.result);
     } else {
@@ -140,7 +141,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
   socket.addEventListener('close', () => {
     transportClosed = true; transportEnded.resolve();
     if (!closing) fatal('guard-disconnected'); else provenance.ownedShutdownDisconnect = true;
-    for (const item of pending.values()) { clearTimeout(item.timer); item.reject(commandError(item.method, 'transport-closed')); }
+    for (const item of pending.values()) { clearTimeout(item.timer); item.reject(commandError(item.method, 'transport-closed', null, item.sessionId)); }
     pending.clear();
   });
   socket.addEventListener('error', () => { if (!closing) fatal('guard-disconnected', { source: 'guard-socket-error', duringOwnedShutdown: false }); else provenance.ownedShutdownDisconnect = true; });
@@ -153,7 +154,7 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
   }
   return {
     failed, inventory, documents,
-    snapshot() { return { ...provenance, guardedTargets: [...sessions.values()].filter(s => s.ready).length }; },
+    snapshot() { return { ...provenance, shutdownResponses, guardedTargets: [...sessions.values()].filter(s => s.ready).length }; },
     async verify() {
       if (failure) throw failure;
       if (!documents.length || ![...sessions.values()].some(x => x.targetId === main.targetId && x.ready)) throw new SafetyError('guard-unproven');
@@ -169,16 +170,28 @@ export async function installGuard(browser, page, policy, onDocument = () => {},
     },
     beginShutdown() { closing = true; },
     async settleShutdown(child) {
-      if (!closing || child.exitCode !== 0 || child.signalCode !== null) throw new SafetyError('guard-owner-exit-unproven');
-      // Process exit can precede delivery of the independent CDP socket's final events.
-      let timer;
-      try { await Promise.race([transportEnded.promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new SafetyError('guard-shutdown-transport')), 5000); })]); }
-      finally { clearTimeout(timer); }
-      while (inFlight.size) await Promise.all([...inFlight]);
-      if (failure) throw failure;
-      return { ...provenance, shutdownResponses };
+      try {
+        if (failure) throw failure;
+        if (!closing || child.exitCode !== 0 || child.signalCode !== null) throw new SafetyError('guard-owner-exit-unproven');
+        // Process exit can precede delivery of the independent CDP socket's final events.
+        let timer;
+        try { await Promise.race([transportEnded.promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new SafetyError('guard-shutdown-transport')), 5000); })]); }
+        finally { clearTimeout(timer); }
+        while (inFlight.size) await Promise.all([...inFlight]);
+        if (failure) throw failure;
+        if (!ownership) throw new SafetyError('guard-proxy-unproven');
+        ownership.revokeAfterExit(child, inventory);
+        ownership.verify(provenance);
+        provenance.shutdownResponseCancellations += provenance.pendingShutdownResponses;
+        provenance.pendingShutdownResponses = 0;
+        for (const response of shutdownResponses) { response.finalized = true; response.terminalAtSettlement = transportClosed; }
+        return { ...provenance, shutdownResponses };
+      } catch (error) {
+        fatal(error instanceof SafetyError ? error.code : 'guard-settlement-failed', error.diagnostic);
+        throw failure ?? error;
+      }
     },
-    assertHealthy() { if (failure) throw failure; return { ...provenance, shutdownResponses }; },
+    assertHealthy() { if (failure) throw failure; if (provenance.pendingShutdownResponses) throw new SafetyError('guard-shutdown-pending'); return { ...provenance, shutdownResponses }; },
     close() {
       closed = true;
       for (const { reject, timer } of pending.values()) { clearTimeout(timer); reject(new SafetyError('guard-closed')); }

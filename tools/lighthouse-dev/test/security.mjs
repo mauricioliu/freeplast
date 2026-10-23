@@ -140,6 +140,8 @@ try {
         assert.equal(result.security.proxy.upstreamRequests, result.security.proxy.consumedAuthorizations + result.security.proxy.authenticatedAuxiliaryRequests);
         assert.equal(result.security.proxy.authorizationClaims, result.security.rendererProof.httpRequestsAuthorized);
         assert.equal(result.security.proxy.pendingAuthorizations, 0);
+        assert.equal(result.security.rendererProof.pendingShutdownResponses, 0);
+        assert.ok(result.security.rendererProof.shutdownResponses.every(response => response.finalized === true && response.terminalAtSettlement === true));
         assert.equal(result.security.proxy.authorizationClaims, result.security.proxy.consumedAuthorizations + result.security.proxy.cancelledAuthorizations);
         assert.ok(fixture.hits.every(hit => hit.controlHeaderSeen === false));
         if (name.includes('proxy-probe')) {

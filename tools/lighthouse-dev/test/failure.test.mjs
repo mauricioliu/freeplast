@@ -20,7 +20,12 @@ test('typed CDP lifecycle diagnostics preserve facts, reject raw messages and un
   const safe=failureEvidence({diagnostic}).diagnostic;
   for(const [key,value] of Object.entries(diagnostic))if(key!=='message')assert.equal(safe[key],value);
   assert.doesNotMatch(JSON.stringify(safe),/SECRET|message/);
-  const unknown=failureEvidence({diagnostic:{cdpCommand:'SECRET',cdpCategory:'SECRET',cdpCode:999,phase:'SECRET',captureWanted:'SECRET'}}).diagnostic;
+  const unknown=failureEvidence({diagnostic:{cdpCommand:'SECRET',cdpCategory:'SECRET',cdpCode:Number.MAX_SAFE_INTEGER,phase:'SECRET',captureWanted:'SECRET'}}).diagnostic;
   for(const key of ['cdpCommand','cdpCategory','cdpCode','phase','captureWanted'])assert.equal(unknown[key],null);
   assert.equal(failureEvidence().diagnostic.duringOwnedShutdown,null,'historical missing phase stays unknown');
+  for(const code of [-2147483648,-32001,0,999,2147483647])assert.equal(failureEvidence({diagnostic:{cdpCode:code}}).diagnostic.cdpCode,code);
+  for(const code of [-2147483649,2147483648,1.5,'-32001',null])assert.equal(failureEvidence({diagnostic:{cdpCode:code}}).diagnostic.cdpCode,null);
+  const pending=failureEvidence({guard:{pendingShutdownResponses:20,shutdownResponseCancellations:0,shutdownResponses:Array.from({length:20},()=>({...diagnostic,cdpCategory:'unknown',cdpCode:null,failRequestAcknowledged:false,finalized:false}))}});
+  assert.equal(pending.guard.shutdownResponses.length,16);assert.equal(pending.guard.pendingShutdownResponses,20);assert.equal(pending.guard.shutdownResponseCancellations,0);
+  assert.equal(pending.guard.shutdownResponses[0].cdpCategory,'unknown');assert.equal(pending.guard.shutdownResponses[0].cdpCode,null);assert.equal(pending.guard.shutdownResponses[0].failRequestAcknowledged,false);assert.equal(pending.guard.shutdownResponses[0].finalized,false);assert.doesNotMatch(JSON.stringify(pending),/SECRET/);
 });

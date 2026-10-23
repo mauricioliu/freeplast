@@ -135,7 +135,6 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     await proxy.close();
     security.rendererProof = await guard.settleShutdown(processHandle);
     security.lifecycle = { captureWanted, phase, handlersSettled: true };
-    proxy.revokeAfterExit(processHandle, security.resources);
     security.proxy = proxy.verify(security.rendererProof);
     proxy.assertPrivate(JSON.stringify(lhr), html);
     security.guardedThroughShutdown = true;

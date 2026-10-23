@@ -4,7 +4,7 @@ import WebSocket from 'ws';
 const { Server: WebSocketServer } = WebSocket;
 import { once } from 'node:events';
 import { installGuard } from '../src/guard.mjs';
-import { policy } from '../src/policy.mjs';
+import { policy, SafetyError } from '../src/policy.mjs';
 import { assertHttpsDenial } from './security-oracle.mjs';
 
 async function fixture(synthetic = false, ownership = null, intercept = () => false) {
@@ -25,6 +25,7 @@ async function fixture(synthetic = false, ownership = null, intercept = () => fa
   });
   const browser = { wsEndpoint: () => `ws://127.0.0.1:${server.address().port}` };
   const page = { createCDPSession: async () => ({ send: async () => ({ targetInfo: target }), detach: async () => {} }) };
+  ownership ??= { authorize() {}, revokeAfterExit() {}, verify() {} }; // Pure guard fixtures; explicit proxy-failure tests supply their own proof.
   const guard = await installGuard(browser, page, synthetic ? policy({ fixtureOrigin: `http://127.0.0.1:${server.address().port}` }) : policy(), undefined, ownership);
   const event = (method, params, sessionId = 'main-session') => client.send(JSON.stringify({ method, params, sessionId }));
   return {
@@ -38,6 +39,34 @@ async function fixture(synthetic = false, ownership = null, intercept = () => fa
     async close() { guard.close(); for (const socket of server.clients) socket.terminate(); await new Promise(resolve => server.close(resolve)); },
   };
 }
+
+test('slot4 unknown/null terminal Response stages until clean owner and proxy proof',async()=>{
+ for(const mode of ['pass-null','pass-code','bad-exit','signal','proxy-open','ledger-invalid']){
+ const held=Promise.withResolvers(),failSent=Promise.withResolvers();
+ const ownership={revokeAfterExit(){if(mode==='proxy-open')throw new SafetyError('proxy-revocation-unproven');},verify(proof){assert.equal(proof.shutdownResponseCancellations,0);assert.equal(proof.pendingShutdownResponses,1);assert.throws(()=>f.guard.assertHealthy(),/guard-shutdown-pending/);if(mode==='ledger-invalid')throw new SafetyError('proxy-owner-unproven');return {};}};
+ const f=await fixture(false,ownership,(message,socket)=>{
+  if(message.method==='Fetch.continueRequest'){held.resolve({message,socket});return true;}
+  if(message.method==='Fetch.failRequest'){socket.send(JSON.stringify({id:message.id,error:{message:'PRIVATE_SYNTHETIC_UNKNOWN'}}));failSent.resolve();return true;}return false;
+ });
+ try{
+  f.event('Fetch.requestPaused',{requestId:'slot4',frameId:'frame',request:{url:'http://mliu:8131/asset.png',method:'GET'},resourceType:'Image',responseStatusCode:200});
+  const {message,socket}=await held.promise;f.guard.beginShutdown();f.event('Target.detachedFromTarget',{sessionId:'main-session'});
+  socket.send(JSON.stringify({id:message.id,error:{code:mode==='pass-code'?-32001:undefined,message:'PRIVATE_SYNTHETIC_UNKNOWN'}}));
+  await failSent.promise;f.disconnect();
+  const child={exitCode:mode==='bad-exit'?1:0,signalCode:mode==='signal'?'SIGKILL':null};
+  if(!mode.startsWith('pass')){
+   const expected=mode==='proxy-open'?/proxy-revocation-unproven/:mode==='ledger-invalid'?/proxy-owner-unproven/:/guard-owner-exit-unproven/;
+   await assert.rejects(f.guard.settleShutdown(child),expected);
+   await assert.rejects(f.guard.settleShutdown({exitCode:0,signalCode:null}),expected,'failed settlement cannot later finalize');
+   assert.equal(f.guard.snapshot().shutdownResponseCancellations,0);continue;
+  }
+  const result=await f.guard.settleShutdown(child);
+  assert.equal(result.shutdownResponseCancellations,1);assert.equal(result.shutdownResponses[0].cdpCategory,'unknown');assert.equal(result.shutdownResponses[0].cdpCode,mode==='pass-code'?-32001:null);assert.equal(result.shutdownResponses[0].failRequestAcknowledged,false);
+  assert.equal(result.pendingShutdownResponses,0);assert.equal(result.shutdownResponses[0].finalized,true);
+  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_SYNTHETIC/);
+ }finally{await f.close();}
+ }
+});
 
 test('validated response continuation crossing owned shutdown is a typed terminal cancellation',async()=>{
  for(const terminal of [{code:-32602,message:'Invalid InterceptionId.',category:'stale-interception'},{code:-32000,message:'Session with given id not found.',category:'session-gone'},{code:-32602,message:'Invalid InterceptionId.',category:'stale-interception',responseError:true}]){
@@ -64,7 +93,7 @@ test('validated response continuation crossing owned shutdown is a typed termina
  }
 });
 
-test('shutdown never waives live/unknown command errors, Request stage or response policy failures',async()=>{
+test('shutdown never waives live or unterminated errors, Request stage or response policy failures',async()=>{
  for(const mode of ['live','active-cancel','still-live-shutdown','unknown','request','post-response','bad-response','unknown-session']){
   const held=Promise.withResolvers();
   const f=await fixture(false,null,(message,socket)=>{
@@ -77,9 +106,14 @@ test('shutdown never waives live/unknown command errors, Request stage or respon
    if(['live','active-cancel','still-live-shutdown','unknown','request'].includes(mode)){
     const {message,socket}=await held.promise;
     if(mode==='active-cancel')f.event('Network.loadingFailed',{requestId:'control-network',canceled:true,errorText:'net::ERR_ABORTED'});
-    if(!['live','active-cancel'].includes(mode))f.guard.beginShutdown();
-    if(['unknown','request'].includes(mode))f.event('Target.detachedFromTarget',{sessionId:'main-session'});
-    socket.send(JSON.stringify({id:message.id,error:{code:-32602,message:mode==='unknown'?'PRIVATE_TEST unexpected raw CDP error':'Invalid InterceptionId.'}}));
+    if(!['live','active-cancel','unknown'].includes(mode))f.guard.beginShutdown();
+    if(mode==='request')f.event('Target.detachedFromTarget',{sessionId:'main-session'});
+    socket.send(JSON.stringify({id:message.id,error:{code:-32602,message:['unknown','still-live-shutdown'].includes(mode)?'PRIVATE_TEST unexpected raw CDP error':'Invalid InterceptionId.'}}));
+   }
+   if(mode==='still-live-shutdown'){
+    await assert.rejects(f.guard.settleShutdown({exitCode:0,signalCode:null}),/guard-shutdown-transport/);
+    f.disconnect();await assert.rejects(f.guard.settleShutdown({exitCode:0,signalCode:null}),/guard-shutdown-transport/);
+    assert.equal(f.guard.snapshot().shutdownResponseCancellations,0);continue;
    }
    const error=await f.guard.failed.catch(e=>e);
    assert.equal(error.code,mode==='post-response'?'method':mode==='bad-response'?'resource-status':mode==='unknown-session'?'renderer-provenance-missing':'guard-command-failed');
@@ -109,14 +143,47 @@ test('active command error stays fatal when failed-block acknowledgement crosses
  }finally{await f.close();}
 });
 
+test('already-owned shutdown may prove terminal session after failed block',async()=>{
+ const held=Promise.withResolvers(),failSent=Promise.withResolvers();
+ const f=await fixture(false,null,(message,socket)=>{
+  if(message.method==='Fetch.continueRequest'&&message.params.requestId==='late-terminal'){held.resolve({message,socket});return true;}
+  if(message.method==='Fetch.failRequest'){
+   socket.send(JSON.stringify({id:message.id,error:{message:'PRIVATE_BLOCK_ERROR'}}));
+   f.event('Fetch.requestPaused',{requestId:'barrier',request:{url:'http://mliu:8131/asset.png',method:'GET'},resourceType:'Image',responseStatusCode:200});return true;
+  }
+  if(message.method==='Fetch.continueRequest'&&message.params.requestId==='barrier')failSent.resolve();
+  return false;
+ });
+ try{
+  f.event('Fetch.requestPaused',{requestId:'late-terminal',request:{url:'http://mliu:8131/asset.png',method:'GET'},resourceType:'Image',responseStatusCode:200});
+  const {message,socket}=await held.promise;f.guard.beginShutdown();socket.send(JSON.stringify({id:message.id,error:{message:'PRIVATE_UNKNOWN'}}));
+  await failSent.promise;
+  assert.equal(f.guard.snapshot().pendingShutdownResponses,1);assert.equal(f.guard.snapshot().shutdownResponseCancellations,0);assert.equal(f.guard.snapshot().shutdownResponses[0].failRequestAcknowledged,false);
+  f.disconnect();const proof=await f.guard.settleShutdown({exitCode:0,signalCode:null});
+  assert.equal(proof.shutdownResponseCancellations,1);const observation=proof.shutdownResponses[0];assert.equal(observation.duringOwnedShutdown,true);assert.equal(observation.terminalSessionObserved,false);assert.equal(observation.terminalAtSettlement,true);assert.equal(observation.cdpCategory,'unknown');assert.equal(observation.cdpCode,null);assert.equal(observation.failRequestAcknowledged,false);
+ }finally{await f.close();}
+});
+test('unknown other-command failure remains fatal after owned terminal event',async()=>{
+ const held=Promise.withResolvers();
+ const owner={url:'http://127.0.0.1:12345',authenticate(){return {username:'test',password:'PRIVATE_AUTH'};}};
+ const f=await fixture(false,owner,(message,socket)=>{if(message.method==='Fetch.continueWithAuth'&&message.params.authChallengeResponse.response==='ProvideCredentials'){held.resolve({message,socket});return true;}return false;});
+ try{
+  f.event('Fetch.authRequired',{requestId:'other-command',request:{url:'http://mliu:8131/asset.png',method:'GET'},authChallenge:{source:'Proxy',origin:owner.url,scheme:'basic',realm:'freeplast-owned'}});
+  const {message,socket}=await held.promise;f.guard.beginShutdown();f.event('Target.detachedFromTarget',{sessionId:'main-session'});socket.send(JSON.stringify({id:message.id,error:{message:'PRIVATE_UNKNOWN'}}));
+  const e=await f.guard.failed.catch(e=>e);assert.equal(e.code,'guard-command-failed');assert.equal(e.diagnostic.cdpCommand,'Fetch.continueWithAuth');assert.equal(e.diagnostic.cdpCategory,'unknown');assert.equal(f.guard.snapshot().pendingShutdownResponses,0);assert.doesNotMatch(JSON.stringify(e.diagnostic),/PRIVATE_/);
+ }finally{await f.close();}
+});
+
 test('owned transport close drains pending validated response; unproven owner exit fails',async()=>{
+ for(const exitCode of [null,0]){
  const held=Promise.withResolvers();const f=await fixture(false,null,(message)=>{if(message.method==='Fetch.continueRequest'){held.resolve();return true;}return false;});
  try{
   f.event('Fetch.requestPaused',{requestId:'transport',request:{url:'http://mliu:8131/asset.png',method:'HEAD'},resourceType:'Image',responseStatusCode:200});await held.promise;
   f.guard.beginShutdown();f.disconnect();
-  await assert.rejects(f.guard.settleShutdown({exitCode:null,signalCode:null}),/guard-owner-exit-unproven/);
+  if(exitCode===null){await assert.rejects(f.guard.settleShutdown({exitCode,signalCode:null}),/guard-owner-exit-unproven/);assert.equal(f.guard.snapshot().shutdownResponseCancellations,0);continue;}
   const result=await f.guard.settleShutdown({exitCode:0,signalCode:null});assert.equal(result.shutdownResponseCancellations,1);assert.equal(result.shutdownResponses[0].cdpCategory,'transport-closed');assert.equal(result.shutdownResponses[0].failRequestAcknowledged,false);
  }finally{await f.close();}
+ }
 });
 
 test('duplicate request pauses share one authorization; redirect/new network request gets its own',async()=>{
