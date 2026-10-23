@@ -2,12 +2,13 @@ import { createServer } from 'node:http';
 import { createServer as createTLSServer } from 'node:tls';
 import { policy } from '../src/policy.mjs';
 import { randomUUID } from 'node:crypto';
+import { profiles } from '../src/config.mjs';
 
 export async function fixtureAdapter(render) {
   const hits = [], denied = [], tlsContacts = [], deniedContacts = [];
   const runMarker = randomUUID();
   const contact = socket => ({ at: new Date().toISOString(), remoteAddress: socket.remoteAddress, remotePort: socket.remotePort, localPort: socket.localPort });
-  const trace = req => ({ ...contact(req.socket), method: req.method, path: req.url, markerMatches: req.headers['x-freeplast-fixture-run'] === runMarker, userAgentClass: (req.headers['user-agent'] || '').includes('Chrome/') ? 'chromium' : (req.headers['user-agent'] || '').includes('Freeplast-DEV-preflight') ? 'preflight' : 'other' });
+  const trace = req => ({ ...contact(req.socket), method: req.method, path: req.url, markerMatches: req.headers['x-freeplast-fixture-run'] === runMarker, userAgentProfile: Object.keys(profiles).find(name => req.headers['user-agent'] === profiles[name].emulatedUserAgent) || 'other', userAgentClass: (req.headers['user-agent'] || '').includes('Chrome/') ? 'chromium' : (req.headers['user-agent'] || '').includes('Freeplast-DEV-preflight') ? 'preflight' : 'other' });
   let deniedConnections = 0, deniedTLSConnections = 0;
   const tlsSockets = new Set();
   // No certificate needed: the safety assertion forbids even the first TCP connection.
@@ -36,4 +37,4 @@ export async function fixtureAdapter(render) {
     async close() { server.closeAllConnections(); deniedServer.closeAllConnections(); for (const socket of tlsSockets) socket.destroy(); await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => deniedServer.close(resolve)), new Promise(resolve => tlsServer.close(resolve))]); },
   };
 }
-export const fixtureHtml = body => `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="description" content="Synthetic security fixture"><title>LOCAL fixture</title></head><body><main><h1>LOCAL</h1>${body}</main></body></html>`;
+export const fixtureHtml = body => `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="description" content="Synthetic security fixture"><title>LOCAL fixture</title></head><body><div aria-hidden="true" style="position:fixed;left:0;top:0;width:8px;height:8px;background:#123456"></div><main><h1>LOCAL</h1>${body}</main></body></html>`;

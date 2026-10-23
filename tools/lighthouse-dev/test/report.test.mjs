@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateReport } from 'lighthouse';
 import { metricIds, categoryIds, validateLhr, sanitize, summarize } from '../src/report.mjs';
-import { policy } from '../src/policy.mjs';
+import { policy, measureMode, measureUrl } from '../src/policy.mjs';
 const p = policy();
 export function sampleLhr() {
   return {
-    lighthouseVersion: '13.5.0', requestedUrl: p.origin + '/', finalDisplayedUrl: p.origin + '/', finalUrl: p.origin + '/',
+    lighthouseVersion: '13.5.0', requestedUrl: measureUrl(p.origin, '/'), finalDisplayedUrl: measureUrl(p.origin, '/'), finalUrl: measureUrl(p.origin, '/'),
     audits: { ...Object.fromEntries(metricIds.map(id => [id, { id, numericValue: 1, score: 1, scoreDisplayMode: 'numeric' }])), 'is-crawlable': { id: 'is-crawlable', score: 0, scoreDisplayMode: 'binary' } },
     categories: Object.fromEntries(categoryIds.map(id => [id, { id, score: 0.5, auditRefs: [{ id: 'is-crawlable' }] }])),
   };
@@ -37,6 +37,10 @@ test('JSON and HTML derive from same sanitized LHR, never screenshots/headers/DO
   assert.equal(safe.audits['is-crawlable'].score, 0);
   assert.throws(() => sanitize({ title: 'password=SYNTHETIC_SECRET' }), /sensitive-report/);
   assert.throws(() => sanitize({ url: p.origin + '/?token=SYNTHETIC_SECRET' }), /sensitive-report/);
+  // Report URLs may carry only cache-busters and the exact measurement query.
+  assert.equal(sanitize({ url: measureUrl(p.origin, '/') }).url, measureUrl(p.origin, '/'));
+  assert.throws(() => sanitize({ url: p.origin + '/?fp-measure=2' }), /sensitive-report-url/);
+  assert.throws(() => sanitize({ url: p.origin + '/?fp-measure=1&x=1' }), /sensitive-report-url/);
   assert.throws(() => sanitize({ url: 'http://user:pass@mliu:8131/' }), /sensitive-report-url/);
 });
 test('cookie audit ID and category references survive, but real cookie-table payloads do not', () => {

@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertHttpsDenial } from './security-oracle.mjs';
 
+import { assetVectors, expectedStops, staticRequests } from './security-vectors.mjs';
+import { checkRequest, policy, origin } from '../src/policy.mjs';
+
+test('native static-resource vectors and diagnostic expectations agree with pure policy', () => {
+  for (const v of assetVectors) assert.throws(() => checkRequest(policy(), origin + v.path, 'GET', v.type), e => expectedStops[v.name].includes(e.code));
+  for (const path of staticRequests) assert.equal(checkRequest(policy(), origin + path, 'GET', 'Script').href, origin + path);
+  assert.throws(() => checkRequest(policy(), origin + '/', 'POST'), e => expectedStops.POST.includes(e.code));
+  assert.throws(() => checkRequest(policy(), origin + '/?add-to-cart=1', 'GET', 'XHR'), e => expectedStops['commercial-GET'].includes(e.code));
+  assert.throws(() => checkRequest(policy(), origin + '/', 'GET', 'Document', true), e => expectedStops.popup.includes(e.code));
+});
+
 const url = 'https://127.0.0.1:444/';
 const diagnostic = { source: 'renderer-fetch', sessionKnown: true, targetType: 'page', syntheticTarget: url, resourceType: 'XHR', stage: 'Request', continuationAttempted: false, failRequestAcknowledged: true, httpsDenied: 1, method: 'GET' };
 const expected = { url, resourceType: 'XHR', allowPreflight: true };

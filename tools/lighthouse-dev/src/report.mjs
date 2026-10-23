@@ -33,7 +33,9 @@ export function sanitize(value, key = '', parent = '') {
     if (/^https?:\/\//i.test(value)) {
       let url;
       try { url = new URL(value); } catch { deny('report-url'); }
-      if (url.username || url.password || [...url.searchParams.keys()].some(k => k !== 'ver')) deny('sensitive-report-url');
+      // `ver` cache-busters and the exact measurement query are the only allowed URL parameters.
+      const bad = ([key, v]) => key === 'fp-measure' ? v !== '1' : key !== 'ver' || !/^[\w.-]{1,80}$/.test(v);
+      if (url.username || url.password || [...url.searchParams].some(bad)) deny('sensitive-report-url');
       url.hash = '';
       return url.href;
     }

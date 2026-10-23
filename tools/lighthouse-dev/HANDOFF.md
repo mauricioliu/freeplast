@@ -1,4 +1,18 @@
-# Ticket 5: final DEV validation protocol
+# Lighthouse DEV handoff
+
+## Active: plan-mvl2p6uk-wka1, ticket1
+
+Authoritative schema3 operation/recovery/receipt contracts: [README active section](README.md#active-contract-plan-mvl2p6uk-wka1-schema-3-inactive-until-lead-activation). Fixed deadline2026-10-24T05:27:07Z; no renewed clock. 240audit-slot ceiling,13×18 started series,96 captures,10doctor starts. Exact explicit series-purpose/generation and safe technical-recovery records required; legacy budgets/receipts/failures remain untouched. Four hypotheses maximum; no A1/A2 belongs to ticket1.
+
+Current delivery boundary: source + repeatable rootless focused mobile/desktop capture proofs, then **MATRIX-READY** frozen runtime/tests/config/docs. Lead performs objective source/oracle preflight and releases **each** full matrix attempt. No partial gate, no self-activation. After a full passing current gate, report **SOURCE-READY**, candidate inactive; await lead scoped commit/main integration/receipt activation before separately released same-worker MAIN CLI doctor. Ticket1 is not DONE before lead verifies that final doctor.
+
+Private current report: `/home/mauricio-liu/.herd/plan-mode/plan-mvl2p6uk-wka1.impl-1.report.md`. New starts/completions/source evidence: plan lead `impl-1/`; synthetic native outputs: `~/.local/state/freeplast-lighthouse-dev/plan-mvl2p6uk-wka1-evidence/`. Native fixtures are not DEV baseline evidence. Positive probes prove capture geometry, configured request UA/formFactor, decoded content, private sidecars and report integrity—not user-visible design approval or performance improvement.
+
+Known historical cleanup uncertainty at `/tmp/woo-src-inspect` remains unresolved; never reused/deleted by this implementation. Earlier failures stay invalid. Fresh source provenance uses only local pinned archives extracted into new owned evidence files. No root/sudo, shared browser, services, production, DB, credentials, main writes or commits.
+
+## Historical ticket5 protocol (superseded; do not execute)
+
+**Superseded (active plan plan-mvjyu52z-4elv, ticket 2).** The sections below are the historical ticket-5 protocol of prior plan mviv2aqv-osyi and stay for provenance only. The current instrument measures only the gated DEV measurement mode (`?fp-measure=1` with server-side `quantity_fpm_` proof, policyVersion 2), uses a schema-2 plan-bound allowance (90 audits / 5 series / 24 captures / fixed plan deadline) installed by lead-gated `budget-init --confirm --plan <id> --hash <sha256> --operator <name> --deadline <iso>`, and records private capture sidecars. Activation inputs for this plan: `--plan plan-mvjyu52z-4elv`, approved plan sha256 from the lead, operator identity, fixed deadline `2026-10-23T04:29:44Z`, and lead-supplied runtime metadata (`wordpress/local/…` versions: WordPress 7.1.3, WooCommerce 11.1.0, freeplast-woo 1.12.14, PHP 8.3.35; installed-source declarations, not active-plugin/DB certification). See README's plan section for the authoritative description.
 
 **Historical collection protocol, not renewed authorization.** Actual A1 stopped before any audit with `public-content-drift`; A2 never started and no baseline/calibration exists. The corrective tool revision changes the instrument, invalidating the old receipt. Do not execute the historical sequence below. The new `budget-init --confirm` is explicit authorization-sensitive initialization and deliberately rejects existing historical run state, including this failed A1; there is no reset/renewal path. Corrections were validated synthetically only. No real retries, receipt activation, theme edits or baseline promotion are authorized. See README's current allowance/read-only-cycle section and the separate private global-review correction evidence.
 

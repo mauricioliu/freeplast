@@ -6,9 +6,11 @@ import { isDeepStrictEqual as equal } from 'node:util';
 import { stateRoot, readPrivate, save, lock } from './store.mjs';
 import { schedule, instrumentHash } from './measure.mjs';
 import { sha256 } from './preflight.mjs';
-import { origin, routes, policy, deny } from './policy.mjs';
+import { origin, routes, policy, measureMode, activeMode, deny } from './policy.mjs';
 import { validateLhr, summarize, metricIds, categoryIds } from './report.mjs';
 import { profiles } from './config.mjs';
+import { allowance, plan, checkSeriesRequest } from './budget.mjs';
+import { pngSize, captureConsistency } from './capture.mjs';
 
 export const cases = ['mobile', 'desktop'].flatMap(profile => routes.map(path => `${profile}:${path}`));
 export const thresholds = Object.freeze({
@@ -80,43 +82,58 @@ export async function loadRun(runId, root = stateRoot) {
   id(runId); await directory(root); const dir = join(root, runId); await directory(dir);
   const raw = await bytes(join(dir, 'manifest.json'));
   let run; try { run = JSON.parse(raw); } catch { deny('invalid-json'); }
-  keys(run, ['schema', 'id', 'label', 'status', 'startedAt', 'deadline', 'schedule', 'audits', 'artifacts', 'cache', 'retries', 'loadBefore', 'environment', 'sourceAfter', 'finishedAt', 'loadAfter']);
-  requireThat(run.schema === 1 && run.id === runId && run.status === 'complete', 'incomplete-run');
+  keys(run, ['schema', 'plan', 'request', 'id', 'label', 'status', 'startedAt', 'deadline', 'slot', 'captureAllowance', 'schedule', 'audits', 'artifacts', 'cache', 'retries', 'loadBefore', 'environment', 'sourceAfter', 'finishedAt', 'loadAfter']);
+  requireThat(run.schema === 3 && equal(run.plan, { id: plan.id, hash: plan.hash }) && run.id === runId && run.status === 'complete', 'incomplete-run');
+  checkSeriesRequest(run.request);
+  requireThat(Number.isInteger(run.slot) && run.slot >= 1 && run.slot <= allowance.series && run.captureAllowance === run.request.captures, 'invalid-schema');
   requireThat([run.startedAt, run.finishedAt, run.deadline].every(t => typeof t === 'string' && Number.isFinite(Date.parse(t))) && Date.parse(run.finishedAt) >= Date.parse(run.startedAt) && Date.parse(run.finishedAt) <= Date.parse(run.deadline), 'invalid-run-time');
   requireThat(equal(run.schedule, schedule()) && Array.isArray(run.audits) && run.audits.length === 18 && run.retries === 0, 'incomplete-schedule');
   requireThat(typeof run.cache === 'string' && run.cache.length > 0);
   const env = run.environment;
-  keys(env, ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'origin', 'routes', 'addresses', 'identity', 'source', 'pages', 'styleHash', 'hardware', 'storage', 'load']);
+  keys(env, ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'mode', 'origin', 'routes', 'addresses', 'identity', 'source', 'pages', 'styleHash', 'hardware', 'storage', 'load']);
   requireThat(hashPattern.test(env.instrument) && hashPattern.test(env.configHash) && hashPattern.test(env.styleHash));
+  requireThat(env.policyVersion === 2 && equal(env.mode, activeMode()), 'measure-mode-unproven');
   sourceSchema(env.source); identitySchema(env.identity);
+  requireThat(equal(run.request.compatibility, { instrument: env.instrument, configHash: env.configHash, sourceHash: env.source.sourceHash }), 'generation-incompatible');
   keys(env.hardware, ['hostname', 'platform', 'release', 'arch', 'cpus', 'memory']);
   requireThat(['hostname', 'platform', 'release', 'arch'].every(k => typeof env.hardware[k] === 'string' && env.hardware[k].length > 0) && Array.isArray(env.hardware.cpus) && env.hardware.cpus.length > 0 && env.hardware.cpus.every(c => typeof c.model === 'string') && finite(env.hardware.memory) && env.hardware.memory > 0, 'hardware-schema');
   requireThat(equal(run.sourceAfter, env.source) && hashPattern.test(env.source?.sourceHash), 'source-drift');
   requireThat(env.identity?.sourceHash === env.source.sourceHash && env.identity.origin === env.origin && typeof env.identity.runtimeId === 'string', 'identity-mismatch');
   requireThat(env.pins?.lighthouse && env.pins.node && env.pins['puppeteer-core'] && hashPattern.test(env.pins.browser?.sha256), 'missing-pins');
-  requireThat(Array.isArray(env.pages) && env.pages.length === 3 && Array.isArray(env.routes) && env.routes.length === 3 && Array.isArray(env.addresses) && env.addresses.length > 0, 'missing-environment');
-  const expected = run.audits.flatMap((_, i) => { const stem = `${String(i + 1).padStart(2, '0')}-${schedule()[i].profile}`; return [`${stem}.json`, `${stem}.html`]; }).concat(['summary.json', 'summary.md', 'events.json']);
+  requireThat(Array.isArray(env.pages) && env.pages.length === 3 && env.pages.every(page => page.mode?.active === true && page.mode.id === measureMode.id && page.mode.query === measureMode.query && Number.isInteger(page.mode.markers) && page.mode.markers > 0) && Array.isArray(env.routes) && env.routes.length === 3 && Array.isArray(env.addresses) && env.addresses.length > 0, 'missing-environment');
+  const expected = [];
+  schedule().forEach((item, i) => {
+    const stem = `${String(i + 1).padStart(2, '0')}-${item.profile}`;
+    expected.push({ name: `${stem}.json`, kind: 'lhr', audit: i });
+    expected.push({ name: `${stem}.html`, kind: 'html' });
+    if (run.captureAllowance === 18 || run.captureAllowance === 6 && item.round === 1) expected.push({ name: `${stem}.capture.png`, kind: 'capture', audit: i });
+  });
+  for (const name of ['summary.json', 'summary.md', 'events.json']) expected.push({ name, kind: 'aux' });
   requireThat(Array.isArray(run.artifacts) && run.artifacts.length === expected.length, 'missing-artifacts');
-  const reports = new Map();
+  const reports = new Map(), captures = new Map();
   for (let i = 0; i < expected.length; i++) {
     const ref = run.artifacts[i]; keys(ref, ['path', 'bytes', 'sha256']);
-    requireThat(ref.path === `${runId}/${expected[i]}` && Number.isSafeInteger(ref.bytes) && ref.bytes > 0 && hashPattern.test(ref.sha256), 'invalid-artifact-reference');
-    const data = await bytes(join(dir, expected[i]));
+    requireThat(ref.path === `${runId}/${expected[i].name}` && Number.isSafeInteger(ref.bytes) && ref.bytes > 0 && hashPattern.test(ref.sha256), 'invalid-artifact-reference');
+    const data = await bytes(join(dir, expected[i].name));
     requireThat(data.length === ref.bytes && sha256(data) === ref.sha256, 'artifact-integrity');
-    if (i < 36 && i % 2 === 0) { try { reports.set(i / 2, JSON.parse(data)); } catch { deny('invalid-json'); } }
-    if (i < 36 && i % 2 === 1) requireThat(data.includes('<html'), 'missing-html');
+    if (expected[i].kind === 'lhr') { try { reports.set(expected[i].audit, JSON.parse(data)); } catch { deny('invalid-json'); } }
+    else if (expected[i].kind === 'html') requireThat(data.includes('<html'), 'missing-html');
+    else if (expected[i].kind === 'capture') {
+      const pixels = pngSize(data);
+      captures.set(expected[i].audit, { ref: run.artifacts[i], pixels });
+    }
   }
   for (let i = 0; i < 18; i++) {
     const row = run.audits[i], item = schedule()[i];
-    keys(row, ['round', 'profile', 'path', 'status', 'startedAt', 'requestedUrl', 'preflight', 'loadBefore', 'finalUrl', 'summary', 'settings', 'security', 'launch', 'loadAfter', 'finishedAt']);
+    keys(row, ['round', 'profile', 'path', 'status', 'startedAt', 'requestedUrl', 'preflight', 'loadBefore', 'finalUrl', 'summary', 'settings', 'security', 'launch', 'loadAfter', 'finishedAt'], ['capture']);
     requireThat(equal({ round: row.round, profile: row.profile, path: row.path }, item) && row.status === 'complete', 'audit-identity');
-    requireThat(row.requestedUrl === env.origin + item.path && row.finalUrl === row.requestedUrl, 'audit-url');
+    requireThat(row.requestedUrl === env.origin + item.path + env.mode.query && row.finalUrl === row.requestedUrl, 'audit-url');
     const page = env.pages.find(p => p.path === row.path);
-    requireThat(page && env.pages.filter(p => p.path === row.path).length === 1 && hashPattern.test(page.contentHash) && row.preflight.contentHash === page.contentHash && equal(row.preflight.headers, page.headers) && row.preflight.url === row.finalUrl, 'public-content-drift');
+    requireThat(page && env.pages.filter(p => p.path === row.path).length === 1 && hashPattern.test(page.contentHash) && row.preflight.contentHash === page.contentHash && equal(row.preflight.headers, page.headers) && row.preflight.url === row.finalUrl && equal(row.preflight.mode, page.mode), 'public-content-drift');
     requireThat(/no-store/i.test(page.headers?.['cache-control'] || ''), 'cache-policy');
     const s = row.security, proof = s?.rendererProof;
     requireThat(s?.version === 2 && s.active === true && s.guardedThroughShutdown === true && proof?.allTargetsGuarded === true && proof.networkEnabled === true && proof.fetchEnabled === true && proof.httpsContinued === 0 && proof.websocketCreations === 0 && s.proxy?.version === 2 && s.proxy.loopbackBypass === false && Array.isArray(s.documents) && s.documents.length > 0 && Array.isArray(s.targets) && s.targets.length > 0 && s.targets.every(t => t.guarded === true), 'security-unproven');
-    requireThat(s.documents.every(d => d.type === 'Document' && env.routes.some(p => d.url === env.origin + p) && d.status >= 200 && d.status < 400), 'security-document');
+    requireThat(s.documents.every(d => d.type === 'Document' && env.routes.some(p => d.url === env.origin + p + env.mode.query) && d.status >= 200 && d.status < 400), 'security-document');
     requireThat(row.launch.sandbox === true && row.launch.cache === 'new-profile; browser-cold; server-unchanged', 'launch-policy');
     const lhr = reports.get(i);
     // Validate against recorded origin first; unsupported origins remain incompatible, never improvement.
@@ -138,6 +155,19 @@ export async function loadRun(runId, root = stateRoot) {
       }
     }
     requireThat(lhr.audits['is-crawlable']?.score === 0 && row.summary.noindex === 'intentional; is-crawlable failure retained', 'robots-unproven');
+    if (run.captureAllowance === 18 || run.captureAllowance === 6 && item.round === 1) {
+      // Expected private capture sidecars must exist, hash-match and carry geometry
+      // consistent with their own pixels; a missing or tampered capture invalidates
+      // the run — visual approval can never follow.
+      const entry = captures.get(i);
+      requireThat(row.capture && row.capture.ok === true && row.capture.format === 'png' && row.capture.source === 'owned-audit-visit'
+        && entry && row.capture.bytes === entry.ref.bytes && row.capture.sha256 === entry.ref.sha256 && equal(row.capture.pixels, entry.pixels), 'capture-missing');
+      try { captureConsistency(row.capture); } catch { deny('capture-integrity'); }
+      requireThat(row.capture.observed.every(s => s.userAgent === profiles[item.profile].emulatedUserAgent), 'capture-profile');
+      const emulation = profiles[item.profile].screenEmulation;
+      requireThat(equal(row.capture.geometry, { width: emulation.width, height: emulation.height, deviceScaleFactor: emulation.deviceScaleFactor })
+        && Number.isFinite(Date.parse(row.capture.at)) && Date.parse(row.capture.at) <= Date.parse(row.finishedAt), 'capture-integrity');
+    } else requireThat(!Object.hasOwn(row, 'capture'), 'capture-integrity');
   }
   return { id: runId, hash: sha256(raw), run, cases: distributions(run.audits) };
 }
@@ -153,11 +183,12 @@ function declaredSource(a, b, intervention) {
 }
 function compatibility(a, b, intervention = null) {
   const reasons = [], x = a.run, y = b.run;
+  if (x.request.generation !== y.request.generation || !equal(x.plan, y.plan)) reasons.push('generation');
   for (const field of ['cache']) if (!equal(x[field], y[field])) reasons.push(field);
   const declared = declaredSource(a, b, intervention);
   const style = 'wordpress/wp-content/themes/freeplast/style.css';
   const declaredStyle = declared && intervention.paths.includes(style) && [x, y].every(run => run.environment.styleHash === run.environment.source.files.find(f => f.path === style)?.sha256);
-  for (const field of ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'origin', 'routes', 'addresses', 'source', 'pages', 'styleHash', 'hardware']) if (!(declared && field === 'source') && !(declaredStyle && field === 'styleHash') && !equal(x.environment[field], y.environment[field])) reasons.push(field);
+  for (const field of ['pins', 'instrument', 'configHash', 'policyVersion', 'sanitizerVersion', 'mode', 'origin', 'routes', 'addresses', 'source', 'pages', 'styleHash', 'hardware']) if (!(declared && field === 'source') && !(declaredStyle && field === 'styleHash') && !equal(x.environment[field], y.environment[field])) reasons.push(field);
   for (const field of ['schema', 'origin', 'checkout', 'sourceHash', 'runtimeId', 'wordpress', 'plugins']) if (!(declared && field === 'sourceHash') && !equal(x.environment.identity[field], y.environment.identity[field])) reasons.push(`identity.${field}`);
   for (let i = 0; i < 18; i++) if (!equal(x.audits[i].settings, y.audits[i].settings) || !equal(x.audits[i].launch, y.audits[i].launch)) reasons.push(`audit-settings:${i + 1}`);
   return reasons;
@@ -168,8 +199,8 @@ async function current(run) {
   if (!equal(e.pins, pins)) reasons.push('current-pins');
   if (e.instrument !== await instrumentHash()) reasons.push('current-instrument');
   if (e.configHash !== sha256(JSON.stringify(profiles))) reasons.push('current-config');
-  if (e.origin !== origin || !equal(e.routes, routes)) reasons.push('current-cases');
-  if (e.policyVersion !== 1 || e.sanitizerVersion !== 2 || run.run.cache !== 'browser-cold-new-profile; server-unchanged') reasons.push('current-protocol');
+  if (e.origin !== origin || !equal(e.routes, routes) || !equal(e.mode, activeMode())) reasons.push('current-cases');
+  if (e.policyVersion !== 2 || e.sanitizerVersion !== 2 || run.run.cache !== 'browser-cold-new-profile; server-unchanged') reasons.push('current-protocol');
   return reasons;
 }
 export function calibrationData(a, b, focal = null) {

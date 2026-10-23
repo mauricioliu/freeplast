@@ -31,7 +31,7 @@ async function fixture(synthetic = false) {
     disconnect: () => client.terminate(),
     extraTarget: () => { extraTarget = true; },
     async document() {
-      event('Fetch.requestPaused', { requestId: 'doc', request: { url: 'http://mliu:8131/', method: 'GET' }, resourceType: 'Document', responseStatusCode: 200, responseHeaders: [{ name: 'Cache-Control', value: 'no-store' }] });
+      event('Fetch.requestPaused', { requestId: 'doc', request: { url: 'http://mliu:8131/?fp-measure=1', method: 'GET' }, resourceType: 'Document', responseStatusCode: 200, responseHeaders: [{ name: 'Cache-Control', value: 'no-store' }] });
       while (!guard.documents.length) await new Promise(resolve => setTimeout(resolve, 1));
     },
     async close() { guard.close(); for (const socket of server.clients) socket.terminate(); await new Promise(resolve => server.close(resolve)); },
@@ -85,7 +85,7 @@ test('unknown renderer provenance and HTTPS continuation are rejected before con
   for (const mode of ['unknown', 'https']) {
     const f = await fixture();
     try {
-      f.event('Fetch.requestPaused', { requestId: 'denied', request: { url: mode === 'https' ? 'https://accounts.google.com/fixture.png' : 'http://mliu:8131/', method: 'GET' }, resourceType: 'Image' }, mode === 'unknown' ? 'missing-session' : 'main-session');
+      f.event('Fetch.requestPaused', { requestId: 'denied', request: { url: mode === 'https' ? 'https://accounts.google.com/fixture.png' : 'http://mliu:8131/logo.png?token=1', method: 'GET' }, resourceType: 'Image' }, mode === 'unknown' ? 'missing-session' : 'main-session');
       await assert.rejects(f.guard.failed, mode === 'https' ? /https-resource-unsupported/ : /renderer-provenance-missing/);
       assert.equal(f.commands.some(x => x.method === 'Fetch.continueRequest' && x.params.requestId === 'denied'), false);
       assert.ok(f.commands.some(x => x.method === 'Fetch.failRequest' && x.params.requestId === 'denied'));

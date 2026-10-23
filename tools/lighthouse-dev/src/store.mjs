@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { mkdir, lstat, readdir, open, rename, statfs, readFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
-import { join, resolve, parse } from 'node:path';
+import { join, resolve, parse, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { deny } from './policy.mjs';
 import { sha256 } from './preflight.mjs';
 
 export const stateRoot = join(userInfo().homedir, '.local/state/freeplast-lighthouse-dev');
-export const byteLimit = 2 * 1024 ** 3;
+export const byteLimit = 4 * 1024 ** 3;
 export async function privateDirectory(path) {
   path = resolve(path);
   let part = parse(path).root;
@@ -41,10 +41,12 @@ export async function capacity(root, additional = 0) {
   return { used, limit: byteLimit, free: fs.bavail * fs.bsize };
 }
 export async function save(root, path, value) {
-  const data = typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n';
+  const data = typeof value === 'string' ? value : Buffer.isBuffer(value) ? value : Buffer.from(JSON.stringify(value, null, 2) + '\n');
   await capacity(root, Buffer.byteLength(data));
   const fd = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try { await fd.writeFile(data); await fd.sync(); } finally { await fd.close(); }
+  const parent = await open(dirname(path), 'r');
+  try { await parent.sync(); } finally { await parent.close(); }
   return { path: path.slice(root.length + 1), bytes: Buffer.byteLength(data), sha256: sha256(data) };
 }
 export async function manifest(root, dir, value) {

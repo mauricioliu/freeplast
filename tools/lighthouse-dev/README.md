@@ -1,6 +1,72 @@
 # Lighthouse DEV — isolated collection
 
+## Active contract: plan-mvl2p6uk-wka1 (schema 3; INACTIVE until lead activation)
+
+This section supersedes **all historical budgets, activation instructions and capture assumptions below**. Historical failures remain invalid, byte-preserved evidence; no existing run becomes a baseline. No performance improvement is claimed.
+
+- Fixed plan/hash in `src/budget.mjs`: `plan-mvl2p6uk-wka1` / `78a966b9c01b4097a6bfbb48ef4b0957212b4b6ad618577dbe6388b74e37cf9f`. Clock **2026-10-23T17:27:07Z–2026-10-24T05:27:07Z**, never renewed by installation/restart.
+- Up to **240 charged audit slots, 13 started series ×18** (therefore at most234 scheduled), **96 reserved private captures**, **10 doctor starts**; 45min/series, 120s/audit. Every series charges18 slots even when preflight/first audit fails. Immutable per-audit starts separately expose actual attempted audits/captures; reservations never refund. Captures explicitly0,6(first round),18(all rounds), not the old five-slot capture schedule; A2 can use0.
+- Four hypothesis identities1–4; a candidate identity cannot be started again for nicer scores. A technical retry requires recovery of the immediately preceding failed/pending series. Successful runs cannot be reconciled. New instrument/config requires a new generation and compatible A/A; source equality/DECLARED intervention, evaluator thresholds, settings and public content checks remain strict.
+- New state only: `measurement-budget-v3-plan-mvl2p6uk-wka1/` and `receipts-v3-plan-mvl2p6uk-wka1/`. Old schema1/2 allocations, identity/gate receipts and manifests are not replaced, moved or migrated. `save` uses exclusive0600 writes, file+parent-directory fsync; permanent kernel lock spans collection/reconciliation. No reset/state-root CLI override.
+- Source receipt/gate activation belongs to lead, **after** current full native matrix, objective verification and main integration. Gate binds runtime **and all test/oracle sources**, plan/hash. No partial native selection can produce a candidate, even if every case is explicitly selected. Same-worker main-CLI doctor remains a separately released phase; implementation does not run A1/A2.
+
+### Lead-only initialization and explicit series requests
+
+```sh
+# From integrated MAIN, after objective gate; not an instruction to activate now:
+node tools/lighthouse-dev/bin/freeplast-lh.mjs budget-init --confirm \
+  --plan plan-mvl2p6uk-wka1 \
+  --hash 78a966b9c01b4097a6bfbb48ef4b0957212b4b6ad618577dbe6388b74e37cf9f \
+  --operator <lead-identity> --deadline 2026-10-24T05:27:07Z --json
+# Private0600 series.json, exactly:
+# {"purpose":"baseline-a1","generation":1,"captures":6,"hypothesis":0}
+node tools/lighthouse-dev/bin/freeplast-lh.mjs measure --label aa-1 --input /private/series.json --json
+```
+
+Purposes: `baseline-a1`, `baseline-a2`, `candidate`, `technical-retry`, `rebaseline-a1`, `rebaseline-a2`, `reserve`. `generation` starts1 and advances at most1 with a changed compatibility fingerprint. `hypothesis` is0 for baseline/reserve or1–4 for candidates. Runtime adds `{instrument,configHash,sourceHash}` before reservation; environment must match. Complete run manifests are schema3 with `{plan:{id,hash},request,...}`; older schemas remain historical/ineligible.
+
+Lead installs a verified candidate **exclusively** as `receipts-v3-plan-mvl2p6uk-wka1/security-<instrument>-<oracleHash>.json` (no overwrite), retaining its `planId`, `planHash`, `oracleHash`, `instrument`, zero-contact status/context/evidence. Identity `identity-<sourceHash>.json` in the same directory retains schema1 fields described historically below **plus** `planId` and `planHash`; generate actual MAIN sourceHash/checkout and current attributed nonsecret runtime metadata. Do not copy writer identity or overwrite legacy root receipts. New source/instrument/oracle generations select new content-addressed receipt names, preserving every previous receipt without an active pointer reset.
+
+### Safe technical retry reconciliation
+
+`budget-reconcile --confirm --input /private/recovery.json --json` is an explicit custodied operation, never automatic retry. Input fields:
+
+```json
+{
+  "planId":"plan-mvl2p6uk-wka1",
+  "planHash":"78a966b9c01b4097a6bfbb48ef4b0957212b4b6ad618577dbe6388b74e37cf9f",
+  "slot":1,"operator":"actual-custodian",
+  "technicalFailure":true,"effectsSafe":true,"forbiddenContacts":0,"ownedProcessesQuiescent":true,
+  "reservationHash":"<sha256 of immutable series-1.json bytes>",
+  "resultHash":"<sha256 of immutable result-1.json bytes; null only if absent after crash>",
+  "evidence":{
+    "cause":{"path":"recovery/cause.json","sha256":"<hash>"},
+    "repair":{"path":"recovery/repair.json","sha256":"<hash>"},
+    "tests":{"path":"recovery/tests.json","sha256":"<hash>"},
+    "quiescence":{"path":"recovery/quiescence.json","sha256":"<hash>"}
+  },
+  "next":{"purpose":"technical-retry","generation":2,"captures":6,"hypothesis":0,
+    "compatibility":{"instrument":"<repaired instrument>","configHash":"<config hash>","sourceHash":"<actual measured checkout source hash>"}}
+}
+```
+
+Evidence paths are relative to fixed state root, private singly-linked JSON; record actual diagnosed cause, repaired source, passing tests and owned-process quiescence with custody. Pending/failed reservations remain blocked until this record exists and matches immutable original bytes. Next request must equal `next` exactly, consumes a new slot and keeps the old run incomplete. Explicit forbidden-contact/uncertain-effect outcomes reject reconciliation. Real forbidden contacts or unresolved effects stop affected work regardless of any Boolean assertion. `ponytail:` custodian attribution and hashed evidence cannot independently prove human truth or defeat a malicious OS state owner; no auto process-kill/replay/repair occurs.
+
+### Native capture and policy proof
+
+Capture reasserts UA/device metrics on one owned CDP session; observation and `Page.captureScreenshot` use that **same session**, page-origin clip with **scale1**. Native mobile reproduction proved scale=DPR double-scales (1262×2520 instead of721×1440). Both before/after viewport/DPR/scale and UA must match configured mobile412×823@1.75 or desktop1440×900@1. Complete bounded PNG CRC/chunk/inflated-data validation accepts actual Uint8Array views, rejects truncated IHDR impostors; native tests independently decode pixels with installed ImageMagick, assert synthetic origin-color sentinel/nonuniform content, and verify audit-request UA/formFactor. Native historical teardown timing remains unproven, not a claimed root cause.
+
+All captures remain private sidecars, never LHR/HTML pixels. No navigation/interactions are added for capture. Positive mobile/desktop probes precede full certification; full native matrix runs both positive profiles first, then every negative. Shared static-resource vectors/diagnostic expectations and HTTPS provenance oracle are exercised by pure and native tests. No broader accepted denial codes, omitted cases or relaxed guards.
+
+Finite commercial-name allowlist: four shipped theme scripts; Woo11.1 four frontend scripts in both `.min.js` and source-proven SCRIPT_DEBUG `.js` forms; Quotes for WooCommerce2.13 exact `assets/js/qwc-product-page.js` observed on the product route and traced to its local archive registration. No generic plugin/theme/extension bypass. Doctor inspects required local resource URLs before scoring, so policy mismatches invalidate rather than silently remove scripts. Methods, queries, commercial APIs, origin/HTTPS/WS restrictions remain unchanged.
+
+Rootless native harness only: private user/net namespaces, UID/GID1000, private lo, five capability masks0 and NoNewPrivs1 before Node; sandbox retained. Plan-owned immutable starts/completions track30 focused visits,10 full-matrix attempts and60 public diagnostics under lead custody; each full attempt needs lead source/oracle preflight release. No host-network fallback. Runtime artifact cap is4GiB including historical state (conservative); cumulative4GiB toolchain and new artifacts outside state are also checked by lead/operator inventory, not reset by new worktrees.
+
+## Historical implementation and failure record (superseded, not current authorization)
+
 **Current correction handoff:** real collection remains **BLOCKED**, before the first audit (`public-content-drift`, cause unknown). No baseline/A/A exists. Changes below invalidate historical instrument/security receipts; never activate a candidate or retry DEV from this document. Historical ticket evidence remains unchanged. Current corrections add a durable explicit measurement allowance, valid flat TOON summaries/contextual help, bounded read-only cycle manifests, complete supported asset fingerprints and safe failed-preflight metadata.
+
+**Plan plan-mvjyu52z-4elv (ticket 2) update:** the instrument now measures only the gated DEV measurement mode: every audited document is the original path plus exactly `?fp-measure=1`, preflight/doctor additionally require the source-proven `quantity_fpm_` marker in the served HTML (server-side mode proof, never a bare CLI flag), and same-origin shipped static sources under `/wp-content/themes/`, `/wp-content/plugins/` and `/wp-includes/` are exempt from the commercial-name denial (read-only assets with safe ver-only queries; uploads, root-level paths, non-asset extensions, cross-origin hosts and any mutating query remain denied). Policy version is 2; evidence without the mode identity is rejected as old/incompatible. A schema-2 plan-bound allowance (below) and private capture sidecars are implemented but NOT activated: allocation, receipts and the security gate are lead-gated phases.
 
 Final ticket-5 collection protocol and provenance: [HANDOFF.md](HANDOFF.md). Historical ticket statuses below are retained; current real outcome lives in the private report linked there.
 
@@ -239,6 +305,13 @@ DECLARED comparison is restricted to predeclared theme files, binding exact pre/
 
 ### Persistent budget and recovery custody
 
+### Measurement mode, captures and compatibility (plan plan-mvjyu52z-4elv)
+
+- **Mode threading**: `policyVersion 2`. Documents are accepted only as original route + exactly `?fp-measure=1` (duplicates, extra parameters, wrong values, other queries, other origins/ports and all mutating methods/queries denied; renderer HTTPS/WS denials unchanged). The exact mode query is also the only query allowed on same-origin route-path subresource fetches; assets remain ver-only. `doctor`, `measure`, run manifests, calibration and comparison all carry the mode identity `{id: fp-measure, query, version, active}`, and every recorded page/audit preflight carries its mode detection with the observed `quantity_fpm_` marker count. Evidence lacking mode identity, mode-inactive pages or marker count < 1 is rejected (`measure-mode-unproven`, `missing-environment`), so pre-plan runs can never serve as baseline/candidate.
+- **Static-source exception**: same-origin static assets (by extension) under `/wp-content/themes/`, `/wp-content/plugins/`, `/wp-includes/` bypass only the commercial-name deny. Shipped examples proven from local source: theme `assets/js/{nav,basket-count,loop-add-to-cart-quantity,loop-added-count,featured-variants,variation-button-state,product-color-options,cart-quantity-feedback,cart-accessible-names,checkout-form}.js`, `assets/css/woo.css`, plus runtime shapes `wp-content/plugins/woocommerce/assets/js/frontend/{add-to-cart,cart-fragments,add-to-cart-variation}.min.js` and `wp-includes/js/jquery/jquery.min.js`. Everything else keeps the full commercial regex: `/wp-content/uploads/…cart….png`, `/cart-helper.js`, `*.php`, cross-origin hosts, POST, `?add-to-cart=` or any non-ver/non-mode query still stop the audit. Covered by the native matrix case `static-source-assets` plus negative lookalike cases.
+- **Private captures**: schema-2 series 1/3/4/5 reserve 6 captures each (24 total; A2 none). During each round-1 audit the already-owned browser visit takes one PNG (no extra navigation, request or interaction; 10 s bound) saved as a separate `NN-profile.capture.png` sidecar (0600, run dir 0700). Native probe evidence (2026-10-23, amendment budget): Lighthouse teardown leaves the page torn and headless `Page.captureScreenshot` ignores the page-level device-metrics override (default 800x600 surface even while the page reports the configured emulation). The capture context is therefore re-asserted to the configured profile via an own CDP session (verified by observed before/after snapshots) and the image is taken as a page-origin clip at scale=DPR (`method: clip-page-origin`, `captureBeyondViewport`): deterministic, scroll-independent, exactly configured geometry×DPR — baseline/candidate comparable. Raw pixels never in the sanitized LHR/HTML (sanitizer strips screenshots; sidecar bytes asserted absent from report artifacts). Each capture records source `owned-audit-visit`, method, ISO time, configured geometry, clip, observed snapshots and PNG IHDR pixels; `src/capture.mjs` requires pixels == configured×DPR (±2) and ≥1 observed snapshot equal to the configured state. Missing/invalid/inconsistent/tampered/extra capture invalidates the run (`capture-missing`/`capture-integrity`) — never visual approval; series allowance enforced (`capture-budget-exhausted`).
+- **Frozen evaluator/thresholds/config**: thresholds, profiles, evaluator logic and the acceptance strings are unchanged from the pre-baseline freeze; mode identity is now part of environment compatibility, so any mode/config/instrument mismatch between runs reports `incompatible` instead of a verdict. Incomplete/failed runs still never produce improvement; noindex retention, TBT≠INP wording and missing-metric rejection are unchanged. Raw body/security-header equality stays conservative — no normalization of any kind was added.
+
 `manual-cycle/budget.json` reserves **one iteration / 90 minutes wall clock** before capture. Every new process reads that same durable record; no reset/resume/new-cycle command. Failed initialization consumes the attempt. Completed or uncertain operations cannot reopen it. Expired cycles cannot post or KEEP; an already captured post-state may still receive explicit DISCARD and guarded recovery for safety. Restoring does not replenish budget. External deletion/forgery by the OS state owner is outside the integrity model.
 
 Begin captures exact bytes/modes, HEAD/branch, raw index hash/index entries and full file inventory. Post is immutable. Recovery never checks out HEAD, resets, stashes, cleans, edits the index or touches undeclared files. It requires DISCARD and exact post-state equality, then restores owned pre-images (including dirty/untracked content), recreates owned deletions and removes owned additions. All pre-image hashes are checked before writes. Symlinks, conflicts, changed index, later edits or untracked drift block. Index and unrelated dirty/untracked files remain untouched.
@@ -249,9 +322,9 @@ Begin captures exact bytes/modes, HEAD/branch, raw index hash/index entries and 
 
 ### Current measurement allowance and read-only cycle mode
 
-`budget-init --confirm` explicitly allocates **36 audit slots in two 18-audit series, 90 minutes wall clock from initialization**. This command requires separate operator authorization; it is not a suggested next action for the currently blocked real collection. It performs no HTTP. There is no implicit initialization, renewal/reset or state-root override. It refuses any existing allocation, historical run manifest (including the failed pre-upgrade A1), or existing manual cycle. Never delete/move evidence to obtain a new allowance; future renewal/migration needs a separately authorized implementation/decision, not this CLI.
+`budget-init --confirm --plan <plan-id> --hash <approved-plan-sha256> --operator <name> --deadline <fixed-iso>` installs the schema-2 allowance bound to this plan: **90 DEV audit slots in five 18-audit series (A1, A2, two candidates, reserve), 24 private captures (6 first-round A1 / 0 A2 / 6 per candidate / 6 reserve), 45 minutes per series, 120 seconds per audit, one fixed plan deadline supplied explicitly**. The command requires separate lead authorization and performs no HTTP. It writes only the new `measurement-budget-v2/` directory: the schema-1 allocation, historical run manifests and receipts stay byte-for-byte untouched, and there is no renewal, reset, migration or state-root override. Reconciliation must come from explicit approved plan/hash/operator input; deleting or moving old evidence to obtain a new allowance is out of model.
 
-`measure` reserves 18 slots under the existing kernel lock before preflight or browser work. An incomplete or interrupted/uncertain reservation prevents another series regardless of label/process restart. Two completed series exhaust the allowance. Series deadline is bounded by the allocation deadline and any active cycle deadline; expired/closed/uncertain cycles cannot measure. One reservation is consumed even if initialization fails before a run manifest exists. No real allowance was created during correction.
+`measure` reserves one series (18 audits plus that series' capture allowance) under the existing kernel lock before preflight or browser work. A crash, uncertain or incomplete reservation blocks every later series of this plan regardless of label or process restart. Series deadlines are bounded by the allocation deadline and any active cycle deadline. One reservation is consumed even if collection fails before a run manifest exists. No schema-2 allowance was created during this ticket; activation is a lead-gated phase.
 
 For **non-restoring** cycles, add `"mode":"read-only"` to begin JSON. Only declared non-secret theme source/asset paths are allowed. The tool writes private metadata only: Git HEAD/branch/index/status and hashes of its existing tool/theme/plugin/LOCAL source boundaries, capped at 64 MiB of hashed input and 10,000 files; it never stores source pre-images in this mode. Linked worktrees resolve their own Git index path. Post/decision still require unchanged index, no conflicts, exact outside-owned source hashes/status, matching baseline/candidate identities and evidence. `restore` always rejects this mode, including after DISCARD; recovery requires separately authorized manual custody. Outside these source boundaries only Git name/status/index metadata is observed: no claim to hash unrelated commercial data or to provide transactional custody against external writers.
 
@@ -259,4 +332,4 @@ Fingerprints include policy-supported image/font/video asset types, case-insensi
 
 Default output is valid **flat TOON scalar summaries**: nested previews are quoted strings, capped at 160 characters with an explicit full-detail hint. Use `--json` for complete original structured results. Subcommand `--help` includes command-local flags/examples; errors identify the offending flag or missing argument without echoing input values. No-args home includes executable identity/description and read-only discovery actions. Version remains a bare fast-path string.
 
-Validation: `npm test --prefix tools/lighthouse-dev` includes pure/HTTP synthetic fixtures only, no browser/native matrix. Cycle coverage includes preexisting dirty/index/untracked preservation, additions/deletions/modes, later/index/untracked/symlink drift, real unmerged index conflicts, partial recovery, abrupt child-process exit, restart budget, damaged pre-image/evidence, and DECLARED unrelated-source/config/content rejection. Synthetic reviewer assertions in tests are not human review of any application. Security receipt remains stale after instrument changes; no smoke/security matrix/DEV run or receipt activation occurred for ticket 4.
+Validation: `npm test --prefix tools/lighthouse-dev` includes pure/HTTP synthetic fixtures only, no browser/native matrix. Coverage now also includes measurement-mode document/query rules, the same-origin static-source exception (shipped names pass; uploads/root/lookalike/mutator/cross-origin still deny), schema-2 allowance behavior (plan-bound init, five series, capture plan 6/0/6/6/6, uncertain/expired never renew, schema-1 bytes preserved) and capture sidecar custody (missing/tampered/extra/privacy). Cycle coverage includes preexisting dirty/index/untracked preservation, additions/deletions/modes, later/index/untracked/symlink drift, real unmerged index conflicts, partial recovery, abrupt child-process exit, restart budget, damaged pre-image/evidence, and DECLARED unrelated-source/config/content rejection. Synthetic reviewer assertions in tests are not human review of any application. Security receipt remains stale after instrument changes; no smoke/security matrix/DEV run or receipt activation occurred for this source phase.

@@ -8,31 +8,62 @@ import { schedule, instrumentHash } from '../src/measure.mjs';
 import { sha256 } from '../src/preflight.mjs';
 import { save, manifest } from '../src/store.mjs';
 import { profiles } from '../src/config.mjs';
-import { origin, routes } from '../src/policy.mjs';
+import { origin, routes, measureMode, measureUrl, activeMode } from '../src/policy.mjs';
+import { requestFor, runPlan } from './budget-fixture.mjs';
 import { summarize, metricIds, categoryIds } from '../src/report.mjs';
 
 const hash = sha256('synthetic'), stamp = '2026-01-01T00:00:00.000Z';
+import { pngWith } from './png-fixture.mjs';
 async function root(t) { const dir = await mkdtemp(join(tmpdir(), 'lh-comparison-')); t.after(() => rm(dir, { recursive: true, force: true })); return dir; }
-async function fixture(root, id, change = () => {}) {
+async function fixture(root, id, change = () => {}, { slot = 2, captures = false } = {}) {
   const dir = join(root, id); await mkdir(dir, { mode: 0o700 });
   const files = [{ path: 'synthetic.css', mode: 0o644, bytes: 1, sha256: hash }];
   const source = { head: 'synthetic', branch: 'synthetic', status: [], indexHash: hash, files, sourceHash: sha256(JSON.stringify(files)) }, headers = { 'cache-control': 'no-store' };
-  const run = { schema: 1, id, label: 'synthetic', status: 'complete', startedAt: stamp, deadline: '2099-01-01T00:45:00.000Z', finishedAt: '2099-01-01T00:01:00.000Z', schedule: schedule(), audits: [], artifacts: [], cache: 'browser-cold-new-profile; server-unchanged', retries: 0, loadBefore: {}, loadAfter: {}, sourceAfter: source,
-    environment: { pins: JSON.parse(await readFile(new URL('../toolchain.json', import.meta.url))), instrument: await instrumentHash(), configHash: sha256(JSON.stringify(profiles)), policyVersion: 1, sanitizerVersion: 2, origin, routes, addresses: ['127.0.0.1'], identity: { schema: 1, origin, checkout: 'synthetic', sourceHash: source.sourceHash, verifiedAt: stamp, operator: 'synthetic', runtimeId: 'synthetic', wordpress: '1', plugins: {} }, source, pages: routes.map(path => ({ path, contentHash: hash, headers })), styleHash: hash, hardware: { hostname: 'synthetic', platform: 'linux', release: 'synthetic', arch: 'x64', cpus: [{ model: 'synthetic' }], memory: 1 }, storage: {}, load: {} } };
+  const pageMode = { ...activeMode(), markers: 2 };
+  const run = { schema: 3, plan: runPlan, id, label: 'synthetic', status: 'complete', startedAt: stamp, deadline: '2099-01-01T00:45:00.000Z', finishedAt: '2099-01-01T00:01:00.000Z', slot, captureAllowance: captures ? 6 : 0, schedule: schedule(), audits: [], artifacts: [], cache: 'browser-cold-new-profile; server-unchanged', retries: 0, loadBefore: {}, loadAfter: {}, sourceAfter: source,
+    environment: { pins: JSON.parse(await readFile(new URL('../toolchain.json', import.meta.url))), instrument: await instrumentHash(), configHash: sha256(JSON.stringify(profiles)), policyVersion: 2, sanitizerVersion: 2, mode: activeMode(), origin, routes, addresses: ['127.0.0.1'], identity: { schema: 1, origin, checkout: 'synthetic', sourceHash: source.sourceHash, verifiedAt: stamp, operator: 'synthetic', runtimeId: 'synthetic', wordpress: '1', plugins: {} }, source, pages: routes.map(path => ({ path, contentHash: hash, headers, mode: pageMode })), styleHash: hash, hardware: { hostname: 'synthetic', platform: 'linux', release: 'synthetic', arch: 'x64', cpus: [{ model: 'synthetic' }], memory: 1 }, storage: {}, load: {} } };
   for (const [i, item] of schedule().entries()) {
-    const lhr = { lighthouseVersion: run.environment.pins.lighthouse, finalDisplayedUrl: origin + item.path, finalUrl: origin + item.path, configSettings: profiles[item.profile], categories: {}, audits: {} };
+    const lhr = { lighthouseVersion: run.environment.pins.lighthouse, finalDisplayedUrl: measureUrl(origin, item.path), finalUrl: measureUrl(origin, item.path), configSettings: profiles[item.profile], categories: {}, audits: {} };
     for (const m of metricIds) lhr.audits[m] = { id: m, numericValue: m === 'cumulative-layout-shift' ? .01 : 1000, score: 1, scoreDisplayMode: 'numeric' };
     for (const c of categoryIds) { const auditId = c === 'seo' ? 'is-crawlable' : `check-${c}`; lhr.categories[c] = { score: .9, auditRefs: [{ id: auditId }] }; lhr.audits[auditId] = { id: auditId, score: c === 'seo' ? 0 : 1, scoreDisplayMode: 'binary' }; }
-    const row = { ...item, status: 'complete', startedAt: stamp, finishedAt: stamp, requestedUrl: lhr.finalUrl, finalUrl: lhr.finalUrl, preflight: { contentHash: hash, headers, url: lhr.finalUrl }, loadBefore: {}, loadAfter: {}, settings: lhr.configSettings, security: { version: 2, active: true, guardedThroughShutdown: true, rendererProof: { allTargetsGuarded: true, networkEnabled: true, fetchEnabled: true, httpsContinued: 0, websocketCreations: 0 }, proxy: { version: 2, loopbackBypass: false }, documents: [{ type: 'Document', url: lhr.finalUrl, status: 200 }], targets: [{ type: 'page', guarded: true }] }, launch: { sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
+    const row = { ...item, status: 'complete', startedAt: stamp, finishedAt: stamp, requestedUrl: lhr.finalUrl, finalUrl: lhr.finalUrl, preflight: { contentHash: hash, headers, url: lhr.finalUrl, mode: pageMode }, loadBefore: {}, loadAfter: {}, settings: lhr.configSettings, security: { version: 2, active: true, guardedThroughShutdown: true, rendererProof: { allTargetsGuarded: true, networkEnabled: true, fetchEnabled: true, httpsContinued: 0, websocketCreations: 0 }, proxy: { version: 2, loopbackBypass: false }, documents: [{ type: 'Document', url: lhr.finalUrl, status: 200 }], targets: [{ type: 'page', guarded: true }] }, launch: { sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
     change(lhr, row, run, i); row.summary = summarize(lhr); run.audits.push(row);
     const stem = `${String(i + 1).padStart(2, '0')}-${item.profile}`;
     run.artifacts.push(await save(root, join(dir, stem + '.json'), lhr)); run.artifacts.push(await save(root, join(dir, stem + '.html'), '<html>synthetic only</html>'));
+    if (captures && item.round === 1) {
+      const geo = profiles[item.profile].screenEmulation;
+      const snap = { innerWidth: geo.width, innerHeight: geo.height, deviceScaleFactor: geo.deviceScaleFactor, visualWidth: geo.width, visualHeight: geo.height, visualScale: 1, userAgent: profiles[item.profile].emulatedUserAgent };
+      const pixels = { width: Math.round(geo.width * geo.deviceScaleFactor), height: Math.round(geo.height * geo.deviceScaleFactor) };
+      const ref = await save(root, join(dir, `${stem}.capture.png`), pngWith(pixels.width, pixels.height));
+      row.capture = { ok: true, format: 'png', source: 'owned-audit-visit', at: stamp, geometry: { width: geo.width, height: geo.height, deviceScaleFactor: geo.deviceScaleFactor }, observed: [snap, snap], pixels, bytes: ref.bytes, sha256: ref.sha256 };
+      run.artifacts.push(ref);
+    }
   }
   for (const name of ['summary.json', 'summary.md', 'events.json']) run.artifacts.push(await save(root, join(dir, name), '{}'));
+  run.request = requestFor(run.environment, run.captureAllowance);
   await manifest(root, dir, run); return run;
 }
 async function alter(root, id, fn) { const path = join(root, id, 'manifest.json'), data = JSON.parse(await readFile(path)); fn(data); await writeFile(path, JSON.stringify(data), { mode: 0o600 }); }
 async function snapshot(root) { const out = []; for (const name of (await readdir(root)).sort()) { const path = join(root, name), st = await lstat(path); out.push([name, st.mode, st.mtimeMs, st.isDirectory() ? await snapshot(path) : sha256(await readFile(path))]); } return out; }
+
+test('capture sidecars: valid series loads; missing/tampered/extra captures never approve', async t => {
+  const r = await root(t); await fixture(r, 'cap', () => {}, { slot: 1, captures: true });
+  const loaded = await loadRun('cap', r);
+  assert.equal(loaded.run.captureAllowance, 6);
+  assert.ok(loaded.run.audits.filter(x => x.round === 1).every(x => x.capture));
+  await fixture(r, 'capgone', () => {}, { slot: 1, captures: true });
+  await rm(join(r, 'capgone/01-mobile.capture.png'));
+  await assert.rejects(loadRun('capgone', r));
+  await fixture(r, 'captamper', () => {}, { slot: 1, captures: true });
+  await alter(r, 'captamper', run => { for (const row of run.audits) if (row.round === 1) row.capture.sha256 = '0'.repeat(64); });
+  await assert.rejects(loadRun('captamper', r), { code: 'capture-missing' });
+  await fixture(r, 'capmeta', () => {}, { slot: 1, captures: true });
+  await alter(r, 'capmeta', run => { for (const row of run.audits) if (row.round === 1) row.capture.source = 'elsewhere'; });
+  await assert.rejects(loadRun('capmeta', r), { code: 'capture-missing' });
+  await fixture(r, 'capdrop', () => {}, { slot: 1, captures: true });
+  await alter(r, 'capdrop', run => { for (const row of run.audits) if (row.round === 1) delete row.capture; });
+  await assert.rejects(loadRun('capdrop', r), { code: 'capture-missing' });
+});
 
 test('distribution keeps raw values; odd/even median, range, MAD; rejects missing/invalid', () => {
   assert.deepEqual(distribution([5, 1, 3]), { values: [5, 1, 3], n: 3, median: 3, min: 1, max: 5, range: 4, mad: 2 });
@@ -59,6 +90,8 @@ test('strict schema, hashes, reports, security, missing runs and refs reject', a
     x => { x.audits[0].preflight.contentHash = '0'.repeat(64); }, x => { x.sourceAfter = {}; },
     x => { x.environment.source.files[0].bytes++; }, x => { delete x.environment.identity.wordpress; },
     x => { x.audits[0].settings = {}; }, x => { x.audits[0].finalUrl = origin + '/tienda/'; },
+    x => { x.environment.mode = { id: 'fp-measure', query: '?fp-measure=1', version: 1, active: false }; }, x => { x.environment.mode = undefined; },
+    x => { x.environment.pages[0].mode.markers = 0; }, x => { x.slot = 14; }, x => { x.captureAllowance = 5; },
   ];
   for (const [i, mutation] of mutations.entries()) { const id = 'bad' + i; await fixture(r, id); await alter(r, id, mutation); await assert.rejects(loadRun(id, r)); }
   await assert.rejects(loadRun('missing', r)); await assert.rejects(loadRun('../escape', r));
@@ -134,11 +167,11 @@ test('noise, zero baseline, exact thresholds, relative floor, frozen noise floor
 
 test('version/config/cache/origin/source incompatibilities and candidate before calibration', async t => {
   const r = await root(t); await fixture(r, 'a'); await fixture(r, 'aa'); const a = await loadRun('a', r), b = await loadRun('aa', r);
-  for (const field of ['pins', 'instrument', 'configHash', 'origin', 'source', 'hardware', 'pages']) { const x = structuredClone(b); x.run.environment[field] = 'different'; assert.equal(evaluate(a, x).status, 'incompatible', field); }
+  for (const field of ['pins', 'instrument', 'configHash', 'origin', 'source', 'hardware', 'pages', 'mode']) { const x = structuredClone(b); x.run.environment[field] = 'different'; assert.equal(evaluate(a, x).status, 'incompatible', field); }
   const x = structuredClone(b); x.run.cache = 'warm'; assert.equal(evaluate(a, x).status, 'incompatible');
   await fixture(r, 'old', lhr => { lhr.audits['largest-contentful-paint'].numericValue = 700; }); const cal = await calibrate('a', 'aa', 'mobile:/', r);
   assert.equal((await compare('a', 'old', cal.id, r)).status, 'incompatible');
-  await alter(r, 'aa', x => { x.environment.instrument = '0'.repeat(64); }); assert.equal((await compare('a', 'aa', null, r)).status, 'incompatible');
+  await alter(r, 'aa', x => { x.environment.instrument = '0'.repeat(64); x.request.compatibility.instrument = x.environment.instrument; }); assert.equal((await compare('a', 'aa', null, r)).status, 'incompatible');
 });
 
 test('new failed audits hidden by same score, intermittent failures, CLS redline, no cross-case averaging', async t => {

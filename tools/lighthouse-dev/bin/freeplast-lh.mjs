@@ -12,21 +12,23 @@ else {
   const description = 'Isolated DEV collection and deterministic laboratory comparison; no automatic baseline promotion.';
   const usage = {
     cycle: 'cycle --action <begin|post|decide|restore|show> [--input <private-json-path>] [--json]',
-    doctor: 'doctor [--json]', measure: 'measure --label <label> [--json]', list: 'list [--json]', show: 'show --run <id> [--json]',
+    doctor: 'doctor [--json]', measure: 'measure --label <label> --input <private-series-request.json> [--json]', list: 'list [--json]', show: 'show --run <id> [--json]',
     calibrate: 'calibrate --a <id> --b <id> [--focal <profile:/path/>] [--json]',
     'baseline-set': 'baseline-set --run <id> --confirm [--json] (alias: baseline set)',
-    'budget-init': 'budget-init --confirm [--json] (explicit new 36-audit/90-minute allowance; refuses historical runs)',
+    'budget-init': 'budget-init --confirm --plan <plan-id> --hash <plan-sha256> --operator <name> --deadline <iso> [--json] (explicit lead-gated 240-audit/13-series/96-capture allowance)',
+    'budget-reconcile': 'budget-reconcile --confirm --input <private-recovery.json> [--json]',
     compare: 'compare --baseline <id> --candidate <id> [--calibration <cal-id>] [--json]',
   };
-  const specs = { cycle: ['action', 'input'], doctor: [], measure: ['label'], list: [], show: ['run'], calibrate: ['a', 'b', 'focal'], 'baseline-set': ['run', 'confirm'], 'budget-init': ['confirm'], compare: ['baseline', 'candidate', 'calibration'] };
+  const specs = { cycle: ['action', 'input'], doctor: [], measure: ['label', 'input'], list: [], show: ['run'], calibrate: ['a', 'b', 'focal'], 'baseline-set': ['run', 'confirm'], 'budget-init': ['confirm', 'plan', 'hash', 'operator', 'deadline'], 'budget-reconcile': ['confirm', 'input'], compare: ['baseline', 'candidate', 'calibration'] };
   const examples = {
     cycle: 'cycle --action show; cycle --action begin --input /private/begin.json. begin: repo,hypothesis,paths,baseline,calibration,acceptance; optional mode=read-only (no restoration). post: tests. decide: candidate,acceptance. Full schemas: README.md.',
     doctor: 'doctor --help; doctor --json (network; requires authorization)',
-    measure: 'measure --help; measure --label aa-1 --json (network; requires authorization and budget)',
+    measure: 'measure --help; measure --label aa-1 --input /private/series.json --json (purpose,generation,captures,hypothesis; network; requires budget)',
     list: 'list; list --json', show: 'show --run <id>; show --run <id> --json',
     calibrate: 'calibrate --a <id-a1> --b <id-a2>; calibrate --a <id-a1> --b <id-a2> --focal mobile:/ --json (default: no focal)',
     'baseline-set': 'baseline-set --run <id> --confirm; baseline set --run <id> --confirm --json',
-    'budget-init': 'budget-init --help; budget-init --confirm --json (only with explicit collection authorization; no renewal)',
+    'budget-init': 'budget-init --help; budget-init --confirm --plan plan-mvl2p6uk-wka1 --hash <approved-plan-sha256> --operator <agent> --deadline 2026-10-24T05:27:07Z --json (lead-gated activation only; no renewal)',
+    'budget-reconcile': 'budget-reconcile --help; budget-reconcile --confirm --input /private/recovery.json --json (custodied technical repair only; no refunds)',
     compare: 'compare --baseline <id-a> --candidate <id-b>; compare --baseline <id-a> --candidate <id-b> --calibration <cal-id> --json (default: no calibration)',
   };
   let command = 'list';
@@ -48,23 +50,35 @@ else {
     }
     if (help) print({ description, usage: args.some(x => !x.startsWith('-')) ? helpFor() : Object.values(usage).join('; '), help: '--help/-h per command; --version/-v/-V; default output: compact TOON, --json: full details; no URL/config overrides.' });
     else {
-      const required = { cycle: ['action'], measure: ['label'], show: ['run'], calibrate: ['a', 'b'], 'baseline-set': ['run', 'confirm'], 'budget-init': ['confirm'], compare: ['baseline', 'candidate'] };
+      const required = { cycle: ['action'], measure: ['label', 'input'], show: ['run'], calibrate: ['a', 'b'], 'baseline-set': ['run', 'confirm'], 'budget-init': ['confirm', 'plan', 'hash', 'operator', 'deadline'], 'budget-reconcile': ['confirm', 'input'], compare: ['baseline', 'candidate'] };
       for (const name of required[command] || []) if (!options[name]) fail(`Missing required flag --${name} for ${command}`);
-      for (const [k, v] of Object.entries(options)) if (!['confirm', 'focal', 'action', 'input'].includes(k) && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,119}$/.test(v)) fail(`Invalid value for --${k}`);
+      for (const [k, v] of Object.entries(options)) {
+        if (['confirm', 'focal', 'action', 'input'].includes(k)) continue;
+        if (k === 'hash' && !/^[a-f0-9]{64}$/.test(v)) fail(`Invalid value for --${k}`);
+        else if (k === 'operator' && !/^[\w.@-]{1,100}$/.test(v)) fail(`Invalid value for --${k}`);
+        else if (k === 'deadline' && !Number.isFinite(Date.parse(v))) fail(`Invalid value for --${k}`);
+        else if (!['hash', 'operator', 'deadline'].includes(k) && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,119}$/.test(v)) fail(`Invalid value for --${k}`);
+      }
+      if (command === 'budget-init' && Date.parse(options.deadline) <= Date.now()) fail('--deadline must be in the future');
       if (command === 'cycle' && !['begin', 'post', 'decide', 'restore', 'show'].includes(options.action)) fail('Invalid --action; use begin, post, decide, restore or show');
       if (command === 'cycle' && (['begin', 'post', 'decide'].includes(options.action) !== Boolean(options.input))) fail(`--input is required only for cycle begin/post/decide, not ${options.action}`);
       if (options.label && options.label.length > 40) fail('--label must be at most 40 characters');
       if (options.focal && !['mobile', 'desktop'].some(p => ['/', '/tienda/', '/producto/caja-cosechera-3-4/'].some(r => options.focal === `${p}:${r}`))) fail('Invalid --focal; use mobile:/, desktop:/ or another fixed route');
       let result;
       if (command === 'budget-init') {
-        const { initializeBudget } = await import('../src/budget.mjs'); result = await initializeBudget();
+        const { initializeBudget } = await import('../src/budget.mjs'); result = await initializeBudget({ planId: options.plan, planHash: options.hash, operator: options.operator, deadline: options.deadline });
+      } else if (command === 'budget-reconcile') {
+        const { reconcileMeasurement } = await import('../src/budget.mjs');
+        const { readPrivate } = await import('../src/store.mjs');
+        result = await reconcileMeasurement(await readPrivate(options.input));
       } else if (command === 'cycle') {
         const { cycle } = await import('../src/cycle.mjs');
         const { readPrivate } = await import('../src/store.mjs');
         result = await cycle(options.action, options.input ? await readPrivate(options.input) : null);
       } else if (['doctor', 'measure'].includes(command)) {
         const m = await import('../src/measure.mjs');
-        result = command === 'doctor' ? await m.doctor() : await m.measure(options.label);
+        const { readPrivate } = await import('../src/store.mjs');
+        result = command === 'doctor' ? await m.doctor() : await m.measure(options.label, await readPrivate(options.input));
       } else {
         const m = await import('../src/compare.mjs');
         if (command === 'list') result = await m.list();

@@ -120,6 +120,7 @@ test('DECLARED binds exact owned source; unrelated source/config/content changes
   for (const field of ['configHash', 'styleHash', 'pages']) {
     const run = structuredClone(original);
     if (field === 'pages') run.environment.pages[0].headers.extra = 'changed'; else run.environment[field] = '0'.repeat(64);
+    if (field === 'configHash') run.request.compatibility.configHash = run.environment.configHash;
     await writeFile(path, JSON.stringify(run));
     if (field === 'pages') await assert.rejects(compare('base', 'candidate', s.input.calibration, s.root, intervention));
     else assert.equal((await compare('base', 'candidate', s.input.calibration, s.root, intervention)).status, 'incompatible');

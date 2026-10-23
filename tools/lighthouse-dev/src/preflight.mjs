@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import { checkRequest, deny } from './policy.mjs';
+import { checkRequest, deny, measureMode } from './policy.mjs';
 
 export const sha256 = value => createHash('sha256').update(value).digest('hex');
 export function request(url, address, signal) {
@@ -31,8 +31,11 @@ export function publicIdentity(html, headers) {
   if (!/no-store/i.test(headers['cache-control'] || '')) deny('cache-policy');
 }
 
-export async function preflight(p, path, address, signal) {
-  let url = p.origin + path;
+// `mode` requests the gated DEV measurement input (exact query) and requires the
+// source-proven marker in the served HTML: server-side mode activity is detected,
+// never inferred from the CLI flag alone.
+export async function preflight(p, path, address, signal, { mode = false } = {}) {
+  let url = p.origin + path + (mode ? measureMode.query : '');
   const hops = [];
   for (let hop = 0; hop <= 3; hop++) {
     checkRequest(p, url);
@@ -48,8 +51,11 @@ export async function preflight(p, path, address, signal) {
     if (response.status !== 200) deny('preflight-status');
     const html = response.body.toString('utf8');
     publicIdentity(html, response.headers);
+    const markers = mode ? html.split(measureMode.marker).length - 1 : 0;
+    if (mode && !markers) deny('measure-mode-inactive');
     return {
       html, url, hops,
+      mode: { active: mode, id: measureMode.id, query: measureMode.query, version: measureMode.version, markers },
       // No normalizer: conservative byte drift is invalid, including dynamic nonces.
       contentHash: sha256(response.body),
       headers: Object.fromEntries(['cache-control', 'content-type', 'content-security-policy', 'x-robots-tag'].map(k => [k, response.headers[k] ? (k === 'content-security-policy' ? sha256(response.headers[k]) : response.headers[k]) : null])),

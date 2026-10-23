@@ -3,14 +3,15 @@ import { rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import lighthouse, { generateReport } from 'lighthouse';
-import { lighthouseConfig, timezone } from './config.mjs';
+import { lighthouseConfig, timezone, profiles } from './config.mjs';
 import { installGuard } from './guard.mjs';
+import { pngSize, captureConsistency, captureRequest, observeExpression } from './capture.mjs';
 import { validateLhr, sanitize, summarize } from './report.mjs';
 import { publicIdentity, sha256 } from './preflight.mjs';
 import { SafetyError } from './policy.mjs';
 import { filteringProxy } from './proxy.mjs';
 
-export async function audit({ policy, address, url, profile: name, pins, profileDir: profile }, signal) {
+export async function audit({ policy, address, url, profile: name, pins, profileDir: profile, capture: captureWanted = false }, signal) {
   if (!profile) throw new SafetyError('owned-profile-required');
   let browser, processHandle, guard, exit, proxy;
   try {
@@ -64,6 +65,43 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     validateLhr(lhr, policy);
     const html = generateReport(lhr, 'html');
     if (typeof html !== 'string' || !html.includes('<html')) throw new SafetyError('html-report');
+    // Private capture from the already-owned audit visit: no extra navigation,
+    // request or interaction. Raw pixels go only to a separate private sidecar;
+    // they are never embedded in the sanitized LHR/HTML. The capture context is
+    // RE-ASSERTED after Lighthouse: native probes observed mismatched default
+    // capture surfaces. Their teardown timing was not established as the cause.
+    let capture;
+    if (captureWanted) {
+      const { width, height, deviceScaleFactor } = profiles[name].screenEmulation;
+      const mobile = profiles[name].formFactor === 'mobile';
+      const cdp = await page.createCDPSession();
+      try {
+        await cdp.send('Network.setUserAgentOverride', { userAgent: profiles[name].emulatedUserAgent });
+        await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile });
+        await Promise.race([page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))), new Promise((_, reject) => setTimeout(() => reject(new SafetyError('capture-viewport')), 5000))]);
+        let captureTimer;
+        const captureTimeout = new Promise((_, reject) => { captureTimer = setTimeout(() => reject(new SafetyError('capture-timeout')), 10000); });
+        // Observation AND capture run on this same override-owning session: puppeteer's
+        // primary-session capture ignores the override (native probe 2: configured page
+        // state confirmed, surface still the default 800x600 window).
+        const observed = () => Promise.race([cdp.send('Runtime.evaluate', { expression: observeExpression, returnByValue: true }).then(r => r?.result?.value), aborted, new Promise((_, reject) => setTimeout(() => reject(new SafetyError('capture-viewport')), 5000))]);
+        let data, before, after;
+        try {
+          before = await observed();
+          const shot = await Promise.race([cdp.send('Page.captureScreenshot', captureRequest({ width, height, deviceScaleFactor })), aborted, captureTimeout]);
+          after = await observed();
+          data = shot?.data;
+        } finally { clearTimeout(captureTimer); }
+        const bytes = Buffer.from(typeof data === 'string' ? data : '', 'base64');
+        if (!data || bytes.length < 8 || bytes.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') throw new SafetyError('capture-failed');
+        const pixels = pngSize(bytes);
+        if (![before, after].every(s => s?.userAgent === profiles[name].emulatedUserAgent)) {
+          const e = new SafetyError('capture-profile'); e.diagnostic = { pixels, observed: [before, after], expectedUserAgent: profiles[name].emulatedUserAgent }; throw e;
+        }
+        try { captureConsistency({ pixels, observed: [before, after], geometry: { width, height, deviceScaleFactor } }); } catch (e) { e.diagnostic = { pixels, observed: [before, after], geometry: { width, height, deviceScaleFactor } }; throw e; }
+        capture = { png: bytes.toString('base64'), format: 'png', source: 'owned-audit-visit', method: 'same-session-clip-page-origin', at: new Date().toISOString(), geometry: { width, height, deviceScaleFactor }, clip: captureRequest({ width, height, deviceScaleFactor }).clip, observed: [before, after], pixels };
+      } finally { await cdp.detach().catch(() => {}); }
+    }
     guard.beginShutdown();
     let closeTimer;
     try { await Promise.race([browser.close(), new Promise((_, reject) => { closeTimer = setTimeout(() => reject(new SafetyError('browser-close-timeout')), 2000); })]); }
@@ -74,7 +112,7 @@ export async function audit({ policy, address, url, profile: name, pins, profile
     security.rendererProof = guard.assertHealthy();
     security.proxy = proxy.verify(security.rendererProof);
     security.guardedThroughShutdown = true;
-    return { lhr, html, summary: summarize(lhr), security, settings: lhr.configSettings, launch: { args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
+    return { lhr, html, ...(capture ? { capture } : {}), summary: summarize(lhr), security, settings: lhr.configSettings, launch: { args: args.map(x => x.startsWith('--user-data-dir=') ? '--user-data-dir=<private-new-profile>' : x.startsWith('--proxy-server=') ? '--proxy-server=<owned-ephemeral-loopback>' : x), sandbox: true, cache: 'new-profile; browser-cold; server-unchanged' } };
   } finally {
     guard?.close();
     if (browser) await Promise.race([browser.close().catch(() => {}), new Promise(resolve => setTimeout(resolve, 2000))]);

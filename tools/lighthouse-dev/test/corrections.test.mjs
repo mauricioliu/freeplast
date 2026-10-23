@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { formatOutput, homeView } from '../src/output.mjs';
-import { initializeBudget, reserveMeasurement, finishMeasurement } from '../src/budget.mjs';
+import { initializeBudget, reserveMeasurement, finishMeasurement, allowance, plan } from '../src/budget.mjs';
+import { allocationInput, requestFor } from './budget-fixture.mjs';
 import { lock } from '../src/store.mjs';
 import { fingerprint } from '../src/fingerprint.mjs';
 import { cycle } from '../src/cycle.mjs';
@@ -36,7 +37,7 @@ test('default output uses flat TOON scalars for nonempty collections and nested 
 
 test('CLI names offending flags and missing arguments with local guidance; help gives examples', () => {
   const cli = new URL('../bin/freeplast-lh.mjs', import.meta.url).pathname;
-  for (const [args, message] of [[['show', '--bad'], /--bad/], [['show'], /--run/], [['show', '--run'], /--run/], [['budget-init'], /--confirm/]]) {
+  for (const [args, message] of [[['show', '--bad'], /--bad/], [['show'], /--run/], [['show', '--run'], /--run/], [['budget-init'], /--confirm/], [['budget-init', '--confirm'], /--plan/], [['budget-init', '--confirm', '--plan', 'p', '--hash', 'zz', '--operator', 'o', '--deadline', '2030-01-01T00:00:00Z'], /--hash/], [['budget-init', '--confirm', '--plan', 'p', '--hash', 'f'.repeat(64), '--operator', 'o', '--deadline', '2000-01-01T00:00:00Z'], /--deadline/]]) {
     const r = spawnSync(process.execPath, [cli, ...args, '--json'], { encoding: 'utf8' });
     assert.equal(r.status, 2); const out = JSON.parse(r.stdout); assert.match(out.message, message); assert.match(out.help, /valid flags:/); assert.doesNotMatch(out.help, /doctor \[/);
   }
@@ -45,34 +46,47 @@ test('CLI names offending flags and missing arguments with local guidance; help 
   }
 });
 
-test('measurement allowance requires explicit initialization; third series/restart cannot replenish', async t => {
+const init = (root, now = plan.started) => initializeBudget(allocationInput, root, now);
+
+test('allowance requires exact approved plan; thirteen charged series; no renewal', async t => {
   const root = await temp(t), now = Date.now();
   await assert.rejects(reserveMeasurement(root, now), { code: 'measurement-budget-required' });
-  await initializeBudget(root, now);
-  for (let i = 0; i < 2; i++) {
+  for (const bad of [{}, { planId: '../escape', planHash: 'f'.repeat(64), operator: 'x', deadline: new Date(now + 60000).toISOString() }, { planId: 'p', planHash: 'zz', operator: 'x', deadline: new Date(now + 60000).toISOString() }, { planId: 'p', planHash: 'f'.repeat(64), operator: 'x', deadline: new Date(now - 60000).toISOString() }])
+    await assert.rejects(initializeBudget(bad, root, now));
+  await init(root, now);
+  const slots = [];
+  for (let i = 0; i < allowance.series; i++) {
     const fd = await lock(root);
-    try { const r = await reserveMeasurement(root, now + 1); await finishMeasurement(root, r, 'complete'); } finally { await fd.close(); }
+    try { const r = await reserveMeasurement(root, now + i + 1, { ...requestFor(), generation: i + 1, compatibility: { ...requestFor().compatibility, sourceHash: String(i).padStart(64, '0') } }); slots.push({ slot: r.slot, captures: r.captures }); await finishMeasurement(root, r, 'complete'); } finally { await fd.close(); }
   }
+  assert.deepEqual(slots, Array.from({ length: 13 }, (_, i) => ({ slot: i + 1, captures: 6 })));
+  assert.equal(slots.length * 18, 234);
+  assert.equal(allowance.maxAudits, 240); assert.equal(allowance.maxCaptures, 96);
   const module = new URL('../src/budget.mjs', import.meta.url).href, store = new URL('../src/store.mjs', import.meta.url).href;
-  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {reserveMeasurement} from ${JSON.stringify(module)}; import {lock} from ${JSON.stringify(store)}; const fd=await lock(${JSON.stringify(root)}); try{await reserveMeasurement(${JSON.stringify(root)},Date.now());process.exitCode=2}catch(e){console.log(e.code)}finally{await fd.close()}`], { encoding: 'utf8' });
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {reserveMeasurement} from ${JSON.stringify(module)}; import {lock} from ${JSON.stringify(store)}; const fd=await lock(${JSON.stringify(root)}); try{await reserveMeasurement(${JSON.stringify(root)},${plan.started + 1},${JSON.stringify(requestFor())});process.exitCode=2}catch(e){console.log(e.code)}finally{await fd.close()}`], { encoding: 'utf8' });
   assert.equal(result.status, 0); assert.match(result.stdout, /measurement-budget-exhausted/);
-  await assert.rejects(initializeBudget(root), { code: 'measurement-budget-already-exists' });
+  await assert.rejects(init(root), { code: 'measurement-budget-already-exists' });
 });
 
-test('historical failed runs, uncertain reservations, failed attempts and expired cycles never renew', async t => {
-  const historical = await temp(t); await mkdir(join(historical, 'old-a1')); await writeFile(join(historical, 'old-a1/manifest.json'), '{"status":"incomplete"}');
-  await assert.rejects(initializeBudget(historical), { code: 'historical-measurement-state' });
-  assert.equal(await readFile(join(historical, 'old-a1/manifest.json'), 'utf8'), '{"status":"incomplete"}');
+test('historical state preserved; uncertain reservations and expired deadlines never renew', async t => {
+  const historical = await temp(t);
+  await mkdir(join(historical, 'old-a1'));
+  const v1Manifest = '{"status":"incomplete"}';
+  await writeFile(join(historical, 'old-a1/manifest.json'), v1Manifest, { mode: 0o600 });
+  await mkdir(join(historical, 'measurement-budget'), { mode: 0o700 });
+  const v1Allocation = JSON.stringify({ schema: 1, started: 0, deadline: 1, maxAudits: 36 });
+  await writeFile(join(historical, 'measurement-budget/allocation.json'), v1Allocation, { mode: 0o600 });
+  await init(historical);
+  assert.equal(await readFile(join(historical, 'measurement-budget/allocation.json'), 'utf8'), v1Allocation, 'schema-1 allocation bytes stay untouched');
+  assert.equal(await readFile(join(historical, 'old-a1/manifest.json'), 'utf8'), v1Manifest);
   for (const status of [null, 'incomplete']) {
-    const root = await temp(t), now = Date.now(); await initializeBudget(root, now);
-    const r = await reserveMeasurement(root, now + 1); if (status) await finishMeasurement(root, r, status);
-    await assert.rejects(reserveMeasurement(root, now + 2), { code: 'prior-measurement-incomplete-or-uncertain' });
+    const root = await temp(t); await init(root);
+    const r = await reserveMeasurement(root, plan.started + 1, requestFor()); if (status) await finishMeasurement(root, r, status);
+    await assert.rejects(reserveMeasurement(root, plan.started + 2, requestFor()), { code: 'prior-measurement-incomplete-or-uncertain' });
   }
-  const root = await temp(t), now = Date.now(); await initializeBudget(root, now);
-  await assert.rejects(reserveMeasurement(root, now + 90 * 60000), { code: 'measurement-budget-exhausted' });
-  await mkdir(join(root, 'manual-cycle'), { mode: 0o700 });
-  await writeFile(join(root, 'manual-cycle/budget.json'), JSON.stringify({ iterations: 1, started: now - 91 * 60000, deadline: now - 60000 }), { mode: 0o600 });
-  await assert.rejects(reserveMeasurement(root, now), { code: 'cycle-budget-exhausted' });
+  const root = await temp(t); await init(root);
+  await assert.rejects(reserveMeasurement(root, plan.deadline, requestFor()), { code: 'measurement-budget-exhausted' });
+  await assert.rejects(initializeBudget({ ...allocationInput, deadline: new Date(plan.deadline + 1).toISOString() }, root), { code: 'allocation-deadline-invalid' });
 });
 
 test('dirty/untracked supported asset bytes and case variants change fingerprint with identical Git status', async t => {
