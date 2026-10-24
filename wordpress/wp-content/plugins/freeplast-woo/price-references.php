@@ -15,7 +15,7 @@ function fpw_price_reference_normalize( $entry ): array {
 	return $result;
 }
 
-/** A variation's explicit record (including pending values) wins as a whole. */
+/** Converted colors share the parent record; legacy and non-color records retain explicit pending values. */
 function fpw_price_reference_for( int $product_id, int $variation_id = 0 ): array {
 	$references = fpw_price_list()['references'];
 	foreach ( array_unique( array( fpw_price_key( $product_id, $variation_id ), fpw_price_key( $product_id, 0 ) ) ) as $key ) {
@@ -26,12 +26,7 @@ function fpw_price_reference_for( int $product_id, int $variation_id = 0 ): arra
 
 /** Validate the maintainer's reference fields independently of legacy single prices. */
 function fpw_price_references_parse( array $catalog, array $posted, array $previous ): array {
-	$allowed = array();
-	foreach ( $catalog as $entry ) {
-		$id = (int) $entry['product_id'];
-		$allowed[ fpw_price_key( $id, 0 ) ] = true;
-		foreach ( $entry['variations'] ?? array() as $variation ) { $allowed[ fpw_price_key( $id, (int) $variation['variation_id'] ) ] = true; }
-	}
+	$allowed = fpw_price_editable_keys( $catalog );
 	$errors = array(); $entries = array();
 	foreach ( $posted as $key => $raw ) {
 		if ( ! isset( $allowed[ $key ] ) || ! is_array( $raw ) || array_diff( array_keys( $raw ), array( 'units', 'small', 'bulk' ) ) ) {

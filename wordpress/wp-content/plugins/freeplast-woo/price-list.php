@@ -4,10 +4,10 @@
  *
  * The owner maintains the current net CLP prices of products and options in
  * WordPress on this private, unlisted wp-admin screen. WordPress is the
- * authority for those prices — never a spreadsheet, never the last historical
- * sale price — and the identity of every entry is the NATIVE one: the product
- * id for simple products, the variation id (with its parent as fallback) for
- * each option of a variable product.
+ * authority for those prices — never a spreadsheet or historical sale. Color-only
+ * variants share their parent's price and volume references. Other variations
+ * retain native identities. Legacy color entries require a backed-up conversion;
+ * disagreements block conversion and are never silently replaced.
  *
  * Storage follows the adapter's durable options-row pattern: ONE row,
  * fpw_price_list, holding the whole maintained map. Nothing else is written:
@@ -32,6 +32,7 @@
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 require_once __DIR__ . '/price-references.php';
+require_once __DIR__ . '/price-color-conversion.php';
 
 define( 'FPW_PRICE_SCREEN', 'fpw-price-list' );
 define( 'FPW_PRICE_ROW', 'fpw_price_list' );
@@ -101,8 +102,9 @@ function fpw_price_read_value( $value ): ?int {
 
 /**
  * The current suggestion for one native identity: the variation's own price
- * when maintained, otherwise its product's; null when nothing applies. Only
- * this list suggests — never a historical sale price, never a public amount.
+ * when maintained, otherwise its product's; null when nothing applies. Converted
+ * colors have only the parent entry. Unconverted entries remain unchanged until
+ * their conflicts are explicitly resolved. Never use historical or public prices.
  */
 function fpw_price_for( int $product_id, int $variation_id ): ?int {
 	$prices = fpw_price_list()['prices'];
@@ -135,8 +137,11 @@ function fpw_price_catalog(): array {
 			'product_id' => (int) $product->get_id(),
 			'name'       => method_exists( $product, 'get_name' ) ? (string) $product->get_name() : '',
 			'variations' => array(),
+			'color_only' => false,
 		);
 		if ( method_exists( $product, 'is_type' ) && $product->is_type( 'variable' ) && method_exists( $product, 'get_children' ) ) {
+			$attributes = method_exists( $product, 'get_variation_attributes' ) ? $product->get_variation_attributes() : array();
+			$entry['color_only'] = count( $attributes ) === 1 && in_array( strtolower( (string) array_key_first( $attributes ) ), array( 'color', 'pa_color' ), true );
 			foreach ( (array) $product->get_children() as $variation_id ) {
 				$variation = wc_get_product( (int) $variation_id );
 				if ( is_object( $variation ) && method_exists( $variation, 'get_id' ) ) {
@@ -162,14 +167,7 @@ function fpw_price_catalog(): array {
  * @return array{errors:string[],entries:array<string,int>}
  */
 function fpw_price_parse_input( array $catalog, array $posted ): array {
-	$allowed = array();
-	foreach ( $catalog as $entry ) {
-		$product_id = (int) ( $entry['product_id'] ?? 0 );
-		$allowed[ fpw_price_key( $product_id, 0 ) ] = (string) ( $entry['name'] ?? 'Producto' );
-		foreach ( ( is_array( $entry['variations'] ?? null ) ? $entry['variations'] : array() ) as $variation ) {
-			$allowed[ fpw_price_key( $product_id, (int) ( $variation['variation_id'] ?? 0 ) ) ] = (string) ( $entry['name'] ?? 'Producto' ) . ' / ' . (string) ( $variation['name'] ?? 'Opción' );
-		}
-	}
+	$allowed = fpw_price_editable_keys( $catalog );
 	$errors  = array();
 	$entries = array();
 	foreach ( $posted as $key => $raw ) {
@@ -195,6 +193,20 @@ function fpw_price_parse_input( array $catalog, array $posted ): array {
 	return array( 'errors' => $errors, 'entries' => $entries );
 }
 
+/** One editable identity per color-only product; other option types stay separate. */
+function fpw_price_editable_keys( array $catalog ): array {
+	$allowed = array();
+	foreach ( $catalog as $entry ) {
+		$id = (int) $entry['product_id'];
+		$allowed[ fpw_price_key( $id, 0 ) ] = (string) ( $entry['name'] ?? 'Producto' );
+		if ( ! empty( $entry['color_only'] ) ) { continue; }
+		foreach ( $entry['variations'] ?? array() as $variation ) {
+			$allowed[ fpw_price_key( $id, (int) $variation['variation_id'] ) ] = ( $entry['name'] ?? 'Producto' ) . ' / ' . ( $variation['name'] ?? 'Opción' );
+		}
+	}
+	return $allowed;
+}
+
 /** The acting owner's login, for the list's consultable provenance. */
 function fpw_price_actor(): string {
 	if ( ! function_exists( 'wp_get_current_user' ) ) { return 'sistema'; }
@@ -213,6 +225,11 @@ function fpw_price_handle_save_request( array $catalog ): array {
 	if ( ! wp_verify_nonce( (string) ( $_POST['fpw_price_nonce'] ?? '' ), FPW_PRICE_NONCE_SAVE ) ) {
 		wp_die( 'Tu sesión expiró o el formulario no es válido: vuelve a cargar el mantenedor e inténtalo de nuevo. Nada se guardó.', '', array( 'response' => 403 ) );
 	}
+	$list = fpw_price_list();
+	$conversion = fpw_price_color_conversion_plan( $list, $catalog );
+	if ( $conversion['pending'] || $conversion['conflicts'] ) {
+		return array( 'ok' => false, 'message' => 'No se guardó nada: hay precios por color pendientes de unificación. Respalda la lista y revisa los conflictos antes de convertirla.', 'conflicts' => $conversion['conflicts'] );
+	}
 	$posted = isset( $_POST['fpw_prices'] ) && is_array( $_POST['fpw_prices'] ) ? wp_unslash( $_POST['fpw_prices'] ) : array();
 	$parsed = fpw_price_parse_input( $catalog, $posted );
 	$references = null;
@@ -230,7 +247,11 @@ function fpw_price_handle_save_request( array $catalog ): array {
 		return array( 'ok' => false, 'message' => 'No se guardó nada: ' . $parsed['errors'][0] . $extra, 'errors' => $parsed['errors'] );
 	}
 	$count = count( $parsed['entries'] );
-	fpw_price_save_entries( $parsed['entries'], fpw_price_actor(), $references );
+	// Preserve archived/unlisted identities: this form cannot authorize clearing them.
+	$allowed = fpw_price_editable_keys( $catalog );
+	$entries = $parsed['entries'] + array_diff_key( $list['prices'], $allowed );
+	if ( null !== $references ) { $references += array_diff_key( $list['references'], $allowed ); }
+	fpw_price_save_entries( $entries, fpw_price_actor(), $references );
 	return array(
 		'ok'      => true,
 		'message' => 'Lista de precios guardada: ' . $count . ' precios base y ' . count( fpw_price_list()['references'] ) . ' referencias por producto u opción. Los borradores ya guardados conservan sus importes.',
@@ -314,6 +335,11 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 	$catalog = fpw_price_catalog();
 	$list    = fpw_price_list();
 	$nonce   = wp_nonce_field( FPW_PRICE_NONCE_SAVE, 'fpw_price_nonce', true, false );
+	$conversion = fpw_price_color_conversion_plan( $list, $catalog );
+	$blocked = ! empty( $conversion['pending'] ) || ! empty( $conversion['conflicts'] );
+	if ( $blocked ) {
+		$banner = array( 'ok' => false, 'message' => 'Edición bloqueada: hay precios por color pendientes de unificación. Respalda la lista y revisa los conflictos antes de convertirla. Los valores anteriores se conservan.' );
+	}
 
 	if ( empty( $catalog ) ) {
 		return fpw_price_screen_shell(
@@ -330,9 +356,9 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		$product_id = (int) ( $entry['product_id'] ?? 0 );
 		$product_price = fpw_price_own_entry( $product_id, 0 );
 		if ( null !== $product_price ) { $maintained++; }
-		$row = fpw_price_row_html( fpw_price_key( $product_id, 0 ), (string) ( $entry['name'] ?? '' ), 'Producto', $product_price );
+		$row = fpw_price_row_html( fpw_price_key( $product_id, 0 ), (string) ( $entry['name'] ?? '' ), ! empty( $entry['color_only'] ) && ! $blocked ? 'Precio y referencias comunes a todos los colores' : 'Producto', $product_price );
 		$variations = is_array( $entry['variations'] ?? null ) ? $entry['variations'] : array();
-		if ( ! empty( $variations ) ) {
+		if ( ! empty( $variations ) && ( empty( $entry['color_only'] ) || $blocked ) ) {
 			$variation_rows = '';
 			foreach ( $variations as $variation ) {
 				$variation_id    = (int) ( $variation['variation_id'] ?? 0 );
@@ -362,8 +388,8 @@ function fpw_price_screen_markup( array $banner = array() ): string {
 		. '<form class="fpw-prices__form" method="post" action="' . esc_url( fpw_price_screen_url() ) . '">'
 		. '<input type="hidden" name="fpw_price_save" value="1" />'
 		. $nonce
-		. $rows
-		. '<p><button type="submit" class="button button-primary">Guardar lista de precios</button></p>'
+		. ( $blocked ? '<fieldset disabled><legend>Precios anteriores · solo lectura</legend>' . $rows . '</fieldset>' : $rows )
+		. '<p><button type="submit" class="button button-primary"' . ( $blocked ? ' disabled' : '' ) . '>Guardar lista de precios</button></p>'
 		. '<p class="fpw-prices__note">Dejar un campo vacío quita ese precio de la lista; los borradores nuevos lo mostrarán como pendiente. Ingresa un precio mayor que cero.</p>'
 		. '</form></section>'
 	);

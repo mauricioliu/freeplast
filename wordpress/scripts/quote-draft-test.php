@@ -1197,4 +1197,38 @@ for ( $i = 1; $i <= 40; $i++ ) {
 }
 check( str_contains( $multiText, '40.000 CLP' ) && str_contains( $multiText, '7.600 CLP' ) && str_contains( $multiText, '47.600 CLP' ) && str_contains( $multiText, 'Vigencia de la oferta: 7' ), 'the end of the multi-page document keeps its exact net, tax, total and validity' );
 
-echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56)\n";
+/* Shared color prices change suggestions only, never saved work or issued snapshots. */
+$shared_color_table_before = $GLOBALS['fpwd_table'];
+$shared_color_orders_before = $GLOBALS['fpwd_orders'];
+$order104 = new FPWD_Order( 104, array(
+	new FPWD_Item( 'Caja Color', 100, 25, 310, array( 'color' => 'Azul' ) ),
+	new FPWD_Item( 'Caja Color', 100, 25, 311, array( 'color' => 'Rojo' ) ),
+	new FPWD_Item( 'Caja Color', 100, 25, 312, array( 'color' => 'Verde' ) ),
+	new FPWD_Item( 'Otro producto', 1, 999, 0 ),
+), array( '_billing_fp_dispatch' => 'no', '_billing_fp_address' => '' ) );
+$GLOBALS['fpwd_orders'][104] = $order104;
+check( fpw_create_request_draft( $order104 ), 'shared-color fixture creates a separate receipt' );
+$draft104 = fpw_read_request_draft( 104 );
+$rows_before = $GLOBALS['fpwd_table'];
+fpw_price_save_entries( array( 'p:25' => 2190 ), 'fixture', array( 'p:25' => array( 'units' => 100, 'small' => 2400, 'bulk' => 2100 ) ) );
+check( array_diff_key( $GLOBALS['fpwd_table'], array( FPW_PRICE_ROW => true ) ) === array_diff_key( $rows_before, array( FPW_PRICE_ROW => true ) ), 'shared price write leaves all receipts, work and issued documents byte-identical' );
+$values104 = fpw_draft_work_values( $draft104, null );
+check( array_column( $values104['lines'], 'suggested' ) === array( 2190, 2190, 2190, null ), 'all colors share the same suggestion; unrelated product remains pending' );
+check( fpw_price_reference_for( 25, 310 ) === fpw_price_reference_for( 25, 311 ) && fpw_price_reference_for( 25, 312 )['bulk'] === 2100, 'draft references share both volume tiers without automatic selection' );
+$saved104 = fpw_save_draft_work( 104, $draft104, array( 'fpw_work_revision' => '0', 'fpw_work' => array(
+	'lines' => array( array( 'quantity' => '100', 'price' => '2000' ), array( 'quantity' => '100', 'price' => '2190' ), array( 'quantity' => '100', 'price' => '' ), array( 'quantity' => '1', 'price' => '' ) ),
+	'pickup_location' => 'los-paltos',
+) ), 1 );
+check( $saved104['state'] === 'saved' && $saved104['work']['lines'][0]['price_source'] === 'manual' && $saved104['work']['lines'][1]['price_source'] === 'suggested', 'draft saves manual and shared suggested prices independently' );
+$rows_before = $GLOBALS['fpwd_table'];
+fpw_price_save_entries( array( 'p:25' => 3000 ), 'fixture' );
+check( array_diff_key( $GLOBALS['fpwd_table'], array( FPW_PRICE_ROW => true ) ) === array_diff_key( $rows_before, array( FPW_PRICE_ROW => true ) ), 'changing the common price never retroactively rewrites any draft or issued version' );
+$values104 = fpw_draft_work_values( $draft104, fpw_read_draft_work( 104 ) );
+check( $values104['lines'][0]['price'] === 2000 && $values104['lines'][1]['price'] === 2190 && $values104['lines'][1]['suggested'] === 3000, 'readback retains saved prices beside the new shared suggestion' );
+$refresh104 = fpw_refresh_draft_prices( 104, $draft104, 1 );
+check( $refresh104['state'] === 'saved' && array_column( $refresh104['work']['lines'], 'price' ) === array( 2000, 3000, 3000, null ), 'explicit refresh keeps manual color adjustment, updates tracking/pending colors and leaves unrelated missing price pending' );
+check( fpw_read_quotation_version( 95 ) === $accepted95 && fpw_read_request_draft( 104 ) === $draft104, 'common-price refresh leaves issued quotation and original request unchanged' );
+$GLOBALS['fpwd_table'] = $shared_color_table_before;
+$GLOBALS['fpwd_orders'] = $shared_color_orders_before;
+
+echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56 + shared color suggestions)\n";
