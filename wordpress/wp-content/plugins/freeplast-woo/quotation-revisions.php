@@ -94,7 +94,7 @@ function fpw_quotation_history_html( int $id, int $selected ): string {
 	$html = '<nav class="fpw-version-history" aria-label="Versiones de la cotización">';
 	foreach ( $versions as $version ) {
 		$n = (int) $version['version'];
-		$html .= '<a class="fpw-button" href="' . esc_url( fpw_quotation_view_url( $id, $n ) ) . '"' . ( $selected === $n ? ' aria-current="page"' : '' ) . '>Versión ' . $n . '</a>';
+		$html .= '<a class="fpw-button" href="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_quotation_view_url( $id, $n ) ) ) . '"' . ( $selected === $n ? ' aria-current="page"' : '' ) . '>Versión ' . $n . '</a>';
 	}
 	return $html . '</nav>';
 }

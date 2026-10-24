@@ -319,4 +319,17 @@ check( preg_match( '/<form\\b[^>]*id="fpw-work-form"[^>]*\\bnovalidate\\b/', $in
 check( substr_count( $invalid_html, 'aria-invalid="true"' ) >= 4 && str_contains( $invalid_html, 'value="366"' ) && str_contains( $invalid_html, '[price]" value="0"' ), 'all invalid fields marked and entered values preserved' );
 $GLOBALS['fpwd_table'] = $saved_rows;
 fpw_pending_draft_outcome( array() ); $_POST = array(); unset( $_GET['review'], $_GET['workspace'] );
+/* Ticket 9 — Volver keeps the origin inbox context on every draft/editor surface. */
+$_GET = array( 'stage' => 'sent-quotes', 'q' => 'Freeplast SpA', 'sort' => 'oldest', 'paged' => '3' );
+$context_detail = html_entity_decode( fpw_workspace_detail_markup( wc_get_order( $id ), fpw_read_request_draft( $id ), fpw_read_draft_work( $id ), null ), ENT_QUOTES );
+check( str_contains( $context_detail, 'request=' . $id . '&workspace=1&stage=sent-quotes&q=Freeplast+SpA&sort=oldest&paged=3"' ), 'editor form action posts back to the contextful draft URL' );
+$_GET['review'] = '1';
+$context_review = html_entity_decode( fpw_workspace_detail_markup( wc_get_order( $id ), fpw_read_request_draft( $id ), fpw_read_draft_work( $id ), null ), ENT_QUOTES );
+check( str_contains( $context_review, 'href="https://freeplast.test/wp-admin/admin.php?page=fpw-quote-draft&request=' . $id . '&workspace=1&stage=sent-quotes&q=Freeplast+SpA&sort=oldest&paged=3"' ), 'Volver a ajustar returns to the draft with the inbox context' );
+unset( $_GET['review'] );
+$context_issued = html_entity_decode( fpw_workspace_detail_markup( wc_get_order( 91 ), fpw_read_request_draft( 91 ), fpw_read_draft_work( 91 ), null ), ENT_QUOTES );
+check( str_contains( $context_issued, 'fpw-sent-back' ) && str_contains( $context_issued, 'page=fpw-quotations&stage=sent-quotes&q=Freeplast+SpA&sort=oldest&paged=3' ), 'issued view back link restores the origin tab, search, order and page' );
+$_GET = array();
+$plain_detail = html_entity_decode( fpw_workspace_detail_markup( wc_get_order( $id ), fpw_read_request_draft( $id ), fpw_read_draft_work( $id ), null ), ENT_QUOTES );
+check( ! str_contains( $plain_detail, 'stage=' ) && ! str_contains( $plain_detail, 'paged=' ) && str_contains( $plain_detail, 'request=' . $id . '&workspace=1&' ), 'direct editor access keeps clean internal URLs' );
 echo 'workspace offer: ' . ( $assertions - $start ) . " offline checks passed\n";

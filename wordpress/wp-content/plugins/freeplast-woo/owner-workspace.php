@@ -14,11 +14,32 @@ function fpw_workspace_register(): void {
 
 function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quotations' ); }
 
+/** Back navigation carries only whitelisted inbox context (tab, search, order, page); defaults stay implicit. */
+function fpw_workspace_context_args( ?array $get = null ): array {
+	$get = $get ?? $_GET;
+	$args = array();
+	$stage = is_string( $get['stage'] ?? null ) ? $get['stage'] : '';
+	if ( isset( fpw_workspace_stages()[ $stage ] ) && 'pendientes' !== $stage ) { $args['stage'] = $stage; }
+	if ( is_string( $get['q'] ?? null ) ) {
+		$q = mb_substr( sanitize_text_field( wp_unslash( $get['q'] ) ), 0, 100 );
+		if ( '' !== $q ) { $args['q'] = $q; }
+	}
+	if ( 'oldest' === ( $get['sort'] ?? null ) ) { $args['sort'] = 'oldest'; }
+	$paged = is_scalar( $get['paged'] ?? null ) ? absint( $get['paged'] ) : 1;
+	if ( $paged > 1 ) { $args['paged'] = $paged; }
+	return $args;
+}
+
+/** Internal-only return URL built from the whitelist; hostile or unknown params can never redirect elsewhere. */
+function fpw_workspace_back_url(): string {
+	return add_query_arg( fpw_workspace_context_args(), fpw_workspace_url() );
+}
+
 /** Assets and chrome changes are confined to these two owner surfaces. */
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.17' );
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.16' );
 	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.15', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
@@ -114,6 +135,7 @@ function fpw_render_workspace(): void {
 	}
 	$search = is_string( $_GET['q'] ?? null ) ? mb_substr( sanitize_text_field( wp_unslash( $_GET['q'] ) ), 0, 100 ) : '';
 	$stage = is_string( $_GET['stage'] ?? null ) && isset( fpw_workspace_stages()[ $_GET['stage'] ] ) ? $_GET['stage'] : 'pendientes';
+	$context = fpw_workspace_context_args();
 	$sort = 'oldest' === ( $_GET['sort'] ?? '' ) ? 'ASC' : 'DESC';
 	$page = is_scalar( $_GET['paged'] ?? null ) ? max( 1, absint( $_GET['paged'] ) ) : 1;
 	$result = fpw_workspace_query( $search, $stage, $sort, $page );
@@ -142,10 +164,10 @@ function fpw_render_workspace(): void {
 			$company = $draft['identity']['company'] ?? $order->get_billing_company();
 			$created = $order->get_date_created();
 			$received = $draft['received_at'] ?? ( $created ? $created->getTimestamp() : null );
-			$url = $draft ? fpw_draft_screen_url( $id ) : fpw_draft_request_admin_url( $id );
+			$url = $draft ? add_query_arg( $context, fpw_draft_screen_url( $id ) ) : add_query_arg( $context, fpw_draft_request_admin_url( $id ) );
 			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( $url ) . '">' . esc_html( $company ?: $reference ) . '</a></h2><p class="fpw-muted fpw-request-meta"><span class="fpw-request-ref">' . esc_html( $reference ) . '</span>' . ( null !== $received ? '<span class="fpw-request-received"><span aria-hidden="true">· </span><span class="screen-reader-text">Recibida: </span><time datetime="' . esc_attr( fpw_workspace_date( 'c', (int) $received ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', (int) $received ) ) . '</time></span>' : '' ) . '</p></div>'
 				. fpw_workspace_request_state_html( $id, $version, $offer['unavailable'], 'yes' === $order->get_meta( '_fp_workspace_archived' ) ) . '<div class="fpw-workspace-row-total"><span>' . ( $offer['unavailable'] ? 'Versión no disponible' : ( $version ? 'Total aprobado' : 'Total guardado' ) ) . '</span><strong>' . fpw_workspace_money( $projection['total'] ?? null ) . '</strong></div><div class="fpw-request-actions"><a class="fpw-button" href="' . esc_url( $url ) . '">' . ( $version ? 'Ver' : 'Abrir' ) . '<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a>'
-				. ( ! $offer['unavailable'] && fpw_quotation_can_revise( $id, $version ) ? '<a class="fpw-button" href="' . esc_url( fpw_quotation_edit_url( $id, $version['version'] ) ) . '">Editar<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a>' : '' )
+				. ( ! $offer['unavailable'] && fpw_quotation_can_revise( $id, $version ) ? '<a class="fpw-button" href="' . esc_url( add_query_arg( $context, fpw_quotation_edit_url( $id, $version['version'] ) ) ) . '">Editar<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a>' : '' )
 				. fpw_workspace_archive_html( $id, 'yes' === $order->get_meta( '_fp_workspace_archived' ), null !== $draft && fpw_workspace_can_archive( $id, $version, $offer['unavailable'] ) ) . '</div></article>';
 		}
 		$body .= '</div><nav class="fpw-workspace-pagination" aria-label="Páginas de cotizaciones">';
@@ -294,11 +316,11 @@ function fpw_workspace_request_header( array $draft, ?array $work, ?array $versi
 }
 
 function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?array $notice ): string {
-	if ( ! $draft || ! $order ) { return fpw_workspace_shell( '<a href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a>' . fpw_quote_draft_markup( $order, $draft, $work, $notice ) ); }
+	if ( ! $draft || ! $order ) { return fpw_workspace_shell( '<a href="' . esc_url( fpw_workspace_back_url() ) . '">Volver a solicitudes</a>' . fpw_quote_draft_markup( $order, $draft, $work, $notice ) ); }
 	$id = (int) $order->get_id();
 	$offer = fpw_workspace_read_offer( $draft, $work );
 	if ( $offer['unavailable'] ) {
-		return fpw_workspace_shell( '<h1>Versión aprobada no disponible</h1><p>Sus importes guardados no se pueden leer. No se sustituyeron por valores del borrador. Solicita revisión técnica antes de continuar.</p><a class="fpw-button" href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a>' );
+		return fpw_workspace_shell( '<h1>Versión aprobada no disponible</h1><p>Sus importes guardados no se pueden leer. No se sustituyeron por valores del borrador. Solicita revisión técnica antes de continuar.</p><a class="fpw-button" href="' . esc_url( fpw_workspace_back_url() ) . '">Volver a solicitudes</a>' );
 	}
 	$version = $offer['version'];
 	$projection = $offer['projection'];
@@ -308,7 +330,7 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 		$number = $_GET['version'] ?? null;
 		if ( is_string( $number ) && ctype_digit( $number ) ) {
 			$selected = fpw_read_quotation_version( $id, (int) $number );
-			if ( ! $selected ) { return fpw_workspace_shell( '<h1>Versión no disponible</h1><a class="fpw-button" href="' . esc_url( fpw_workspace_url() ) . '">Volver a solicitudes</a>' ); }
+			if ( ! $selected ) { return fpw_workspace_shell( '<h1>Versión no disponible</h1><a class="fpw-button" href="' . esc_url( fpw_workspace_back_url() ) . '">Volver a solicitudes</a>' ); }
 			$version = $selected;
 		}
 		return fpw_workspace_shell( fpw_workspace_issued_html( $version ), $id );
@@ -349,14 +371,14 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	$notice_html = $review && 'Vista previa generada.' === ( $notice['title'] ?? '' ) ? '' : fpw_draft_notice_html( $notice );
 	if ( $review ) {
 		$header = str_replace( array( '<h1 ', '</h1>' ), array( '<h2 ', '</h2>' ), $header );
-		$body = '<a class="fpw-button" href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Volver a ajustar</a><h1 class="fpw-preview-title">Vista previa</h1>' . $header . $notice_html . $body . '<div id="fpw-summary" tabindex="-1" class="fpw-workspace-preview">' . fpw_workspace_preview_html( $draft, $work, fpw_read_draft_preview( $id ) ) . '</div>';
+		$body = '<a class="fpw-button" href="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_draft_screen_url( $id ) ) ) . '">Volver a ajustar</a><h1 class="fpw-preview-title">Vista previa</h1>' . $header . $notice_html . $body . '<div id="fpw-summary" tabindex="-1" class="fpw-workspace-preview">' . fpw_workspace_preview_html( $draft, $work, fpw_read_draft_preview( $id ) ) . '</div>';
 		return fpw_workspace_shell( $body, $id, $projection['total'] ?? null );
 	}
-	$body = ( $editing ? '<a class="fpw-button" href="' . esc_url( fpw_quotation_view_url( $id, $base ) ) . '">Ver versión enviada</a><h2>Editar cotización · Versión ' . ( $base + 1 ) . '</h2>' : '' ) . $header . $notice_html . $body;
+	$body = ( $editing ? '<a class="fpw-button" href="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_quotation_view_url( $id, $base ) ) ) . '">Ver versión enviada</a><h2>Editar cotización · Versión ' . ( $base + 1 ) . '</h2>' : '' ) . $header . $notice_html . $body;
 	$preserve_post = $review_invalid && is_array( $_POST['fpw_work'] ?? null );
 	$unsaved = $unsaved || $preserve_post;
 	$calculation = array( 'tax' => fpw_quotation_offer_tax_config( $id ), 'dispatch' => fpw_draft_requests_dispatch( $draft ), 'savedAmount' => $work['dispatch_amount'] ?? null, 'conditions' => $work['dispatch_conditions'] ?? null );
-	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" novalidate data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
+	$body .= '<div class="fpw-workspace-editor"><form id="fpw-work-form" novalidate data-fpw-calculation="' . esc_attr( wp_json_encode( $calculation ) ) . '" data-fpw-work data-fpw-has-saved="' . ( null !== $work ? '1' : '0' ) . '"' . ( $unsaved ? ' data-fpw-unsaved="1"' : '' ) . ' method="post" action="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_draft_screen_url( $id ) ) ) . '"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
 		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false ) . wp_nonce_field( fpw_draft_preview_action( $id ), 'fpw_preview_nonce', true, false ) . wp_nonce_field( fpw_draft_refresh_action( $id ), 'fpw_refresh_nonce', true, false ) . '<fieldset><legend class="screen-reader-text">Preparar cotización</legend><section id="fpw-products" tabindex="-1"><h2>Productos a cotizar</h2><p class="fpw-muted">Revisa cantidades y precios netos por unidad.</p>';
 	foreach ( $draft['items'] as $index => $line ) { $body .= fpw_workspace_product_html( $line, $values['lines'][ $index ], $index, $projection['lines'][ $index ]['line_total'] ?? null, false ); }
 	$body .= '</section><section class="fpw-workspace-dispatch"><h2>' . ( fpw_draft_requests_dispatch( $draft ) ? 'Despacho' : 'Retiro - Sin Despacho' ) . '</h2>' . ( fpw_draft_requests_dispatch( $draft ) ? fpw_draft_dispatch_html( true, $values['destination'], $values['dispatch_amount'], fpw_draft_dispatch_stale( $work ), (string) ( $draft['destination']['references'] ?? '' ) ) : fpw_draft_pickup_html( $values['pickup_location'] ) ) . '<p data-fpw-dispatch-warning hidden></p></section><label>Vigencia · días desde la aprobación' . fpw_draft_validity_input_html( 'fpw_work[validity_days]', $values['validity_days'] ) . '</label></fieldset></form>';
@@ -367,7 +389,7 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 	}
 	$body .= '</dl>';
 	$body .= '<button type="submit" name="fpw_work_save" value="1" form="fpw-work-form" class="fpw-secondary">Guardar borrador</button>'
-			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
+			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_draft_screen_url( $id ) ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
 			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
 		. fpw_workspace_history( $draft );
