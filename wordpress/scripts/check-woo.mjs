@@ -135,6 +135,8 @@ console.log(run(php,[path.join(root,'scripts/card-selection-test.php')]));
 console.log(run(php,[path.join(root,'scripts/card-theme-test.php')]));
 console.log(run(php,[path.join(root,'scripts/featured-variants-test.php')]));
 console.log(run(process.execPath,[path.join(root,'scripts/featured-variants-test.mjs')]));
+console.log(run(php,[path.join(root,'scripts/color-photos-test.php')]));
+run(php,['-l',path.join(root,'scripts/import-color-photos.php')]);
 console.log(run(php,[path.join(root,'scripts/catalog-tools-test.php')]));
 console.log(run(php,[path.join(root,'scripts/catalog-native-frame-test.php')]));
 { const {runDesktopVisualTests}=await import('./desktop-visual-test.mjs');

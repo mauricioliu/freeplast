@@ -22,6 +22,28 @@
     var fallback = wrap.querySelector('a.button.secondary');
     if (fallback) { fallback.hidden = true; } // Photo and title still link to the sheet.
     var card = wrap.closest('li');
+    var photo = card && card.querySelector('.product-photo');
+    var originalPhoto = photo && photo.innerHTML;
+    function showPhoto(option) {
+      if (!photo) { return; }
+      photo.innerHTML = originalPhoto;
+      if (!option) { return; }
+      var image = option.image;
+      if (!image || !image.src) {
+        photo.textContent = 'Fotografía no disponible en ' + option.label + '.';
+        return;
+      }
+      var img = photo.querySelector('img') || win.document.createElement('img');
+      photo.replaceChildren(img);
+      ['src', 'srcset', 'sizes', 'width', 'height'].forEach(function (name) {
+        if (image[name]) { img.setAttribute(name, image[name]); }
+        else { img.removeAttribute(name); }
+      });
+      img.alt = image.alt || 'Producto en ' + option.label;
+      img.addEventListener('error', function () {
+        if (photo.contains(img)) { photo.textContent = 'Fotografía no disponible en ' + option.label + '.'; }
+      }, { once: true });
+    }
     var info = card && card.querySelector('.product-info');
     if (info) {
       var row = win.document.createElement('div');
@@ -113,6 +135,13 @@
         if (blocked()) { return; }
         var index = swatches.indexOf(select.selectedOptions[0]);
         selected = index >= 0 && !swatches[index].disabled && options[index].id ? options[index] : null;
+        showPhoto(selected);
+        if (picker.fpwColorMenu) {
+          picker.fpwColorMenu.querySelector('.fp-featured-choice').textContent = selected ? selected.label : 'Elegir';
+          picker.fpwColorMenu.querySelectorAll('button').forEach(function (button, i) {
+            button.setAttribute('aria-pressed', options[i] === selected ? 'true' : 'false');
+          });
+        }
         if (!selected) {
           add.dataset.product_id = '0';
           jq(add).data('product_id', 0);
@@ -182,6 +211,7 @@
       var id = data ? data.get('product_id') : settings.data && settings.data.product_id;
       if (url.searchParams.get('wc-ajax') === 'add_to_cart' && String(id) === String(selected.id)) { uncertain(); }
     });
+    if (select.value) { select.dispatchEvent(new win.Event('change', { bubbles: true })); }
     sync();
   }
   function boot() {

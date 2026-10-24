@@ -72,6 +72,46 @@
     });
     select.addEventListener('change', sync);
     if (window.jQuery) {
+      var product = form.closest('.product');
+      var gallery = product && product.querySelector('.fp-detail-image');
+      var caption = product && product.querySelector('.image-caption');
+      var originalCaption = caption && caption.textContent;
+      var missing = doc.createElement('div');
+      missing.className = 'fp-detail-image';
+      missing.hidden = true;
+      if (gallery) { gallery.after(missing); }
+      function resetPhoto() {
+        if (gallery) { gallery.hidden = false; }
+        missing.hidden = true;
+        missing.replaceChildren();
+        if (caption) { caption.textContent = originalCaption; }
+      }
+      window.jQuery(form).on('found_variation', function (event, variation) {
+        resetPhoto();
+        if (!gallery) { return; }
+        var image = variation.fpw_color_image;
+        var label = select.selectedOptions[0] && select.selectedOptions[0].textContent;
+        if (!image || !image.src) {
+          gallery.hidden = true;
+          missing.hidden = false;
+          var notice = doc.createElement('div');
+          notice.className = 'missing-detail';
+          notice.textContent = 'Fotografía no disponible en ' + label + '.';
+          missing.appendChild(notice);
+          if (caption) { caption.textContent = 'Consulta la fotografía de este color con ventas.'; }
+        } else {
+          if (!gallery.querySelector('.woocommerce-product-gallery')) {
+            gallery.hidden = true;
+            missing.hidden = false;
+            var img = doc.createElement('img');
+            img.src = image.src;
+            img.alt = image.alt || 'Producto en ' + label;
+            missing.appendChild(img);
+          }
+          if (caption) { caption.textContent = 'Fotografía referencial en ' + label + '.'; }
+        }
+      }).on('reset_data hide_variation', resetPhoto);
+      window.jQuery(select).on('change', function () { if (!select.value) { resetPhoto(); } });
       window.jQuery(select).on('change', sync);
       window.jQuery(form).on('woocommerce_update_variation_values reset_data found_variation hide_variation', sync);
     }

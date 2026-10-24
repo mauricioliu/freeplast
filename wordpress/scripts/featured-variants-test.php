@@ -7,7 +7,7 @@ function is_wp_error($value) { return false; }
 function absint($value) { return abs((int) $value); }
 function WC() { return null; }
 $source = file_get_contents(__DIR__ . '/../wp-content/plugins/freeplast-woo/freeplast-woo.php');
-foreach (array('fpw_render_featured_products', 'fpw_in_featured_products', 'fpw_featured_color_options', 'fpw_featured_variation_quote_enabled') as $name) {
+foreach (array('fpw_render_featured_products', 'fpw_in_featured_products', 'fpw_featured_color_options', 'fpw_featured_variation_quote_enabled', 'fpw_variation_color_image') as $name) {
     if (!preg_match('/\nfunction ' . $name . '\(.*?\n\}/s', $source, $match)) { throw new RuntimeException('Missing helper: ' . $name); }
     eval($match[0]);
 }
@@ -40,13 +40,23 @@ $p = new FeaturedProduct();
 $v = array('variation_id'=>101, 'attributes'=>array('attribute_color'=>'Azul'), 'variation_is_active'=>true, 'is_purchasable'=>true, 'is_in_stock'=>true, 'max_qty'=>20, 'is_sold_individually'=>'no', 'display_price'=>999);
 $p->variations = array($v);
 $options = fpw_featured_color_options($p);
-check($options[0] === array('label'=>'Azul', 'id'=>101, 'max'=>20, 'individual'=>false), 'identity/limits from Woo without prices');
+check($options[0] === array('label'=>'Azul', 'id'=>101, 'max'=>20, 'individual'=>false, 'image'=>null), 'identity/limits from Woo without prices');
 check($options[1]['id'] === 0 && $options[2]['id'] === 0, 'unavailable real colors disabled');
 foreach (array('variation_is_active', 'is_purchasable', 'is_in_stock') as $flag) {
     $p->variations[0][$flag] = false;
     check(fpw_featured_color_options($p)[0]['id'] === 0, $flag . ' remains authoritative');
     $p->variations[0][$flag] = true;
 }
+$photo = array('src'=>'/blue.jpg', 'srcset'=>'/blue-2.jpg 2x', 'alt'=>'Caja azul');
+$own = new class { public $id = 55; public function get_image_id($context) { check($context === 'edit', 'raw image ID avoids Woo parent inheritance'); return $this->id; } };
+$data = fpw_variation_color_image(array('image'=>$photo), $p, $own);
+check($data['fpw_color_image'] === $photo, 'explicit variation image preserved');
+$p->variations = array(array_merge($v, $data));
+check(fpw_featured_color_options($p)[0]['image'] === $photo, 'card receives image without price fields');
+$own->id = 0;
+check(fpw_variation_color_image(array('image'=>$photo), $p, $own)['fpw_color_image'] === null, 'inherited parent image not a color photo');
+$own->id = 55;
+check(fpw_variation_color_image(array('image'=>false), $p, $own)['fpw_color_image'] === null, 'missing attachment falls back honestly');
 $p->variations = array($v, $v);
 check(fpw_featured_color_options($p) === array(), 'ambiguous duplicate color falls back');
 $p->variations = array(array_replace($v, array('attributes'=>array('attribute_color'=>''))));

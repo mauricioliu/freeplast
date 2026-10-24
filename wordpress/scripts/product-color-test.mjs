@@ -34,7 +34,7 @@ export async function runProductColorTests() {
   let checks = 0;
   const ok = (cond, message) => { checks++; assert.ok(cond, message); };
 
-  const dom = new JSDOM(`<!doctype html><body>${variationForm}</body>`, { url: 'https://example.test/producto/caja-universal-cerrada-color/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const dom = new JSDOM(`<!doctype html><body><div class="product"><div class="product-gallery"><div class="fp-detail-image"><div class="woocommerce-product-gallery"><img src="/parent.jpg"></div></div><p class="image-caption">Foto original</p></div>${variationForm}</div></body>`, { url: 'https://example.test/producto/caja-universal-cerrada-color/', runScripts: 'outside-only', pretendToBeVisual: true });
   const win = dom.window;
   const $ = jquery(win);
   win.jQuery = $;
@@ -66,9 +66,23 @@ export async function runProductColorTests() {
   ok(buttons[0].getAttribute('aria-pressed') === 'false' && buttons[2].getAttribute('aria-pressed') === 'false', 'other colors stay unselected');
   ok(status.textContent.includes('Seleccionado: Rojo.'), 'the status names the selection');
 
+  const gallery = doc.querySelector('.fp-detail-image');
+  const caption = doc.querySelector('.image-caption');
+  $(select.form).trigger('found_variation', [{fpw_color_image:{src:'/red.jpg'}}]);
+  ok(!gallery.hidden && caption.textContent.includes('en Rojo'), 'Woo owns the color gallery; caption follows matched variation');
+  $(select.form).trigger('found_variation', [{fpw_color_image:null}]);
+  ok(gallery.hidden, 'missing color photo hides Woo inherited parent photo');
+  ok(gallery.nextElementSibling.textContent.includes('no disponible en Rojo'), 'missing color is honestly named');
+  $(select.form).trigger('found_variation', [{fpw_color_image:{src:'/red.jpg'}}]);
+  ok(!gallery.hidden && gallery.nextElementSibling.hidden, 'next matching photo removes missing state');
+  $(select.form).trigger('reset_data');
+  ok(!gallery.hidden && caption.textContent === 'Foto original', 'reset restores parent caption and gallery');
+  $(select.form).trigger('found_variation', [{fpw_color_image:null}]);
+
   /* Woo resets (Restablecer): the form's own change clears the buttons. */
   $(select).val('').trigger('change');
   ok(select.value === '', 'the reset clears the native select');
+  ok(!gallery.hidden && gallery.nextElementSibling.hidden && caption.textContent === 'Foto original', 'clear removes prior missing state');
   ok(buttons.every((b) => b.getAttribute('aria-pressed') === 'false'), 'clearing restores no-color-selected without picking another');
   ok(status.textContent.includes('Selecciona un color'), 'clearing restores the guidance');
 
@@ -83,6 +97,13 @@ export async function runProductColorTests() {
   select.value = '';
   buttons[2].dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
   ok(select.value === '', 'disabled native color cannot be chosen through the enhancement');
+
+  gallery.replaceChildren();
+  select.value = 'Rojo';
+  $(select.form).trigger('found_variation', [{fpw_color_image:{src:'/red.jpg', alt:'Caja roja'}}]);
+  ok(gallery.hidden && gallery.nextElementSibling.querySelector('img').getAttribute('src') === '/red.jpg', 'variation photo works even when parent has no native gallery');
+  $(select.form).trigger('hide_variation');
+  ok(!gallery.hidden && gallery.nextElementSibling.hidden, 'unavailable variation clears replacement photo');
 
   /* Enhancement is idempotent. */
   win.eval(source);
