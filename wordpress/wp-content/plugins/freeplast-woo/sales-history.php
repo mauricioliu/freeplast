@@ -48,11 +48,24 @@ function fpw_sales_history_filters( array $query ): ?array {
 function fpw_sales_history_filter( array $sales, array $filters ): array {
 	$search = $filters['history_search'] ?? '';
 	$rut = fpw_sales_normalize_rut( $search );
-	return array_values( array_filter( $sales, static function ( $sale ) use ( $filters, $search, $rut ) {
+	$named_ruts = array();
+	// Resolve names before date filtering so older nameless rows of the same RUT remain discoverable.
+	if ( '' !== $search && '' === $rut ) {
+		foreach ( $sales as $sale ) {
+			$sale_rut = fpw_sales_normalize_rut( (string) ( $sale['rut'] ?? '' ) );
+			if ( '' === $sale_rut ) { continue; }
+			foreach ( fpw_sales_history_names( $sale ) as $name ) {
+				if ( false !== mb_stripos( $name, $search, 0, 'UTF-8' ) ) { $named_ruts[$sale_rut] = true; break; }
+			}
+		}
+	}
+	return array_values( array_filter( $sales, static function ( $sale ) use ( $filters, $search, $rut, $named_ruts ) {
 		$date = $sale['date'] ?? '';
 		if ( ( isset( $filters['history_from'] ) || isset( $filters['history_to'] ) ) && ( '' === $date || $date < ( $filters['history_from'] ?? '0001-01-01' ) || $date > ( $filters['history_to'] ?? '9999-12-31' ) ) ) { return false; }
 		if ( '' === $search ) { return true; }
-		if ( '' !== $rut && $rut === fpw_sales_normalize_rut( (string) ( $sale['rut'] ?? '' ) ) ) { return true; }
+		$sale_rut = fpw_sales_normalize_rut( (string) ( $sale['rut'] ?? '' ) );
+		if ( '' !== $rut && $rut === $sale_rut ) { return true; }
+		if ( isset( $named_ruts[$sale_rut] ) ) { return true; }
 		foreach ( array_merge( fpw_sales_history_names( $sale ), array( $sale['rut'] ?? '', $sale['invoice'] ?? '' ) ) as $value ) {
 			if ( false !== mb_stripos( (string) $value, $search, 0, 'UTF-8' ) ) { return true; }
 		}
