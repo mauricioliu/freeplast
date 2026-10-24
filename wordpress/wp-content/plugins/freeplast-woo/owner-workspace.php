@@ -18,7 +18,7 @@ function fpw_workspace_url(): string { return admin_url( 'admin.php?page=fpw-quo
 add_action( 'admin_enqueue_scripts', 'fpw_workspace_assets' );
 function fpw_workspace_assets(): void {
 	if ( ! fpw_workspace_surface() ) { return; }
-	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.16' );
+	wp_enqueue_style( 'fpw-workspace', plugins_url( 'assets/owner-workspace.css', __FILE__ ), array(), '1.12.17' );
 	wp_enqueue_script( 'fpw-workspace', plugins_url( 'assets/owner-workspace.js', __FILE__ ), array(), '1.12.15', true );
 	wp_add_inline_style( 'fpw-workspace', '@font-face{font-family:FPWManrope;src:url("' . esc_url( get_theme_file_uri( 'assets/fonts/manrope.woff2' ) ) . '") format("woff2");font-weight:200 800;font-display:swap}' );
 }
@@ -143,7 +143,7 @@ function fpw_render_workspace(): void {
 			$created = $order->get_date_created();
 			$received = $draft['received_at'] ?? ( $created ? $created->getTimestamp() : null );
 			$url = $draft ? fpw_draft_screen_url( $id ) : fpw_draft_request_admin_url( $id );
-			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( $url ) . '">' . esc_html( $company ?: $reference ) . '</a></h2><p class="fpw-muted">' . esc_html( $reference ) . ( null !== $received ? ' · ' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', (int) $received ) ) : '' ) . '</p></div>'
+			$body .= '<article data-fpw-request="' . $id . '" class="fpw-workspace-row"><div><h2><a href="' . esc_url( $url ) . '">' . esc_html( $company ?: $reference ) . '</a></h2><p class="fpw-muted fpw-request-meta"><span class="fpw-request-ref">' . esc_html( $reference ) . '</span>' . ( null !== $received ? '<span class="fpw-request-received"><span aria-hidden="true">· </span><span class="screen-reader-text">Recibida: </span><time datetime="' . esc_attr( fpw_workspace_date( 'c', (int) $received ) ) . '">' . esc_html( fpw_workspace_date( 'd/m/Y · H:i', (int) $received ) ) . '</time></span>' : '' ) . '</p></div>'
 				. fpw_workspace_request_state_html( $id, $version, $offer['unavailable'], 'yes' === $order->get_meta( '_fp_workspace_archived' ) ) . '<div class="fpw-workspace-row-total"><span>' . ( $offer['unavailable'] ? 'Versión no disponible' : ( $version ? 'Total aprobado' : 'Total guardado' ) ) . '</span><strong>' . fpw_workspace_money( $projection['total'] ?? null ) . '</strong></div><div class="fpw-request-actions"><a class="fpw-button" href="' . esc_url( $url ) . '">' . ( $version ? 'Ver' : 'Abrir' ) . '<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a>'
 				. ( ! $offer['unavailable'] && fpw_quotation_can_revise( $id, $version ) ? '<a class="fpw-button" href="' . esc_url( fpw_quotation_edit_url( $id, $version['version'] ) ) . '">Editar<span class="screen-reader-text"> ' . esc_html( $reference ) . '</span></a>' : '' )
 				. fpw_workspace_archive_html( $id, 'yes' === $order->get_meta( '_fp_workspace_archived' ), null !== $draft && fpw_workspace_can_archive( $id, $version, $offer['unavailable'] ) ) . '</div></article>';

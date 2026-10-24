@@ -212,6 +212,8 @@ html.wp-toolbar:has(.fpw-workspace-page){padding-top:0}
 .fpw-workspace-row h2{font-size:16px;margin-bottom:0}
 .fpw-workspace-row h2 a{display:inline-flex;align-items:center;min-height:44px}
 .fpw-workspace-row .fpw-muted{margin:0}
+.fpw-request-meta .fpw-request-ref{color:var(--ink);font-weight:650}
+.fpw-request-received{white-space:nowrap}
 .fpw-workspace-row-total{display:grid;gap:4px;align-content:center}
 .fpw-workspace-row-total span{font-size:12px;color:var(--muted)}
 .fpw-workspace-row-total strong{font-size:18px}
