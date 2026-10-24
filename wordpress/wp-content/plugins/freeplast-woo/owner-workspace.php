@@ -398,7 +398,8 @@ function fpw_workspace_detail_markup( $order, ?array $draft, ?array $work, ?arra
 			. ( $unsaved ? '<a class="fpw-button fpw-secondary" data-fpw-discard-work href="' . esc_url( add_query_arg( fpw_workspace_context_args(), fpw_draft_screen_url( $id ) ) ) . '">Descartar cambios sin guardar</a>' : '<button type="reset" form="fpw-work-form" data-fpw-discard class="fpw-secondary">Descartar cambios sin guardar</button>' )
 			. '<button type="submit" name="fpw_work_preview" value="1" form="fpw-work-form" data-fpw-preview>Revisar cotización</button>';
 	$body .= '<noscript><p>Guarda el borrador antes de cambiar de página.</p></noscript></aside></div>'
-		. fpw_workspace_history( $draft );
+		. fpw_workspace_history( $draft )
+		. fpw_customer_quotation_history_html( $draft );
 	$body = fpw_workspace_review_fields( $body, $review_invalid, $preserve_post, fpw_draft_dispatch_stale( $validation_work ) );
 	return fpw_workspace_shell( $body, $id, $projection['total'] ?? null, true );
 }

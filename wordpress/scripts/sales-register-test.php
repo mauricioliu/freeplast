@@ -67,6 +67,9 @@ $GLOBALS['fpws_options'] = array( 'date_format' => 'j F Y' );
 class FPWS_Fake_wpdb {
 	public string $prefix = 'fp_';
 	public string $options = 'wp_options';
+	public string $posts = 'wp_posts';
+	public string $postmeta = 'wp_postmeta';
+	public string $last_error = '';
 	public function suppress_errors( $set = null ) { return false; }
 	public function esc_like( $text ) { return addcslashes( $text, '_%\\' ); }
 	public function prepare( $sql, ...$args ) {

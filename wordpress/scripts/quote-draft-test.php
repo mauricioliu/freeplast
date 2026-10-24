@@ -112,6 +112,9 @@ function is_cart() { return false; }
 class FPWD_Fake_wpdb {
 	public string $prefix = 'fp_';
 	public string $options = 'wp_options';
+	public string $posts = 'wp_posts';
+	public string $postmeta = 'wp_postmeta';
+	public string $last_error = '';
 	public int $insert_id = 0;
 	public function suppress_errors( $set = null ) { return false; }
 	public function esc_like( $text ) { return addcslashes( $text, '_%\\' ); }
@@ -150,12 +153,19 @@ class FPWD_Fake_wpdb {
 		return 0;
 	}
 	public function get_var( $sql ) {
+		if ( str_starts_with( $sql, 'SELECT COUNT(*) FROM wp_posts' ) ) {
+			$this->last_error = $GLOBALS['fpwd_history_query_error'] ?? '';
+			return count( $GLOBALS['fpwd_history_order_ids'] ?? array() );
+		}
 		if ( preg_match( "/SELECT option_value FROM \{?\w*options\}? WHERE option_name = '(.+)'$/", $sql, $m ) ) {
 			return $GLOBALS['fpwd_table'][ $m[1] ] ?? null;
 		}
 		return null;
 	}
 	public function get_col( $sql ) {
+		if ( preg_match( '/^SELECT o.ID FROM wp_posts .* LIMIT (\d+) OFFSET (\d+)$/s', $sql, $m ) ) {
+			return array_slice( $GLOBALS['fpwd_history_order_ids'] ?? array(), (int) $m[2], (int) $m[1] );
+		}
 		if ( preg_match( "/SELECT option_name FROM \{?\w*options\}? WHERE option_name LIKE '(.+)'$/", $sql, $m ) ) {
 			$like = str_replace( array( '\\%', '\\_' ), array( '%', '_' ), $m[1] );
 			$prefix = ( $pos = strpos( $like, '%' ) ) !== false ? substr( $like, 0, $pos ) : $like;
@@ -1198,6 +1208,75 @@ for ( $i = 1; $i <= 40; $i++ ) {
 }
 check( str_contains( $multiText, '40.000 CLP' ) && str_contains( $multiText, '7.600 CLP' ) && str_contains( $multiText, '47.600 CLP' ) && str_contains( $multiText, 'Vigencia de la oferta: 7' ), 'the end of the multi-page document keeps its exact net, tax, total and validity' );
 
+/* Customer quotation history: normalized identity, saved values, versions, pagination and read-only isolation. */
+(function () {
+	$preserved = array();
+	foreach ( array( 'fpwd_table', 'fpwd_orders', 'fpwd_caps', '_GET', '_POST' ) as $key ) { $preserved[$key] = $GLOBALS[$key]; }
+	$GLOBALS['fpwd_caps'] = array( 'fpw_manage_quotations' => true );
+	$_GET = array( 'page' => FPW_DRAFT_SCREEN, 'workspace' => '1', 'request' => '300', 'revise' => '1' );
+	$_POST = array();
+	$line = new FPWD_Item( 'Caja <privada>', 128, 22, 0, array( 'pa_color' => 'Azul' ) );
+	foreach ( array( 300, 301, 302, 303, 304, 350 ) as $id ) {
+		$rut = 302 === $id ? '11.111.111-1' : ( 303 === $id ? '' : " 76.543.210-k\t" );
+		$order = new FPWD_Order( $id, array( $line ), array( '_billing_fp_rut' => $rut, '_fp_workspace_archived' => 'yes' ) );
+		$GLOBALS['fpwd_orders'][$id] = $order;
+		if ( 304 !== $id ) { fpw_create_request_draft( $order ); }
+	}
+	$current = fpw_read_request_draft( 300 );
+	$version = array( 'schema' => 1, 'order_id' => 301, 'version' => 1, 'reference' => 'FP-HISTORY-301', 'buyer' => array( 'rut' => '76543210K' ),
+		'approved_at' => 1790000000, 'document' => 'ready', 'delivery' => array( 'state' => 'accepted' ), 'commercial' => array( 'number' => 777 ),
+		'projection' => array( 'lines' => array( array( 'name' => 'Caja emitida', 'quantity' => 128, 'price' => 987, 'options' => array() ) ), 'total' => 150342 ) );
+	$newer = array_replace( $version, array( 'version' => 2, 'approved_at' => 1790001000, 'delivery' => array( 'state' => 'unknown' ) ) );
+	$newer['projection']['lines'][0]['price'] = 1234;
+	$foreign = array_replace( $version, array( 'version' => 9, 'buyer' => array( 'rut' => '111111111' ) ) );
+	$wrong_id = array_replace( $version, array( 'version' => 10, 'order_id' => 302 ) );
+	$newer['history'] = array( $version, $foreign, $wrong_id );
+	$GLOBALS['fpwd_table'][fpw_quotation_row_name( 301 )] = wp_json_encode( $newer );
+	$GLOBALS['fpwd_table'][fpw_quotation_row_name( 300 )] = wp_json_encode( array_replace( $version, array( 'order_id' => 300, 'reference' => 'FP-CURRENT-300' ) ) );
+	$work = array( 'order_id' => 301, 'revision' => 4, 'updated_at' => 1790002000,
+		'lines' => array( array( 'product_id' => 22, 'variation_id' => 0, 'quantity' => 129, 'price' => 4321 ) ) );
+	$GLOBALS['fpwd_table']['fpw_draft_work_301_after_2'] = wp_json_encode( $work );
+	$GLOBALS['fpwd_table']['fpw_draft_work_301'] = wp_json_encode( array_replace( $work, array( 'revision' => 99 ) ) );
+	$GLOBALS['fpwd_history_order_ids'] = array( 300, 301, 302, 303, 304 );
+	foreach ( range( 310, 339 ) as $id ) {
+		$GLOBALS['fpwd_orders'][$id] = new FPWD_Order( $id, array( $line ), array( '_billing_fp_rut' => '11.111.111-1' ) );
+		$GLOBALS['fpwd_history_order_ids'][] = $id;
+	}
+	$GLOBALS['fpwd_history_order_ids'][] = 350;
+	$before = array( $GLOBALS['fpwd_table'], $GLOBALS['fpwd_options'], $GLOBALS['fpwd_mail_calls'], $_GET );
+	$history = fpw_customer_quotation_history( $current );
+	check( 'ready' === $history['state'] && 7 === count( $history['rows'] ), 'all request pages preserve matching receipts, saved revision and each valid issued version' );
+	$matched_ids = array_values( array_unique( array_column( $history['rows'], 'order_id' ) ) ); sort( $matched_ids );
+	check( array( 300, 301, 304, 350 ) === $matched_ids, 'same names never include another RUT or a missing RUT; matching archived request beyond the first page remains present' );
+	check( 1 === count( array_filter( $history['rows'], static fn( $r ) => 300 === $r['order_id'] ) ), 'current request/work is excluded but its previously approved version remains available while revising' );
+	$draft_rows = array_values( array_filter( $history['rows'], static fn( $r ) => 'draft' === $r['kind'] ) );
+	check( 4 === $draft_rows[0]['revision'] && 3 === $draft_rows[0]['version'] && 4321 === $draft_rows[0]['lines'][0]['price'], 'history reads the saved revised draft, never original work, route seeds or current suggested prices' );
+	check( array_column( $history['rows'], 'at' ) === (function ( $dates ) { rsort( $dates ); return $dates; })( array_column( $history['rows'], 'at' ) ), 'history is newest first across receipts, drafts and versions' );
+	$html = fpw_customer_quotation_history_html( $current );
+	check( str_contains( $html, 'Versión 1' ) && str_contains( $html, 'Versión 2' ) && str_contains( $html, 'Revisión 4' ) && ! str_contains( $html, 'Revisión 99' ), 'labels distinguish requests, work revisions and issued versions' );
+	check( str_contains( $html, '987 CLP' ) && str_contains( $html, '1.234 CLP' ) && str_contains( $html, '4.321 CLP' ) && str_contains( $html, 'Solicitud sin precios' ), 'saved/frozen unit prices remain distinct from unpriced requests' );
+	check( str_contains( $html, 'Envío no confirmado' ) && str_contains( $html, 'Documento emitido' ) && str_contains( $html, 'Cotización N.º 777' ), 'approval/document/send states and commercial reference are explicit' );
+	check( str_contains( $html, '&lt;privada&gt;' ) && ! str_contains( $html, '<privada>' ) && str_contains( $html, 'version=2' ), 'history escapes record text and links an exact protected version' );
+	$screen = fpw_quote_draft_markup( $GLOBALS['fpwd_orders'][300], $current );
+	check( str_contains( $screen, 'Historial de compras' ) && str_contains( $screen, 'Historial de cotizaciones' ), 'private draft keeps purchase and quotation history separate' );
+	check( ! str_contains( fpwd_draft_preview_section_of( $screen ), 'fpw-quotation-history' ), 'customer preview never includes quotation history' );
+	check( $before === array( $GLOBALS['fpwd_table'], $GLOBALS['fpwd_options'], $GLOBALS['fpwd_mail_calls'], $_GET ), 'reads and rendering never alter sales, work, snapshots, sent documents, mail or route context' );
+	$missing = $newer; $missing['projection']['lines'][0]['price'] = null; $missing['projection']['total'] = null; $missing['approved_at'] = null;
+	$GLOBALS['fpwd_table'][fpw_quotation_row_name( 301 )] = wp_json_encode( $missing );
+	$missing_html = fpw_customer_quotation_history_html( $current );
+	check( str_contains( $missing_html, 'Fecha no disponible' ) && str_contains( $missing_html, 'Total: No disponible' ) && str_contains( $missing_html, 'Precio unitario neto</dt><dd>No disponible' ), 'absent historical dates and amounts are explicit, never invented zeroes or current list prices' );
+	$GLOBALS['fpwd_table'][fpw_quotation_row_name( 301 )] = wp_json_encode( $newer );
+	$empty = $current; $empty['identity']['rut'] = '22.222.222-2';
+	check( array() === fpw_customer_quotation_history( $empty )['rows'] && str_contains( fpw_customer_quotation_history_html( $empty ), 'Esto no indica que el cliente sea nuevo' ), 'empty results are not a new-customer verdict' );
+	$empty['identity']['rut'] = '76543210K extra';
+	check( 'unmatched' === fpw_customer_quotation_history( $empty )['state'], 'unusable identity never falls back to company/name/email' );
+	$GLOBALS['fpwd_history_query_error'] = 'database unavailable';
+	check( 'unavailable' === fpw_customer_quotation_history( $current )['state'] && str_contains( fpw_customer_quotation_history_html( $current ), 'No se pudo consultar' ), 'query failure is not silently rendered as no history' );
+	unset( $GLOBALS['fpwd_history_query_error'], $GLOBALS['fpwd_history_order_ids'] );
+	$GLOBALS['wpdb']->last_error = '';
+	foreach ( $preserved as $key => $value ) { $GLOBALS[$key] = $value; }
+})();
+
 // Ticket 10: isolated contact working state, exact CAS and immutable issued snapshots.
 (function () {
 	$rows = $GLOBALS['fpwd_table']; $get = $_GET; $post = $_POST; $caps = $GLOBALS['fpwd_caps'];
@@ -1312,4 +1391,4 @@ check( fpw_read_quotation_version( 95 ) === $accepted95 && fpw_read_request_draf
 $GLOBALS['fpwd_table'] = $shared_color_table_before;
 $GLOBALS['fpwd_orders'] = $shared_color_orders_before;
 
-echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56; contact editing + shared color suggestions)\n";
+echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56; customer quotation history + contact editing + shared color suggestions)\n";
