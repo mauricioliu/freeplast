@@ -974,18 +974,19 @@ function fpw_parse_draft_identity( $input ): array {
 /** Separate form: never posts RUT, delivery or original receipt fields. */
 function fpw_draft_identity_form( array $draft, ?array $work ): string {
 	$id = (int) $draft['order_id'];
+	$url = ( function_exists( 'fpw_workspace_context_args' ) && ( $context = fpw_workspace_context_args() ) ) ? add_query_arg( $context, fpw_draft_screen_url( $id ) ) : fpw_draft_screen_url( $id );
 	$identity = fpw_draft_identity( $draft, $work );
 	$pending = fpw_pending_draft_outcome();
 	$invalid = ! empty( $_POST['fpw_identity_save'] ) && $id === ( $pending['order_id'] ?? null ) && 'invalid' === ( $pending['result']['state'] ?? '' );
 	$parsed = $invalid ? fpw_parse_draft_identity( wp_unslash( $_POST['fpw_identity'] ?? null ) ) : array( 'values' => $identity, 'errors' => array() );
-	$html = '<details class="fpw-identity-editor"' . ( $invalid ? ' open' : '' ) . '><summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5"/></svg> Editar empresa y contacto</summary><form data-fpw-identity method="post" action="' . esc_url( fpw_draft_screen_url( $id ) ) . '"><p>Solo cambia este borrador. RUT, despacho, solicitud original y versiones emitidas permanecen iguales.</p><input type="hidden" name="fpw_identity_save" value="1"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
+	$html = '<details class="fpw-identity-editor"' . ( $invalid ? ' open' : '' ) . '><summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5"/></svg> Editar empresa y contacto</summary><form data-fpw-identity method="post" action="' . esc_url( $url ) . '"><p>Solo cambia este borrador. RUT, despacho, solicitud original y versiones emitidas permanecen iguales.</p><input type="hidden" name="fpw_identity_save" value="1"><input type="hidden" name="fpw_work_revision" value="' . fpw_draft_work_revision( $work ) . '">'
 		. wp_nonce_field( fpw_draft_save_action( $id ), 'fpw_draft_nonce', true, false );
 	foreach ( fpw_draft_identity_fields() as $key => $label ) {
 		$error = $parsed['errors'][ $key ] ?? '';
 		$html .= '<label class="fpw-draft__field">' . esc_html( $label ) . '<input type="' . ( 'email' === $key ? 'email' : ( 'phone' === $key ? 'tel' : 'text' ) ) . '" name="fpw_identity[' . $key . ']" value="' . esc_attr( $parsed['values'][ $key ] ?? '' ) . '" data-fpw-saved-value="' . esc_attr( $identity[ $key ] ?? '' ) . '" required maxlength="300"' . ( $error ? ' aria-invalid="true" aria-describedby="fpw-identity-error-' . $key . '"' : '' ) . '></label>';
 		if ( $error ) { $html .= '<p class="fpw-field-error" id="fpw-identity-error-' . $key . '">' . esc_html( $error ) . '</p>'; }
 	}
-	return $html . '<button type="submit">Guardar empresa y contacto</button> <a class="fpw-button fpw-secondary" data-fpw-identity-cancel href="' . esc_url( fpw_draft_screen_url( $id ) ) . '">Cancelar edición de contacto</a></form></details>';
+	return $html . '<button type="submit">Guardar empresa y contacto</button> <a class="fpw-button fpw-secondary" data-fpw-identity-cancel href="' . esc_url( $url ) . '">Cancelar edición de contacto</a></form></details>';
 }
 
 /** The offer validity in force for one draft: the owner's saved choice, else the default (issue #55). */

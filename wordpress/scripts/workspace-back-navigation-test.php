@@ -1,7 +1,6 @@
 <?php
 /** Ticket 9 — Volver keeps the origin inbox context (tab, search, order, page) through whitelisted params only. */
 define( 'ABSPATH', __DIR__ );
-define( 'FPW_DRAFT_SCREEN', 'fpw-quote-draft' );
 $GLOBALS['fpwb_caps'] = array( 'manage_woocommerce' => true );
 function add_action( ...$args ) {}
 function add_filter( ...$args ) {}
@@ -14,6 +13,7 @@ function esc_attr( $v ) { return htmlspecialchars( (string) $v, ENT_QUOTES ); }
 function esc_url( $v ) { return htmlspecialchars( (string) $v, ENT_QUOTES ); }
 function absint( $v ) { return abs( (int) $v ); }
 function sanitize_text_field( $v ) { return trim( strip_tags( (string) $v ) ); }
+function is_email( $v ) { return false !== filter_var( (string) $v, FILTER_VALIDATE_EMAIL ); }
 function wp_unslash( $v ) { return $v; }
 function admin_url( $path = '' ) { return 'https://freeplast.test/wp-admin/' . $path; }
 function home_url( $path = '' ) { return 'https://freeplast.test' . $path; }
@@ -45,16 +45,11 @@ class FPWB_Order {
 	public function get_meta( $key ) { return ''; }
 }
 function wc_get_order( $id ) { return in_array( (int) $id, array( 91, 92 ), true ) ? new FPWB_Order( (int) $id ) : null; }
-function fpw_read_request_draft( $id ) { return 91 === (int) $id ? array( 'order_id' => 91, 'reference' => 'FP-2025-000091', 'identity' => array( 'company' => 'Frutas Andinas' ), 'items' => array(), 'received_at' => 0 ) : null; }
-function fpw_read_draft_work( $id ) { return null; }
 function fpw_read_quotation_version( $id, $number = null ) {
 	if ( isset( $GLOBALS['fpwb_version'] ) && 92 === (int) $id ) { return $GLOBALS['fpwb_version']; }
 	return 92 === (int) $id && null === $number ? array( 'schema' => 1, 'order_id' => 92, 'version' => 3, 'document' => 'ready', 'delivery' => array( 'state' => 'accepted' ) ) : null;
 }
-function fpw_quotation_projection( $draft, $work ) { return array(); }
 function fpw_quotation_row_name( $id ) { return 'fpw_quotation_' . $id; }
-function fpw_draft_screen_url( $order_id ) { return admin_url( 'admin.php?page=fpw-quote-draft&request=' . $order_id . '&workspace=1' ); }
-function fpw_draft_request_admin_url( $order_id ) { return admin_url( 'post.php?post=' . $order_id . '&action=edit' ); }
 /* Minimal wpdb: the inbox read model itself is covered by workspace-request-query-test.py. */
 class FPWB_wpdb {
 	public string $prefix = 'wp_';
@@ -62,14 +57,20 @@ class FPWB_wpdb {
 	public string $postmeta = 'wp_postmeta';
 	public string $options = 'wp_options';
 	public string $last_error = '';
-	public function get_var( $sql ) { return 2; }
+	public function get_var( $sql ) {
+		if ( str_contains( (string) $sql, 'fpw_draft_91' ) ) {
+			return json_encode( array( 'order_id' => 91, 'reference' => 'FP-2025-000091', 'identity' => array( 'company' => 'Frutas Andinas', 'name' => 'Ana', 'email' => 'ana@andinas.cl', 'phone' => '+56911112222', 'giro' => 'Frutícola' ), 'items' => array(), 'received_at' => 0 ) );
+		}
+		return str_contains( (string) $sql, 'option_value' ) ? null : 2;
+	}
 	public function get_col( $sql ) { return array( 91, 92 ); }
-	public function prepare( $sql, ...$args ) { return $sql; }
+	public function prepare( $sql, ...$args ) { return $args ? $sql . ' ' . implode( ' ', $args ) : $sql; }
 	public function esc_like( $text ) { return addcslashes( $text, '_%\\' ); }
 }
 $GLOBALS['wpdb'] = new FPWB_wpdb();
 require __DIR__ . '/../wp-content/plugins/freeplast-woo/owner-workspace.php';
 require __DIR__ . '/../wp-content/plugins/freeplast-woo/quotation-revisions.php';
+require __DIR__ . '/../wp-content/plugins/freeplast-woo/quote-draft.php';
 
 $n = 0;
 function check( $ok, $label ) { global $n; $n++; if ( ! $ok ) { throw new RuntimeException( $label ); } }
@@ -131,5 +132,23 @@ $GLOBALS['fpwb_version'] = array( 'schema' => 1, 'order_id' => 92, 'version' => 
 $history = html_entity_decode( fpw_quotation_history_html( 92, 2 ), ENT_QUOTES );
 check( str_contains( $history, 'version=1&stage=sent-quotes' ) && str_contains( $history, 'version=2&stage=sent-quotes' ) && str_contains( $history, 'q=Freeplast+SpA' ), 'version history links carry the inbox context' );
 check( str_contains( $history, 'aria-current="page"' ), 'the open version stays marked' );
+
+/* --- contact editor form and cancel link preserve whitelisted context and drop invalid context --- */
+$_GET = array( 'stage' => 'all', 'q' => 'QA Y6S8', 'sort' => 'oldest', 'paged' => '2', 'redirect_to' => 'https://evil.test', 'evil' => '1' );
+$draft_91 = fpw_read_request_draft( 91 );
+$contact_html = html_entity_decode( fpw_draft_identity_form( $draft_91, null ), ENT_QUOTES );
+$expected_contact = 'https://freeplast.test/wp-admin/admin.php?page=fpw-quote-draft&request=91&workspace=1&stage=all&q=QA+Y6S8&sort=oldest&paged=2';
+check( str_contains( $contact_html, 'data-fpw-identity method="post" action="' . $expected_contact . '"' ), 'contact form action keeps stage, q, sort and paged' );
+check( str_contains( $contact_html, 'data-fpw-identity-cancel href="' . $expected_contact . '"' ), 'contact cancel link keeps stage, q, sort and paged' );
+check( ! str_contains( $contact_html, 'evil' ), 'contact form and cancel drop invalid/hostile context params' );
+$_POST = array( 'fpw_identity_save' => '1', 'fpw_identity' => array( 'company' => 'Frutas Andinas', 'name' => 'Ana', 'email' => 'bad', 'phone' => '+56911112222', 'giro' => 'Frutícola' ) );
+fpw_pending_draft_outcome( array( 'order_id' => 91, 'result' => array( 'state' => 'invalid' ) ) );
+$invalid_contact = html_entity_decode( fpw_draft_identity_form( $draft_91, null ), ENT_QUOTES );
+check( str_contains( $invalid_contact, 'class="fpw-identity-editor" open' ) && str_contains( $invalid_contact, 'action="' . $expected_contact . '"' ) && str_contains( $invalid_contact, 'data-fpw-identity-cancel href="' . $expected_contact . '"' ), 'invalid contact re-render preserves whitelisted inbox context' );
+$_POST = array();
+fpw_pending_draft_outcome( null );
+$_GET = array( 'stage' => 'evil', 'sort' => 'bad', 'paged' => '1', 'redirect_to' => '//evil.test' );
+$plain_contact = html_entity_decode( fpw_draft_identity_form( $draft_91, null ), ENT_QUOTES );
+check( str_contains( $plain_contact, 'action="https://freeplast.test/wp-admin/admin.php?page=fpw-quote-draft&request=91&workspace=1"' ) && str_contains( $plain_contact, 'data-fpw-identity-cancel href="https://freeplast.test/wp-admin/admin.php?page=fpw-quote-draft&request=91&workspace=1"' ) && ! str_contains( $plain_contact, 'evil' ), 'invalid-only context falls back to clean draft URL on contact form and cancel' );
 
 echo "workspace back navigation: $n checks passed\n";

@@ -344,16 +344,21 @@ check(str_contains($detail, 'Editar empresa y contacto') && str_contains($detail
 foreach (array('company','name','email','phone','giro') as $field) { check(str_contains($detail, 'name="fpw_identity[' . $field . ']"'), 'only supported editable contact field: ' . $field); }
 check(!str_contains($detail, 'name="fpw_identity[rut]"') && !str_contains($detail, 'name="fpw_identity[address]"'), 'RUT and delivery have no contact edit controls');
 check($GLOBALS['fpwd_table'] === $before_contact && str_contains($detail, 'data-fpw-identity-cancel href="' . esc_url(fpw_draft_screen_url($id)) . '"'), 'GET/cancel renders saved state without writes');
+$_GET = array('page' => FPW_DRAFT_SCREEN, 'workspace' => '1', 'request' => (string)$id, 'stage' => 'sent-quotes', 'q' => 'Freeplast SpA', 'sort' => 'oldest', 'paged' => '3', 'redirect_to' => 'https://evil.test', 'evil' => '1');
+$expected_contact_url = esc_url(add_query_arg(fpw_workspace_context_args(), fpw_draft_screen_url($id)));
+$context_contact = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
+check(str_contains($context_contact, '<form data-fpw-identity method="post" action="' . $expected_contact_url . '">') && str_contains($context_contact, 'data-fpw-identity-cancel href="' . $expected_contact_url . '"') && !str_contains($context_contact, 'evil'), 'contact form action and cancel link preserve whitelisted stage/q/sort/paged and drop invalid context');
 $_POST = array('fpw_identity_save' => '1', 'fpw_work_revision' => (string)$work['revision'], 'fpw_draft_nonce' => 'offline-nonce', 'fpw_identity' => array('company'=>'Empresa corregida', 'name'=>'Ana', 'email'=>'invalid', 'phone'=>'+56987654321', 'giro'=>'Agrícola'));
 fpw_handle_draft_posted_action();
 $invalid = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, fpw_draft_outcome_notice(fpw_pending_draft_outcome()['result']));
 check(str_contains($invalid, 'class="fpw-identity-editor" open') && str_contains($invalid, 'aria-describedby="fpw-identity-error-email"') && str_contains($invalid, 'value="invalid"'), 'invalid contact stays open with retained input and accessible inline error');
+check(str_contains($invalid, '<form data-fpw-identity method="post" action="' . $expected_contact_url . '">') && str_contains($invalid, 'data-fpw-identity-cancel href="' . $expected_contact_url . '"') && !str_contains($invalid, 'evil'), 'invalid contact re-render preserves whitelisted inbox context on form and cancel');
 check($GLOBALS['fpwd_table'] === $before_contact, 'invalid contact render and save preserve all rows');
 $_POST['fpw_identity']['email'] = 'nuevo@example.test';
 fpw_handle_draft_posted_action(); $work = fpw_read_draft_work($id);
 $_POST = array(); fpw_pending_draft_outcome(null);
 $detail = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
-check(str_contains($detail, '>Empresa corregida</h1>') && str_contains($detail, 'nuevo@example.test'), 'reloaded working header shows corrected company and contact');
+check(str_contains($detail, '>Empresa corregida</h1>') && str_contains($detail, 'nuevo@example.test') && str_contains($detail, '<form data-fpw-identity method="post" action="' . $expected_contact_url . '">') && str_contains($detail, 'data-fpw-identity-cancel href="' . $expected_contact_url . '"') && str_contains(fpw_workspace_back_url(), 'page=fpw-quotations&stage=sent-quotes&q=Freeplast+SpA&sort=oldest&paged=3'), 'reloaded working header shows corrected company and contact while keeping inbox return context');
 $_GET['review'] = '1';
 $stale = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
 check(str_contains($stale, 'Vista previa obsoleta') && !str_contains($stale, 'Empresa corregida') && !str_contains($stale, 'data-fpw-identity'), 'obsolete review shows frozen buyer, not later working identity or editing controls');
