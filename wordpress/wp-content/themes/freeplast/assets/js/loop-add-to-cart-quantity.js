@@ -11,7 +11,7 @@
     var current = parseInt(input.value, 10);
     var min = input.min !== '' ? parseInt(input.min, 10) : 1;
     var max = input.max !== '' ? parseInt(input.max, 10) : Infinity;
-    // Frutera/Merlucera: five; traversas: one; every other product: ten.
+    // Frutera/Merlucera: five; tomatera/traversas: one; every other product: ten.
     // The server emits this policy; the retired 200-unit class is ignored.
     var deltaClass = (input.className || '').match(/\bfpw-delta-(1|5|10)\b/);
     var step = deltaClass ? Number(deltaClass[1]) : 10;
