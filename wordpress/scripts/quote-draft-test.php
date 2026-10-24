@@ -80,6 +80,7 @@ function wp_mail( $to, $subject, $message, $headers = array(), $attachments = ar
 function date_i18n( $format, $timestamp ) { return gmdate( 'Y-m-d', (int) $timestamp ); }
 function wp_date( $format, $timestamp, $timezone = null ) { return null === $timezone ? gmdate( $format, (int) $timestamp ) : ( new DateTimeImmutable( '@' . (int) $timestamp ) )->setTimezone( $timezone )->format( $format ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
+function is_email( $value ) { return filter_var( $value, FILTER_VALIDATE_EMAIL ) ? $value : false; }
 function wp_unslash( $value ) { return $value; }
 function do_action( ...$args ): void {}
 $GLOBALS['fpwd_options'] = array( 'date_format' => 'j F Y' );
@@ -1197,6 +1198,86 @@ for ( $i = 1; $i <= 40; $i++ ) {
 }
 check( str_contains( $multiText, '40.000 CLP' ) && str_contains( $multiText, '7.600 CLP' ) && str_contains( $multiText, '47.600 CLP' ) && str_contains( $multiText, 'Vigencia de la oferta: 7' ), 'the end of the multi-page document keeps its exact net, tax, total and validity' );
 
+// Ticket 10: isolated contact working state, exact CAS and immutable issued snapshots.
+(function () {
+	$rows = $GLOBALS['fpwd_table']; $get = $_GET; $post = $_POST; $caps = $GLOBALS['fpwd_caps'];
+	$emails = $GLOBALS['fpwd_mail_calls'];
+	fpwd_review_for_approval( 2210 );
+	$draft = fpw_read_request_draft( 2210 );
+	$receipt = $GLOBALS['fpwd_table'][fpw_draft_row_name(2210)];
+	$work = fpw_read_draft_work( 2210 ); $preview = fpw_read_draft_preview( 2210 );
+	$identity = array( 'company' => 'Empresa corregida', 'name' => 'Ana Nueva', 'email' => 'ana@example.test', 'phone' => '+56 9 8765 4321', 'giro' => 'Agricultura' );
+	$posted = array( 'fpw_identity_save' => '1', 'fpw_draft_nonce' => 'offline-nonce', 'fpw_work_revision' => (string) $work['revision'], 'fpw_identity' => $identity + array( 'rut' => 'otro-rut', 'address' => 'otro-destino' ), 'fpw_work' => array( 'destination' => 'forged', 'lines' => array( array( 'quantity' => 999, 'price' => 999 ) ) ) );
+	$GLOBALS['fpwd_orders'][2212] = new FPWD_Order(2212, array(new FPWD_Item('Caja inicial', 10, 22, 0)), array('_billing_fp_dispatch'=>'si', '_billing_fp_address'=>'Destino original'));
+	fpw_create_request_draft($GLOBALS['fpwd_orders'][2212]);
+	$fresh_draft = fpw_read_request_draft(2212);
+	$first = fpw_save_draft_work(2212, $fresh_draft, array_replace($posted, array('fpw_work_revision'=>'0')), 1);
+	check('saved' === $first['state'] && $first['work']['identity'] === $identity && $first['work']['lines'][0]['price'] === null && $first['work']['lines'][0]['quantity'] === 10 && $first['work']['destination'] === 'Destino original', 'first contact save creates only working state with original quantities and pending prices, ignoring forged commercial inputs');
+	$_GET = array( 'page' => FPW_DRAFT_SCREEN, 'request' => '2210', 'workspace' => '1' );
+	$_POST = $posted; $_POST['fpw_draft_nonce'] = 'forged';
+	try { fpw_handle_draft_posted_action(); check(false, 'contact save requires nonce'); }
+	catch (FPWD_Die $e) { check('403' === $e->getMessage(), 'contact forged nonce rejected'); }
+	check(fpw_read_draft_work(2210) === $work, 'forged nonce writes nothing');
+	$_POST = $posted;
+	fpw_handle_draft_posted_action();
+	$saved = fpw_read_draft_work(2210);
+	check($saved['identity'] === $identity && $saved['revision'] === $work['revision'] + 1, 'contact fields persist through the normal private action');
+	check(array_diff_key($saved, array_flip(array('identity','revision','updated_at','updated_by'))) === array_diff_key($work, array_flip(array('identity','revision','updated_at','updated_by'))), 'contact save preserves all commercial work exactly');
+	check(fpw_draft_identity($draft, $saved)['rut'] === $draft['identity']['rut'] && !isset($saved['identity']['address']), 'posted RUT and address cannot override immutable identity');
+	check(fpw_draft_preview_is_obsolete($preview, $saved), 'contact save invalidates previous review');
+	check($GLOBALS['fpwd_table'][fpw_draft_row_name(2210)] === $receipt && $GLOBALS['fpwd_mail_calls'] === $emails, 'contact save leaves receipt and transport untouched');
+	check('conflict' === fpw_save_draft_work(2210, $draft, $posted, 2)['state'] && fpw_read_draft_work(2210) === $saved, 'stale contact tab cannot overwrite a later save');
+	$posted['fpw_work_revision'] = (string) $saved['revision'];
+	foreach (array(null, array(), array('bad'), '') as $bad) {
+		$invalid = $posted; $invalid['fpw_identity']['company'] = $bad;
+		check('invalid' === fpw_save_draft_work(2210, $draft, $invalid, 1)['state'], 'malformed or blank contact field rejected');
+	}
+	foreach (array('email' => 'not-an-email', 'phone' => '(------)', 'giro' => str_repeat('á', 301)) as $field => $bad) {
+		$invalid = $posted; $invalid['fpw_identity'][$field] = $bad;
+		check('invalid' === fpw_save_draft_work(2210, $draft, $invalid, 1)['state'], 'invalid email, phone or overlong text rejected');
+	}
+	check(fpw_read_draft_work(2210) === $saved, 'invalid identity never partially saves');
+	foreach (array(array('2'), '2suffix', '-1') as $bad_revision) {
+		$invalid = $posted; $invalid['fpw_work_revision'] = $bad_revision;
+		check('conflict' === fpw_save_draft_work(2210, $draft, $invalid, 1)['state'], 'malformed concurrency token fails closed');
+	}
+	$GLOBALS['fpwd_query_fault'] = static function ($sql) use ($saved) {
+		if (str_starts_with($sql, 'UPDATE ') && str_contains($sql, "'fpw_draft_work_2210'")) {
+			$other = $saved; $other['revision']++; $other['identity']['company'] = 'Ganador concurrente';
+			$GLOBALS['fpwd_table'][fpw_draft_work_row_name(2210)] = wp_json_encode($other);
+			unset($GLOBALS['fpwd_query_fault']);
+		}
+		return null;
+	};
+	check('conflict' === fpw_save_draft_work(2210, $draft, $posted, 1)['state'], 'interleaved contact write loses exact CAS');
+	$winner = fpw_read_draft_work(2210);
+	check($winner['identity']['company'] === 'Ganador concurrente', 'CAS loser preserves winning contact data');
+	$commercial = fpw_save_draft_work(2210, $draft, array('fpw_work_revision' => (string)$winner['revision'], 'fpw_work' => fpw_draft_work_values($draft, $winner)), 1);
+	check($commercial['work']['identity'] === $winner['identity'], 'ordinary commercial save retains corrected contact');
+	$refreshed = fpw_refresh_draft_prices(2210, $draft, 1);
+	check($refreshed['work']['identity'] === $winner['identity'], 'price refresh retains corrected contact');
+	// Restore a complete offer through the ordinary helper; it must keep the contact correction.
+	fpwd_review_for_approval(2210);
+	$reviewed = fpw_read_draft_preview(2210);
+	check($reviewed['projection']['identity'] === fpw_draft_identity($draft, fpw_read_draft_work(2210)), 'preview freezes effective identity alongside commercial revision');
+	fpwd_approve_and_render(2210);
+	$issued = fpw_read_quotation_version(2210);
+	check($issued['buyer']['company'] === 'Ganador concurrente' && $issued['buyer']['email'] === $identity['email'], 'new approval freezes exactly the reviewed corrected buyer');
+	$frozen = $GLOBALS['fpwd_table'][fpw_quotation_row_name(2210)];
+	$_GET = array('page' => FPW_DRAFT_SCREEN, 'workspace' => '1', 'request' => '2210'); $_POST = $posted;
+	try { fpw_handle_draft_posted_action(); check(false, 'issued identity cannot be edited in place'); }
+	catch (FPWD_Die $e) { check('403' === $e->getMessage(), 'issued identity requires an explicit revision'); }
+	$_GET['revise'] = '1';
+	$seed = fpw_read_draft_work(2210);
+	check($seed['identity'] == $winner['identity'], 'revision seed inherits reviewed contact, including giro');
+	$_POST['fpw_work_revision'] = '0'; $_POST['fpw_identity']['company'] = 'Nueva revisión';
+	fpw_handle_draft_posted_action();
+	check(fpw_read_draft_work(2210)['identity']['company'] === 'Nueva revisión', 'revision can correct its private working identity');
+	check($GLOBALS['fpwd_table'][fpw_quotation_row_name(2210)] === $frozen && $GLOBALS['fpwd_table'][fpw_draft_row_name(2210)] === $receipt, 'revision contact edits preserve issued snapshot and original receipt byte-for-byte');
+	$GLOBALS['fpwd_table'] = $rows; $_GET = $get; $_POST = $post; $GLOBALS['fpwd_caps'] = $caps; $GLOBALS['fpwd_mail_calls'] = $emails;
+	fpw_pending_draft_outcome(null);
+})();
+
 /* Shared color prices change suggestions only, never saved work or issued snapshots. */
 $shared_color_table_before = $GLOBALS['fpwd_table'];
 $shared_color_orders_before = $GLOBALS['fpwd_orders'];
@@ -1231,4 +1312,4 @@ check( fpw_read_quotation_version( 95 ) === $accepted95 && fpw_read_request_draf
 $GLOBALS['fpwd_table'] = $shared_color_table_before;
 $GLOBALS['fpwd_orders'] = $shared_color_orders_before;
 
-echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56 + shared color suggestions)\n";
+echo "quote draft: $assertions offline checks passed (issues #50 + #51 + #55 + #56; contact editing + shared color suggestions)\n";

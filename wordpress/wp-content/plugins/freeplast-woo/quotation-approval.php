@@ -138,7 +138,7 @@ function fpw_quotation_approve_and_send( int $order_id, array $draft, ?array $wo
 	/* Step 7: the commercial number is allocated BEFORE the durable version write and frozen into it. A version-write failure burns the number (documented gap, never reused); an allocation failure leaves nothing written. */
 	$commercial_number = $base && isset( $existing['commercial']['number'] ) ? $existing['commercial']['number'] : fpw_quotation_allocate_number();
 	if ( null === $commercial_number ) { return array( 'state' => 'storage-failed', 'version' => null ); }
-	$identity = is_array( $draft['identity'] ?? null ) ? $draft['identity'] : array();
+	$identity = $preview['projection']['identity'] ?? ( $draft['identity'] ?? array() );
 	$version  = array(
 		'schema'        => 1,
 		'order_id'      => $order_id,

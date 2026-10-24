@@ -332,4 +332,33 @@ check( str_contains( $context_issued, 'fpw-sent-back' ) && str_contains( $contex
 $_GET = array();
 $plain_detail = html_entity_decode( fpw_workspace_detail_markup( wc_get_order( $id ), fpw_read_request_draft( $id ), fpw_read_draft_work( $id ), null ), ENT_QUOTES );
 check( ! str_contains( $plain_detail, 'stage=' ) && ! str_contains( $plain_detail, 'paged=' ) && str_contains( $plain_detail, 'request=' . $id . '&workspace=1&' ), 'direct editor access keeps clean internal URLs' );
+// Contact editor remains separate from commercial inputs and frozen review.
+fpwd_review_for_approval(2211);
+$id = 2211; $draft = fpw_read_request_draft($id); $work = fpw_read_draft_work($id);
+$_GET = array('page' => FPW_DRAFT_SCREEN, 'workspace' => '1', 'request' => (string)$id); $_POST = array();
+$before_contact = $GLOBALS['fpwd_table'];
+$detail = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
+check(str_contains($detail, 'Editar empresa y contacto') && str_contains($detail, '<svg') && str_contains($detail, 'data-fpw-identity'), 'pencil contact editor is discoverable and server-first');
+foreach (array('company','name','email','phone','giro') as $field) { check(str_contains($detail, 'name="fpw_identity[' . $field . ']"'), 'only supported editable contact field: ' . $field); }
+check(!str_contains($detail, 'name="fpw_identity[rut]"') && !str_contains($detail, 'name="fpw_identity[address]"'), 'RUT and delivery have no contact edit controls');
+check($GLOBALS['fpwd_table'] === $before_contact && str_contains($detail, 'data-fpw-identity-cancel href="' . esc_url(fpw_draft_screen_url($id)) . '"'), 'GET/cancel renders saved state without writes');
+$_POST = array('fpw_identity_save' => '1', 'fpw_work_revision' => (string)$work['revision'], 'fpw_draft_nonce' => 'offline-nonce', 'fpw_identity' => array('company'=>'Empresa corregida', 'name'=>'Ana', 'email'=>'invalid', 'phone'=>'+56987654321', 'giro'=>'Agrícola'));
+fpw_handle_draft_posted_action();
+$invalid = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, fpw_draft_outcome_notice(fpw_pending_draft_outcome()['result']));
+check(str_contains($invalid, 'class="fpw-identity-editor" open') && str_contains($invalid, 'aria-describedby="fpw-identity-error-email"') && str_contains($invalid, 'value="invalid"'), 'invalid contact stays open with retained input and accessible inline error');
+check($GLOBALS['fpwd_table'] === $before_contact, 'invalid contact render and save preserve all rows');
+$_POST['fpw_identity']['email'] = 'nuevo@example.test';
+fpw_handle_draft_posted_action(); $work = fpw_read_draft_work($id);
+$_POST = array(); fpw_pending_draft_outcome(null);
+$detail = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
+check(str_contains($detail, '>Empresa corregida</h1>') && str_contains($detail, 'nuevo@example.test'), 'reloaded working header shows corrected company and contact');
+$_GET['review'] = '1';
+$stale = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
+check(str_contains($stale, 'Vista previa obsoleta') && !str_contains($stale, 'Empresa corregida') && !str_contains($stale, 'data-fpw-identity'), 'obsolete review shows frozen buyer, not later working identity or editing controls');
+$_POST = array('fpw_work_preview'=>'1','fpw_preview_nonce'=>'offline-nonce');
+fpw_handle_draft_posted_action(); $_POST = array();
+$review = fpw_workspace_detail_markup(wc_get_order($id), $draft, $work, null);
+check(str_contains($review, 'Empresa corregida') && str_contains($review, 'Se enviará a:</strong> nuevo@example.test'), 'fresh review shows corrected frozen company and exact recipient');
+$unsafe = $work; $unsafe['identity']['company'] = '<script>alert(1)</script>';
+check(str_contains(fpw_workspace_request_header($draft, $unsafe, null), '&lt;script&gt;') && !str_contains(fpw_draft_identity_form($draft, $unsafe), 'value="<script>'), 'corrected contact output is HTML escaped');
 echo 'workspace offer: ' . ( $assertions - $start ) . " offline checks passed\n";

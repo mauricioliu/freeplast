@@ -253,6 +253,37 @@ export function runOwnerWorkspaceJsTests() {
     document.body.dispatchEvent(new MouseEvent('click',{bubbles:true}));
     check(!menu.open,'outside click dismisses dropdown');
   } finally { menuDom.window.close(); }
+  const contactDom = new JSDOM(`<div class="fpw-workspace">
+    <details class="fpw-identity-editor" open><summary>Editar empresa y contacto</summary><form data-fpw-identity>
+      <input name="fpw_identity[company]" value="Original" data-fpw-saved-value="Original"><button type="submit">Guardar contacto</button>
+      <a data-fpw-identity-cancel href="/draft">Cancelar</a></form></details>
+    <form data-fpw-work><input name="fpw_work[lines][0][price]" value="1000"><button type="submit">Guardar borrador</button></form>
+  </div>`, {runScripts:'outside-only', url:'https://freeplast.test/'});
+  try {
+    const {document, Event} = contactDom.window;
+    contactDom.window.eval(source);
+    const form = document.querySelector('[data-fpw-identity]');
+    const field = form.querySelector('input');
+    const work = document.querySelector('[data-fpw-work]');
+    field.value = 'Cambio sin guardar';
+    const unload = new Event('beforeunload', {cancelable:true}); contactDom.window.dispatchEvent(unload);
+    check(unload.defaultPrevented, 'unsaved contact changes guard navigation');
+    const otherSave = new Event('submit', {bubbles:true, cancelable:true}); work.dispatchEvent(otherSave);
+    check(otherSave.defaultPrevented && work.querySelector('[role="alert"]'), 'commercial save cannot silently discard contact edits');
+    document.querySelector('[data-fpw-identity-cancel]').click();
+    check(field.value === 'Original' && !form.closest('details').open && document.activeElement.tagName === 'SUMMARY', 'cancel restores saved contact, closes editor and returns focus without submission');
+    const cleanUnload = new Event('beforeunload', {cancelable:true}); contactDom.window.dispatchEvent(cleanUnload);
+    check(!cleanUnload.defaultPrevented, 'cancelled contact has no dirty navigation guard');
+    work.querySelector('input').value = '2000'; work.querySelector('input').dispatchEvent(new Event('input', {bubbles:true}));
+    field.value = 'Segunda edición';
+    const contactSave = new Event('submit', {bubbles:true, cancelable:true}); form.dispatchEvent(contactSave);
+    check(contactSave.defaultPrevented && form.querySelector('[role="alert"]'), 'contact save cannot discard commercial edits');
+    document.querySelector('[data-fpw-identity-cancel]').click();
+    check(work.querySelector('input').value === '2000', 'contact cancellation leaves commercial edits intact');
+    work.reset(); field.value = 'Lista para guardar';
+    const save = new Event('submit', {bubbles:true, cancelable:true}); form.dispatchEvent(save);
+    check(!save.defaultPrevented && form.getAttribute('aria-busy') === 'true', 'contact save submits natively when no other form is dirty');
+  } finally { contactDom.window.close(); }
   console.log(`owner workspace JS: ${checks} checks passed`);
   return checks;
 }
