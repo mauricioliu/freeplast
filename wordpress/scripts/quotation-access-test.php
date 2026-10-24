@@ -155,3 +155,16 @@ check(fpw_restricted_rest_route_denied(['fpw_quotation_manager', 'fpw_data_manag
 check(fpw_quotation_own_basket_rest_route('/wc/store/v1/cart/update-item/../users', 'POST') === false, 'path segments never smuggle another route into the exception');
 check(fpw_quotation_own_basket_rest_route('/wc/store/v1/cart', 'get') === true && fpw_quotation_own_basket_rest_route('/wc/store/v1/cart/add-item', 'post') === true, 'method casing normalizes without opening extra verbs');
 echo "quotation own-basket REST boundary: " . ($count - $own_basket_start) . " denial checks in this block\n";
+
+// History is only an internal quotation aid: a known RUT grants no access, even without a database present.
+require __DIR__.'/../wp-content/plugins/freeplast-woo/quote-draft.php';
+$history_start = $count;
+foreach ( array( array(), array( 'read' => true ), array( 'edit_shop_orders' => true ), array( 'fpw_manage_data' => true ) ) as $caps ) {
+ $GLOBALS['caps'] = $caps;
+ $draft = array( 'order_id' => 123, 'identity' => array( 'rut' => '76.543.210-K' ) );
+ check( fpw_customer_quotation_history( $draft ) === array( 'state' => 'forbidden', 'rows' => array() ), 'Unauthorized history is denied before normalization or data access' );
+ check( '' === fpw_customer_quotation_history_html( $draft ), 'Unauthorized renderer exposes no history or customer facts' );
+}
+check( fpw_quotation_route_allowed( 'admin.php', array( 'page' => 'fpw-quote-draft', 'workspace' => '1', 'request' => '123', 'version' => '2' ) ), 'Quotation manager can follow the existing private version route' );
+check( ! fpw_data_route_allowed( 'admin.php', array( 'page' => 'fpw-quote-draft', 'workspace' => '1', 'request' => '123', 'version' => '2' ) ), 'Data-only role cannot follow history version links' );
+echo "quotation customer-history boundary: " . ($count - $history_start) . " checks passed\n";

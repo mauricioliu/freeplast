@@ -1316,6 +1316,102 @@ function fpw_draft_history_section( array $draft ): string {
 		. $import_link . '</section>';
 }
 
+/** Private, read-only customer history; receipts, saved work and issued snapshots never become sales. */
+function fpw_customer_quotation_history( array $draft ): array {
+	if ( ! fpw_can_manage_quotations() ) { return array( 'state' => 'forbidden', 'rows' => array() ); }
+	$rut = fpw_sales_normalize_rut( (string) ( $draft['identity']['rut'] ?? '' ) );
+	if ( '' === $rut ) { return array( 'state' => 'unmatched', 'rows' => array() ); }
+	global $wpdb;
+	$rows = array();
+	$current_id = (int) ( $draft['order_id'] ?? 0 );
+	// ponytail: scan native request pages; add a normalized-RUT index when history volume makes this costly.
+	for ( $page = 1; ; $page++ ) {
+		$result = fpw_workspace_query( '', 'all', 'DESC', $page );
+		if ( $result['error'] ) { return array( 'state' => 'unavailable', 'rows' => array() ); }
+		foreach ( $result['rows'] as $id ) {
+			$order = wc_get_order( $id );
+			if ( ! $order || 'yes' !== $order->get_meta( '_fp_request' ) ) { continue; }
+			$receipt = fpw_read_request_draft( $id );
+			if ( '' !== $wpdb->last_error ) { return array( 'state' => 'unavailable', 'rows' => array() ); }
+			$identity_rut = $receipt['identity']['rut'] ?? $order->get_meta( '_billing_fp_rut' );
+			if ( $rut !== fpw_sales_normalize_rut( (string) $identity_rut ) ) { continue; }
+			if ( $receipt && $id !== ( $receipt['order_id'] ?? null ) ) { continue; }
+			$reference = (string) ( $receipt['reference'] ?? $order->get_order_number() );
+			$created = $order->get_date_created();
+			$received = $receipt['received_at'] ?? ( $created ? $created->getTimestamp() : null );
+			$items = $receipt['items'] ?? fpw_build_request_draft_payload( $order )['items'];
+			$version = fpw_read_quotation_version( $id );
+			if ( '' !== $wpdb->last_error ) { return array( 'state' => 'unavailable', 'rows' => array() ); }
+			if ( $id !== $current_id ) {
+				$rows[] = array( 'kind' => 'request', 'order_id' => $id, 'reference' => $reference, 'at' => $received, 'lines' => $items );
+				// Read the actual saved revision, independent of the draft currently open in the URL; never seed or suggest prices.
+				$name = FPW_DRAFT_WORK_PREFIX . $id . ( $version ? '_after_' . (int) $version['version'] : '' );
+				$raw = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $name ) );
+				if ( '' !== $wpdb->last_error ) { return array( 'state' => 'unavailable', 'rows' => array() ); }
+				$work = json_decode( $raw ?? '', true );
+				if ( is_array( $work ) && $id === ( $work['order_id'] ?? null ) && ( $work['revision'] ?? 0 ) > 0 ) {
+					$lines = array();
+					foreach ( $items as $i => $item ) {
+						$saved = $work['lines'][$i] ?? array();
+						if ( ( $saved['product_id'] ?? null ) !== ( $item['product_id'] ?? null ) || ( $saved['variation_id'] ?? null ) !== ( $item['variation_id'] ?? null ) ) { continue; }
+						$lines[] = array_merge( $item, array( 'quantity' => $saved['quantity'] ?? null, 'price' => $saved['price'] ?? null ) );
+					}
+					$rows[] = array( 'kind' => 'draft', 'order_id' => $id, 'reference' => $reference, 'at' => $work['updated_at'] ?? null,
+						'revision' => $work['revision'], 'version' => $version ? (int) $version['version'] + 1 : 1, 'lines' => $lines );
+				}
+			}
+			$versions = is_array( $version['history'] ?? null ) ? $version['history'] : array();
+			if ( $version ) { $versions[] = $version; }
+			foreach ( $versions as $issued ) {
+				if ( ! is_array( $issued ) || 1 !== ( $issued['schema'] ?? null ) || $id !== ( $issued['order_id'] ?? null )
+					|| ! is_int( $issued['version'] ?? null ) || $issued['version'] < 1
+					|| $rut !== fpw_sales_normalize_rut( (string) ( $issued['buyer']['rut'] ?? '' ) ) ) { continue; }
+				$rows[] = array( 'kind' => 'version', 'order_id' => $id, 'reference' => (string) ( $issued['reference'] ?? $reference ),
+					'at' => $issued['approved_at'] ?? null, 'version' => $issued['version'], 'document' => $issued['document'] ?? null,
+					'sent' => 'accepted' === ( $issued['delivery']['state'] ?? null ), 'number' => $issued['commercial']['number'] ?? null,
+					'lines' => $issued['projection']['lines'] ?? array(), 'total' => $issued['projection']['total'] ?? null );
+			}
+		}
+		if ( $page >= $result['pages'] ) { break; }
+	}
+	usort( $rows, static fn( $a, $b ) => array( (int) $b['at'], $b['order_id'], $b['version'] ?? 0 ) <=> array( (int) $a['at'], $a['order_id'], $a['version'] ?? 0 ) );
+	return array( 'state' => 'ready', 'rows' => $rows );
+}
+
+/** Same disclosure in both private editors; no history enters a buyer projection or issued document. */
+function fpw_customer_quotation_history_html( array $draft ): string {
+	$history = fpw_customer_quotation_history( $draft );
+	if ( 'forbidden' === $history['state'] ) { return ''; }
+	$html = '<details id="fpw-quotation-history" class="fpw-workspace-history"><summary>Historial de cotizaciones</summary>';
+	if ( 'unavailable' === $history['state'] ) {
+		return $html . '<p>No se pudo consultar el historial de cotizaciones. Vuelve a cargar el borrador.</p></details>';
+	}
+	if ( ! $history['rows'] ) {
+		return $html . '<p>Sin cotizaciones anteriores asociadas al RUT de esta solicitud. Esto no indica que el cliente sea nuevo.</p></details>';
+	}
+	$html .= '<p>Solicitudes, borradores guardados y versiones aprobadas del mismo RUT. No son compras ni modifican los precios de este borrador.</p><div class="fpw-history-list"><ul aria-label="Solicitudes y cotizaciones anteriores">';
+	foreach ( $history['rows'] as $row ) {
+		$kind = $row['kind'];
+		$label = 'request' === $kind ? 'Solicitud recibida' : ( 'draft' === $kind ? 'Borrador · Versión ' . (int) $row['version'] . ' · Revisión ' . (int) $row['revision'] : 'Cotización aprobada · Versión ' . (int) $row['version'] );
+		$date = is_int( $row['at'] ) && $row['at'] > 0 ? wp_date( 'd/m/Y H:i', $row['at'] ) : 'Fecha no disponible';
+		$html .= '<li><details class="fpw-history-purchase"><summary><span>' . esc_html( $date ) . '</span><span>' . esc_html( $row['reference'] ) . '</span><strong>' . esc_html( $label ) . '</strong><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary><div class="fpw-history-detail">';
+		if ( 'version' === $kind ) {
+			$html .= '<p>' . ( 'ready' === $row['document'] ? 'Documento emitido' : 'Documento pendiente' ) . ' · ' . ( $row['sent'] ? 'Envío registrado' : 'Envío no confirmado' ) . '</p>';
+			if ( is_int( $row['number'] ) ) { $html .= '<p>Cotización N.º ' . (int) $row['number'] . '</p>'; }
+			$html .= '<p>Total: ' . ( is_int( $row['total'] ) ? fpw_draft_clp_html( $row['total'] ) : 'No disponible' ) . '</p>';
+			$html .= '<a href="' . esc_url( fpw_quotation_view_url( $row['order_id'], $row['version'] ) ) . '">Ver versión ' . (int) $row['version'] . '</a>';
+		}
+		foreach ( $row['lines'] as $line ) {
+			$html .= '<dl><div><dt>Producto</dt><dd>' . esc_html( (string) ( $line['name'] ?? 'No disponible' ) );
+			foreach ( $line['options'] ?? array() as $option ) { $html .= ' · ' . esc_html( wc_attribute_label( (string) $option['key'] ) . ': ' . (string) $option['value'] ); }
+			$html .= '</dd></div><div><dt>Cantidad</dt><dd>' . ( isset( $line['quantity'] ) ? (int) $line['quantity'] : 'No disponible' ) . '</dd></div><div><dt>Precio unitario neto</dt><dd>'
+				. ( is_int( $line['price'] ?? null ) ? fpw_draft_clp_html( $line['price'] ) : ( 'request' === $kind ? 'Solicitud sin precios' : 'No disponible' ) ) . '</dd></div></dl>';
+		}
+		$html .= '</div></details></li>';
+	}
+	return $html . '</ul></div></details>';
+}
+
 /** The preview-generation control: its own form, its own nonce, its own action — never the work-save form. */
 function fpw_draft_preview_generate_html( int $order_id ): string {
 	return '<form method="post" action="' . esc_url( fpw_draft_screen_url( $order_id ) ) . '">'
@@ -1481,6 +1577,7 @@ function fpw_quote_draft_markup( $order, ?array $draft, ?array $work = null, ?ar
 
 	$aside = '<aside style="display:grid;gap:16px;min-width:0;align-content:start">'
 		. fpw_draft_history_section( $draft )
+		. fpw_customer_quotation_history_html( $draft )
 		. '<section><h2>Estado del borrador</h2><dl>'
 		. fpw_draft_fact_raw_html( 'Precios', $prices_state )
 		. fpw_draft_pending_fact_html( 'Historial' )

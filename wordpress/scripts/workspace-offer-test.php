@@ -152,6 +152,8 @@ check( str_contains( $dispatch_detail, 'name="fpw_work[destination]"' ) && str_c
 check( str_contains( $detail, 'data-fpw-origin="0"' ) && str_contains( $detail, 'Precio guardado para esta oferta.' ), 'H6: each price line ships its origin legend bound for unsaved-value feedback' );
 check( str_contains( $detail, 'data-fpw-dock-save' ) && str_contains( $detail, 'form="fpw-work-form"' ), 'mobile save submits the existing guarded native form' );
 check( ! str_contains( $detail, 'Importes guardados · revisión' ) && ! str_contains( $detail, 'Refrescar precios' ), 'editor hides internal revision and refresh' );
+check( str_contains( $detail, 'id="fpw-history"' ) && str_contains( $detail, 'id="fpw-quotation-history"' ), 'active editor presents purchase and quotation histories in separate disclosures' );
+check( ! str_contains( $issued, 'fpw-quotation-history' ), 'issued offer remains free of internal customer quotation history' );
 foreach ( array( 'fpw_work_revision', 'fpw_draft_nonce', 'fpw_preview_nonce', 'fpw_refresh_nonce', 'data-fpw-calculation', 'data-fpw-minimum', 'data-fpw-amount="total"' ) as $required ) {
 	check( str_contains( $detail, $required ), 'editor preserves controls and calculation hooks: ' . $required );
 }
