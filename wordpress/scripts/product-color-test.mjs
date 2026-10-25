@@ -122,7 +122,83 @@ export async function runProductColorTests() {
   ok(blue.textContent === 'Azul' && blue.querySelector('.blue'), 'taxonomy uses visible native labels, not slugs, for name and swatch');
   blue.click();
   ok(taxonomy.window.document.querySelector('select').value === 'azul', 'taxonomy color still submits the native slug');
-  for (const instance of [dom, plain, taxonomy]) { instance.window.close(); }
+
+  /* CSP regression: Woo's wp_template regex backtracks on data.variation.<key>
+   * and calls window.wp.template('variation-template'), which in wp-util uses
+   * _.template() -> new Function() and throws EvalError under script-src
+   * without unsafe-eval before variation_id and show_variation are updated. */
+  const cspDom = new JSDOM(`<!doctype html><body>
+    <div class="product">${variationForm}<div class="single_variation"></div></div>
+    <script type="text/template" id="tmpl-variation-template"><div class="woocommerce-variation-description">{{{ data.variation.variation_description }}}</div><div class="woocommerce-variation-price">{{{ data.variation.price_html }}}</div><div class="woocommerce-variation-availability">{{{ data.variation.availability_html }}}</div><span class="escaped">{{ data.variation.sku }}</span></script>
+    <script type="text/template" id="tmpl-unavailable-variation-template"><p role="alert">No disponible</p></script>
+  </body>`, { runScripts: 'outside-only', pretendToBeVisual: true });
+  const cspWin = cspDom.window;
+  const csp$ = jquery(cspWin);
+  cspWin.jQuery = csp$;
+  const delegatedCalls = [];
+  cspWin.wp = {
+    template(id) {
+      delegatedCalls.push(id);
+      return function () {
+        throw new cspWin.EvalError("Refused to evaluate a string as JavaScript because 'unsafe-eval' is not an allowed source of script");
+      };
+    },
+  };
+  cspWin.eval(source);
+  cspWin.document.dispatchEvent(new cspWin.Event('DOMContentLoaded', { bubbles: true }));
+  ok(cspWin.wp.template.fpwVariationCspSafe === true, 'CSP-safe variation template adapter is installed on product page');
+  const renderedHtml = cspWin.wp.template('variation-template')({
+    variation: {
+      variation_description: '<p>PEAD virgen</p>',
+      price_html: '',
+      availability_html: '<p class="stock in-stock">Disponible</p>',
+      sku: 'A&B<1>',
+    },
+  });
+  ok(renderedHtml.includes('<p>PEAD virgen</p>') && renderedHtml.includes('<p class="stock in-stock">Disponible</p>'), 'variation-template renders unescaped triple-stash fields without unsafe-eval');
+  ok(renderedHtml.includes('<span class="escaped">A&amp;B&lt;1&gt;</span>'), 'variation-template escapes double-stash fields without unsafe-eval');
+  ok(cspWin.wp.template('unavailable-variation-template')({}).includes('No disponible'), 'unavailable-variation-template renders without unsafe-eval');
+  ok(delegatedCalls.length === 0, 'Woo variation template IDs never reach unsafe-eval wp.template compiler');
+  assert.throws(() => cspWin.wp.template('unrelated-template')({}), cspWin.EvalError, 'unrelated wp.template IDs delegate unchanged');
+  ok(delegatedCalls.length === 1 && delegatedCalls[0] === 'unrelated-template', 'only non-variation template IDs are delegated');
+
+  /* End-to-end Woo onFoundVariation flow under strict CSP sets variation_id, enables button, and allows reset. */
+  const cspForm = cspWin.document.querySelector('form.variations_form');
+  const cspVarInput = cspForm.querySelector('input.variation_id');
+  const cspAddBtn = cspForm.querySelector('.single_add_to_cart_button');
+  const cspReset = cspForm.querySelector('.reset_variations');
+  cspReset.style.visibility = 'hidden';
+  csp$(cspForm).on('found_variation.wc-variation-form', function (_e, variation) {
+    const html = cspWin.wp.template('variation-template')({ variation });
+    cspForm.parentElement.querySelector('.single_variation').innerHTML = html;
+    cspVarInput.value = String(variation.variation_id);
+    cspAddBtn.classList.remove('disabled', 'wc-variation-selection-needed');
+    cspAddBtn.setAttribute('aria-disabled', 'false');
+    cspReset.style.visibility = 'visible';
+  }).on('reset_data', function () {
+    cspVarInput.value = '';
+    cspAddBtn.classList.add('disabled', 'wc-variation-selection-needed');
+    cspAddBtn.setAttribute('aria-disabled', 'true');
+    cspReset.style.visibility = 'hidden';
+  });
+  csp$(cspForm.querySelector('select')).on('change', function () {
+    if (this.value === 'Blanco') {
+      csp$(cspForm).trigger('found_variation', [{ variation_id: 17, variation_description: '<p>Blanco</p>', price_html: '', availability_html: '' }]);
+    } else if (!this.value) {
+      csp$(cspForm).trigger('reset_data');
+    }
+  });
+  cspReset.addEventListener('click', (e) => {
+    e.preventDefault();
+    csp$(cspForm.querySelector('select')).val('').trigger('change');
+  });
+  cspForm.querySelector('[data-fp-color="Blanco"]').click();
+  ok(cspVarInput.value === '17' && !cspAddBtn.classList.contains('wc-variation-selection-needed') && cspAddBtn.getAttribute('aria-disabled') === 'false', 'selecting Blanco under strict CSP populates variation_id and enables add button');
+  ok(cspReset.style.visibility === 'visible', 'selecting Blanco under strict CSP reveals reset_variations');
+  cspReset.click();
+  ok(cspVarInput.value === '' && cspForm.querySelector('select').value === '' && cspReset.style.visibility === 'hidden', 'clicking reset_variations clears selection and variation_id');
+
+  for (const instance of [dom, plain, taxonomy, cspDom]) { instance.window.close(); }
   console.log(`product colors: ${checks} A · Directa variation-control checks passed (native select driven exclusively, two-way sync, no silent defaults)`);
   return checks;
 }

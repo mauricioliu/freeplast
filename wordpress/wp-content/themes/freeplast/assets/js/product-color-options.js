@@ -3,8 +3,38 @@
 (function () {
   'use strict';
   var COLOR_CLASS = { blanco: '', rojo: 'red', amarillo: 'yellow', azul: 'blue', verde: 'green' };
+  var VARIATION_TEMPLATES = { 'variation-template': true, 'unavailable-variation-template': true };
+  var ESCAPE_HTML = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#x60;' };
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"'`]/g, function (ch) { return ESCAPE_HTML[ch]; });
+  }
+  /* Woo's wp_template regex backtracks on data.variation.<key> and falls back to
+     wp.template() -> _.template() -> new Function(), which throws EvalError under
+     strict CSP without unsafe-eval before variation_id and show_variation run. */
+  function installVariationTemplateAdapter(win) {
+    if (!win || !win.wp || typeof win.wp.template !== 'function' || win.wp.template.fpwVariationCspSafe) { return; }
+    var baseTemplate = win.wp.template;
+    var adapted = function (id) {
+      if (!VARIATION_TEMPLATES[id]) { return baseTemplate.apply(this, arguments); }
+      return function (data) {
+        var doc = win.document;
+        var el = doc && doc.getElementById('tmpl-' + id);
+        if (!el) { throw new Error('Template not found: #tmpl-' + id); }
+        var html = el.textContent || el.innerHTML || '';
+        var variation = (data && data.variation) || {};
+        return html.replace(/(\{\{\{?)\s*data\.variation\.([\w-]+)\s*(\}\}\}?)/g, function (_, open, key, close) {
+          if (open.length !== close.length) { return ''; }
+          var replacement = variation[key] || '';
+          return open.length === 2 ? escapeHtml(replacement) : String(replacement);
+        });
+      };
+    };
+    adapted.fpwVariationCspSafe = true;
+    win.wp.template = adapted;
+  }
   function enhance(form) {
     var doc = form.ownerDocument;
+    installVariationTemplateAdapter(doc.defaultView);
     var select = Array.from(form.querySelectorAll('select')).find(function (node) {
       return /(^|_)color$/i.test(node.name.replace(/^attribute_/, ''));
     });
@@ -117,7 +147,10 @@
     }
     sync();
   }
-  function init() { document.querySelectorAll('form.variations_form').forEach(enhance); }
+  function init() {
+    if (typeof window !== 'undefined') { installVariationTemplateAdapter(window); }
+    document.querySelectorAll('form.variations_form').forEach(enhance);
+  }
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
     else { init(); }
