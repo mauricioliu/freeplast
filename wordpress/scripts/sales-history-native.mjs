@@ -43,7 +43,10 @@ export async function runSalesHistoryTests({ wpEval, check, owner, dataActor, qu
     wpEval(`
       $sales = array();
       for ($i=0; $i<30; $i++) {
-        $sale = array('id'=>sprintf('history-${suffix}-%02d', $i), 'date'=>$i===27 ? '2025-12-31' : ($i===28 ? '2026-02-01' : ($i%2 ? '2026-01-31' : '2026-01-01')), 'rut'=>'76.543.210-K', 'invoice'=>'NATIVE-${suffix}', 'total'=>'1190.1234', 'workbook_source'=>array('filename'=>'synthetic.xlsx', 'sheet'=>'VENTAS', 'sha256'=>str_repeat('a',64), 'rows'=>array(array('source_row'=>2+$i, 'raw'=>array('D'=>($i===29 ? 'Otra empresa' : 'Cliente ${suffix}') . ' <img src=x onerror=alert(1)>')))));
+        $name = $i===29 ? 'Otra empresa' : ($i===28 ? 'Vínculo ${suffix}' : 'Cliente ${suffix}');
+        $sale = array('id'=>sprintf('history-${suffix}-%02d', $i), 'date'=>$i===27 ? '2025-12-31' : ($i===28 ? '2026-02-01' : ($i%2 ? '2026-01-31' : '2026-01-01')), 'rut'=>$i===27 ? '12.345.678-5' : '76.543.210-K', 'invoice'=>'NATIVE-${suffix}', 'total'=>'1190.1234', 'workbook_source'=>array('filename'=>'synthetic.xlsx', 'sheet'=>'VENTAS', 'sha256'=>str_repeat('a',64), 'rows'=>array(array('source_row'=>2+$i, 'raw'=>array('D'=>$name . ' <img src=x onerror=alert(1)>')))));
+        // Same customer can have another source name or no stored name; a namesake can have another RUT.
+        if ($i===26) unset($sale['workbook_source']['rows'][0]['raw']['D']);
         if ($i===0) $sale['lines'] = array(
           array('producto'=>'Caja <script>bad</script>', 'total_cajas'=>'2', 'precio'=>'500.0500', 'neto'=>'1000.1000', 'total'=>'1190.1190'),
           array('producto'=>'Ajuste sintético', 'total_cajas'=>'1', 'precio'=>'0.0037', 'neto'=>'0.0037', 'total'=>'0.0044')
@@ -67,14 +70,23 @@ export async function runSalesHistoryTests({ wpEval, check, owner, dataActor, qu
     params.set('history_search', `Cliente ${suffix}`);
     params.set('history_from', '2026-01-01'); params.set('history_to', '2026-01-31');
     const first = await open('/wp-admin/admin.php?' + params);
-    check(rows(first).length === 25 && first.querySelector('.fpw-history').textContent.includes('27 registros · Página 1 de 2'), 'history HTTP: combined inclusive filters apply before pagination');
+    check(rows(first).length === 25 && first.querySelector('.fpw-history').textContent.includes('28 registros · Página 1 de 2'), 'history HTTP: same-RUT association and inclusive dates apply before pagination');
+    check(rows(first).find(a => new URL(a.href).searchParams.get('sale_id') === id(29))?.closest('tr').textContent.includes('Otra empresa'), 'history HTTP: same-RUT association preserves the distinct original source name');
+    check(rows(first).find(a => new URL(a.href).searchParams.get('sale_id') === id(26))?.closest('tr').textContent.includes('No disponible en origen'), 'history HTTP: same-RUT association recovers nameless legacy sale without inventing its name');
     check(!first.querySelector('.fpw-history img, .fpw-history script') && first.querySelector('.fpw-history').textContent.includes('<img src=x'), 'history HTTP: original client content is escaped');
     const secondPath = link(first, 'Siguiente');
     const second = await open(secondPath);
-    check(rows(second).length === 2 && second.querySelector('.fpw-history').textContent.includes('Página 2 de 2'), 'history HTTP: generated next link opens final filtered page');
+    check(rows(second).length === 3 && second.querySelector('.fpw-history').textContent.includes('Página 2 de 2'), 'history HTTP: generated next link opens final filtered page');
     const seen = [...rows(first), ...rows(second)].map(a => new URL(a.href).searchParams.get('sale_id'));
-    const expected = Array.from({length:27}, (_, i) => i).sort((a,b) => (b%2-a%2) || b-a).map(id);
-    check(JSON.stringify(seen) === JSON.stringify(expected) && new Set(seen).size === 27, 'history HTTP: exact stable date/ID order, no missing or duplicate filtered records');
+    const expected = [...Array.from({length:27}, (_, i) => i), 29].sort((a,b) => (b%2-a%2) || b-a).map(id);
+    check(JSON.stringify(seen) === JSON.stringify(expected) && new Set(seen).size === 28, 'history HTTP: exact stable date/ID order, no missing or duplicate associated records');
+    const outsideNameParams = new URLSearchParams(params);
+    outsideNameParams.set('history_search', `Vínculo ${suffix}`);
+    const outsideNameFirst = await open('/wp-admin/admin.php?' + outsideNameParams);
+    check(outsideNameFirst.querySelector('.fpw-history').textContent.includes('28 registros · Página 1 de 2'), 'history HTTP: source-name evidence outside the date range still resolves the customer RUT');
+    const outsideNameSecond = await open(link(outsideNameFirst, 'Siguiente'));
+    const outsideNameIds = [...rows(outsideNameFirst), ...rows(outsideNameSecond)].map(a => new URL(a.href).searchParams.get('sale_id'));
+    check(JSON.stringify(outsideNameIds) === JSON.stringify(expected), 'history HTTP: outside-range naming evidence recovers the exact same dated purchases across pages');
     const detailPath = asSitePath(rows(second).find(a => new URL(a.href).searchParams.get('sale_id') === id(0)).href);
     const detail = await open(detailPath + '&redirect_to=https%3A%2F%2Fevil.invalid&unrelated=1');
     const body = detail.querySelector('.fpw-history');
@@ -89,10 +101,17 @@ export async function runSalesHistoryTests({ wpEval, check, owner, dataActor, qu
     check(clear.querySelector('.fpw-history').textContent.includes('30 registros · Página 1'), 'history HTTP: clear restores unfiltered first page');
     const legacy = await open(route + '&sale_id=' + id(1));
     check(legacy.querySelector('.fpw-history').textContent.includes('Desglose por líneas no disponible'), 'history HTTP: legacy absence explicit');
-    for (const search of ['76543210k', '76.543.210-K', `NATIVE-${suffix}`]) {
+    for (const [search, excluded] of [['76543210k', 27], ['76.543.210-K', 27], [`NATIVE-${suffix}`, null]]) {
       const result = await open(route + '&history_search=' + encodeURIComponent(search));
-      check(result.querySelector('.fpw-history').textContent.includes('30 registros'), 'history HTTP: normalized RUT/invoice search: ' + search);
+      const count = excluded === null ? 30 : 29;
+      check(result.querySelector('.fpw-history').textContent.includes(count + ' registros'), 'history HTTP: normalized RUT/invoice search: ' + search);
+      const next = await open(link(result, 'Siguiente'));
+      const actualIds = [...rows(result), ...rows(next)].map(a => new URL(a.href).searchParams.get('sale_id')).sort();
+      const expectedIds = Array.from({length:30}, (_, i) => i).filter(i => i !== excluded).map(id).sort();
+      check(JSON.stringify(actualIds) === JSON.stringify(expectedIds), 'history HTTP: RUT search excludes the namesake with another RUT while invoice search preserves all matching records: ' + search);
     }
+    const namesake = await open(route + '&history_search=12345678-5');
+    check(rows(namesake).length === 1 && new URL(rows(namesake)[0].href).searchParams.get('sale_id') === id(27), 'history HTTP: namesake with another normalized RUT stays an independent customer');
     for (const [query, text] of [
       ['history_search=unmatched-' + suffix, 'No hay ventas que coincidan'],
       ['history_from=2026-02-30', 'Parámetros inválidos'],
