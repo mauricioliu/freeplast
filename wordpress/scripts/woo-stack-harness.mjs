@@ -1256,8 +1256,8 @@ register_shutdown_function( static function () {
 
       /* 5f. Issue #52 (cut 3 of #49): the private Price List (Mantenedor de precios) and the
          drafts it prefills. The owner maintains net CLP prices per NATIVE product/variation
-         identity; a new request's draft prefills the available suggestions (distinct per option
-         of the same product) and leaves the rest pending; changing the list conserves saved
+         identity; color-only options share their parent's maintained price, and a new request's
+         draft prefills that common suggestion while leaving absent prices pending; changing the list conserves saved
          work and shows the new suggestions beside the manual choices; the explicit refresh
          adopts suggestions without touching manual entries; ventas/visitors stay out; nothing
          public leaks the maintained amounts. */
@@ -1312,8 +1312,8 @@ register_shutdown_function( static function () {
         `).split('\n').pop());
         const fpBefore = productFingerprint();
 
-        /* The owner saves the list over the real screen: the simple product plus two
-           options of the SAME product, each with its own price. */
+        /* The owner saves the list over the real screen: one simple product and one
+           common parent price for two color-only options of the SAME product. */
         const formNonceIn = (html, marker) => {
           for (const f of (html.match(/<form\b[\s\S]*?<\/form>/g) || [])) {
             if (f.includes(marker)) { return (f.match(/name="fpw_price_nonce" value="([0-9a-f]+)"/) || [])[1] || null; }
@@ -1321,27 +1321,31 @@ register_shutdown_function( static function () {
           return null;
         };
         const pricePage = await (await owner(priceUrl)).text();
-        check(pricePage.includes('Mantenedor de precios') && pricePage.includes(`fpw_prices[v:${varA}]`), 'the owner opens the mantenedor with an input per native identity');
+        check(pricePage.includes('Mantenedor de precios') && pricePage.includes(`fpw_prices[p:${catalog52.simple}]`) && pricePage.includes(`fpw_prices[p:${catalog52.variable}]`), 'the owner opens the mantenedor with one input per simple/color-only product');
+        check(!pricePage.includes(`fpw_prices[v:${varA}]`) && !pricePage.includes(`fpw_prices[v:${varB}]`) && pricePage.includes('Precio y referencias comunes a todos los colores'), 'color-only options expose the common parent price, not independent editable color prices');
         const saveNonce = formNonceIn(pricePage, 'fpw_price_save');
         check(Boolean(saveNonce), 'the mantenedor save form carries a minted nonce');
-        const amounts52 = { simple: '14971', varA: '21973', varB: '23979' };
+        const amounts52 = { simple: '14971', common: '21973' };
         const mailsBeforePriceSave = mailCountNow();
-        const savedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': saveNonce, [`fpw_prices[p:${catalog52.simple}]`]: amounts52.simple, [`fpw_prices[v:${varA}]`]: amounts52.varA, [`fpw_prices[v:${varB}]`]: amounts52.varB }).toString() });
+        const rejectedColorPrice = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': saveNonce, [`fpw_prices[v:${varA}]`]: '1' }).toString() });
+        check((await rejectedColorPrice.text()).includes('El producto u opción ya no está disponible'), 'a crafted independent color price with a valid owner nonce is refused');
+        check(wpEval(`global $wpdb; echo null === $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'fpw_price_list'") ? 'absent' : 'created';`) === 'absent', 'refusing an independent color price creates no maintained-price row');
+        const savedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': saveNonce, [`fpw_prices[p:${catalog52.simple}]`]: amounts52.simple, [`fpw_prices[p:${catalog52.variable}]`]: amounts52.common }).toString() });
         check(savedPrices.status === 200, `the price save must answer 200 (got ${savedPrices.status})`);
         /* The maintainer now distinguishes base prices from optional references.
-           This run resets the whole row and submits only three base prices. */
-        check((await savedPrices.text()).includes('Lista de precios guardada: 3 precios base y 0 referencias por producto u opción.'), 'the save banner reports exactly three base prices and zero references');
+           This run resets the whole row and submits only two base prices. */
+        check((await savedPrices.text()).includes('Lista de precios guardada: 2 precios base y 0 referencias por producto u opción.'), 'the save banner reports exactly two base prices and zero references');
         const priceRow52 = JSON.parse(wpEval(`
           global $wpdb;
           $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'fpw_price_list'));
           echo wp_json_encode(is_string($raw) ? json_decode($raw, true) : null);
         `).split('\n').pop());
-        check(priceRow52 && Object.keys(priceRow52.prices).length === 3 && priceRow52.prices[`p:${catalog52.simple}`] === 14971 && priceRow52.prices[`v:${varA}`] === 21973 && priceRow52.prices[`v:${varB}`] === 23979, 'exactly three maintained prices persist by native product/variation identity');
+        check(priceRow52 && Object.keys(priceRow52.prices).length === 2 && priceRow52.prices[`p:${catalog52.simple}`] === 14971 && priceRow52.prices[`p:${catalog52.variable}`] === 21973 && !(`v:${varA}` in priceRow52.prices) && !(`v:${varB}` in priceRow52.prices), 'exactly two parent prices persist, with no independent color-price entries');
         check(priceRow52.references && Object.keys(priceRow52.references).length === 0, 'the saved reference count agrees with the explicit zero-reference banner');
         check(JSON.stringify(productFingerprint()) === JSON.stringify(fpBefore), 'saving prices mutated no product data: prices, meta and status all stand');
         check(mailCountNow() === mailsBeforePriceSave, 'saving prices sends no notification');
         const priceReopened = await (await owner(priceUrl)).text();
-        check(new RegExp(`name="fpw_prices\\[v:${varA}\\]"[^>]*value="21973"`).test(priceReopened), 'the mantenedor recovers its saved values on reopening (persistence)');
+        check(new RegExp(`name="fpw_prices\\[p:${catalog52.variable}\\]"[^>]*value="21973"`).test(priceReopened), 'the mantenedor recovers its saved common parent price on reopening (persistence)');
 
         /* Nothing public leaks the maintained amounts: catalog routes, cart, checkout,
            the request confirmation and the native Store API all stay price-free. */
@@ -1416,7 +1420,7 @@ register_shutdown_function( static function () {
         const postDraft52 = (fetcher, fields) => fetcher(draftUrl52, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
         const draft52Html = await (await owner(draftUrl52)).text();
         check(new RegExp('name="fpw_work\\[lines\\]\\[0\\]\\[price\\]" value="14971"').test(draft52Html), 'the simple line prefills its maintained price');
-        check(new RegExp('name="fpw_work\\[lines\\]\\[1\\]\\[price\\]" value="21973"').test(draft52Html) && new RegExp('name="fpw_work\\[lines\\]\\[2\\]\\[price\\]" value="23979"').test(draft52Html), 'the two options of the same product prefill their OWN different prices');
+        check(new RegExp('name="fpw_work\\[lines\\]\\[1\\]\\[price\\]" value="21973"').test(draft52Html) && new RegExp('name="fpw_work\\[lines\\]\\[2\\]\\[price\\]" value="21973"').test(draft52Html), 'the two color options of the same product prefill their common parent price');
         check(draft52Html.includes('sugerido por el mantenedor') && draft52Html.includes('Prellenado con la sugerencia del mantenedor'), 'the prefill reads as a suggestion, never a chosen price');
         check(draft52Html.includes('Mantenedor de precios'), 'the draft links the mantenedor');
 
@@ -1432,7 +1436,7 @@ register_shutdown_function( static function () {
         };
         const saved52 = await postDraft52(owner, {
           'fpw_work_save': '1', 'fpw_work_revision': '0', 'fpw_draft_nonce': await mint52(owner, `fpw-draft-save-${order52}`),
-          ...lineFields52((i) => (i === 1 ? 17500 : [14971, 21973, 23979][i])),
+          ...lineFields52((i) => (i === 1 ? 17500 : [14971, 21973, 21973][i])),
           'fpw_work[destination]': 'Camino de precios 123, Mostazal', 'fpw_work[dispatch_amount]': '39990',
         });
         check((await saved52.text()).includes('Cambios guardados.'), 'the draft save with adopted + manual prices lands');
@@ -1443,7 +1447,7 @@ register_shutdown_function( static function () {
         `).split('\n').pop());
         const workBeforeListChange = workRow52();
         check(workBeforeListChange && workBeforeListChange.revision === 1 && workBeforeListChange.lines[1].price === 17500 && workBeforeListChange.lines[1].price_source === 'manual', 'the saved work keeps the manual override');
-        check(workBeforeListChange.lines[0].price === 14971 && workBeforeListChange.lines[0].price_source === 'suggested' && workBeforeListChange.lines[2].price === 23979 && workBeforeListChange.lines[2].price_source === 'suggested', 'the adopted suggestions are stored with their suggested origin');
+        check(workBeforeListChange.lines[0].price === 14971 && workBeforeListChange.lines[0].price_source === 'suggested' && workBeforeListChange.lines[2].price === 21973 && workBeforeListChange.lines[2].price_source === 'suggested', 'the adopted suggestions are stored with their suggested origin');
         const reopened52 = await (await owner(draftUrl52)).text();
         check(reopened52.includes('17.500 CLP neto · ingreso manual'), 'the manual override renders as the owner\'s choice');
         check((reopened52.match(/sugerido por el mantenedor/g) || []).length >= 2, 'the adopted suggestions render named as suggestions');
@@ -1451,7 +1455,7 @@ register_shutdown_function( static function () {
         /* The list changes: the saved draft keeps its amounts, the new suggestions show
            beside them, nothing is silently rewritten. */
         const changedPage = await (await owner(priceUrl)).text();
-        const changedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': formNonceIn(changedPage, 'fpw_price_save'), [`fpw_prices[p:${catalog52.simple}]`]: '15980', [`fpw_prices[v:${varA}]`]: '22976', [`fpw_prices[v:${varB}]`]: '24978' }).toString() });
+        const changedPrices = await owner(priceUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ 'fpw_price_save': '1', 'fpw_price_nonce': formNonceIn(changedPage, 'fpw_price_save'), [`fpw_prices[p:${catalog52.simple}]`]: '15980', [`fpw_prices[p:${catalog52.variable}]`]: '22976' }).toString() });
         check((await changedPrices.text()).includes('Lista de precios guardada'), 'the list change saves');
         const workAfterListChange = workRow52();
         check(JSON.stringify(workAfterListChange) === JSON.stringify(workBeforeListChange) && workAfterListChange.lines[0].price === 14971 && workAfterListChange.lines[1].price === 17500, 'changing the list never rewrites the saved draft');
@@ -1465,7 +1469,7 @@ register_shutdown_function( static function () {
         const workAfterRefresh = workRow52();
         check(workAfterRefresh.revision === 2 && workAfterRefresh.lines[0].price === 15980 && workAfterRefresh.lines[0].price_source === 'suggested', 'the tracking line adopts the new list value');
         check(workAfterRefresh.lines[1].price === 17500 && workAfterRefresh.lines[1].price_source === 'manual', 'the manual choice survives the refresh');
-        check(workAfterRefresh.lines[2].price === 24978 && workAfterRefresh.lines[2].price_source === 'suggested', 'the second option adopts its own new price');
+        check(workAfterRefresh.lines[2].price === 22976 && workAfterRefresh.lines[2].price_source === 'suggested', 'the second color option adopts the new common parent price');
         check(workAfterRefresh.dispatch_amount === 39990 && workAfterRefresh.destination === 'Camino de precios 123, Mostazal', 'the refresh touches only prices: destination and dispatch stay as saved');
 
         /* A form rendered from the pre-refresh revision is now stale. */
@@ -1483,7 +1487,7 @@ register_shutdown_function( static function () {
         check(mailCountNow() === mailsBeforePriceSave + 2, `the price journey added exactly one request's notifications (${mailsBeforePriceSave} → ${mailCountNow()})`);
         const receivedPath52 = String(payload52.redirect).replace(SITE_URL, '');
         const receivedText = serverRenderedText(await fetchBody(receivedPath52));
-        for (const amount of [...Object.values(amounts52), '15980', '22976', '24978', '17500']) {
+        for (const amount of [...Object.values(amounts52), '15980', '22976', '17500']) {
           check(!receivedText.includes(amount), `no maintained or suggested amount (${amount}) leaks on the request confirmation`);
         }
       }
